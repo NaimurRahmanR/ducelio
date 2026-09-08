@@ -1,11 +1,11 @@
 # Implementation progress
 
-LAST COMPLETED CHECKPOINT: 4
+LAST COMPLETED CHECKPOINT: 5
 CURRENT PARTIAL CHECKPOINT: None
 COMPLETED ITEMS: Initial source, strict TypeScript, Next.js application, design primitives, environment handling and repository rules.
-INCOMPLETE ITEMS: Checkpoints 5–8.
+INCOMPLETE ITEMS: Checkpoints 6–8.
 KNOWN FAILURES: None. npm optional binding installation issue resolved with npm install --include=optional under Node 24.
-NEXT EXACT ACTION: Checkpoint 5 — transactional counsellor/study-plan/support services with audit and permission tests.
+NEXT EXACT ACTION: Checkpoint 6 — polished responsive student dashboard, programme/lecture previews and meaningful navigation.
 
 ## Checkpoint ledger
 
@@ -46,3 +46,13 @@ Each checkpoint records files/features, migrations, tests, limitations, external
 - Limitations: staff operational workflows are shells; privileged role provisioning remains an operator-controlled database action. No blanket private-support access for admins.
 - External configuration: apply migrations to Supabase and exercise direct REST/RLS under real JWTs on staging before production.
 - Exact next checkpoint: 5 — counsellor institutional services.
+
+
+
+## Checkpoint 5 — complete
+- Files/features: assignment role validation; permissioned profile/plan/event/follow-up/private-interaction reads; transactional plan-item/follow-up/interaction/reassignment RPCs; learner-row locking; backend validated actions; append-only client audit boundary with support prose removed from audit payloads.
+- Migrations: 202609080004_support_services.sql; audited institutional triggers and narrowly granted RPC execution. Deterministic event deduplication exists; client-generated institutional events remain disallowed.
+- Validation: 42/42 tests passed. RPC tests cover own-plan creation, forged learner ID denial, private notes, cross-learner event constraints, role requirements, event deduplication, audited reassignment and revoked former-counsellor access. TypeScript and ESLint passed.
+- Limitations: no intervention automation, clinical profiling, external messaging or AI. Support profile/active plan provisioning is an operator workflow; reassignment has a backend service but no full admin editor yet.
+- External configuration: apply SQL to Supabase; decide private-note retention and support access policy before real learner counselling.
+- Exact next checkpoint: 6 — student dashboard/navigation.
