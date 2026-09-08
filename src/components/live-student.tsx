@@ -4,6 +4,7 @@ import { getStudentAcademy } from "@/server/academy";
 import { getStudentClassSessions } from "@/server/class-sessions";
 import { getStudentAttendance } from "@/server/attendance";
 import { getStudentLessonProgress } from "@/server/lesson-progress";
+import { getStudentLearningResources } from "@/server/learning-resources";
 import {
   getAssignedCounsellor,
   getStudyPlan,
@@ -23,6 +24,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     sessions,
     attendance,
     lessonProgress,
+    resources,
   ] = await Promise.all([
     getAssignedCounsellor(actor.id),
     getStudyPlan(actor.id),
@@ -32,6 +34,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     getStudentClassSessions(),
     getStudentAttendance(),
     getStudentLessonProgress(),
+    getStudentLearningResources(),
   ]);
   const attendanceBySession = new Map(
     attendance.map((record) => [record.session_id, record]),
@@ -185,6 +188,43 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             </Card>
           </>
         )}
+        {section === "notes" && (
+          <Card>
+            <div className="section-heading">
+              <h2>Notes & resources</h2>
+              <Badge tone="muted">VERSIONED CURRICULUM</Badge>
+            </div>
+            {resources.length ? (
+              resources.map((resource) => (
+                <div className="support-record" key={resource.id}>
+                  <Badge tone={resource.kind === "LECTURE_NOTE" ? "blue" : "muted"}>
+                    {resource.kind.replace("_", " ")}
+                  </Badge>
+                  <h3>{resource.title}</h3>
+                  <p className="muted">
+                    {resource.lessons.title} · {resource.programme_versions.label}
+                  </p>
+                  {resource.body && <p>{resource.body}</p>}
+                  {resource.url && (
+                    <a
+                      className="text-link"
+                      href={resource.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open approved reference →
+                    </a>
+                  )}
+                </div>
+              ))
+            ) : (
+              <EmptyState title="No learning resources available">
+                Lecture notes and approved references for your enrolled curriculum
+                will appear here after publication.
+              </EmptyState>
+            )}
+          </Card>
+        )}
         {(section === "" || section === "support") && (
           <div className="two-column">
             <Card className="counsellor-card">
@@ -292,6 +332,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
           "study-plan",
           "profile",
           "classes",
+          "notes",
         ].includes(section) && (
           <Card>
             <EmptyState
