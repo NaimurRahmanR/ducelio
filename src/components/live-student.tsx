@@ -214,7 +214,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                       {f.due_on} · {f.status}
                     </p>
                   </div>
-                ))}
+                ))
               ) : (
                 <p className="muted">No open follow-ups.</p>
               )}
