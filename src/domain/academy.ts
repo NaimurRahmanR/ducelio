@@ -70,6 +70,19 @@ export const attendanceRecordSchema = z.object({
   status: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]),
   reason: z.string().trim().min(5).max(300),
 });
+export const lessonSegmentSchema = z.object({
+  lessonId: z.uuid(),
+  title: z.string().trim().min(1).max(200),
+  position: z.coerce.number().int().positive(),
+  reason: z.string().trim().min(5).max(300),
+});
+export const lessonProgressSchema = z.object({
+  sessionId: z.uuid(),
+  enrolmentId: z.uuid(),
+  segmentId: z.uuid(),
+  status: z.enum(["IN_PROGRESS", "COMPLETED"]),
+  reason: z.string().trim().min(5).max(300),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
