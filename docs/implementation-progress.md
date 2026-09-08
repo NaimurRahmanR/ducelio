@@ -1,11 +1,11 @@
 # Implementation progress
 
-LAST COMPLETED CHECKPOINT: 3
+LAST COMPLETED CHECKPOINT: 4
 CURRENT PARTIAL CHECKPOINT: None
 COMPLETED ITEMS: Initial source, strict TypeScript, Next.js application, design primitives, environment handling and repository rules.
-INCOMPLETE ITEMS: Checkpoints 4–8.
+INCOMPLETE ITEMS: Checkpoints 5–8.
 KNOWN FAILURES: None. npm optional binding installation issue resolved with npm install --include=optional under Node 24.
-NEXT EXACT ACTION: Checkpoint 4 — server authorization, protected routes/actions and PostgreSQL RLS.
+NEXT EXACT ACTION: Checkpoint 5 — transactional counsellor/study-plan/support services with audit and permission tests.
 
 ## Checkpoint ledger
 
@@ -37,3 +37,12 @@ Each checkpoint records files/features, migrations, tests, limitations, external
 - Limitations: actual provider/email delivery and hosted session lifecycle require staging credentials. Manual cross-email account linking/merging and magic links are deliberately deferred; verified provider linking is delegated to Supabase.
 - External configuration: exact Supabase, SMTP, redirect, Google and LinkedIn OIDC instructions in docs/04-auth-and-identity.md. No real credentials invented or committed.
 - Exact next checkpoint: 4 — RBAC and security boundaries.
+
+
+## Checkpoint 4 — complete
+- Files/features: validated backend Actor, centralized role/relationship policies, protected student/support/admin entry points, protected admin API, RLS on every application table, no general client mutation grants and no trust in editable metadata.
+- Migrations: 202609080003_authorization.sql; fixed-search-path permission helpers and explicit function grants. Verified Auth identity is required at SQL and application layers.
+- Validation: 34/34 tests passed; PostgreSQL tests exercise anon/student/other student/assigned counsellor/instructor and reject direct role/academic writes; protected API tests return 401/403/200 as appropriate. TypeScript and ESLint passed.
+- Limitations: staff operational workflows are shells; privileged role provisioning remains an operator-controlled database action. No blanket private-support access for admins.
+- External configuration: apply migrations to Supabase and exercise direct REST/RLS under real JWTs on staging before production.
+- Exact next checkpoint: 5 — counsellor institutional services.
