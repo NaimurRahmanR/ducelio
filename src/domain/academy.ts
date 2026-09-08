@@ -44,6 +44,26 @@ export const enrolmentStatusSchema = z.object({
   status: z.enum(["ACTIVE", "PAUSED", "WITHDRAWN"]),
   reason: z.string().trim().min(5).max(300),
 });
+export const classSessionCreationSchema = z
+  .object({
+    cohortId: z.uuid(),
+    lessonId: z.uuid(),
+    instructorId: z.uuid(),
+    scheduledStart: z.iso.datetime({ offset: true }),
+    scheduledEnd: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) =>
+      new Date(value.scheduledEnd).getTime() >
+      new Date(value.scheduledStart).getTime(),
+    "Class session end must be after its start.",
+  );
+export const classSessionStatusSchema = z.object({
+  sessionId: z.uuid(),
+  status: z.enum(["COMPLETED", "CANCELLED"]),
+  reason: z.string().trim().min(5).max(300),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
