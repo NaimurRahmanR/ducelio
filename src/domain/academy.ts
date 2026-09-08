@@ -83,6 +83,49 @@ export const lessonProgressSchema = z.object({
   status: z.enum(["IN_PROGRESS", "COMPLETED"]),
   reason: z.string().trim().min(5).max(300),
 });
+export const learningResourceSchema = z
+  .object({
+    lessonId: z.uuid(),
+    kind: z.enum(["LECTURE_NOTE", "REFERENCE_LINK"]),
+    title: z.string().trim().min(1).max(200),
+    body: z.string().trim().max(12000).nullable(),
+    url: z.string().trim().nullable(),
+    position: z.coerce.number().int().positive(),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === "LECTURE_NOTE") {
+      if (!value.body) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["body"],
+          message: "Lecture notes require body text.",
+        });
+      }
+      if (value.url) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["url"],
+          message: "Lecture notes cannot include a reference URL.",
+        });
+      }
+    } else {
+      if (value.body) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["body"],
+          message: "Reference links cannot include note body text.",
+        });
+      }
+      if (!value.url || !/^https:\/\/\S+$/i.test(value.url)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["url"],
+          message: "Reference links require an HTTPS URL.",
+        });
+      }
+    }
+  });
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
