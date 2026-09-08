@@ -11,6 +11,7 @@ import {
   createClassSession,
   changeClassSessionStatus,
 } from "@/server/class-sessions";
+import { recordAttendance } from "@/server/attendance";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
@@ -19,6 +20,7 @@ export type CounsellorAssignmentActionState = {
   message?: string;
 };
 export type ClassSessionActionState = { error?: string; message?: string };
+export type AttendanceActionState = { error?: string; message?: string };
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -150,4 +152,26 @@ export async function updateClassSessionStatus(
   revalidatePath("/admin");
   revalidatePath("/student");
   return { message: "Class session status updated." };
+}
+
+export async function saveAttendance(
+  _state: AttendanceActionState,
+  form: FormData,
+): Promise<AttendanceActionState> {
+  try {
+    await recordAttendance({
+      sessionId: form.get("sessionId"),
+      enrolmentId: form.get("enrolmentId"),
+      status: form.get("status"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to record attendance. Check the session timing, learner enrolment, requested status and your permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student");
+  return { message: "Attendance record saved." };
 }
