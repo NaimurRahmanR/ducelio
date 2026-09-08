@@ -55,10 +55,27 @@ export async function getCounsellorAssignmentWorkspace() {
   if (learners.error || counsellors.error || assignments.error)
     throw new Error("Counsellor assignment workspace could not be loaded.");
 
+  const parsedLearners = z.array(learnerSchema).parse(learners.data);
+  const parsedAssignments = z.array(assignmentSchema).parse(assignments.data);
+
   return {
-    learners: z.array(learnerSchema).parse(learners.data),
+    learners: parsedLearners.map((learner) => ({
+      user_id: learner.user_id,
+      student_number: learner.student_number,
+      display_name: learner.app_users.display_name,
+    })),
     counsellors: z.array(counsellorSchema).parse(counsellors.data),
-    assignments: z.array(assignmentSchema).parse(assignments.data),
+    assignments: parsedAssignments.map((assignment) => ({
+      id: assignment.id,
+      student_id: assignment.student_id,
+      counsellor_id: assignment.counsellor_id,
+      starts_at: assignment.starts_at,
+      ended_at: assignment.ended_at,
+      learner_name: assignment.student_profiles.app_users.display_name,
+      student_number: assignment.student_profiles.student_number,
+      counsellor_name: assignment.staff_profiles.app_users.display_name,
+      counsellor_title: assignment.staff_profiles.title,
+    })),
   };
 }
 
