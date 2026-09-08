@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 5 — governed attendance
+LAST COMPLETED CHECKPOINT: 6 — planned lesson segments and learner progress
 CURRENT PARTIAL CHECKPOINT: None
 KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 6 — planned lesson segments and learner progress, kept explicitly separate from mastery evidence.
+NEXT EXACT ACTION: Checkpoint 7 — versioned learning resources and lecture notes.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -48,6 +48,15 @@ NEXT EXACT ACTION: Checkpoint 6 — planned lesson segments and learner progress
 - Corrections preserve record identity and are audited rather than deleting history. Students can read only their own attendance through the established identity/RLS boundary; authorised staff record through the controlled RPC/service path.
 - Added admin attendance workspace, learner-facing attendance display and focused workflow tests.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 86/86 tests in 14 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 6 — planned lesson segments and learner progress — complete
+
+- Migration: `202609090011_phase2_lesson_progress.sql`.
+- Added versioned planned lesson segments and learner progress records bound to enrolment, lesson segment, programme version and a real class session.
+- Progress statuses are IN_PROGRESS and COMPLETED. Progress cannot be recorded before a class starts, for a cancelled class, against the wrong lesson/version, or directly by the learner as an authoritative self-report.
+- Planned segments freeze with published/enrolled curriculum. Progress is readable within established learner/admin/counsellor/assigned-instructor boundaries and corrections remain audited.
+- Student UI labels this measure explicitly as NOT MASTERY; no scrolling, elapsed time, clicks or content viewing can create mastery or progress records.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 92/92 tests in 15 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
