@@ -1,0 +1,45 @@
+# Phase 2 — Academy OS progress
+
+Branch: `phase-2-academy-os`
+
+LAST COMPLETED CHECKPOINT: 4 — persisted class sessions
+CURRENT PARTIAL CHECKPOINT: None
+KNOWN FAILURES: None after the final local Node 24 quality gate.
+NEXT EXACT ACTION: Checkpoint 5 — governed attendance records tied to persisted class sessions and enrolments.
+
+## Checkpoint 1 — governed programme publication — complete
+
+- Migration: `202609080006_phase2_programme_publication.sql`.
+- Added validated DRAFT → PUBLISHED transition, immutable publication metadata snapshots, publication actor/time, bounded reason, controlled RPC, service/action and admin UI.
+- Publication requires at least one module; every module requires a lesson; every lesson requires an objective.
+- Existing Phase 1 fictional published version is backfilled safely before the new constraint is enforced.
+- Validation at completion: 65/65 tests, lint, typecheck and production build passed under Node 24.20.0.
+
+## Checkpoint 2 — governed enrolment workflow — complete
+
+- Migration: `202609080007_phase2_enrolment_workflow.sql`.
+- Added controlled enrolment creation into published cohort versions, immutable cohort snapshots, bounded audited status transitions, server services/actions and admin enrolment workspace.
+- Student academy now reads historical programme/cohort snapshots instead of mutable live labels.
+- Validation at completion: 70/70 tests, lint, typecheck and production build passed under Node 24.20.0.
+
+## Checkpoint 3 — governed counsellor assignment operations — complete
+
+- Migration: `202609080008_phase2_counsellor_assignment_workspace.sql`.
+- Reused the existing audited `assign_counsellor` relationship service rather than creating a parallel assignment system.
+- Added constrained discovery of staff who actually hold the COUNSELLOR role, assignment/reassignment UI, and active/historical relationship register.
+- Reassignment preserves closed relationship history and existing permission revocation behaviour.
+- A TypeScript contract mismatch in nested Supabase relation data was found by the quality gate and fixed by explicitly mapping service data to the UI model.
+- Validation at completion: 74/74 tests, lint, typecheck and production build passed under Node 24.20.0.
+
+## Checkpoint 4 — persisted class sessions — complete
+
+- Migration: `202609080009_phase2_class_sessions.sql`.
+- Added persisted class sessions bound to cohort, programme version, lesson and instructor.
+- Scheduling requires published curriculum, a lesson from the cohort version and staff with INSTRUCTOR role.
+- Prevents cohort/instructor overlaps, preserves immutable schedule history, supports controlled completion/cancellation, adds RLS visibility and institutional audit logging.
+- Added admin scheduling/lifecycle UI, learner-facing class-session reads and focused workflow tests.
+- Final local validation: ESLint passed with no warnings; Next route type generation and TypeScript passed; 80/80 tests in 13 files passed; production webpack build passed; working tree clean and branch synchronized with origin.
+
+## Scope boundary
+
+Phase 2 remains deterministic Academy OS work. No AI actor receives authoritative database access, no navigation/time signal counts as mastery evidence, and assessment/homework firewalls remain future technical enforcement work. Hosted Supabase/JWT/provider/staging acceptance remains required before production use.
