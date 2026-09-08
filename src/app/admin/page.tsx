@@ -4,11 +4,13 @@ import { ProgrammePublication } from "@/components/programme-publication";
 import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
 import { ClassSessionWorkspace } from "@/components/class-session-workspace";
+import { AttendanceWorkspace } from "@/components/attendance-workspace";
 import { getAdminOverview } from "@/server/staff";
 import { getProgrammeVersions } from "@/server/programmes";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
 import { getClassSessionWorkspace } from "@/server/class-sessions";
+import { getAttendanceWorkspace } from "@/server/attendance";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -30,6 +32,8 @@ export default async function Page({
     section === "Counsellors" ? await getCounsellorAssignmentWorkspace() : null;
   const classSessionWorkspace =
     section === "Sessions" ? await getClassSessionWorkspace() : null;
+  const attendanceWorkspace =
+    section === "Sessions" ? await getAttendanceWorkspace() : null;
   const canPublish = data.actor.roles.some(
     (role) => role === "ACADEMIC_ADMIN" || role === "PLATFORM_ADMIN",
   );
@@ -66,6 +70,13 @@ export default async function Page({
           lessons={classSessionWorkspace.lessons}
           instructors={classSessionWorkspace.instructors}
           sessions={classSessionWorkspace.sessions}
+        />
+      )}
+      {section === "Sessions" && attendanceWorkspace && (
+        <AttendanceWorkspace
+          sessions={attendanceWorkspace.sessions}
+          enrolments={attendanceWorkspace.enrolments}
+          attendance={attendanceWorkspace.attendance}
         />
       )}
     </StaffShell>
