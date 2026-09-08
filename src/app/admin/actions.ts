@@ -6,9 +6,14 @@ import {
   createEnrolment,
   changeEnrolmentStatus,
 } from "@/server/enrolments";
+import { reassignCounsellor } from "@/server/counsellor-assignments";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
+export type CounsellorAssignmentActionState = {
+  error?: string;
+  message?: string;
+};
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -70,4 +75,27 @@ export async function updateEnrolmentStatus(
   revalidatePath("/admin");
   revalidatePath("/student");
   return { message: "Enrolment status updated." };
+}
+
+export async function assignLearnerCounsellor(
+  _state: CounsellorAssignmentActionState,
+  form: FormData,
+): Promise<CounsellorAssignmentActionState> {
+  try {
+    await reassignCounsellor({
+      studentId: form.get("studentId"),
+      counsellorId: form.get("counsellorId"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to assign this counsellor. Check the learner, staff role and your permissions.",
+    };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/support");
+  revalidatePath("/student");
+  return { message: "Counsellor assignment updated." };
 }
