@@ -4,3 +4,4 @@ package-lock.json
 supabase/migrations
 supabase/seed.sql
 work
+next-env.d.ts

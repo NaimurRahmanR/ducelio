@@ -1,5 +1,7 @@
 # Ducelio Phase 1 completion report
 
+> Historical Phase 1 delivery record. For current path-independent setup use README; the Phase 1.5 audit supersedes the original runtime fallback and location-specific commands.
+
 Delivery date: 8 September 2026. Scope: local Phase 1 implementation, checkpoints 1–8. Production deployment and the Engineering Foundation / Repository Migration stage have not started.
 
 1. **Phase 1 status:** COMPLETE. Existing checkpoints 1–7 were preserved. Finalisation added documentation only; the previously passing application and database changes were retained.

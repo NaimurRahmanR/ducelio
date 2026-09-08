@@ -8,3 +8,4 @@ work/
 *.log
 supabase/.temp/
 supabase/.branches/
+next-env.d.ts

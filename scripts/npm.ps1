@@ -1,11 +1,9 @@
-# Use a supported Node runtime without changing the user's system installation.
+# Run npm with a supported Node runtime already installed on PATH.
 $ErrorActionPreference = 'Stop'
 $ducelioNode = (Get-Command node -ErrorAction Stop).Source
 $ducelioVersion = [version](& $ducelioNode -p 'process.versions.node')
 if ($ducelioVersion -lt [version]'22.13.0') {
-    $ducelioBundledNode = Join-Path $env:USERPROFILE '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node.exe'
-    if (!(Test-Path -LiteralPath $ducelioBundledNode)) { throw 'Ducelio requires Node 22.13+; install Node 24 LTS.' }
-    $ducelioNode = $ducelioBundledNode
+    throw 'Ducelio requires Node 22.13+; install Node 24 LTS and restart your terminal. No bundled runtime fallback is used.'
 }
 $ducelioNpmCommand = (Get-Command npm.cmd -ErrorAction Stop).Source
 $ducelioNpmCli = Join-Path (Split-Path $ducelioNpmCommand) 'node_modules/npm/bin/npm-cli.js'

@@ -16,7 +16,7 @@ npm run dev
 
 On PowerShell, replace `cp` with `Copy-Item .env.example .env.local`. Preserve an existing configured .env.local instead of overwriting it.
 
-This Windows host has an older default Node. The repository wrapper automatically uses Codex's bundled Node 24 when available, without changing the system installation:
+Install Node 24 LTS with npm and reopen your terminal. Verify node --version reports the supported version. The optional Windows helper below uses Node on PATH and a repository-local npm cache; it does not download or fall back to an application-bundled runtime:
 
 ```powershell
 .\scripts\npm.ps1 ci
@@ -34,6 +34,8 @@ Open **http://127.0.0.1:3000** for authentication or **http://127.0.0.1:3000/dem
 
 Demo records are fictional, read-only fixtures. Live routes use actual authenticated records and never fall back to fixtures. OAuth buttons remain disabled until configured.
 
+Stop any running Ducelio server before npm ci; Windows can otherwise lock native dependencies. Next.js generates next-env.d.ts during dev, build or typecheck; the file is intentionally ignored. The repository can live in any directory. Prefer a non-synchronised working folder to avoid OneDrive file-lock/conflict risk; no path is required by the application.
+
 ## Quality gates
 
 ```sh
@@ -45,7 +47,7 @@ npm start
 npm run test:http
 ```
 
-On this Windows host use `.\scripts\npm.ps1` instead of `npm` for the same commands. The HTTP smoke suite deliberately sends no authentication cookies. Unit and PostgreSQL integration tests do not need Supabase credentials.
+On Windows you can use `.\scripts\npm.ps1` instead of `npm` for the same commands. The HTTP smoke suite deliberately sends no authentication cookies. Unit and PostgreSQL integration tests do not need Supabase credentials.
 
 ## Database and authentication
 
@@ -75,3 +77,5 @@ Set environment values before building and rebuild production output after confi
 - `docs`: principles, architecture, configuration and checkpoint records
 
 Read [Implementation progress](docs/implementation-progress.md) before resuming work. [Phase 1 report](docs/phase-1-completion-report.md) records delivery and limitations. Phase 2 requires a separate instruction.
+
+See [Phase 1.5 readiness audit](docs/14-repository-readiness-audit.md) for the repository migration findings and required engineering foundation work.
