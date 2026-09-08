@@ -1,6 +1,7 @@
 import { AcademyShell } from "./academy-shell";
 import { Card, EmptyState, Badge, ButtonLink } from "./ui";
 import { getStudentAcademy } from "@/server/academy";
+import { getStudentClassSessions } from "@/server/class-sessions";
 import {
   getAssignedCounsellor,
   getStudyPlan,
@@ -11,12 +12,13 @@ import {
 import { SupportForms } from "./support-forms";
 export async function LiveStudent({ section = "" }: { section?: string }) {
   const { actor, enrolments, profile } = await getStudentAcademy();
-  const [counsellor, study, followups, support, events] = await Promise.all([
+  const [counsellor, study, followups, support, events, sessions] = await Promise.all([
     getAssignedCounsellor(actor.id),
     getStudyPlan(actor.id),
     getSupportFollowups(actor.id),
     getStudentSupportProfile(actor.id),
     getOpenSupportEvents(actor.id),
+    getStudentClassSessions(),
   ]);
   const titles: Record<string, string> = {
     "": "Your academy",
@@ -73,6 +75,30 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               <EmptyState title="Your next chapter starts here">
                 No programme enrolment is recorded yet. Your academy registrar
                 will add your programme and curriculum version.
+              </EmptyState>
+            )}
+          </Card>
+        )}
+        {section === "classes" && (
+          <Card>
+            <h2>Your class sessions</h2>
+            {sessions.length ? (
+              sessions.map((session) => (
+                <div className="support-record" key={session.id}>
+                  <Badge tone={session.status === "SCHEDULED" ? "green" : session.status === "CANCELLED" ? "gold" : "muted"}>
+                    {session.status}
+                  </Badge>
+                  <h3>{session.lesson_title}</h3>
+                  <p>{session.programme_title} · {session.cohort_title}</p>
+                  <p>
+                    {new Date(session.scheduled_start).toLocaleString()} · {session.instructor_name}
+                  </p>
+                  <p className="muted">Ends {new Date(session.scheduled_end).toLocaleString()}</p>
+                </div>
+              ))
+            ) : (
+              <EmptyState title="No class sessions scheduled">
+                Your scheduled academy classes will appear here when they are created for your cohort.
               </EmptyState>
             )}
           </Card>
@@ -177,7 +203,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             </ButtonLink>
           </Card>
         )}
-        {!["", "programme", "support", "study-plan", "profile"].includes(
+        {!["", "programme", "support", "study-plan", "profile", "classes"].includes(
           section,
         ) && (
           <Card>
