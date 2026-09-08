@@ -6,6 +6,17 @@ alter table public.programme_versions
   add column published_at timestamptz,
   add column published_by uuid references public.app_users(id);
 
+-- Phase 1 already contains a published fictional demo version. Preserve that
+-- historical state before enforcing the new publication metadata contract.
+update public.programme_versions v
+set title_snapshot = p.title,
+    examination_body_snapshot = p.examination_body,
+    qualification_name_snapshot = p.qualification_name,
+    published_at = v.created_at
+from public.programmes p
+where v.programme_id = p.id
+  and v.status = 'PUBLISHED';
+
 alter table public.programme_versions
   add constraint published_version_requires_snapshot check (
     status = 'DRAFT' or (
