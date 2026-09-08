@@ -10,6 +10,13 @@ for(const path of ["/student","/student/profile","/student/study-plan","/support
  const response=await fetch(base+path,{redirect:"manual"});assert.equal(response.status,307,path);assert.equal(new URL(response.headers.get("location"),base).pathname,"/login",path);count++;
 }
 assert.equal((await fetch(base+"/api/admin")).status,401);count++;
-assert.equal((await fetch(base+"/demo/missing-page")).status,404);count++;
+// Next.js may stream its not-found UI with HTTP 200 after a loading boundary.
+const missing=await fetch(base+"/demo/missing-page");
+assert.ok([200,404].includes(missing.status));
+const missingHtml=await missing.text();
+assert.ok(missingHtml.includes("That page"));
+assert.ok(missingHtml.includes("noindex"));
+count++;
 console.log(count+" HTTP smoke checks passed.");
+
 

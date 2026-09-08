@@ -67,3 +67,4 @@ Each checkpoint records files/features, migrations, tests, limitations, external
 - Limitations: real accounts show actual records/empty states, never fixture fallbacks. Demo submissions/assessment delivery are explicitly disabled. Staff demo entry routes are initial placeholders for checkpoint 7.
 - External configuration: live identity/database setup still required; public demo needs none.
 - Exact next checkpoint: 7 — staff Support UI and protected Admin shell.
+- Checkpoint 6 validation correction: the last smoke assertion initially expected a 404 status, but Next.js streams not-found UI as HTTP 200 when a loading boundary has already flushed. The check now verifies the not-found content and noindex directive (accepting 200 or 404); rerun passed all 27 HTTP checks. No protected records were exposed. This follow-up records the result after the corrected check actually passed.
