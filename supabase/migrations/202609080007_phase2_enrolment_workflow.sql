@@ -44,6 +44,34 @@ create trigger prepare_enrolment_record
 before insert on public.enrolments
 for each row execute function public.prepare_enrolment_record();
 
+create or replace function public.guard_enrolment_history() returns trigger
+language plpgsql set search_path='' as $$
+declare
+  version_status text;
+begin
+  if TG_OP='UPDATE' and (
+    NEW.student_id<>OLD.student_id or
+    NEW.cohort_id<>OLD.cohort_id or
+    NEW.programme_version_id<>OLD.programme_version_id or
+    NEW.enrolled_at<>OLD.enrolled_at or
+    NEW.cohort_title_snapshot<>OLD.cohort_title_snapshot or
+    NEW.cohort_starts_on_snapshot<>OLD.cohort_starts_on_snapshot
+  ) then
+    raise exception 'Enrolment identity and curriculum history are immutable; use a new enrolment';
+  end if;
+
+  select status into version_status
+  from public.programme_versions
+  where id=NEW.programme_version_id
+  for share;
+
+  if version_status is distinct from 'PUBLISHED' then
+    raise exception 'Enrolment requires a published programme version';
+  end if;
+
+  return NEW;
+end $$;
+
 create function public.create_enrolment(
   p_student_id uuid,
   p_cohort_id uuid,
