@@ -34,6 +34,16 @@ export const programmePublicationSchema = z.object({
   programmeVersionId: z.uuid(),
   reason: z.string().trim().min(5).max(300),
 });
+export const enrolmentCreationSchema = z.object({
+  studentId: z.uuid(),
+  cohortId: z.uuid(),
+  reason: z.string().trim().min(5).max(300),
+});
+export const enrolmentStatusSchema = z.object({
+  enrolmentId: z.uuid(),
+  status: z.enum(["ACTIVE", "PAUSED", "WITHDRAWN"]),
+  reason: z.string().trim().min(5).max(300),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
