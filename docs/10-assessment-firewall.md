@@ -1,4 +1,5 @@
 # Assessment and homework firewalls
+
 Future assessment authorization must consult server-owned activity state before releasing content or invoking academic actors. No prompt-only enforcement.
 During active graded assessments: examiner interfaces operate under the assessment policy; tutor/professor/practice/practical help is restricted. Counsellor assistance is logistical/supportive and cannot access protected answers.
 During graded homework: explain, hint and critique_attempt can be permitted; give_final_answer and generate_submission are denied.

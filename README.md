@@ -2,11 +2,11 @@
 
 Your ambition. Guided to mastery.
 
-A modular Academy OS built with Next.js, React, TypeScript, Tailwind and Supabase PostgreSQL/Auth. Phase 1 only; no AI services.
+Phase 1 Academy OS: Next.js, React, strict TypeScript, Tailwind, Zod and Supabase PostgreSQL/Auth. No AI integrations.
 
-## Local start
+## Run locally
 
-Requires Node 22.12+ and npm. From this repository:
+Requires Node **22.13+**; Node **24 LTS** is recommended. From this repository:
 
 ```sh
 npm ci
@@ -14,12 +14,64 @@ cp .env.example .env.local
 npm run dev
 ```
 
-On PowerShell use `Copy-Item .env.example .env.local`. Open http://localhost:3000. No credentials are needed for `/demo`. Real sign-in requires Supabase; consult docs/04-auth-and-identity.md.
+On PowerShell, replace `cp` with `Copy-Item .env.example .env.local`. Preserve an existing configured .env.local instead of overwriting it.
+
+This Windows host has an older default Node. The repository wrapper automatically uses Codex's bundled Node 24 when available, without changing the system installation:
+
+```powershell
+.\scripts\npm.ps1 ci
+Copy-Item .env.example .env.local
+.\scripts\npm.ps1 run dev
+```
+
+Open **http://127.0.0.1:3000** for authentication or **http://127.0.0.1:3000/demo** for the credential-free academy. Always use the exact APP_URL origin for live authentication; do not mix localhost and 127.0.0.1 because PKCE cookies are host-bound.
+
+- Student demo: /demo
+- Support Centre demo: /demo/support
+- Counsellor workspace demo: /demo/counsellor
+- Administration demo: /demo/admin
+- Protected real-account routes: /student, /support, /admin
+
+Demo records are fictional, read-only fixtures. Live routes use actual authenticated records and never fall back to fixtures. OAuth buttons remain disabled until configured.
+
+## Quality gates
 
 ```sh
 npm run check
+npm run format:check
 npm run build
 npm start
+# In another terminal, against the running server:
+npm run test:http
 ```
 
-Start with docs/implementation-progress.md for checkpoint status. docs/01-product-principles.md through docs/12-roadmap.md explain the architecture and deferred scope.
+On this Windows host use `.\scripts\npm.ps1` instead of `npm` for the same commands. The HTTP smoke suite deliberately sends no authentication cookies. Unit and PostgreSQL integration tests do not need Supabase credentials.
+
+## Database and authentication
+
+For a disposable local Supabase project, install the Supabase CLI and Docker, then:
+
+```sh
+supabase start
+supabase db reset
+```
+
+The reset applies all migrations and the fictional local seed. It must never be run against production. Supabase CLI/Docker are not bundled with this repository and were not available during this implementation.
+
+For a managed project, use `supabase link --project-ref YOUR_PROJECT_REF`, review pending migrations, then `supabase db push`. Normal db push does not include the local seed. Configure the publishable key, trusted APP_URL, confirm-email requirement, SMTP and providers using [Authentication setup](docs/04-auth-and-identity.md).
+
+Set environment values before building and rebuild production output after configuration changes. Apply **all five migrations**. Sign up and verify real test users, then provision staff roles, assignments and study plans using reviewed operator workflows in [Operations and security](docs/13-operations-and-security.md). SQL demo users intentionally have no Auth identity or password.
+
+## Repository guide
+
+- `src/app`: routes, callbacks and validated server actions
+- `src/components`: shared design system and student/staff views
+- `src/domain`: role policies and input validation
+- `src/server`: server-only identity/data/support services
+- `src/demo`: fictional UI fixtures
+- `supabase`: PostgreSQL migrations, local configuration and seed
+- `tests`: identity, permission, route and actual PostgreSQL tests
+- `scripts`: HTTP smoke checks and Windows runtime helper
+- `docs`: principles, architecture, configuration and checkpoint records
+
+Read [Implementation progress](docs/implementation-progress.md) before resuming work. [Phase 1 report](docs/phase-1-completion-report.md) records delivery and limitations. Phase 2 requires a separate instruction.

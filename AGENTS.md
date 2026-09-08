@@ -16,7 +16,7 @@ Start every continuation by reading this file, docs/implementation-progress.md, 
 - After each checkpoint: run relevant tests/type checks, fix failures, update progress with migrations/limitations/configuration/next action, and commit if permitted.
 - If interrupted: record LAST COMPLETED CHECKPOINT, CURRENT PARTIAL CHECKPOINT, COMPLETED ITEMS, INCOMPLETE ITEMS, KNOWN FAILURES, NEXT EXACT ACTION. Do not begin another large feature.
 
-Use Node 22.12+ (Node 24 LTS recommended), npm and the lockfile. `npm run check` runs lint, type checking and tests. `npm run build` is a separate required gate. Production identity and PostgreSQL policies are exercised with Supabase; credential-free `/demo` must never grant production access.
+Use Node 22.13+ (Node 24 LTS recommended), npm and the lockfile. `npm run check` runs lint, type checking and tests. `npm run build` is a separate required gate. Production identity and PostgreSQL policies are exercised with Supabase; credential-free `/demo` must never grant production access.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
