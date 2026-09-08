@@ -1,0 +1,1 @@
+import { AcademyShell } from "@/components/academy-shell";import { Card,EmptyState } from "@/components/ui";export default function Page(){return <AcademyShell demo><Card><EmptyState title="Administration preview">The protected administration shell will be completed at checkpoint 7. This public preview contains no institutional records.</EmptyState></Card></AcademyShell>;}

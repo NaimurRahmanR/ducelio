@@ -5,7 +5,8 @@ export async function proxy(request:NextRequest) {
  const env=readConfig();
  let response=NextResponse.next({request});
  response.headers.set("Cache-Control","private, no-store");
- if(!env.configured) return response;
+ const protectedPage=/^\/(student|support|admin)(\/|$)/.test(request.nextUrl.pathname);
+ if(!env.configured) return protectedPage?NextResponse.redirect(new URL("/login",env.appUrl)):response;
  const client=createServerClient(env.url,env.key,{
   cookieOptions:{httpOnly:true,sameSite:"lax",secure:env.appUrl.startsWith("https://"),path:"/"},
   cookies:{getAll:()=>request.cookies.getAll(),setAll(values){
@@ -15,7 +16,9 @@ export async function proxy(request:NextRequest) {
    response.headers.set("Cache-Control","private, no-store");
   }}
  });
- await client.auth.getUser();
+ const {data:{user},error}=await client.auth.getUser();
+ if(protectedPage&&(error||!user||!user.email_confirmed_at)){const denied=NextResponse.redirect(new URL("/login",env.appUrl));for(const cookie of response.cookies.getAll())denied.cookies.set(cookie);denied.headers.set("Cache-Control","private, no-store");return denied;}
  return response;
 }
 export const config={matcher:["/student/:path*","/support/:path*","/admin/:path*","/login","/signup","/verify-email","/forgot-password","/reset-password","/auth/:path*","/api/:path*"]};
+

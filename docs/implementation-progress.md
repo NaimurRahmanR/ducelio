@@ -1,11 +1,11 @@
 # Implementation progress
 
-LAST COMPLETED CHECKPOINT: 5
+LAST COMPLETED CHECKPOINT: 6
 CURRENT PARTIAL CHECKPOINT: None
 COMPLETED ITEMS: Initial source, strict TypeScript, Next.js application, design primitives, environment handling and repository rules.
-INCOMPLETE ITEMS: Checkpoints 6–8.
+INCOMPLETE ITEMS: Checkpoints 7–8.
 KNOWN FAILURES: None. npm optional binding installation issue resolved with npm install --include=optional under Node 24.
-NEXT EXACT ACTION: Checkpoint 6 — polished responsive student dashboard, programme/lecture previews and meaningful navigation.
+NEXT EXACT ACTION: Checkpoint 7 — complete counsellor workspace and protected administration shell.
 
 ## Checkpoint ledger
 
@@ -56,3 +56,14 @@ Each checkpoint records files/features, migrations, tests, limitations, external
 - Limitations: no intervention automation, clinical profiling, external messaging or AI. Support profile/active plan provisioning is an operator workflow; reassignment has a backend service but no full admin editor yet.
 - External configuration: apply SQL to Supabase; decide private-note retention and support access policy before real learner counselling.
 - Exact next checkpoint: 6 — student dashboard/navigation.
+
+
+
+## Checkpoint 6 — complete
+- Files/features: responsive academy navigation, navy/gold student dashboard, programme/next class/Today/counsellor/study rhythm/assignments/assessments/noticeboard panels; all requested student navigation destinations; read-only lecture preview with separate time/progress/mastery; live student records and empty states; authenticated plan-item form.
+- Migrations: none.
+- Validation: 42/42 tests passed; TypeScript and ESLint passed; 27 real HTTP checks passed across demo/auth/protected routes and 404s. Browser checked desktop 1440px and mobile 390px (no horizontal document overflow), mobile menu expansion and Support Centre navigation. Temporary viewport override reset.
+- Fixed: early proxy redirects avoid streaming a protected page shell before the sign-in redirect; service authorization remains mandatory. Mobile counsellor card appears immediately after next class.
+- Limitations: real accounts show actual records/empty states, never fixture fallbacks. Demo submissions/assessment delivery are explicitly disabled. Staff demo entry routes are initial placeholders for checkpoint 7.
+- External configuration: live identity/database setup still required; public demo needs none.
+- Exact next checkpoint: 7 — staff Support UI and protected Admin shell.

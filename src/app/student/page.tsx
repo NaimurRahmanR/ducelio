@@ -1,3 +1,2 @@
-import { requireActor } from "@/server/identity";
-import { Brand,Card,ButtonLink } from "@/components/ui";
-export default async function Page(){const actor=await requireActor("student");return <main id="main" className="foundation"><Brand/><div className="foundation-copy"><h1>Welcome, {actor.displayName}.</h1><Card><h2>Your academy account is ready.</h2><p>Your registered programme and support information will appear here.</p><ButtonLink href="/student/profile" secondary>View account</ButtonLink></Card></div></main>;}
+import { LiveStudent } from "@/components/live-student";
+export default function Page(){return <LiveStudent/>;}

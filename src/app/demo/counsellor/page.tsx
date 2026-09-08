@@ -1,0 +1,1 @@
+import { AcademyShell } from "@/components/academy-shell";import { Card,EmptyState } from "@/components/ui";export default function Page(){return <AcademyShell demo><Card><EmptyState title="Counsellor workspace preview">The staff workspace will be completed at checkpoint 7. The student Support Centre is available from the academy navigation.</EmptyState></Card></AcademyShell>;}

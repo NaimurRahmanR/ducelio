@@ -1,2 +1,3 @@
-import { Brand, Badge, Card } from "@/components/ui";
-export default function Demo() { return <main id="main" className="foundation"><Brand /><div className="foundation-copy"><Badge>ACADEMY PREVIEW · DEMO</Badge><h1>Welcome to<br /><em>your next chapter.</em></h1><Card><h2>Your learning, with direction.</h2><p>The Ducelio academy foundation is ready. Your programme, study plan and counsellor will come together here.</p></Card></div></main>; }
+import { AcademyShell } from "@/components/academy-shell";
+import { StudentDashboard } from "@/components/student-dashboard";
+export default function Demo(){return <AcademyShell demo><StudentDashboard/></AcademyShell>;}
