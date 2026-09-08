@@ -1,11 +1,11 @@
 # Implementation progress
 
-LAST COMPLETED CHECKPOINT: 6
+LAST COMPLETED CHECKPOINT: 7
 CURRENT PARTIAL CHECKPOINT: None
-COMPLETED ITEMS: Initial source, strict TypeScript, Next.js application, design primitives, environment handling and repository rules.
-INCOMPLETE ITEMS: Checkpoints 7–8.
+COMPLETED ITEMS: Checkpoints 1–7; application, versioned schema/seed, identity, backend/RLS permissions, audited support services, responsive student UI and staff workspaces.
+INCOMPLETE ITEMS: Checkpoint 8 final integration and documentation audit.
 KNOWN FAILURES: None. npm optional binding installation issue resolved with npm install --include=optional under Node 24.
-NEXT EXACT ACTION: Checkpoint 7 — complete counsellor workspace and protected administration shell.
+NEXT EXACT ACTION: Checkpoint 8 — full quality gate, migration/auth/RBAC/configuration/accessibility/documentation audits, production build and final report.
 
 ## Checkpoint ledger
 
@@ -68,3 +68,14 @@ Each checkpoint records files/features, migrations, tests, limitations, external
 - External configuration: live identity/database setup still required; public demo needs none.
 - Exact next checkpoint: 7 — staff Support UI and protected Admin shell.
 - Checkpoint 6 validation correction: the last smoke assertion initially expected a 404 status, but Next.js streams not-found UI as HTTP 200 when a loading boundary has already flushed. The check now verifies the not-found content and noindex directive (accepting 200 or 404); rerun passed all 27 HTTP checks. No protected records were exposed. This follow-up records the result after the corrected check actually passed.
+
+
+
+## Checkpoint 7 — complete
+- Resume audit: inspected AGENTS.md, checkpoint ledger, git status/history, migrations, tests, routes and all uncommitted staff changes. Preserved the existing work; no completed checkpoint was reimplemented.
+- Files/features: assigned-learner counsellor caseload and protected case view, programme context, support profile, study plan, follow-ups/events and private interactions; server-backed forms; protected read-only administration overview/programme registry/audit view and all requested future-operation navigation; separate fictional staff previews.
+- Migrations: none. Existing role/assignment RLS and transactional support services are reused.
+- Validation: 47/47 tests passed, including new authorization-before-query tests and forged/unassigned learner selection tests; TypeScript and ESLint passed; 27 HTTP smoke checks passed. Browser checked 390px mobile and 1440px desktop staff layouts without horizontal document overflow; named navigation/controls, one main/H1, administration section switching and counsellor navigation verified. Temporary viewport reset.
+- Limitations: caseload bounded to 100 learners, programme registry 50 records, audit 25 latest events; pagination and full institutional editors are Phase 2 work. Public demos contain no real support notes and cannot mutate live records.
+- External configuration: real Supabase sessions and operator-provisioned staff roles/assignments required for protected views. Live OAuth/SMTP checks still need external credentials.
+- Exact next checkpoint: 8 — final Phase 1 integration and quality gate, then STOP.

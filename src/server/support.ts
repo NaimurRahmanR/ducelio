@@ -92,3 +92,11 @@ export async function assignCounsellor(input:unknown){
  if(error)throw new Error("Counsellor assignment could not be saved.");
  return z.uuid().parse(data);
 }
+
+export async function getStudentProgrammeMembership(studentId:string){
+ const {client}=await supportContext(studentId);
+ const {data,error}=await client.from("enrolments").select("status,programme_versions(label,programmes(title))").eq("student_id",studentId).order("enrolled_at",{ascending:false});
+ if(error)throw new Error("Learner programme context could not be loaded.");
+ const rows=z.array(z.object({status:z.string(),programme_versions:z.object({label:z.string(),programmes:z.object({title:z.string()})})})).parse(data);
+ return rows.map(row=>({title:row.programme_versions.programmes.title,version:row.programme_versions.label,status:row.status}));
+}
