@@ -10,6 +10,7 @@ import {
 } from "@/server/class-sessions";
 import { recordAttendance } from "@/server/attendance";
 import { recordLessonProgress } from "@/server/lesson-progress";
+import { createLearningResource } from "@/server/learning-resources";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
@@ -20,6 +21,7 @@ export type CounsellorAssignmentActionState = {
 export type ClassSessionActionState = { error?: string; message?: string };
 export type AttendanceActionState = { error?: string; message?: string };
 export type LessonProgressActionState = { error?: string; message?: string };
+export type LearningResourceActionState = { error?: string; message?: string };
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -200,4 +202,32 @@ export async function saveLessonProgress(
   revalidatePath("/admin");
   revalidatePath("/student");
   return { message: "Lesson progress saved." };
+}
+
+export async function addLearningResource(
+  _state: LearningResourceActionState,
+  form: FormData,
+): Promise<LearningResourceActionState> {
+  try {
+    const kind = form.get("kind");
+    const rawBody = String(form.get("body") ?? "").trim();
+    const rawUrl = String(form.get("url") ?? "").trim();
+    await createLearningResource({
+      lessonId: form.get("lessonId"),
+      kind,
+      title: form.get("title"),
+      body: rawBody || null,
+      url: rawUrl || null,
+      position: form.get("position"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to add this resource. Check the draft lesson, resource type, content or HTTPS URL, position and your permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student/notes");
+  return { message: "Learning resource added." };
 }
