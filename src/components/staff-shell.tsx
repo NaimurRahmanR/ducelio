@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 export const adminSections = [
   "Overview",
   "Programmes",
+  "Resources",
   "Students",
   "Cohorts",
   "Counsellors",
