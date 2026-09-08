@@ -11,6 +11,7 @@ export const adminSections = [
   "Cohorts",
   "Counsellors",
   "Sessions",
+  "Evidence",
   "Assignments",
   "Assessments",
   "Announcements",
