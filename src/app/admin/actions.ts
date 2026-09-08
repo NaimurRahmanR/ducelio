@@ -7,6 +7,10 @@ import {
   changeEnrolmentStatus,
 } from "@/server/enrolments";
 import { reassignCounsellor } from "@/server/counsellor-assignments";
+import {
+  createClassSession,
+  changeClassSessionStatus,
+} from "@/server/class-sessions";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
@@ -14,6 +18,7 @@ export type CounsellorAssignmentActionState = {
   error?: string;
   message?: string;
 };
+export type ClassSessionActionState = { error?: string; message?: string };
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -98,4 +103,51 @@ export async function assignLearnerCounsellor(
   revalidatePath("/support");
   revalidatePath("/student");
   return { message: "Counsellor assignment updated." };
+}
+
+export async function addClassSession(
+  _state: ClassSessionActionState,
+  form: FormData,
+): Promise<ClassSessionActionState> {
+  try {
+    const scheduledStart = new Date(String(form.get("scheduledStart"))).toISOString();
+    const scheduledEnd = new Date(String(form.get("scheduledEnd"))).toISOString();
+    await createClassSession({
+      cohortId: form.get("cohortId"),
+      lessonId: form.get("lessonId"),
+      instructorId: form.get("instructorId"),
+      scheduledStart,
+      scheduledEnd,
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to schedule this class. Check the cohort, lesson, instructor, times and conflicts.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student");
+  return { message: "Class session scheduled." };
+}
+
+export async function updateClassSessionStatus(
+  _state: ClassSessionActionState,
+  form: FormData,
+): Promise<ClassSessionActionState> {
+  try {
+    await changeClassSessionStatus({
+      sessionId: form.get("sessionId"),
+      status: form.get("status"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to change this class session status. Check the requested transition and timing.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student");
+  return { message: "Class session status updated." };
 }
