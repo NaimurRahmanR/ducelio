@@ -30,6 +30,10 @@ export const assignmentSchema = z
     (v) => v.studentId !== v.counsellorId,
     "A student cannot be their own counsellor.",
   );
+export const programmePublicationSchema = z.object({
+  programmeVersionId: z.uuid(),
+  reason: z.string().trim().min(5).max(300),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
