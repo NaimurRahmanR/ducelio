@@ -126,6 +126,21 @@ export const learningResourceSchema = z
       }
     }
   });
+export const learningEvidenceSchema = z.object({
+  sessionId: z.uuid(),
+  enrolmentId: z.uuid(),
+  objectiveId: z.uuid(),
+  evidenceKind: z.enum([
+    "CLASS_RESPONSE",
+    "RETRIEVAL_CHECK",
+    "PRACTICAL_TASK",
+    "DEBUGGING_TASK",
+  ]),
+  result: z.enum(["CORRECT", "PARTIAL", "INCORRECT"]),
+  evidenceReference: z.string().trim().min(1).max(300),
+  idempotencyKey: z.string().trim().min(8).max(200),
+  reason: z.string().trim().min(5).max(300),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
