@@ -53,11 +53,14 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               enrolments.map((e) => (
                 <div className="support-record" key={e.id}>
                   <Badge tone="green">{e.status}</Badge>
-                  <h3>{e.programme_versions.programmes.title}</h3>
+                  <h3>{e.programme_versions.title_snapshot}</h3>
                   <p>
-                    {e.programme_versions.label} · {e.cohorts.title}
+                    {e.programme_versions.label} · {e.cohort_title_snapshot}
                   </p>
-                  {e.programme_versions.programmes.is_demo && (
+                  <p className="muted">
+                    Cohort start: {e.cohort_starts_on_snapshot}
+                  </p>
+                  {e.programme_versions.is_demo && (
                     <Badge tone="gold">DEMO CURRICULUM</Badge>
                   )}
                   <p className="muted">
