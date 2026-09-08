@@ -64,6 +64,12 @@ export const classSessionStatusSchema = z.object({
   status: z.enum(["COMPLETED", "CANCELLED"]),
   reason: z.string().trim().min(5).max(300),
 });
+export const attendanceRecordSchema = z.object({
+  sessionId: z.uuid(),
+  enrolmentId: z.uuid(),
+  status: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]),
+  reason: z.string().trim().min(5).max(300),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
