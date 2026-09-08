@@ -1,6 +1,7 @@
 import { StaffShell, adminSections } from "@/components/staff-shell";
 import { AdminWorkspace } from "@/components/admin-workspace";
 import { ProgrammePublication } from "@/components/programme-publication";
+import { LearningResourceWorkspace } from "@/components/learning-resource-workspace";
 import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
 import { ClassSessionWorkspace } from "@/components/class-session-workspace";
@@ -8,6 +9,7 @@ import { AttendanceWorkspace } from "@/components/attendance-workspace";
 import { LessonProgressWorkspace } from "@/components/lesson-progress-workspace";
 import { getAdminOverview } from "@/server/staff";
 import { getProgrammeVersions } from "@/server/programmes";
+import { getLearningResourceWorkspace } from "@/server/learning-resources";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
 import { getClassSessionWorkspace } from "@/server/class-sessions";
@@ -28,6 +30,8 @@ export default async function Page({
   if (!section) notFound();
 
   const versions = section === "Programmes" ? await getProgrammeVersions() : [];
+  const resourceWorkspace =
+    section === "Resources" ? await getLearningResourceWorkspace() : null;
   const enrolmentWorkspace =
     section === "Students" ? await getEnrolmentWorkspace() : null;
   const counsellorWorkspace =
@@ -53,6 +57,12 @@ export default async function Page({
       />
       {section === "Programmes" && (
         <ProgrammePublication versions={versions} canPublish={canPublish} />
+      )}
+      {section === "Resources" && resourceWorkspace && (
+        <LearningResourceWorkspace
+          lessons={resourceWorkspace.lessons}
+          resources={resourceWorkspace.resources}
+        />
       )}
       {section === "Students" && enrolmentWorkspace && (
         <EnrolmentWorkspace
