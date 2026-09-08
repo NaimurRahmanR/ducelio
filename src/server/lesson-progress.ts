@@ -122,7 +122,7 @@ export async function createLessonSegment(input: unknown) {
 
 export async function recordLessonProgress(input: unknown) {
   const payload = lessonProgressSchema.parse(input);
-  await requireActor("admin");
+  await requireActor();
   const client = await createSupabase();
   const { data, error } = await client.rpc("record_lesson_progress", {
     p_session_id: payload.sessionId,
