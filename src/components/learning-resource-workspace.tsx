@@ -103,7 +103,12 @@ export function LearningResourceWorkspace({
             </div>
             <div className="field">
               <label htmlFor="resource-title">Title</label>
-              <input id="resource-title" name="title" maxLength={200} required />
+              <input
+                id="resource-title"
+                name="title"
+                maxLength={200}
+                required
+              />
             </div>
             <div className="field">
               <label htmlFor="resource-body">Lecture-note body</label>
@@ -178,7 +183,8 @@ export function LearningResourceWorkspace({
                     </td>
                     <td>{resource.lessons.title}</td>
                     <td>
-                      {resource.programme_versions.title_snapshot ?? "Draft programme"}
+                      {resource.programme_versions.title_snapshot ??
+                        "Draft programme"}
                       <div className="muted">
                         {resource.programme_versions.label} ·{" "}
                         {resource.programme_versions.status}

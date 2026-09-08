@@ -197,12 +197,15 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             {resources.length ? (
               resources.map((resource) => (
                 <div className="support-record" key={resource.id}>
-                  <Badge tone={resource.kind === "LECTURE_NOTE" ? "blue" : "muted"}>
+                  <Badge
+                    tone={resource.kind === "LECTURE_NOTE" ? "blue" : "muted"}
+                  >
                     {resource.kind.replace("_", " ")}
                   </Badge>
                   <h3>{resource.title}</h3>
                   <p className="muted">
-                    {resource.lessons.title} · {resource.programme_versions.label}
+                    {resource.lessons.title} ·{" "}
+                    {resource.programme_versions.label}
                   </p>
                   {resource.body && <p>{resource.body}</p>}
                   {resource.url && (
@@ -219,8 +222,8 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               ))
             ) : (
               <EmptyState title="No learning resources available">
-                Lecture notes and approved references for your enrolled curriculum
-                will appear here after publication.
+                Lecture notes and approved references for your enrolled
+                curriculum will appear here after publication.
               </EmptyState>
             )}
           </Card>

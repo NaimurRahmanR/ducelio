@@ -16,7 +16,9 @@ let noteId: string;
 let linkId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -120,9 +122,10 @@ describe("governed learning resources", () => {
     );
     await resetRole();
     await expect(
-      db.query("update public.learning_resources set title='Changed' where id=$1", [
-        noteId,
-      ]),
+      db.query(
+        "update public.learning_resources set title='Changed' where id=$1",
+        [noteId],
+      ),
     ).rejects.toThrow("immutable");
   });
 
@@ -143,10 +146,10 @@ describe("governed learning resources", () => {
       [cohortId, versionId],
     );
     await asAuth(adminAuth);
-    await db.query("select public.create_enrolment($1,$2,'Approved resource learner')", [
-      learnerId,
-      cohortId,
-    ]);
+    await db.query(
+      "select public.create_enrolment($1,$2,'Approved resource learner')",
+      [learnerId, cohortId],
+    );
     await resetRole();
 
     await asAuth(learnerAuth);
