@@ -11,6 +11,7 @@ import {
 import { recordAttendance } from "@/server/attendance";
 import { recordLessonProgress } from "@/server/lesson-progress";
 import { createLearningResource } from "@/server/learning-resources";
+import { recordLearningEvidence } from "@/server/learning-evidence";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
@@ -22,6 +23,7 @@ export type ClassSessionActionState = { error?: string; message?: string };
 export type AttendanceActionState = { error?: string; message?: string };
 export type LessonProgressActionState = { error?: string; message?: string };
 export type LearningResourceActionState = { error?: string; message?: string };
+export type LearningEvidenceActionState = { error?: string; message?: string };
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -230,4 +232,30 @@ export async function addLearningResource(
   revalidatePath("/admin");
   revalidatePath("/student/notes");
   return { message: "Learning resource added." };
+}
+
+export async function saveLearningEvidence(
+  _state: LearningEvidenceActionState,
+  form: FormData,
+): Promise<LearningEvidenceActionState> {
+  try {
+    await recordLearningEvidence({
+      sessionId: form.get("sessionId"),
+      enrolmentId: form.get("enrolmentId"),
+      objectiveId: form.get("objectiveId"),
+      evidenceKind: form.get("evidenceKind"),
+      result: form.get("result"),
+      evidenceReference: form.get("evidenceReference"),
+      idempotencyKey: form.get("idempotencyKey"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to record learning evidence. Check the session, learner, objective, provenance key and your permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student/classes");
+  return { message: "Learning evidence recorded." };
 }
