@@ -1,11 +1,11 @@
 # Implementation progress
 
-LAST COMPLETED CHECKPOINT: 2
+LAST COMPLETED CHECKPOINT: 3
 CURRENT PARTIAL CHECKPOINT: None
 COMPLETED ITEMS: Initial source, strict TypeScript, Next.js application, design primitives, environment handling and repository rules.
-INCOMPLETE ITEMS: Checkpoints 3–8.
+INCOMPLETE ITEMS: Checkpoints 4–8.
 KNOWN FAILURES: None. npm optional binding installation issue resolved with npm install --include=optional under Node 24.
-NEXT EXACT ACTION: Checkpoint 3 — Supabase SSR email/password, confirmation/recovery and Google/LinkedIn identity integration.
+NEXT EXACT ACTION: Checkpoint 4 — server authorization, protected routes/actions and PostgreSQL RLS.
 
 ## Checkpoint ledger
 
@@ -28,3 +28,12 @@ Each checkpoint records files/features, migrations, tests, limitations, external
 - Limitations: timetable, results, assessments, mastery and announcements remain documented future modules; UI examples for them are not live academic records. PGlite does not replace a hosted Supabase integration test.
 - External configuration: Supabase CLI/Docker or managed PostgreSQL project needed for a durable live database. Seed is local/demo only and creates no sign-in accounts.
 - Exact next checkpoint: 3 — authentication and unified identity.
+
+
+## Checkpoint 3 — complete
+- Files/features: server-only Supabase SSR client, HTTP-only PKCE/session cookies, refresh proxy, email signup/login, verification/resend, forgot/reset password, OAuth actions and callback routes, Google/LinkedIn OIDC buttons, trusted-origin redirect handling and polished authentication screens.
+- Migrations: 202609080002_identity.sql provisions/backfills a unique stable Ducelio identity and STUDENT role; client role metadata is ignored. Supabase auth.identities is the canonical provider identity store.
+- Validation: 16/16 tests passed, including provisioning/duplicate mapping, metadata escalation rejection, redirects and authentication validation; TypeScript and ESLint passed.
+- Limitations: actual provider/email delivery and hosted session lifecycle require staging credentials. Manual cross-email account linking/merging and magic links are deliberately deferred; verified provider linking is delegated to Supabase.
+- External configuration: exact Supabase, SMTP, redirect, Google and LinkedIn OIDC instructions in docs/04-auth-and-identity.md. No real credentials invented or committed.
+- Exact next checkpoint: 4 — RBAC and security boundaries.

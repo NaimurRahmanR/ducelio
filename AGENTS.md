@@ -17,3 +17,13 @@ Start every continuation by reading this file, docs/implementation-progress.md, 
 - If interrupted: record LAST COMPLETED CHECKPOINT, CURRENT PARTIAL CHECKPOINT, COMPLETED ITEMS, INCOMPLETE ITEMS, KNOWN FAILURES, NEXT EXACT ACTION. Do not begin another large feature.
 
 Use Node 22.12+ (Node 24 LTS recommended), npm and the lockfile. `npm run check` runs lint, type checking and tests. `npm run build` is a separate required gate. Production identity and PostgreSQL policies are exercised with Supabase; credential-free `/demo` must never grant production access.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

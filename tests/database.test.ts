@@ -16,3 +16,13 @@ describe("domain validation",()=>{
  it("rejects self assignment",()=>{expect(assignmentSchema.safeParse({studentId:"10000000-0000-4000-8000-000000000001",counsellorId:"10000000-0000-4000-8000-000000000001",reason:"test reason"}).success).toBe(false);});
  it("rejects invalid dates and empty plan items",()=>{expect(studyPlanItemSchema.safeParse({planId:"60000000-0000-4000-8000-000000000001",studentId:"10000000-0000-4000-8000-000000000001",title:" ",dueOn:"2026-02-31"}).success).toBe(false);});
 });
+
+describe("identity provisioning",()=>{
+ it("maps auth identity once and ignores role metadata",async()=>{
+  await db.exec(`insert into auth.users(id,email,raw_user_meta_data) values ('90000000-0000-4000-8000-000000000001','test@example.com','{"display_name":"New Learner","role":"PLATFORM_ADMIN"}')`);
+  const users=await db.query<{id:string;display_name:string}>("select id,display_name from public.app_users where auth_user_id='90000000-0000-4000-8000-000000000001'");
+  expect(users.rows).toHaveLength(1);expect(users.rows[0].display_name).toBe("New Learner");
+  const roles=await db.query<{role:string}>("select role from public.role_grants where user_id=$1",[users.rows[0].id]);expect(roles.rows.map(r=>r.role)).toEqual(["STUDENT"]);
+  await expect(db.exec("insert into public.app_users(auth_user_id,display_name) values ('90000000-0000-4000-8000-000000000001','Duplicate')")).rejects.toThrow();
+ });
+});
