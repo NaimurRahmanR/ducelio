@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 6 — planned lesson segments and learner progress
-CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 7 — versioned learning resources and lecture notes.
+LAST COMPLETED CHECKPOINT: 7 — versioned learning resources and lecture notes
+CURRENT PARTIAL CHECKPOINT: 8 — deterministic learning evidence collection
+KNOWN FAILURES: None after the final local Node 24 quality gate for Checkpoint 7.
+NEXT EXACT ACTION: Complete and validate Checkpoint 8 without deriving mastery from the evidence yet.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -57,6 +57,14 @@ NEXT EXACT ACTION: Checkpoint 7 — versioned learning resources and lecture not
 - Planned segments freeze with published/enrolled curriculum. Progress is readable within established learner/admin/counsellor/assigned-instructor boundaries and corrections remain audited.
 - Student UI labels this measure explicitly as NOT MASTERY; no scrolling, elapsed time, clicks or content viewing can create mastery or progress records.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 92/92 tests in 15 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 7 — versioned learning resources and lecture notes — complete
+
+- Migration: `202609090012_phase2_learning_resources.sql`.
+- Added curriculum-version-bound LECTURE_NOTE and REFERENCE_LINK resources with draft-only authoring and HTTPS-only external references.
+- Resources freeze with published/enrolled curriculum and use the existing version visibility boundary, so enrolled learners see only resources for curriculum versions they are allowed to read.
+- Added Administration → Resources authoring/registry and learner-facing Notes & resources.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 98/98 tests in 16 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
