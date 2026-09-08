@@ -1,8 +1,10 @@
 import { StaffShell, adminSections } from "@/components/staff-shell";
 import { AdminWorkspace } from "@/components/admin-workspace";
 import { ProgrammePublication } from "@/components/programme-publication";
+import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { getAdminOverview } from "@/server/staff";
 import { getProgrammeVersions } from "@/server/programmes";
+import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -18,6 +20,8 @@ export default async function Page({
   if (!section) notFound();
 
   const versions = section === "Programmes" ? await getProgrammeVersions() : [];
+  const enrolmentWorkspace =
+    section === "Students" ? await getEnrolmentWorkspace() : null;
   const canPublish = data.actor.roles.some(
     (role) => role === "ACADEMIC_ADMIN" || role === "PLATFORM_ADMIN",
   );
@@ -33,6 +37,13 @@ export default async function Page({
       />
       {section === "Programmes" && (
         <ProgrammePublication versions={versions} canPublish={canPublish} />
+      )}
+      {section === "Students" && enrolmentWorkspace && (
+        <EnrolmentWorkspace
+          learners={enrolmentWorkspace.learners}
+          cohorts={enrolmentWorkspace.cohorts}
+          enrolments={enrolmentWorkspace.enrolments}
+        />
       )}
     </StaffShell>
   );
