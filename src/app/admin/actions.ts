@@ -9,6 +9,7 @@ import {
   changeClassSessionStatus,
 } from "@/server/class-sessions";
 import { recordAttendance } from "@/server/attendance";
+import { recordLessonProgress } from "@/server/lesson-progress";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
@@ -18,6 +19,7 @@ export type CounsellorAssignmentActionState = {
 };
 export type ClassSessionActionState = { error?: string; message?: string };
 export type AttendanceActionState = { error?: string; message?: string };
+export type LessonProgressActionState = { error?: string; message?: string };
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -175,4 +177,27 @@ export async function saveAttendance(
   revalidatePath("/admin");
   revalidatePath("/student");
   return { message: "Attendance record saved." };
+}
+
+export async function saveLessonProgress(
+  _state: LessonProgressActionState,
+  form: FormData,
+): Promise<LessonProgressActionState> {
+  try {
+    await recordLessonProgress({
+      sessionId: form.get("sessionId"),
+      enrolmentId: form.get("enrolmentId"),
+      segmentId: form.get("segmentId"),
+      status: form.get("status"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to record lesson progress. Check the session, learner enrolment, planned segment and your permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student");
+  return { message: "Lesson progress saved." };
 }
