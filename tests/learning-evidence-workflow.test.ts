@@ -20,7 +20,9 @@ let sessionId: string;
 let evidenceId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -172,9 +174,10 @@ describe("deterministic learning evidence", () => {
 
   it("keeps evidence append-only", async () => {
     await expect(
-      db.query("update public.learning_evidence set result='PARTIAL' where id=$1", [
-        evidenceId,
-      ]),
+      db.query(
+        "update public.learning_evidence set result='PARTIAL' where id=$1",
+        [evidenceId],
+      ),
     ).rejects.toThrow("append-only");
   });
 

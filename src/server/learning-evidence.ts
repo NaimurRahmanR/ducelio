@@ -91,12 +91,7 @@ export async function getLearningEvidenceWorkspace() {
       .limit(1000),
   ]);
 
-  if (
-    sessions.error ||
-    enrolments.error ||
-    objectives.error ||
-    evidence.error
-  )
+  if (sessions.error || enrolments.error || objectives.error || evidence.error)
     throw new Error("Learning evidence workspace could not be loaded.");
 
   return {

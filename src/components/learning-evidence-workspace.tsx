@@ -45,10 +45,7 @@ type Evidence = {
   lesson_id: string;
   session_id: string;
   evidence_kind:
-    | "CLASS_RESPONSE"
-    | "RETRIEVAL_CHECK"
-    | "PRACTICAL_TASK"
-    | "DEBUGGING_TASK";
+    "CLASS_RESPONSE" | "RETRIEVAL_CHECK" | "PRACTICAL_TASK" | "DEBUGGING_TASK";
   result: "CORRECT" | "PARTIAL" | "INCORRECT";
   evidence_reference: string;
   idempotency_key: string;
@@ -99,7 +96,9 @@ export function LearningEvidenceWorkspace({
             {state.message}
           </p>
         )}
-        {!eligibleSessions.length || !enrolments.length || !objectives.length ? (
+        {!eligibleSessions.length ||
+        !enrolments.length ||
+        !objectives.length ? (
           <EmptyState title="Evidence prerequisites are incomplete">
             A non-cancelled class session, matching learner enrolment and
             published learning objective are required.
@@ -239,9 +238,7 @@ export function LearningEvidenceWorkspace({
                       </td>
                       <td>
                         {record.evidence_kind.replaceAll("_", " ")}
-                        <div className="muted">
-                          {record.evidence_reference}
-                        </div>
+                        <div className="muted">{record.evidence_reference}</div>
                       </td>
                       <td>
                         <Badge
