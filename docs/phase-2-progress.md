@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 7 — versioned learning resources and lecture notes
-CURRENT PARTIAL CHECKPOINT: 8 — deterministic learning evidence collection
-KNOWN FAILURES: None after the final local Node 24 quality gate for Checkpoint 7.
-NEXT EXACT ACTION: Complete and validate Checkpoint 8 without deriving mastery from the evidence yet.
+LAST COMPLETED CHECKPOINT: 8 — deterministic learning evidence collection
+CURRENT PARTIAL CHECKPOINT: None
+KNOWN FAILURES: None after the final local Node 24 quality gate.
+NEXT EXACT ACTION: Checkpoint 9 — deterministic mastery validation, current-state storage and immutable mastery history derived only from validated learning evidence.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -65,6 +65,15 @@ NEXT EXACT ACTION: Complete and validate Checkpoint 8 without deriving mastery f
 - Resources freeze with published/enrolled curriculum and use the existing version visibility boundary, so enrolled learners see only resources for curriculum versions they are allowed to read.
 - Added Administration → Resources authoring/registry and learner-facing Notes & resources.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 98/98 tests in 16 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 8 — deterministic learning evidence collection — complete
+
+- Migration: `202609090013_phase2_learning_evidence.sql`.
+- Added append-only learning evidence bound to learner enrolment, class session, lesson objective and exact programme version, with explicit evidence kind, result, provenance reference and idempotency key.
+- Evidence can only be recorded through the governed service/RPC path after the class has started, against a matching enrolment/session/objective relationship. Learners cannot create authoritative evidence directly.
+- Duplicate retries are idempotent, existing evidence cannot be edited or deleted, and learner/staff reads remain constrained by RLS and institutional relationships.
+- Evidence collection does not update objective mastery. It supplies auditable input for the later deterministic mastery policy rather than treating a correct observation, page view or click as mastery.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 105/105 tests in 17 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
