@@ -94,8 +94,8 @@ export function LessonProgressWorkspace({
         )}
         {!eligibleSessions.length || !enrolments.length || !segments.length ? (
           <EmptyState title="Progress prerequisites are incomplete">
-            A non-cancelled class session, matching learner enrolment and planned
-            segment are required.
+            A non-cancelled class session, matching learner enrolment and
+            planned segment are required.
           </EmptyState>
         ) : (
           <form action={formAction} className="support-form">
@@ -129,7 +129,8 @@ export function LessonProgressWorkspace({
                 <option value="">Select segment</option>
                 {segments.map((segment) => (
                   <option key={segment.id} value={segment.id}>
-                    {segment.lessons.title} · {segment.position}. {segment.title}
+                    {segment.lessons.title} · {segment.position}.{" "}
+                    {segment.title}
                   </option>
                 ))}
               </select>
@@ -143,7 +144,9 @@ export function LessonProgressWorkspace({
               </select>
             </div>
             <div className="field">
-              <label htmlFor="progress-reason">Recording or correction reason</label>
+              <label htmlFor="progress-reason">
+                Recording or correction reason
+              </label>
               <input
                 id="progress-reason"
                 name="reason"
@@ -199,7 +202,9 @@ export function LessonProgressWorkspace({
                       </td>
                       <td>
                         <Badge
-                          tone={record.status === "COMPLETED" ? "green" : "muted"}
+                          tone={
+                            record.status === "COMPLETED" ? "green" : "muted"
+                          }
                         >
                           {record.status.replace("_", " ")}
                         </Badge>

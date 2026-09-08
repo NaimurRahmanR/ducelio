@@ -1,9 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import {
-  lessonProgressSchema,
-  lessonSegmentSchema,
-} from "@/domain/academy";
+import { lessonProgressSchema, lessonSegmentSchema } from "@/domain/academy";
 import { requireActor } from "./identity";
 import { createSupabase } from "./supabase";
 

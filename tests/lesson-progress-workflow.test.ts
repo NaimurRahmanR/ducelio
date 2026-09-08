@@ -19,7 +19,9 @@ let enrolmentId: string;
 let sessionId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -117,9 +119,10 @@ afterAll(async () => {
 describe("governed lesson progress", () => {
   it("freezes planned segments after programme publication", async () => {
     await expect(
-      db.query("update public.lesson_segments set title='Changed' where id=$1", [
-        segmentId,
-      ]),
+      db.query(
+        "update public.lesson_segments set title='Changed' where id=$1",
+        [segmentId],
+      ),
     ).rejects.toThrow("immutable");
   });
 
