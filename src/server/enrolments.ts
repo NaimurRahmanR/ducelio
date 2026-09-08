@@ -10,9 +10,8 @@ import { createSupabase } from "./supabase";
 const learnerSchema = z.object({
   user_id: z.uuid(),
   student_number: z.string(),
-  app_users: z.object({ display_name: z.string() }),
 });
-
+const userSchema = z.object({ id: z.uuid(), display_name: z.string() });
 const cohortSchema = z.object({
   id: z.uuid(),
   title: z.string(),
@@ -24,7 +23,6 @@ const cohortSchema = z.object({
     title_snapshot: z.string().nullable(),
   }),
 });
-
 const enrolmentSchema = z.object({
   id: z.uuid(),
   student_id: z.uuid(),
@@ -34,7 +32,6 @@ const enrolmentSchema = z.object({
   enrolled_at: z.string(),
   cohort_title_snapshot: z.string(),
   cohort_starts_on_snapshot: z.string(),
-  app_users: z.object({ display_name: z.string() }),
   programme_versions: z.object({
     label: z.string(),
     title_snapshot: z.string().nullable(),
@@ -45,10 +42,10 @@ export async function getEnrolmentWorkspace() {
   await requireActor("admin");
   const client = await createSupabase();
 
-  const [learners, cohorts, enrolments] = await Promise.all([
+  const [learnersResult, cohortsResult, enrolmentsResult] = await Promise.all([
     client
       .from("student_profiles")
-      .select("user_id,student_number,app_users(display_name)")
+      .select("user_id,student_number")
       .order("student_number")
       .limit(200),
     client
@@ -61,31 +58,40 @@ export async function getEnrolmentWorkspace() {
     client
       .from("enrolments")
       .select(
-        "id,student_id,cohort_id,programme_version_id,status,enrolled_at,cohort_title_snapshot,cohort_starts_on_snapshot,app_users:student_profiles!enrolments_student_id_fkey(app_users(display_name)),programme_versions(label,title_snapshot)",
+        "id,student_id,cohort_id,programme_version_id,status,enrolled_at,cohort_title_snapshot,cohort_starts_on_snapshot,programme_versions(label,title_snapshot)",
       )
       .order("enrolled_at", { ascending: false })
       .limit(200),
   ]);
 
-  if (learners.error || cohorts.error || enrolments.error)
+  if (learnersResult.error || cohortsResult.error || enrolmentsResult.error)
     throw new Error("Enrolment workspace could not be loaded.");
 
-  const parsedEnrolments = z
-    .array(
-      enrolmentSchema.extend({
-        app_users: z.object({ app_users: z.object({ display_name: z.string() }) }),
-      }),
-    )
-    .parse(enrolments.data)
-    .map((row) => ({
-      ...row,
-      app_users: row.app_users.app_users,
-    }));
+  const learners = z.array(learnerSchema).parse(learnersResult.data);
+  const enrolments = z.array(enrolmentSchema).parse(enrolmentsResult.data);
+  const ids = [
+    ...new Set([
+      ...learners.map((learner) => learner.user_id),
+      ...enrolments.map((enrolment) => enrolment.student_id),
+    ]),
+  ];
+  const usersResult = ids.length
+    ? await client.from("app_users").select("id,display_name").in("id", ids)
+    : { data: [], error: null };
+  if (usersResult.error) throw new Error("Learner identities could not be loaded.");
+  const users = z.array(userSchema).parse(usersResult.data);
+  const names = new Map(users.map((user) => [user.id, user.display_name]));
 
   return {
-    learners: z.array(learnerSchema).parse(learners.data),
-    cohorts: z.array(cohortSchema).parse(cohorts.data),
-    enrolments: parsedEnrolments,
+    learners: learners.map((learner) => ({
+      ...learner,
+      display_name: names.get(learner.user_id) ?? "Learner",
+    })),
+    cohorts: z.array(cohortSchema).parse(cohortsResult.data),
+    enrolments: enrolments.map((enrolment) => ({
+      ...enrolment,
+      display_name: names.get(enrolment.student_id) ?? "Learner",
+    })),
   };
 }
 
