@@ -3,10 +3,12 @@ import { AdminWorkspace } from "@/components/admin-workspace";
 import { ProgrammePublication } from "@/components/programme-publication";
 import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
+import { ClassSessionWorkspace } from "@/components/class-session-workspace";
 import { getAdminOverview } from "@/server/staff";
 import { getProgrammeVersions } from "@/server/programmes";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
+import { getClassSessionWorkspace } from "@/server/class-sessions";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -26,6 +28,8 @@ export default async function Page({
     section === "Students" ? await getEnrolmentWorkspace() : null;
   const counsellorWorkspace =
     section === "Counsellors" ? await getCounsellorAssignmentWorkspace() : null;
+  const classSessionWorkspace =
+    section === "Sessions" ? await getClassSessionWorkspace() : null;
   const canPublish = data.actor.roles.some(
     (role) => role === "ACADEMIC_ADMIN" || role === "PLATFORM_ADMIN",
   );
@@ -54,6 +58,14 @@ export default async function Page({
           learners={counsellorWorkspace.learners}
           counsellors={counsellorWorkspace.counsellors}
           assignments={counsellorWorkspace.assignments}
+        />
+      )}
+      {section === "Sessions" && classSessionWorkspace && (
+        <ClassSessionWorkspace
+          cohorts={classSessionWorkspace.cohorts}
+          lessons={classSessionWorkspace.lessons}
+          instructors={classSessionWorkspace.instructors}
+          sessions={classSessionWorkspace.sessions}
         />
       )}
     </StaffShell>
