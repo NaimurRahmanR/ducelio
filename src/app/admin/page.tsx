@@ -5,12 +5,14 @@ import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
 import { ClassSessionWorkspace } from "@/components/class-session-workspace";
 import { AttendanceWorkspace } from "@/components/attendance-workspace";
+import { LessonProgressWorkspace } from "@/components/lesson-progress-workspace";
 import { getAdminOverview } from "@/server/staff";
 import { getProgrammeVersions } from "@/server/programmes";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
 import { getClassSessionWorkspace } from "@/server/class-sessions";
 import { getAttendanceWorkspace } from "@/server/attendance";
+import { getLessonProgressWorkspace } from "@/server/lesson-progress";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -34,6 +36,8 @@ export default async function Page({
     section === "Sessions" ? await getClassSessionWorkspace() : null;
   const attendanceWorkspace =
     section === "Sessions" ? await getAttendanceWorkspace() : null;
+  const lessonProgressWorkspace =
+    section === "Sessions" ? await getLessonProgressWorkspace() : null;
   const canPublish = data.actor.roles.some(
     (role) => role === "ACADEMIC_ADMIN" || role === "PLATFORM_ADMIN",
   );
@@ -77,6 +81,14 @@ export default async function Page({
           sessions={attendanceWorkspace.sessions}
           enrolments={attendanceWorkspace.enrolments}
           attendance={attendanceWorkspace.attendance}
+        />
+      )}
+      {section === "Sessions" && lessonProgressWorkspace && (
+        <LessonProgressWorkspace
+          sessions={lessonProgressWorkspace.sessions}
+          enrolments={lessonProgressWorkspace.enrolments}
+          segments={lessonProgressWorkspace.segments}
+          progress={lessonProgressWorkspace.progress}
         />
       )}
     </StaffShell>
