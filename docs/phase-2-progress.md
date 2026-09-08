@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 4 — persisted class sessions
+LAST COMPLETED CHECKPOINT: 5 — governed attendance
 CURRENT PARTIAL CHECKPOINT: None
 KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 5 — governed attendance records tied to persisted class sessions and enrolments.
+NEXT EXACT ACTION: Checkpoint 6 — planned lesson segments and learner progress, kept explicitly separate from mastery evidence.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -39,6 +39,15 @@ NEXT EXACT ACTION: Checkpoint 5 — governed attendance records tied to persiste
 - Prevents cohort/instructor overlaps, preserves immutable schedule history, supports controlled completion/cancellation, adds RLS visibility and institutional audit logging.
 - Added admin scheduling/lifecycle UI, learner-facing class-session reads and focused workflow tests.
 - Final local validation: ESLint passed with no warnings; Next route type generation and TypeScript passed; 80/80 tests in 13 files passed; production webpack build passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 5 — governed attendance — complete
+
+- Migration: `202609080010_phase2_attendance.sql`.
+- Added authoritative attendance records bound to a persisted class session and the learner enrolment that belongs to its cohort/version.
+- Attendance statuses are PRESENT, LATE, ABSENT and EXCUSED. Attendance cannot be recorded for cancelled sessions or before a session begins, and the system does not infer absence from page views or inactivity.
+- Corrections preserve record identity and are audited rather than deleting history. Students can read only their own attendance through the established identity/RLS boundary; authorised staff record through the controlled RPC/service path.
+- Added admin attendance workspace, learner-facing attendance display and focused workflow tests.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 86/86 tests in 14 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
