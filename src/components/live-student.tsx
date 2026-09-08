@@ -5,6 +5,7 @@ import { getStudentClassSessions } from "@/server/class-sessions";
 import { getStudentAttendance } from "@/server/attendance";
 import { getStudentLessonProgress } from "@/server/lesson-progress";
 import { getStudentLearningResources } from "@/server/learning-resources";
+import { getStudentLearningEvidence } from "@/server/learning-evidence";
 import {
   getAssignedCounsellor,
   getStudyPlan,
@@ -25,6 +26,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     attendance,
     lessonProgress,
     resources,
+    evidence,
   ] = await Promise.all([
     getAssignedCounsellor(actor.id),
     getStudyPlan(actor.id),
@@ -35,6 +37,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     getStudentAttendance(),
     getStudentLessonProgress(),
     getStudentLearningResources(),
+    getStudentLearningEvidence(),
   ]);
   const attendanceBySession = new Map(
     attendance.map((record) => [record.session_id, record]),
@@ -183,6 +186,44 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                   Planned-segment progress will appear here when authorised
                   teaching staff record it. Progress alone does not establish
                   mastery.
+                </EmptyState>
+              )}
+            </Card>
+            <Card>
+              <div className="section-heading">
+                <h2>Your learning evidence</h2>
+                <Badge tone="muted">NOT MASTERY</Badge>
+              </div>
+              {evidence.length ? (
+                evidence.map((record) => (
+                  <div className="support-record" key={record.id}>
+                    <Badge
+                      tone={
+                        record.result === "CORRECT"
+                          ? "green"
+                          : record.result === "INCORRECT"
+                            ? "gold"
+                            : "muted"
+                      }
+                    >
+                      {record.result}
+                    </Badge>
+                    <h3>{record.lesson_objectives.description}</h3>
+                    <p>{record.lessons.title}</p>
+                    <p className="muted">
+                      {record.evidence_kind.replaceAll("_", " ")} ·{" "}
+                      {record.evidence_reference}
+                    </p>
+                    <p className="muted">
+                      Recorded {new Date(record.recorded_at).toLocaleString()}.
+                      Evidence alone does not establish mastery.
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <EmptyState title="No learning evidence recorded">
+                  Validated observations against your learning objectives will
+                  appear here. Mastery remains a separate later decision.
                 </EmptyState>
               )}
             </Card>
