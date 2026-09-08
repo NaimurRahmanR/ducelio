@@ -49,9 +49,6 @@ export function AttendanceWorkspace({
     {},
   );
   const eligibleSessions = sessions.filter((session) => session.status !== "CANCELLED");
-  const attendanceByPair = new Map(
-    attendance.map((record) => [`${record.session_id}:${record.enrolment_id}`, record]),
-  );
 
   return (
     <div className="section-content">
