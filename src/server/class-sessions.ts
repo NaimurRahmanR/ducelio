@@ -140,7 +140,7 @@ export async function changeClassSessionStatus(input: unknown) {
 }
 
 export async function getStudentClassSessions() {
-  const actor = await requireActor("student");
+  await requireActor("student");
   const client = await createSupabase();
   const { data, error } = await client
     .from("class_sessions")
