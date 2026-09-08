@@ -13,7 +13,9 @@ const draftVersionId = "22000000-0000-4000-8000-000000000003";
 const draftCohortId = "52000000-0000-4000-8000-000000000003";
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -63,10 +65,10 @@ describe("governed enrolment workflow", () => {
   it("denies a learner creating their own enrolment", async () => {
     await asAuth(learnerAuth);
     await expect(
-      db.query("select public.create_enrolment($1,$2,'Self enrolment attempt')", [
-        learnerId,
-        cohortId,
-      ]),
+      db.query(
+        "select public.create_enrolment($1,$2,'Self enrolment attempt')",
+        [learnerId, cohortId],
+      ),
     ).rejects.toThrow("Access denied");
     await resetRole();
   });
@@ -74,10 +76,10 @@ describe("governed enrolment workflow", () => {
   it("rejects enrolment into a draft curriculum", async () => {
     await asAuth(registrarAuth);
     await expect(
-      db.query("select public.create_enrolment($1,$2,'Approved registration')", [
-        learnerId,
-        draftCohortId,
-      ]),
+      db.query(
+        "select public.create_enrolment($1,$2,'Approved registration')",
+        [learnerId, draftCohortId],
+      ),
     ).rejects.toThrow("published");
     await resetRole();
   });
@@ -114,9 +116,10 @@ describe("governed enrolment workflow", () => {
     );
     expect(audit.rows[0].reason).toBe("Approved learner registration");
 
-    await db.query("update public.cohorts set title='Renamed cohort' where id=$1", [
-      cohortId,
-    ]);
+    await db.query(
+      "update public.cohorts set title='Renamed cohort' where id=$1",
+      [cohortId],
+    );
     const snapshot = await db.query<{ cohort_title_snapshot: string }>(
       "select cohort_title_snapshot from public.enrolments where id=$1",
       [enrolmentId],

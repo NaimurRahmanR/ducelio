@@ -12,7 +12,9 @@ const completeVersionId = "21000000-0000-4000-8000-000000000002";
 const emptyVersionId = "21000000-0000-4000-8000-000000000003";
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -72,9 +74,10 @@ describe("governed programme publication", () => {
   it("rejects publication of an incomplete draft", async () => {
     await asAuth(adminAuth);
     await expect(
-      db.query("select public.publish_programme_version($1,'Reviewed for release')", [
-        emptyVersionId,
-      ]),
+      db.query(
+        "select public.publish_programme_version($1,'Reviewed for release')",
+        [emptyVersionId],
+      ),
     ).rejects.toThrow("at least one module");
     await resetRole();
   });
@@ -82,9 +85,10 @@ describe("governed programme publication", () => {
   it("denies publication to a student", async () => {
     await asAuth(studentAuth);
     await expect(
-      db.query("select public.publish_programme_version($1,'Attempted release')", [
-        completeVersionId,
-      ]),
+      db.query(
+        "select public.publish_programme_version($1,'Attempted release')",
+        [completeVersionId],
+      ),
     ).rejects.toThrow("Access denied");
     await resetRole();
   });
@@ -115,13 +119,16 @@ describe("governed programme publication", () => {
     expect(version.rows[0].status).toBe("PUBLISHED");
     expect(version.rows[0].title_snapshot).toBe("Phase Two Test Programme");
     expect(version.rows[0].examination_body_snapshot).toBe("Ducelio Test Body");
-    expect(version.rows[0].qualification_name_snapshot).toBe("Test Qualification");
+    expect(version.rows[0].qualification_name_snapshot).toBe(
+      "Test Qualification",
+    );
     expect(version.rows[0].published_at).toBeTruthy();
     expect(version.rows[0].published_by).toBe(adminId);
 
-    await db.query("update public.programmes set title='Renamed programme' where id=$1", [
-      programmeId,
-    ]);
+    await db.query(
+      "update public.programmes set title='Renamed programme' where id=$1",
+      [programmeId],
+    );
     const snapshot = await db.query<{ title_snapshot: string }>(
       "select title_snapshot from public.programme_versions where id=$1",
       [completeVersionId],
@@ -131,9 +138,10 @@ describe("governed programme publication", () => {
 
   it("keeps published curriculum content immutable", async () => {
     await expect(
-      db.query("update public.lesson_objectives set description='Changed' where programme_version_id=$1", [
-        completeVersionId,
-      ]),
+      db.query(
+        "update public.lesson_objectives set description='Changed' where programme_version_id=$1",
+        [completeVersionId],
+      ),
     ).rejects.toThrow("immutable");
   });
 });

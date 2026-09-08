@@ -41,7 +41,9 @@ export async function getAttendanceWorkspace() {
   const [sessions, enrolments, attendance] = await Promise.all([
     client
       .from("class_sessions")
-      .select("id,cohort_id,scheduled_start,scheduled_end,status,lessons(title),cohorts(title)")
+      .select(
+        "id,cohort_id,scheduled_start,scheduled_end,status,lessons(title),cohorts(title)",
+      )
       .order("scheduled_start", { ascending: false })
       .limit(200),
     client
@@ -63,14 +65,17 @@ export async function getAttendanceWorkspace() {
 
   return {
     sessions: z.array(sessionSchema).parse(sessions.data),
-    enrolments: z.array(enrolmentSchema).parse(enrolments.data).map((row) => ({
-      id: row.id,
-      student_id: row.student_id,
-      cohort_id: row.cohort_id,
-      status: row.status,
-      student_number: row.student_profiles.student_number,
-      display_name: row.student_profiles.app_users.display_name,
-    })),
+    enrolments: z
+      .array(enrolmentSchema)
+      .parse(enrolments.data)
+      .map((row) => ({
+        id: row.id,
+        student_id: row.student_id,
+        cohort_id: row.cohort_id,
+        status: row.status,
+        student_number: row.student_profiles.student_number,
+        display_name: row.student_profiles.app_users.display_name,
+      })),
     attendance: z.array(attendanceSchema).parse(attendance.data),
   };
 }
@@ -98,12 +103,14 @@ export async function getStudentAttendance() {
     .order("updated_at", { ascending: false })
     .limit(200);
   if (error) throw new Error("Your attendance records could not be loaded.");
-  return z.array(
-    z.object({
-      id: z.uuid(),
-      session_id: z.uuid(),
-      status: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]),
-      updated_at: z.string(),
-    }),
-  ).parse(data);
+  return z
+    .array(
+      z.object({
+        id: z.uuid(),
+        session_id: z.uuid(),
+        status: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]),
+        updated_at: z.string(),
+      }),
+    )
+    .parse(data);
 }

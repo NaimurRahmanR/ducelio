@@ -156,7 +156,9 @@ export function CounsellorAssignmentWorkspace({
                     </td>
                     <td>{new Date(assignment.starts_at).toLocaleString()}</td>
                     <td>
-                      <Badge tone={assignment.ended_at === null ? "green" : "muted"}>
+                      <Badge
+                        tone={assignment.ended_at === null ? "green" : "muted"}
+                      >
                         {assignment.ended_at === null ? "ACTIVE" : "ENDED"}
                       </Badge>
                       {assignment.ended_at && (

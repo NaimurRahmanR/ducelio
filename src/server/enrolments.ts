@@ -78,7 +78,8 @@ export async function getEnrolmentWorkspace() {
   const usersResult = ids.length
     ? await client.from("app_users").select("id,display_name").in("id", ids)
     : { data: [], error: null };
-  if (usersResult.error) throw new Error("Learner identities could not be loaded.");
+  if (usersResult.error)
+    throw new Error("Learner identities could not be loaded.");
   const users = z.array(userSchema).parse(usersResult.data);
   const names = new Map(users.map((user) => [user.id, user.display_name]));
 

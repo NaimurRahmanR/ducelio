@@ -13,7 +13,9 @@ const cohortId = "50000000-0000-4000-8000-000000000001";
 const lessonId = "40000000-0000-4000-8000-000000000001";
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -93,10 +95,14 @@ describe("governed class sessions", () => {
 
   it("allows an enrolled learner to read their cohort session but hides it from another learner", async () => {
     await asAuth(learnerAuth);
-    expect((await db.query("select * from public.class_sessions")).rows).toHaveLength(1);
+    expect(
+      (await db.query("select * from public.class_sessions")).rows,
+    ).toHaveLength(1);
     await resetRole();
     await asAuth(otherAuth);
-    expect((await db.query("select * from public.class_sessions")).rows).toHaveLength(0);
+    expect(
+      (await db.query("select * from public.class_sessions")).rows,
+    ).toHaveLength(0);
   });
 
   it("denies a learner calling the scheduling RPC directly", async () => {

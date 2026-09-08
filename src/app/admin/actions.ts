@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { publishProgrammeVersion } from "@/server/programmes";
-import {
-  createEnrolment,
-  changeEnrolmentStatus,
-} from "@/server/enrolments";
+import { createEnrolment, changeEnrolmentStatus } from "@/server/enrolments";
 import { reassignCounsellor } from "@/server/counsellor-assignments";
 import {
   createClassSession,
@@ -112,8 +109,12 @@ export async function addClassSession(
   form: FormData,
 ): Promise<ClassSessionActionState> {
   try {
-    const scheduledStart = new Date(String(form.get("scheduledStart"))).toISOString();
-    const scheduledEnd = new Date(String(form.get("scheduledEnd"))).toISOString();
+    const scheduledStart = new Date(
+      String(form.get("scheduledStart")),
+    ).toISOString();
+    const scheduledEnd = new Date(
+      String(form.get("scheduledEnd")),
+    ).toISOString();
     await createClassSession({
       cohortId: form.get("cohortId"),
       lessonId: form.get("lessonId"),

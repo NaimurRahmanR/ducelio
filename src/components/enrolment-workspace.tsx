@@ -105,8 +105,9 @@ export function EnrolmentWorkspace({
                 <option value="">Select cohort</option>
                 {publishedCohorts.map((cohort) => (
                   <option key={cohort.id} value={cohort.id}>
-                    {cohort.programme_versions.title_snapshot ?? "Published programme"} ·{" "}
-                    {cohort.programme_versions.label} · {cohort.title}
+                    {cohort.programme_versions.title_snapshot ??
+                      "Published programme"}{" "}
+                    · {cohort.programme_versions.label} · {cohort.title}
                   </option>
                 ))}
               </select>
@@ -163,7 +164,8 @@ export function EnrolmentWorkspace({
                       <strong>{enrolment.display_name}</strong>
                     </td>
                     <td>
-                      {enrolment.programme_versions.title_snapshot ?? "Programme"}
+                      {enrolment.programme_versions.title_snapshot ??
+                        "Programme"}
                       <div className="muted">
                         {enrolment.programme_versions.label}
                       </div>
@@ -188,10 +190,17 @@ export function EnrolmentWorkspace({
                       </Badge>
                     </td>
                     <td>
-                      {enrolment.status === "ACTIVE" || enrolment.status === "PAUSED" ? (
+                      {enrolment.status === "ACTIVE" ||
+                      enrolment.status === "PAUSED" ? (
                         <form action={statusAction} className="support-form">
-                          <input type="hidden" name="enrolmentId" value={enrolment.id} />
-                          <label htmlFor={`status-${enrolment.id}`}>New status</label>
+                          <input
+                            type="hidden"
+                            name="enrolmentId"
+                            value={enrolment.id}
+                          />
+                          <label htmlFor={`status-${enrolment.id}`}>
+                            New status
+                          </label>
                           <select
                             id={`status-${enrolment.id}`}
                             name="status"
@@ -201,8 +210,12 @@ export function EnrolmentWorkspace({
                             <option value="" disabled>
                               Select status
                             </option>
-                            {enrolment.status === "ACTIVE" && <option value="PAUSED">PAUSED</option>}
-                            {enrolment.status === "PAUSED" && <option value="ACTIVE">ACTIVE</option>}
+                            {enrolment.status === "ACTIVE" && (
+                              <option value="PAUSED">PAUSED</option>
+                            )}
+                            {enrolment.status === "PAUSED" && (
+                              <option value="ACTIVE">ACTIVE</option>
+                            )}
                             <option value="WITHDRAWN">WITHDRAWN</option>
                           </select>
                           <label htmlFor={`status-reason-${enrolment.id}`}>
@@ -215,12 +228,17 @@ export function EnrolmentWorkspace({
                             maxLength={300}
                             required
                           />
-                          <button className="button secondary" disabled={statusPending}>
+                          <button
+                            className="button secondary"
+                            disabled={statusPending}
+                          >
                             {statusPending ? "Updating…" : "Update status"}
                           </button>
                         </form>
                       ) : (
-                        <span className="muted">Historical record is closed</span>
+                        <span className="muted">
+                          Historical record is closed
+                        </span>
                       )}
                     </td>
                   </tr>

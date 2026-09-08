@@ -83,7 +83,9 @@ export function ProgrammePublication({
                 </td>
                 <td>{version.label}</td>
                 <td>
-                  <Badge tone={version.status === "PUBLISHED" ? "green" : "muted"}>
+                  <Badge
+                    tone={version.status === "PUBLISHED" ? "green" : "muted"}
+                  >
                     {version.status}
                   </Badge>
                 </td>
@@ -117,7 +119,9 @@ export function ProgrammePublication({
                       </button>
                     </form>
                   ) : (
-                    <span className="muted">Publication permission required</span>
+                    <span className="muted">
+                      Publication permission required
+                    </span>
                   )}
                 </td>
               </tr>
