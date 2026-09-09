@@ -1,4 +1,7 @@
-import { StaffShell, adminSections } from "@/components/staff-shell";
+import {
+  StaffShell,
+  adminSectionsForRoles,
+} from "@/components/staff-shell";
 import { AdminWorkspace } from "@/components/admin-workspace";
 import { ProgrammePublication } from "@/components/programme-publication";
 import { LearningResourceWorkspace } from "@/components/learning-resource-workspace";
@@ -36,7 +39,8 @@ export default async function Page({
 }) {
   const data = await getAdminOverview();
   const params = await searchParams;
-  const section = adminSections.find(
+  const sections = adminSectionsForRoles(data.actor.roles);
+  const section = sections.find(
     (s) => s.toLowerCase() === (params.section ?? "overview"),
   );
   if (!section) notFound();
@@ -60,11 +64,7 @@ export default async function Page({
       ? await getNotificationOperationsWorkspace()
       : null;
   const registrarWorkspace =
-    section === "Registry" &&
-    (data.actor.roles.includes("REGISTRAR") ||
-      data.actor.roles.includes("PLATFORM_ADMIN"))
-      ? await getRegistrarWorkspace()
-      : null;
+    section === "Registry" ? await getRegistrarWorkspace() : null;
   const enrolmentWorkspace =
     section === "Students" ? await getEnrolmentWorkspace() : null;
   const counsellorWorkspace =
@@ -80,7 +80,12 @@ export default async function Page({
   );
 
   return (
-    <StaffShell kind="admin" name={data.actor.displayName} section={section}>
+    <StaffShell
+      kind="admin"
+      name={data.actor.displayName}
+      section={section}
+      sections={sections}
+    >
       <AdminWorkspace
         section={section}
         counts={data.counts}
