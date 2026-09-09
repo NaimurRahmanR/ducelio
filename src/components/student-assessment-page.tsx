@@ -10,7 +10,9 @@ export async function StudentAssessmentPage() {
         <div>
           <p className="eyebrow">YOUR ACADEMY</p>
           <h1>Assessments</h1>
-          <p>Controlled assessment delivery with server-owned activity state.</p>
+          <p>
+            Controlled assessment delivery with server-owned activity state.
+          </p>
         </div>
       </div>
       <div className="section-content">

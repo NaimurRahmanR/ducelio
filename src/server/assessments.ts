@@ -134,11 +134,17 @@ export async function getAssessmentWorkspace() {
     throw new Error("Assessment workspace could not be loaded.");
 
   const parsedAssessments = z.array(assessmentSchema).parse(assessments.data);
-  const questionsByAssessment: Record<string, z.infer<typeof questionSchema>[]> = {};
+  const questionsByAssessment: Record<
+    string,
+    z.infer<typeof questionSchema>[]
+  > = {};
   for (const assessment of parsedAssessments) {
-    const { data, error } = await client.rpc("list_assessment_authoring_questions", {
-      p_assessment_id: assessment.id,
-    });
+    const { data, error } = await client.rpc(
+      "list_assessment_authoring_questions",
+      {
+        p_assessment_id: assessment.id,
+      },
+    );
     if (error) throw new Error("Assessment questions could not be loaded.");
     questionsByAssessment[assessment.id] = z.array(questionSchema).parse(data);
   }
@@ -257,12 +263,17 @@ export async function getStudentAssessments() {
     throw new Error("Your assessments could not be loaded.");
 
   const parsedAttempts = z.array(attemptSchema).parse(attempts.data);
-  const activeAttempt = parsedAttempts.find((attempt) => attempt.state === "ACTIVE");
+  const activeAttempt = parsedAttempts.find(
+    (attempt) => attempt.state === "ACTIVE",
+  );
   let activeQuestions: z.infer<typeof questionSchema>[] = [];
   if (activeAttempt) {
-    const { data, error } = await client.rpc("get_active_assessment_questions", {
-      p_assessment_id: activeAttempt.assessment_id,
-    });
+    const { data, error } = await client.rpc(
+      "get_active_assessment_questions",
+      {
+        p_assessment_id: activeAttempt.assessment_id,
+      },
+    );
     if (!error) activeQuestions = z.array(questionSchema).parse(data);
   }
 

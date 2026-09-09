@@ -615,7 +615,7 @@ revoke all on function public.start_assessment_attempt(uuid) from public;
 grant execute on function public.start_assessment_attempt(uuid) to authenticated;
 
 create function public.get_active_assessment_questions(p_assessment_id uuid)
-returns table(id uuid,position integer,prompt text,max_marks integer)
+returns table(id uuid,"position" integer,prompt text,max_marks integer)
 language plpgsql security definer set search_path='' as $$
 declare
   actor uuid;
@@ -802,7 +802,7 @@ revoke all on function public.assert_academic_action_allowed(text) from public;
 grant execute on function public.assert_academic_action_allowed(text) to authenticated;
 
 create function public.list_assessment_authoring_questions(p_assessment_id uuid)
-returns table(id uuid,position integer,prompt text,max_marks integer)
+returns table(id uuid,"position" integer,prompt text,max_marks integer)
 language plpgsql security definer set search_path='' as $$
 declare
   actor uuid;
