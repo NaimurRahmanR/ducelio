@@ -17,7 +17,7 @@ For a managed project, link using the CLI and review the migration diff before r
 
 ## Verification
 
-PGlite runs the actual PostgreSQL migrations, constraints, seed and role policies in isolated test databases. A small test-only auth schema emulates `auth.uid()`. The Phase 2 local gate reached 149 passing tests across 23 files after migration 019. These tests are PostgreSQL integration tests, not validation of hosted Supabase Auth, PostgREST, real JWTs, network failures, SMTP or true concurrent PostgreSQL sessions. Staging acceptance remains required.
+PGlite runs the actual PostgreSQL migrations, constraints, seed and role policies in isolated test databases. A small test-only auth schema emulates `auth.uid()`. The last completed integrated gate before the final PR review reached 149 passing tests across 23 files after migration 019. Migration 020 and its final-review regressions require the new exact-tree local/PR gate before Phase 2 closes. These tests are PostgreSQL integration tests, not validation of hosted Supabase Auth, PostgREST, real JWTs, network failures, SMTP or true concurrent PostgreSQL sessions. Staging acceptance remains required.
 
 ## Operations
 
@@ -44,5 +44,6 @@ Documented operator actions require reviewed provenance. Back up and rehearse re
 17. `202609090017_phase2_registrar_corrections.sql` — append-only RegistrarCorrection provenance and Registrar mutation boundary.
 18. `202609090018_phase2_notifications_support_triggers.sql` — learner Notification records and deterministic `SUPPORT_V1` trigger evaluation.
 19. `202609090019_phase2_integration_hardening.sql` — cross-checkpoint authorization, scheduling serialization, safe learner projections, assessment identity/retry hardening and audit minimisation.
+20. `202609090020_phase2_final_review_hardening.sql` — final PR-review corrections for instructor authoring scope, support-notification privacy and stale controlled-assessment attempt finalisation.
 
 Phase 2 extends the schema substantially beyond the original 19 foundation tables. The domain inventory is maintained in `03-domain-model.md`; migrations are the executable source of truth. Production migrations never include the fictional seed.
