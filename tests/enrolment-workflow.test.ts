@@ -3,9 +3,9 @@ import type { PGlite } from "@electric-sql/pglite";
 import { testDatabase } from "./db-helper";
 
 let db: PGlite;
-const registrarId = "10000000-0000-4000-8000-000000000002";
+const academicAdminId = "10000000-0000-4000-8000-000000000002";
 const learnerId = "10000000-0000-4000-8000-000000000003";
-const registrarAuth = "82000000-0000-4000-8000-000000000002";
+const academicAdminAuth = "82000000-0000-4000-8000-000000000002";
 const learnerAuth = "82000000-0000-4000-8000-000000000003";
 const publishedVersionId = "20000000-0000-4000-8000-000000000002";
 const cohortId = "52000000-0000-4000-8000-000000000002";
@@ -27,12 +27,12 @@ beforeAll(async () => {
   db = await testDatabase();
   await db.exec("alter table auth.users disable trigger academy_identity");
   await db.query(
-    "insert into auth.users(id,email,email_confirmed_at) values($1,'registrar@example.com',now()),($2,'learner@example.com',now())",
-    [registrarAuth, learnerAuth],
+    "insert into auth.users(id,email,email_confirmed_at) values($1,'academic-admin@example.com',now()),($2,'learner@example.com',now())",
+    [academicAdminAuth, learnerAuth],
   );
   await db.query(
     "update public.app_users set auth_user_id=$1,is_demo=false where id=$2",
-    [registrarAuth, registrarId],
+    [academicAdminAuth, academicAdminId],
   );
   await db.query(
     "update public.app_users set auth_user_id=$1,is_demo=false where id=$2",
@@ -40,8 +40,8 @@ beforeAll(async () => {
   );
   await db.exec("alter table auth.users enable trigger academy_identity");
   await db.query(
-    "insert into public.role_grants(user_id,role) values($1,'REGISTRAR')",
-    [registrarId],
+    "insert into public.role_grants(user_id,role) values($1,'ACADEMIC_ADMIN')",
+    [academicAdminId],
   );
   await db.query(
     "insert into public.cohorts(id,programme_version_id,title,starts_on) values($1,$2,'October 2026 cohort','2026-10-01')",
@@ -74,7 +74,7 @@ describe("governed enrolment workflow", () => {
   });
 
   it("rejects enrolment into a draft curriculum", async () => {
-    await asAuth(registrarAuth);
+    await asAuth(academicAdminAuth);
     await expect(
       db.query(
         "select public.create_enrolment($1,$2,'Approved registration')",
@@ -85,7 +85,7 @@ describe("governed enrolment workflow", () => {
   });
 
   it("creates an audited enrolment with preserved cohort history", async () => {
-    await asAuth(registrarAuth);
+    await asAuth(academicAdminAuth);
     const result = await db.query<{ id: string }>(
       "select public.create_enrolment($1,$2,'Approved learner registration') as id",
       [learnerId, cohortId],
@@ -134,7 +134,7 @@ describe("governed enrolment workflow", () => {
     );
     const enrolmentId = existing.rows[0].id;
 
-    await asAuth(registrarAuth);
+    await asAuth(academicAdminAuth);
     await db.query(
       "select public.change_enrolment_status($1,'PAUSED','Learner requested temporary pause')",
       [enrolmentId],
