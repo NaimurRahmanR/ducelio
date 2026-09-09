@@ -70,6 +70,8 @@ function AssessmentResponseForm({
       response.attempt_id === attempt.id &&
       response.question_id === question.id,
   );
+  const nextRevisionKey = `assessment:${attempt.id}:question:${question.id}:revision:${revisions.length + 1}`;
+
   return (
     <div className="support-record">
       <Badge tone="blue">QUESTION {question.position}</Badge>
@@ -82,6 +84,11 @@ function AssessmentResponseForm({
       <form action={action} className="support-form">
         <input type="hidden" name="attemptId" value={attempt.id} />
         <input type="hidden" name="questionId" value={question.id} />
+        <input
+          type="hidden"
+          name="idempotencyKey"
+          value={nextRevisionKey}
+        />
         <textarea
           name="body"
           rows={8}
@@ -89,13 +96,10 @@ function AssessmentResponseForm({
           placeholder="Your assessment response"
           required
         />
-        <input
-          name="idempotencyKey"
-          minLength={8}
-          maxLength={200}
-          placeholder="Stable save reference for this revision"
-          required
-        />
+        <p className="muted">
+          Save retries are deduplicated automatically. Each later revision gets
+          a new internal reference after the previous save is recorded.
+        </p>
         <button className="button" disabled={pending}>
           {pending ? "Saving…" : "Save response revision"}
         </button>
