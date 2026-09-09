@@ -22,7 +22,7 @@ LearningResource stores a version-bound LECTURE_NOTE or approved HTTPS REFERENCE
 
 LearningEvidence is append-only provenance for an Enrolment, learner, LessonObjective, ProgrammeVersion and ClassSession. Evidence kinds are CLASS_RESPONSE, RETRIEVAL_CHECK, PRACTICAL_TASK and DEBUGGING_TASK; results are CORRECT, PARTIAL or INCORRECT. Evidence is recorded only through governed services and an idempotency key.
 
-ObjectiveMastery stores current deterministic mastery state for an Enrolment/Objectve pair. ObjectiveMasteryHistory is append-only transition history. `MASTERY_V1` derives DEVELOPING, DEMONSTRATED and NEEDS_REINFORCEMENT only from validated LearningEvidence; navigation, elapsed time and LessonProgress do not establish mastery.
+ObjectiveMastery stores current deterministic mastery state for an Enrolment/Objective pair. ObjectiveMasteryHistory is append-only transition history. `MASTERY_V1` derives DEVELOPING, DEMONSTRATED and NEEDS_REINFORCEMENT only from validated LearningEvidence; navigation, elapsed time and LessonProgress do not establish mastery.
 
 ## Coursework and controlled assessments
 
