@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   addAssignment,
   publishOrCloseAssignment,
   type AssignmentActionState,
 } from "@/app/admin/actions";
 import { Badge, Card, EmptyState } from "./ui";
+import { LocalDateTimeField } from "./local-datetime-field";
 
 type Assignment = {
   id: string;
@@ -61,6 +62,16 @@ export function AssignmentWorkspace({
     AssignmentActionState,
     FormData
   >(publishOrCloseAssignment, {});
+  const [selectedCohortId, setSelectedCohortId] = useState("");
+  const selectedCohort = cohorts.find(
+    (cohort) => cohort.id === selectedCohortId,
+  );
+  const matchingLessons = selectedCohort
+    ? lessons.filter(
+        (lesson) =>
+          lesson.programme_version_id === selectedCohort.programme_version_id,
+      )
+    : [];
 
   return (
     <div className="section-content">
@@ -88,7 +99,13 @@ export function AssignmentWorkspace({
           <form action={createAction} className="support-form">
             <div className="field">
               <label htmlFor="assignment-cohort">Cohort</label>
-              <select id="assignment-cohort" name="cohortId" required>
+              <select
+                id="assignment-cohort"
+                name="cohortId"
+                value={selectedCohortId}
+                onChange={(event) => setSelectedCohortId(event.target.value)}
+                required
+              >
                 <option value="">Select cohort</option>
                 {cohorts.map((cohort) => (
                   <option key={cohort.id} value={cohort.id}>
@@ -99,9 +116,18 @@ export function AssignmentWorkspace({
             </div>
             <div className="field">
               <label htmlFor="assignment-lesson">Lesson</label>
-              <select id="assignment-lesson" name="lessonId" required>
-                <option value="">Select lesson</option>
-                {lessons.map((lesson) => (
+              <select
+                id="assignment-lesson"
+                name="lessonId"
+                required
+                disabled={!selectedCohort}
+                defaultValue=""
+                key={selectedCohortId || "no-cohort"}
+              >
+                <option value="">
+                  {selectedCohort ? "Select lesson" : "Select cohort first"}
+                </option>
+                {matchingLessons.map((lesson) => (
                   <option key={lesson.id} value={lesson.id}>
                     {lesson.title}
                   </option>
@@ -138,24 +164,16 @@ export function AssignmentWorkspace({
                 required
               />
             </div>
-            <div className="field">
-              <label htmlFor="assignment-opens">Opens at</label>
-              <input
-                id="assignment-opens"
-                name="opensAt"
-                type="datetime-local"
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="assignment-due">Due at</label>
-              <input
-                id="assignment-due"
-                name="dueAt"
-                type="datetime-local"
-                required
-              />
-            </div>
+            <LocalDateTimeField
+              id="assignment-opens"
+              name="opensAt"
+              label="Opens at"
+            />
+            <LocalDateTimeField
+              id="assignment-due"
+              name="dueAt"
+              label="Due at"
+            />
             <div className="field">
               <label htmlFor="assignment-reason">Creation reason</label>
               <input
