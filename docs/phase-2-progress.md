@@ -4,8 +4,8 @@ Branch: `phase-2-academy-os`
 
 LAST COMPLETED CHECKPOINT: 14 — Phase 2 integration hardening
 CURRENT PARTIAL CHECKPOINT: 15 — final Phase 2 audit and PR readiness
-KNOWN FAILURES: None from the completed Checkpoint 14 local gate. The final documentation/audit tree has not yet passed the exact-tree local gate or pull-request CI.
-NEXT EXACT ACTION: Pull the Checkpoint 15 documentation/audit commits locally; run Node 24 `npm run check`, `npm run build`, `npm run format:check` and confirm a clean synchronized tree. If green, open `phase-2-academy-os` → `main`, require GitHub CI/review, resolve findings, then close Phase 2 only on the reviewed green PR.
+KNOWN FAILURES: The first PR-ready tree passed local validation and GitHub CI, but manual PR review found three blockers. Corrective migration 020, learner assessment-shell handling and dedicated regression tests are now on the branch and require a fresh exact-tree local/PR gate.
+NEXT EXACT ACTION: Pull the final-review correction commits locally; run Node 24 `npm run check`, `npm run build`, `npm run format:check` and confirm a clean synchronized tree. Then verify the updated PR CI on the new head, review the corrected diff, and merge only when all gates are green with no unresolved blocker.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -152,12 +152,13 @@ NEXT EXACT ACTION: Pull the Checkpoint 15 documentation/audit commits locally; r
 ## Checkpoint 15 — final Phase 2 audit and PR readiness — in progress
 
 - Compared `main` with `phase-2-academy-os`; at audit start the feature branch shared the current `main` merge base, was ahead and reported zero commits behind.
-- Reviewed the branch-wide Phase 2 change inventory, ordered migration set, deterministic authority model, RBAC/Registrar separation, Counsellor privacy, evidence/mastery rules, controlled-assessment firewall, notification/support-trigger boundary and CI workflow.
-- Updated README and `AGENTS.md` to describe the current Phase 2 system rather than historical Phase 1 scope.
-- Reconciled `06-database-schema.md` to all 19 migrations and refreshed the operations/security checklist for real JWT/PostgREST/RPC, true-concurrency, protected-assessment and support-trigger acceptance.
-- Updated the future-agent boundary and roadmap so post-Phase 2 AI work must use reviewed permissioned tools rather than direct database authority.
-- Added `phase-2-completion-report.md` with delivery scope, security/audit findings, validation evidence, residual non-production limitations and the final PR/CI gate.
-- No new product feature is introduced in Checkpoint 15. The exact documentation/audit tree must still pass the final local gate before the pull request is opened.
+- Reconciled README, repository rules, migration/security documentation, future-agent boundary, roadmap and the Phase 2 completion report to the implemented deterministic Academy OS.
+- Opened PR #1 and obtained a green Linux/Node 24 GitHub Actions run on the first PR-ready head.
+- Manual PR review then found three blockers: an INSTRUCTOR could self-assign arbitrary cohort coursework/assessment creation; support-only follow-up/plan notification detail crossed into Academic Admin notification reads; and expired/closed ACTIVE controlled attempts could remain stale and block the next assessment flow.
+- Added forward-only migration `202609090020_phase2_final_review_hardening.sql`: instructor-initiated coursework/assessment creation now requires a real non-cancelled ClassSession relationship; support-follow-up notification titles are minimised and support-only notification kinds stay outside Academic Admin/Platform Admin reads; expired/closed ACTIVE controlled attempts are deterministically finalised before a new start.
+- Updated the learner controlled-assessment UI so only server-owned `CONTROLLED_ASSESSMENT_ACTIVE` state renders the active protected-content shell.
+- Added `tests/final-review-hardening.test.ts` covering instructor relationship scope, support-notification privacy and expired-attempt finalisation.
+- The previous 149/149 local/CI result predates these review corrections. The current head must now pass the fresh local exact-tree gate and updated PR CI before Checkpoint 15 can close.
 
 ## Scope boundary
 
