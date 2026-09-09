@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 13 — institutional notifications and deterministic support triggers
-CURRENT PARTIAL CHECKPOINT: 14 — Phase 2 integration hardening
-KNOWN FAILURES: Checkpoint 14 has not yet passed the local Node 24 quality gate.
-NEXT EXACT ACTION: Pull Checkpoint 14 locally, run `tests/integration-hardening.test.ts`, then run lint, typecheck, the full test suite, production build and Prettier format check. Resolve any regressions before the final Phase 2 audit/PR checkpoint.
+LAST COMPLETED CHECKPOINT: 14 — Phase 2 integration hardening
+CURRENT PARTIAL CHECKPOINT: None
+KNOWN FAILURES: None after the final local Node 24 quality gate.
+NEXT EXACT ACTION: Checkpoint 15 — final Phase 2 audit and PR readiness: reconcile remaining documentation, review the complete Phase 2 diff and security boundaries, run the final exact-tree quality gate, open the Phase 2 pull request to `main`, and require GitHub CI/review before merge.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -130,7 +130,7 @@ NEXT EXACT ACTION: Pull Checkpoint 14 locally, run `tests/integration-hardening.
 - The current evaluator is an authorised ACADEMIC_ADMIN/PLATFORM_ADMIN backend operation. Production scheduling, email and push delivery remain future operational integrations and are not claimed by this checkpoint.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 143/143 tests in 22 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
-## Checkpoint 14 — Phase 2 integration hardening — in progress
+## Checkpoint 14 — Phase 2 integration hardening — complete
 
 - Migration: `202609090019_phase2_integration_hardening.sql`.
 - Tightened ordinary enrolment and class-session mutation authority to ACADEMIC_ADMIN/PLATFORM_ADMIN while preserving the dedicated Registrar correction path.
@@ -147,7 +147,7 @@ NEXT EXACT ACTION: Pull Checkpoint 14 locally, run `tests/integration-hardening.
 - Administration navigation is role-scoped: Registrar-only users get Overview/Registry; Academic Admin does not receive Registry/Audit; Platform Admin retains all sections.
 - Removed stale admin placeholder copy and updated the domain/progress documentation to match implemented Phase 2 state.
 - Added focused integration-hardening regressions for enrolment history semantics, safe timetable projection, voided assessment retries, response identity, resource audit minimisation and scheduling conflict preservation.
-- Local Node 24 validation is required before this checkpoint can be marked complete.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 149/149 tests in 23 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
