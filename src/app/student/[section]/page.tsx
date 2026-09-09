@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { LiveStudent } from "@/components/live-student";
 import { StudentAssignments } from "@/components/student-assignments";
 import { StudentAssessmentPage } from "@/components/student-assessment-page";
+import { StudentNotificationPage } from "@/components/student-notification-page";
 
 export default async function Page({
   params,
@@ -19,6 +20,7 @@ export default async function Page({
       "notes",
       "results",
       "support",
+      "notifications",
       "profile",
       "study-plan",
       "announcements",
@@ -28,5 +30,6 @@ export default async function Page({
 
   if (section === "assignments") return <StudentAssignments />;
   if (section === "assessments") return <StudentAssessmentPage />;
+  if (section === "notifications") return <StudentNotificationPage />;
   return <LiveStudent section={section} />;
 }
