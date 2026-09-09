@@ -4,6 +4,7 @@ import { ProgrammePublication } from "@/components/programme-publication";
 import { LearningResourceWorkspace } from "@/components/learning-resource-workspace";
 import { LearningEvidenceWorkspace } from "@/components/learning-evidence-workspace";
 import { ObjectiveMasteryWorkspace } from "@/components/objective-mastery-workspace";
+import { AssignmentWorkspace } from "@/components/assignment-workspace";
 import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
 import { ClassSessionWorkspace } from "@/components/class-session-workspace";
@@ -14,6 +15,7 @@ import { getProgrammeVersions } from "@/server/programmes";
 import { getLearningResourceWorkspace } from "@/server/learning-resources";
 import { getLearningEvidenceWorkspace } from "@/server/learning-evidence";
 import { getObjectiveMasteryWorkspace } from "@/server/objective-mastery";
+import { getAssignmentWorkspace } from "@/server/assignments";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
 import { getClassSessionWorkspace } from "@/server/class-sessions";
@@ -43,6 +45,8 @@ export default async function Page({
           getObjectiveMasteryWorkspace(),
         ])
       : [null, null];
+  const assignmentWorkspace =
+    section === "Assignments" ? await getAssignmentWorkspace() : null;
   const enrolmentWorkspace =
     section === "Students" ? await getEnrolmentWorkspace() : null;
   const counsellorWorkspace =
@@ -88,6 +92,15 @@ export default async function Page({
           enrolments={evidenceWorkspace.enrolments}
           mastery={masteryWorkspace.mastery}
           history={masteryWorkspace.history}
+        />
+      )}
+      {section === "Assignments" && assignmentWorkspace && (
+        <AssignmentWorkspace
+          assignments={assignmentWorkspace.assignments}
+          submissions={assignmentWorkspace.submissions}
+          cohorts={assignmentWorkspace.cohorts}
+          lessons={assignmentWorkspace.lessons}
+          instructors={assignmentWorkspace.instructors}
         />
       )}
       {section === "Students" && enrolmentWorkspace && (
