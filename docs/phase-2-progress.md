@@ -3,9 +3,9 @@
 Branch: `phase-2-academy-os`
 
 LAST COMPLETED CHECKPOINT: 10 — governed coursework assignments and learner submissions
-CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 11 — controlled assessment foundations with server-owned assessment state, protected content/release rules and technical activity firewalls before any examiner or tutor actor integration.
+CURRENT PARTIAL CHECKPOINT: 11 — controlled assessment foundations with protected content release and technical activity firewalls
+KNOWN FAILURES: Not yet locally validated after Checkpoint 11 implementation.
+NEXT EXACT ACTION: Pull Checkpoint 11 locally and run lint, typecheck, tests, production build and Prettier format check.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -95,6 +95,17 @@ NEXT EXACT ACTION: Checkpoint 11 — controlled assessment foundations with serv
 - PGlite migration growth pushed suite setup beyond Vitest's default 10-second hook timeout, so `hookTimeout` was raised to 30 seconds without weakening test assertions.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 119/119 tests in 19 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
+## Checkpoint 11 — controlled assessment foundations — in progress
+
+- Migration: `202609090016_phase2_controlled_assessments.sql`.
+- Added DRAFT → PUBLISHED → CLOSED controlled-assessment metadata, protected questions and answer keys, server-owned ACTIVE/SUBMITTED/VOIDED attempts and append-only response revisions.
+- Learners cannot read question or answer-key tables directly. Protected prompts are released only through `get_active_assessment_questions()` while an authenticated learner has an ACTIVE attempt inside the assessment release and expiry window.
+- Answer keys and marking guidance are never returned by learner delivery services. Published protected content is immutable.
+- ACTIVE attempts drive `current_academic_activity_state()` and the `academic_action_allowed()` / `assert_academic_action_allowed()` technical firewall, blocking normal tutor/practice/final-answer actions while permitting only examiner delivery and counsellor logistics under the current contract.
+- Added audited administrative voiding, minimised assessment audit payloads, admin authoring/lifecycle UI, learner controlled-assessment delivery UI and focused firewall tests.
+- Automatic marking, grades/results and AI Examiner/Tutor integration remain deliberately outside this checkpoint.
+- Local validation is required before this checkpoint can be marked complete.
+
 ## Scope boundary
 
-Phase 2 remains deterministic Academy OS work. No AI actor receives authoritative database access, no navigation/time signal counts as mastery evidence, and assessment/homework firewalls remain future technical enforcement work. Hosted Supabase/JWT/provider/staging acceptance remains required before production use.
+Phase 2 remains deterministic Academy OS work. No AI actor receives authoritative database access, no navigation/time signal counts as mastery evidence, and assessment/homework firewalls are being technically enforced before any academic-agent integration. Hosted Supabase/JWT/provider/staging acceptance remains required before production use.
