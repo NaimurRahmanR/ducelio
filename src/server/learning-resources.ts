@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { learningResourceSchema } from "@/domain/academy";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const lessonSchema = z.object({
@@ -68,7 +68,7 @@ export async function getLearningResourceWorkspace() {
 
 export async function createLearningResource(input: unknown) {
   const payload = learningResourceSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("create_learning_resource", {
     p_lesson_id: payload.lessonId,
