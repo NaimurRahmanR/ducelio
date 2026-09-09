@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   addClassSession,
   updateClassSessionStatus,
   type ClassSessionActionState,
 } from "@/app/admin/actions";
 import { Badge, Card, EmptyState } from "./ui";
+import { LocalDateTimeField } from "./local-datetime-field";
 
 type Cohort = {
   id: string;
@@ -63,9 +64,19 @@ export function ClassSessionWorkspace({
     ClassSessionActionState,
     FormData
   >(updateClassSessionStatus, {});
+  const [selectedCohortId, setSelectedCohortId] = useState("");
   const publishedCohorts = cohorts.filter(
     (cohort) => cohort.programme_versions.status === "PUBLISHED",
   );
+  const selectedCohort = publishedCohorts.find(
+    (cohort) => cohort.id === selectedCohortId,
+  );
+  const matchingLessons = selectedCohort
+    ? lessons.filter(
+        (lesson) =>
+          lesson.programme_version_id === selectedCohort.programme_version_id,
+      )
+    : [];
 
   return (
     <div className="section-content">
@@ -96,7 +107,13 @@ export function ClassSessionWorkspace({
           <form action={createAction} className="support-form">
             <div className="field">
               <label htmlFor="session-cohort">Cohort</label>
-              <select id="session-cohort" name="cohortId" required>
+              <select
+                id="session-cohort"
+                name="cohortId"
+                value={selectedCohortId}
+                onChange={(event) => setSelectedCohortId(event.target.value)}
+                required
+              >
                 <option value="">Select cohort</option>
                 {publishedCohorts.map((cohort) => (
                   <option key={cohort.id} value={cohort.id}>
@@ -108,9 +125,18 @@ export function ClassSessionWorkspace({
             </div>
             <div className="field">
               <label htmlFor="session-lesson">Lesson</label>
-              <select id="session-lesson" name="lessonId" required>
-                <option value="">Select lesson</option>
-                {lessons.map((lesson) => (
+              <select
+                id="session-lesson"
+                name="lessonId"
+                required
+                disabled={!selectedCohort}
+                defaultValue=""
+                key={selectedCohortId || "no-cohort"}
+              >
+                <option value="">
+                  {selectedCohort ? "Select lesson" : "Select cohort first"}
+                </option>
+                {matchingLessons.map((lesson) => (
                   <option key={lesson.id} value={lesson.id}>
                     {lesson.modules.title} · {lesson.title}
                   </option>
@@ -128,24 +154,16 @@ export function ClassSessionWorkspace({
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label htmlFor="session-start">Start</label>
-              <input
-                id="session-start"
-                name="scheduledStart"
-                type="datetime-local"
-                required
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="session-end">End</label>
-              <input
-                id="session-end"
-                name="scheduledEnd"
-                type="datetime-local"
-                required
-              />
-            </div>
+            <LocalDateTimeField
+              id="session-start"
+              name="scheduledStart"
+              label="Start"
+            />
+            <LocalDateTimeField
+              id="session-end"
+              name="scheduledEnd"
+              label="End"
+            />
             <div className="field">
               <label htmlFor="session-reason">Scheduling reason</label>
               <input
