@@ -15,6 +15,10 @@ export type CapabilityDbState = {
   calls: Call[];
   failTable?: string;
   failRpc?: string;
+  transformRows?: (
+    table: string,
+    rows: Record<string, unknown>[],
+  ) => Record<string, unknown>[];
 };
 
 function identifier(value: string) {
@@ -59,6 +63,10 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
           "enrolments",
           "lessons",
           "lesson_objectives",
+          "class_sessions",
+          "learning_resources",
+          "learning_evidence",
+          "objective_mastery",
         ].includes(table)
       )
         throw new Error("Unexpected table access in capability test");
@@ -78,14 +86,13 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
           let join = "";
           let nested = "";
           const projection = columns.replace(
-            /programme_versions\(([a-z_,]+)\)/,
-            (_match, fields: string) => {
-              join =
-                " join public.programme_versions v on v.id=t.programme_version_id";
+            /(programme_versions|lesson_objectives)(?:!inner)?\(([a-z_,]+)\)/,
+            (_match, relation: string, fields: string) => {
+              join = ` join public.${identifier(relation)} v on v.id=t.${relation === "programme_versions" ? "programme_version_id" : "objective_id"}`;
               nested = `json_build_object(${fields
                 .split(",")
                 .map((field) => `'${field}',v.${identifier(field)}`)
-                .join(",")}) as programme_versions`;
+                .join(",")}) as ${identifier(relation)}`;
               return "";
             },
           );
@@ -98,10 +105,11 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
           // PostgreSQL JSON represents DATE as YYYY-MM-DD, like PostgREST;
           // PGlite's direct column decoder otherwise returns a JavaScript Date.
           const result = await db.query<{ row: Record<string, unknown> }>(
-            `select row_to_json(result) as row from (${sql}) result`,
+            `select row_to_json(projected_row) as row from (${sql}) projected_row`,
             params,
           );
-          const rows = result.rows.map((entry) => entry.row);
+          const decoded = result.rows.map((entry) => entry.row);
+          const rows = state.transformRows?.(table, decoded) ?? decoded;
           if (singular) {
             if (rows.length > 1 || (requireOne && rows.length !== 1))
               throw new Error("Unexpected row count");
@@ -126,8 +134,21 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
           filters.push(`t.${identifier(column)}>$${params.length}`);
           return query;
         },
-        order(column: string) {
-          order = ` order by t.${identifier(column)}`;
+        order(column: string, options?: { ascending?: boolean }) {
+          order += `${order ? "," : " order by "}t.${identifier(column)} ${options?.ascending === false ? "desc" : "asc"}`;
+          return query;
+        },
+        or(expression: string) {
+          const match =
+            /^recorded_at\.lt\.([^,]+),and\(recorded_at\.eq\.([^,]+),id\.lt\.([0-9a-f-]+)\)$/.exec(
+              expression,
+            );
+          if (!match || match[1] !== match[2])
+            throw new Error("Unsupported test filter");
+          params.push(match[1], match[3]);
+          filters.push(
+            `(t.recorded_at<$${params.length - 1} or (t.recorded_at=$${params.length - 1} and t.id<$${params.length}))`,
+          );
           return query;
         },
         limit(count: number) {

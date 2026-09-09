@@ -1,4 +1,4 @@
-# Academic capabilities — Phase 3 Checkpoint 1A/1B
+# Academic capabilities — Phase 3 Checkpoints 1A–1C
 
 This checkpoint introduces a provider-independent, server-only Professor read boundary. It does not integrate an AI model. The authenticated human Ducelio user remains the institutional principal; `PROFESSOR` is a fixed server-selected capability profile, never a RoleGrant or database principal.
 
@@ -16,15 +16,21 @@ Multi-role users retain only their own STUDENT scope on this surface. Extra INST
 
 All UUIDs and pagination values are runtime validated. Objects reject unknown fields, including actor IDs, roles, agent profiles, programme-version overrides, objective overrides and caller-selected firewall actions.
 
-| Capability                    | Input                                       | Output                                                                                    | Scope and activity requirement                                                                            |
-| ----------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `get_actor_context`           | `{}`                                        | Human `actor_user_id` and effective institutional role STUDENT                            | Authenticated STUDENT; self only; no learning content                                                     |
-| `get_activity_permissions`    | `{}`                                        | Server activity state and five informational capability permission flags                  | Authenticated STUDENT; self only; no assessment identifiers/content                                       |
-| `get_current_learner_context` | `{ enrolmentId }`                           | Enrolment/cohort/version references, enrolment status, bounded programme/cohort snapshots | Explicit owned enrolment; fixed EXPLAIN firewall                                                          |
-| `get_lesson_context`          | `{ enrolmentId, lessonId }`                 | Enrolment/version/lesson/module references, bounded title and position                    | Owned enrolment → exact programme version → lesson; fixed EXPLAIN firewall                                |
-| `get_lesson_objectives`       | `{ enrolmentId, lessonId, afterPosition? }` | Same scope references, ordered bounded objective page and next position cursor            | Same lesson relationship; each objective belongs to that lesson and exact version; fixed EXPLAIN firewall |
+| Capability                       | Input                                       | Output                                                                                    | Scope and activity requirement                                                                            |
+| -------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `get_actor_context`              | `{}`                                        | Human `actor_user_id` and effective institutional role STUDENT                            | Authenticated STUDENT; self only; no learning content                                                     |
+| `get_activity_permissions`       | `{}`                                        | Server activity state and nine informational capability permission flags                  | Authenticated STUDENT; self only; no assessment identifiers/content                                       |
+| `get_current_learner_context`    | `{ enrolmentId }`                           | Enrolment/cohort/version references, enrolment status, bounded programme/cohort snapshots | Explicit owned enrolment; fixed EXPLAIN firewall                                                          |
+| `get_lesson_context`             | `{ enrolmentId, lessonId }`                 | Enrolment/version/lesson/module references, bounded title and position                    | Owned enrolment → exact programme version → lesson; fixed EXPLAIN firewall                                |
+| `get_lesson_objectives`          | `{ enrolmentId, lessonId, afterPosition? }` | Same scope references, ordered bounded objective page and next position cursor            | Same lesson relationship; each objective belongs to that lesson and exact version; fixed EXPLAIN firewall |
+| `get_current_class_session`      | `{ enrolmentId }`                           | Explicit NONE/CURRENT/UPCOMING selection with minimal session timing and lesson reference | Owned enrolment → exact cohort/version; ACTIVE/PAUSED only; fixed EXPLAIN firewall                        |
+| `get_learning_resources`         | `{ enrolmentId, lessonId, cursor? }`        | Ordered page of reviewed lecture notes/reference links and next cursor                    | Owned exact-version lesson; five resources per page; fixed EXPLAIN firewall                               |
+| `get_permitted_learning_history` | `{ enrolmentId, objectiveId?, cursor? }`    | Privacy-minimised evidence-event summaries and stable cursor                              | Owned enrolment/version; optional exact-version objective; fixed EXPLAIN firewall                         |
+| `get_current_mastery_state`      | `{ enrolmentId, lessonId }`                 | Persisted-only ObjectiveMastery state/counters for the exact lesson                       | Owned exact-version lesson; no recalculation or mutation; fixed EXPLAIN firewall                          |
 
 `afterPosition` is an optional integer from 0 through 2147483647. Objective reads fetch at most 51 rows and return at most 50; the extra row determines whether a next page exists. Every page independently reauthorizes. An authorized empty page is successful; inaccessible parent context is denied. Objective descriptions are limited to 4,000 characters each. Context titles are limited to 500 characters and version labels to 200. Oversized/malformed service output fails closed; it is not silently truncated into changed academic content.
+
+Checkpoint 1C adds four bounded reads without introducing a provider or write surface. Current-session selection uses server time, exact owned cohort/version scope, SCHEDULED rows only, and returns CURRENT when an eligible session is in progress, otherwise the nearest UPCOMING session, otherwise NONE. Learning resources return at most five items per page; LECTURE_NOTE bodies remain bounded by the existing 12,000-character curriculum invariant and REFERENCE_LINK values must be credential-free HTTPS URLs. Permitted learning history returns at most 25 events per page in descending recorded-at/UUID order and deliberately excludes evidence_reference, idempotency keys, recorder identity and free-text/private prose. Current mastery returns only persisted ObjectiveMastery rows for the exact owned enrolment/lesson/version, never invokes mastery policy evaluation, and fails closed if more than 200 records would make the non-paginated result incomplete.
 
 The gateway orchestrates `getOwnedStudentEnrolment()` in the existing Academy service, the narrow Academy OS learning-context reads and the activity service. It performs no database queries itself. No institutional mutation or mastery calculation has moved into the capability layer.
 
@@ -38,7 +44,7 @@ The service does not apply a generic current-publication filter or assume the le
 
 Professor learning reads use the existing `assert_academic_action_allowed('EXPLAIN')` RPC. The server fixes the action; input cannot select `EXAMINER_DELIVERY` or `COUNSELLOR_LOGISTICS`. The new activity service also wraps `current_academic_activity_state()` and `academic_action_allowed('EXPLAIN')` for introspection.
 
-All three academic-content capabilities check the firewall before retrieval and again before returning. Lesson/objective Academy OS services independently enforce it too, including when called directly by trusted server code. An active controlled assessment returns `ACTIVITY_BLOCKED` without content retrieval. Identity and permission introspection remain available without learning content. A prior permission snapshot grants no authority to a later call; the snapshot is explicitly marked `informational_only: true`.
+All seven academic-content capabilities check the firewall before retrieval and again before returning. Lesson/objective Academy OS services independently enforce it too, including when called directly by trusted server code. An active controlled assessment returns `ACTIVITY_BLOCKED` without content retrieval. Identity and permission introspection remain available without learning content. A prior permission snapshot grants no authority to a later call; the snapshot is explicitly marked `informational_only: true`.
 
 These checks reuse the current caller-scoped policy. Staff/agent execution on behalf of another learner is not enabled. The separate RPC reads are not a database transaction or a concurrency lock spanning result delivery. A last-moment activity change after the final check cannot retract an already returned result. Before provider execution or protected production use, review concurrent assessment start/content delivery, add any necessary serialized release boundary in the Academy OS, and enforce fresh activity checks at future generation/delivery points. Do not treat a stored context or conversation as a continuing permission grant.
 
@@ -50,7 +56,7 @@ Every invocation returns server-created metadata:
 - `actor_user_id`: the authenticated human principal, or null when unavailable;
 - `agent_profile`: the fixed PROFESSOR profile;
 - `capability_name`: an allowlisted name, or null for malformed/unavailable names;
-- `capability_contract_version`: `PROFESSOR_READ_V1`;
+- `capability_contract_version`: `PROFESSOR_READ_V2`;
 - `authorized_scope`: verified self/enrolment/version/lesson references only;
 - `outcome`: SUCCESS, DENIED or ERROR;
 - `denial_code`: a stable code or null on success;
@@ -58,14 +64,14 @@ Every invocation returns server-created metadata:
 
 Foreign requested identifiers are not copied into denial scope. Principal changes clear the authorized scope. A failed final check releases no successful content or lesson scope.
 
-This checkpoint returns provenance on success and denial; **it does not persist a durable capability execution audit**. Existing institutional mutation audits remain unchanged. No migration is needed for these five server-scoped reads, and none was added. Returning metadata is not a claim that an AuditEvent was written. Durable invocation auditing, its trusted writer and retention policy must be reviewed before external actor rollout; a future sink should store only the metadata above and must not accept client-claimed execution success as trusted audit evidence. Sensitive prose, resource bodies, assessment prompts/answers, learner responses and credentials must not enter that sink.
+This checkpoint returns provenance on success and denial; **it does not persist a durable capability execution audit**. Existing institutional mutation audits remain unchanged. No migration is needed for these nine server-scoped reads, and none was added. Returning metadata is not a claim that an AuditEvent was written. Durable invocation auditing, its trusted writer and retention policy must be reviewed before external actor rollout; a future sink should store only the metadata above and must not accept client-claimed execution success as trusted audit evidence. Sensitive prose, resource bodies, assessment prompts/answers, learner responses and credentials must not enter that sink.
 
 | Code                     | Meaning                                                                 |
 | ------------------------ | ----------------------------------------------------------------------- |
 | `UNAUTHENTICATED`        | Verified authenticated identity is unavailable                          |
 | `FORBIDDEN`              | Principal lacks STUDENT authority                                       |
 | `INVALID_INPUT`          | Malformed request, unknown fields or invalid input values               |
-| `CAPABILITY_UNAVAILABLE` | Capability name is outside the five-name allowlist                      |
+| `CAPABILITY_UNAVAILABLE` | Capability name is outside the nine-name allowlist                      |
 | `NOT_FOUND_OR_FORBIDDEN` | Parent resource is absent/inaccessible or relationships do not match    |
 | `ACTIVITY_BLOCKED`       | Existing controlled-activity firewall denies the read                   |
 | `CONTEXT_CONFLICT`       | Principal or returned request identity changed/mismatched               |
@@ -75,8 +81,8 @@ Authentication and STUDENT checks precede request execution. Input-schema failur
 
 ## Verification and remaining boundary
 
-`academic-capabilities.test.ts` exercises authentication/role gates, forged/unknown requests, fixed profile, output bounds/minimisation, service failure normalization, provenance, identity changes and fresh firewall checks. `academic-capability-workflow.test.ts` invokes the real identity, capability and Academy OS services against all repository migrations/seed under authenticated PostgreSQL RLS, using a small test-only client adapter. It covers own and foreign enrolments, multi-role isolation, wrong versions, objective pagination, historical statuses, immutability, role revocation and actual controlled attempts.
+`academic-capabilities.test.ts` exercises authentication/role gates, forged/unknown requests, the exact nine-capability allowlist, fixed profile, strict V2 contracts, output bounds/minimisation, service failure normalization, provenance, identity changes and fresh firewall checks. `academic-capability-workflow.test.ts` invokes the real identity, capability and Academy OS services against all repository migrations/seed under authenticated PostgreSQL RLS, using a small test-only client adapter. It covers own and foreign enrolments, multi-role isolation, wrong versions, objective/resource/history pagination, historical statuses, curriculum immutability, role revocation, deterministic current/upcoming/none session selection, privacy-minimised learning history, persisted mastery reads, fail-closed malformed/oversized projections and actual controlled attempts. The two capability suites contain 94 tests in the completed local 1C gate.
 
 The adapter exercises SQL policy and service composition; it is not hosted Supabase Auth/JWT/PostgREST acceptance or an independent concurrent PostgreSQL test. Those existing production prerequisites remain outstanding.
 
-Learning evidence writes, mastery evaluation requests, handoffs, support/private records, learning-resource retrieval, current-session resolution, learning history and mastery reads are not registered. `MASTERY_V1`, validated evidence requirements, institutional records, support permissions, assessment lifecycle and RBAC remain unchanged. Provider/cost/rate controls, durable execution auditing, content retention, homework integrity policy and human review/escalation remain prerequisites before academic-agent rollout.
+Learning evidence writes, mastery evaluation requests, handoffs and support/private-record capabilities are not registered. `MASTERY_V1`, validated evidence requirements, institutional records, support permissions, assessment lifecycle and RBAC remain unchanged. No provider/model call, prompt/chat surface or public capability endpoint exists. Provider/cost/rate controls, durable execution auditing, assessment/content concurrency closure, content retention, homework integrity policy and human review/escalation remain prerequisites before academic-agent rollout.

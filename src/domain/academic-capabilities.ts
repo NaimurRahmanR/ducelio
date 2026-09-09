@@ -8,13 +8,27 @@ import {
   lessonObjectivesSchema,
 } from "./learning-context";
 
-export const CAPABILITY_CONTRACT_VERSION = "PROFESSOR_READ_V1" as const;
+import {
+  currentClassSessionSchema,
+  learningResourcesInputSchema,
+  learningResourcesPageSchema,
+  learningHistoryInputSchema,
+  learningHistoryPageSchema,
+  currentMasterySchema,
+} from "./academic-reads";
+
+// V2 expands the strict permission response and the reviewed capability allowlist.
+export const CAPABILITY_CONTRACT_VERSION = "PROFESSOR_READ_V2" as const;
 export const capabilityNameSchema = z.enum([
   "get_actor_context",
   "get_activity_permissions",
   "get_current_learner_context",
   "get_lesson_context",
   "get_lesson_objectives",
+  "get_current_class_session",
+  "get_learning_resources",
+  "get_permitted_learning_history",
+  "get_current_mastery_state",
 ]);
 export type CapabilityName = z.infer<typeof capabilityNameSchema>;
 
@@ -50,6 +64,10 @@ export const capabilitySchemas = {
         get_current_learner_context: z.boolean(),
         get_lesson_context: z.boolean(),
         get_lesson_objectives: z.boolean(),
+        get_current_class_session: z.boolean(),
+        get_learning_resources: z.boolean(),
+        get_permitted_learning_history: z.boolean(),
+        get_current_mastery_state: z.boolean(),
       }),
     }),
   },
@@ -64,6 +82,22 @@ export const capabilitySchemas = {
   get_lesson_objectives: {
     input: lessonObjectivesInputSchema,
     output: lessonObjectivesSchema,
+  },
+  get_current_class_session: {
+    input: enrolmentContextInputSchema,
+    output: currentClassSessionSchema,
+  },
+  get_learning_resources: {
+    input: learningResourcesInputSchema,
+    output: learningResourcesPageSchema,
+  },
+  get_permitted_learning_history: {
+    input: learningHistoryInputSchema,
+    output: learningHistoryPageSchema,
+  },
+  get_current_mastery_state: {
+    input: lessonContextInputSchema,
+    output: currentMasterySchema,
   },
 } as const;
 
@@ -82,6 +116,7 @@ export const authorizedScopeSchema = z.strictObject({
   enrolment_id: z.uuid().optional(),
   programme_version_id: z.uuid().optional(),
   lesson_id: z.uuid().optional(),
+  objective_id: z.uuid().optional(),
 });
 export const capabilityProvenanceSchema = z.strictObject({
   invocation_id: z.uuid(),

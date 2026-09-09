@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   enrolment: vi.fn(),
   lesson: vi.fn(),
   objectives: vi.fn(),
+  session: vi.fn(),
+  resources: vi.fn(),
+  history: vi.fn(),
+  mastery: vi.fn(),
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
@@ -26,6 +30,18 @@ vi.mock("@/server/academy", () => ({
 vi.mock("@/server/learning-context", () => ({
   getStudentLessonContext: mocks.lesson,
   getStudentLessonObjectives: mocks.objectives,
+}));
+vi.mock("@/server/class-sessions", () => ({
+  getStudentRelevantClassSession: mocks.session,
+}));
+vi.mock("@/server/learning-resources", () => ({
+  getStudentLessonResources: mocks.resources,
+}));
+vi.mock("@/server/learning-evidence", () => ({
+  getStudentPermittedLearningHistory: mocks.history,
+}));
+vi.mock("@/server/objective-mastery", () => ({
+  getStudentLessonMastery: mocks.mastery,
 }));
 vi.mock("@/server/academic-activity", async (original) => ({
   ...(await original<typeof import("@/server/academic-activity")>()),
@@ -72,6 +88,19 @@ const requests = [
     capability: "get_lesson_objectives",
     input: { enrolmentId: id(2), lessonId: id(5) },
   },
+  { capability: "get_current_class_session", input: { enrolmentId: id(2) } },
+  {
+    capability: "get_learning_resources",
+    input: { enrolmentId: id(2), lessonId: id(5) },
+  },
+  {
+    capability: "get_permitted_learning_history",
+    input: { enrolmentId: id(2) },
+  },
+  {
+    capability: "get_current_mastery_state",
+    input: { enrolmentId: id(2), lessonId: id(5) },
+  },
 ];
 
 beforeEach(() => {
@@ -93,6 +122,35 @@ beforeEach(() => {
       { objectiveId: id(7), description: "Fixed objective", position: 1 },
     ],
     nextAfterPosition: null,
+  });
+  mocks.session.mockResolvedValue({
+    enrolmentId: id(2),
+    programmeVersionId: id(3),
+    cohortId: id(4),
+    selectedAt: "2026-09-09T12:00:00Z",
+    selection: "NONE",
+    session: null,
+  });
+  mocks.resources.mockResolvedValue({
+    enrolmentId: id(2),
+    programmeVersionId: id(3),
+    lessonId: id(5),
+    resources: [],
+    nextCursor: null,
+  });
+  mocks.history.mockResolvedValue({
+    enrolmentId: id(2),
+    programmeVersionId: id(3),
+    objectiveId: null,
+    events: [],
+    nextCursor: null,
+  });
+  mocks.mastery.mockResolvedValue({
+    enrolmentId: id(2),
+    programmeVersionId: id(3),
+    lessonId: id(5),
+    persistedOnly: true,
+    records: [],
   });
 });
 
@@ -142,7 +200,7 @@ describe("Professor capability boundary", () => {
       expect(first.provenance).toMatchObject({
         actor_user_id: id(1),
         agent_profile: "PROFESSOR",
-        capability_contract_version: "PROFESSOR_READ_V1",
+        capability_contract_version: "PROFESSOR_READ_V2",
         outcome: "SUCCESS",
         denial_code: null,
       });
@@ -217,6 +275,11 @@ describe("Professor capability boundary", () => {
         { objectiveId: id(8) },
         { programmeVersionId: id(8) },
       ]) {
+        if (
+          request.capability === "get_permitted_learning_history" &&
+          "objectiveId" in extra
+        )
+          continue;
         expect(
           await invokeProfessorCapability({
             ...request,
@@ -353,9 +416,96 @@ describe("Professor capability boundary", () => {
     });
   });
 
-  it("has exactly the five approved capabilities", () => {
+  it("has exactly the nine approved capabilities", () => {
     expect(capabilityNameSchema.options).toEqual(
       requests.map((request) => request.capability),
     );
+  });
+
+  it("permission introspection reports all nine informational flags", async () => {
+    const result = await invokeProfessorCapability({
+      capability: "get_activity_permissions",
+      input: {},
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected permission snapshot");
+    expect(result.data.informational_only).toBe(true);
+    expect(Object.keys(result.data.permissions)).toEqual(
+      capabilityNameSchema.options,
+    );
+    expect(Object.values(result.data.permissions).every(Boolean)).toBe(true);
+  });
+
+  it.each([
+    { request: requests[5], service: mocks.session },
+    { request: requests[6], service: mocks.resources },
+    { request: requests[7], service: mocks.history },
+    { request: requests[8], service: mocks.mastery },
+  ])(
+    "normalizes failures and revalidates release for $request.capability",
+    async ({ request, service }) => {
+      service.mockRejectedValueOnce(new Error("SQL/private-secret"));
+      const failed = await invokeProfessorCapability(request);
+      expect(failed).toMatchObject({
+        ok: false,
+        error: { code: "SERVICE_UNAVAILABLE" },
+      });
+      expect(JSON.stringify(failed)).not.toContain("private-secret");
+      mocks.student.mockResolvedValueOnce({ ...principal, id: id(8) });
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "CONTEXT_CONFLICT" },
+      });
+      mocks.student.mockRejectedValueOnce(new AccessDenied());
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "FORBIDDEN" },
+      });
+      mocks.firewall
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new AcademicActivityBlocked());
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "ACTIVITY_BLOCKED" },
+      });
+      service.mockResolvedValueOnce({
+        enrolmentId: id(2),
+        expected_answer: "private-secret",
+      });
+      const malformed = await invokeProfessorCapability(request);
+      expect(malformed).toMatchObject({
+        ok: false,
+        error: { code: "SERVICE_UNAVAILABLE" },
+      });
+      expect(JSON.stringify(malformed)).not.toContain("private-secret");
+    },
+  );
+
+  it("rejects malformed cursors without passing filter syntax to a service", async () => {
+    for (const cursor of [
+      { afterPosition: "5" },
+      { afterPosition: -1 },
+      { afterPosition: 1, role: "ADMIN" },
+    ]) {
+      expect(
+        await invokeProfessorCapability({
+          ...requests[6],
+          input: { ...requests[6].input, cursor },
+        }),
+      ).toMatchObject({ ok: false, error: { code: "INVALID_INPUT" } });
+    }
+    for (const cursor of [
+      { beforeRecordedAt: "now(),or(id.gt.0)", beforeId: id(8) },
+      { beforeRecordedAt: "2026-09-09T00:00:00Z", beforeId: "injected,id" },
+    ]) {
+      expect(
+        await invokeProfessorCapability({
+          ...requests[7],
+          input: { ...requests[7].input, cursor },
+        }),
+      ).toMatchObject({ ok: false, error: { code: "INVALID_INPUT" } });
+    }
+    expect(mocks.resources).not.toHaveBeenCalled();
+    expect(mocks.history).not.toHaveBeenCalled();
   });
 });

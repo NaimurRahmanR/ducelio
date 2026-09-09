@@ -43,6 +43,11 @@ let enrolmentId: string;
 let otherEnrolment: string;
 let secondEnrolment: string;
 let assessmentId: string;
+let secondObjective: string;
+let anotherObjective: string;
+let baseObjective: string;
+let historySession: string;
+const foreignCohort = "51000000-0000-4000-8000-000000000002";
 const state: CapabilityDbState = { authUser: null, calls: [] };
 
 async function asUser(authId: string | null) {
@@ -98,6 +103,18 @@ beforeAll(async () => {
     "insert into public.lesson_objectives(lesson_id,programme_version_id,description,position) values($1,$2,'Different lesson objective sentinel',1)",
     [thirdLesson, secondVersion],
   );
+  await db.query(
+    "insert into public.learning_resources(lesson_id,programme_version_id,kind,title,body,position,created_by) select $1,$2,'LECTURE_NOTE','Note ' || n,repeat('N',12000),n,$3 from generate_series(1,5) n",
+    [secondLesson, secondVersion, adminId],
+  );
+  await db.query(
+    "insert into public.learning_resources(lesson_id,programme_version_id,kind,title,url,position,created_by) values($1,$2,'REFERENCE_LINK','Safe reference','https://example.com/reviewed',6,$3)",
+    [secondLesson, secondVersion, adminId],
+  );
+  await db.query(
+    "insert into public.learning_resources(lesson_id,programme_version_id,kind,title,body,position,created_by) values($1,$2,'LECTURE_NOTE','Neighbour note','Neighbour resource sentinel',1,$3)",
+    [thirdLesson, secondVersion, adminId],
+  );
   await asUser(adminAuth);
   await db.query(
     "select public.publish_programme_version($1,'Reviewed capability test curriculum')",
@@ -137,7 +154,64 @@ beforeAll(async () => {
     "select public.change_assessment_status($1,'PUBLISHED','Ready for firewall checks')",
     [assessmentId],
   );
+  const objectives = await db.query<{ id: string }>(
+    "select id from public.lesson_objectives where lesson_id=$1 order by position",
+    [secondLesson],
+  );
+  secondObjective = objectives.rows[0].id;
+  anotherObjective = objectives.rows[1].id;
+  baseObjective = (
+    await db.query<{ id: string }>(
+      "select id from public.lesson_objectives where lesson_id=$1 order by position limit 1",
+      [lessonId],
+    )
+  ).rows[0].id;
+  const session = await db.query<{ id: string }>(
+    "select public.create_class_session($1,$2,$3,now()-interval '4 hours',now()-interval '3 hours','Evidence history fixture') as id",
+    [secondCohort, secondLesson, adminId],
+  );
+  historySession = session.rows[0].id;
+  for (let n = 0; n < 30; n++) {
+    await db.query(
+      "select public.record_learning_evidence($1,$2,$3,'CLASS_RESPONSE','CORRECT','Private evidence-reference sentinel',$4,'Reviewed fixture evidence')",
+      [
+        historySession,
+        secondEnrolment,
+        secondObjective,
+        `capability-history-${n}`,
+      ],
+    );
+  }
+  await db.query(
+    "select public.record_learning_evidence($1,$2,$3,'PRACTICAL_TASK','PARTIAL','Sensitive practical reference','other-objective-evidence','Reviewed other objective')",
+    [historySession, secondEnrolment, anotherObjective],
+  );
+  await db.query(
+    "select public.change_class_session_status($1,'COMPLETED','Completed history fixture')",
+    [historySession],
+  );
+  const base = await db.query<{ id: string }>(
+    "select public.create_class_session($1,$2,$3,now()-interval '2 hours',now()-interval '1 hour','Base evidence fixture') as id",
+    [cohortId, lessonId, adminId],
+  );
+  for (const [enrolment, key] of [
+    [enrolmentId, "own"],
+    [otherEnrolment, "foreign"],
+  ]) {
+    await db.query(
+      "select public.record_learning_evidence($1,$2,$3,'RETRIEVAL_CHECK','INCORRECT','Private base reference',$4,'Reviewed base evidence')",
+      [base.rows[0].id, enrolment, baseObjective, `base-history-${key}`],
+    );
+  }
+  await db.query(
+    "select public.change_class_session_status($1,'COMPLETED','Completed base fixture')",
+    [base.rows[0].id],
+  );
   await db.exec("reset role");
+  await db.query(
+    "insert into public.cohorts(id,programme_version_id,title,starts_on) values($1,$2,'Foreign cohort','2026-09-01')",
+    [foreignCohort, versionId],
+  );
 });
 
 beforeEach(async () => {
@@ -145,10 +219,12 @@ beforeEach(async () => {
   state.calls = [];
   state.failTable = undefined;
   state.failRpc = undefined;
+  state.transformRows = undefined;
   mocks.client.mockImplementation(async () => capabilityDbClient(db, state));
   await asUser(studentAuth);
 });
 afterEach(async () => {
+  vi.useRealTimers();
   await db.exec("rollback; reset role");
 });
 afterAll(async () => {
@@ -539,5 +615,331 @@ describe("Professor reads through Academy OS services and PostgreSQL RLS", () =>
         input: {},
       }),
     ).toMatchObject({ ok: false, error: { code: "FORBIDDEN" } });
+  });
+
+  it("Checkpoint 1C selects CURRENT, UPCOMING and NONE deterministically", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2030-01-01T12:00:00.000Z"));
+
+    await db.exec("reset role");
+    const current = await db.query<{ id: string }>(
+      "insert into public.class_sessions(cohort_id,programme_version_id,lesson_id,instructor_id,scheduled_start,scheduled_end,status,created_by) values($1,$2,$3,$4,'2030-01-01T11:30:00Z','2030-01-01T12:30:00Z','SCHEDULED',$4) returning id",
+      [secondCohort, secondVersion, secondLesson, adminId],
+    );
+    const upcoming = await db.query<{ id: string }>(
+      "insert into public.class_sessions(cohort_id,programme_version_id,lesson_id,instructor_id,scheduled_start,scheduled_end,status,created_by) values($1,$2,$3,$4,'2030-01-01T13:00:00Z','2030-01-01T14:00:00Z','SCHEDULED',$4) returning id",
+      [secondCohort, secondVersion, secondLesson, adminId],
+    );
+    await db.query(
+      "insert into public.class_sessions(cohort_id,programme_version_id,lesson_id,instructor_id,scheduled_start,scheduled_end,status,created_by) values($1,$2,$3,$4,'2030-01-01T11:00:00Z','2030-01-01T12:15:00Z','CANCELLED',$4)",
+      [secondCohort, secondVersion, secondLesson, adminId],
+    );
+    await asUser(studentAuth);
+
+    const active = await invokeProfessorCapability({
+      capability: "get_current_class_session",
+      input: { enrolmentId: secondEnrolment },
+    });
+    expect(active).toMatchObject({
+      ok: true,
+      data: {
+        selection: "CURRENT",
+        session: { sessionId: current.rows[0].id, lessonId: secondLesson },
+      },
+    });
+
+    await db.exec("reset role");
+    await db.query("update public.enrolments set status='PAUSED' where id=$1", [
+      secondEnrolment,
+    ]);
+    await asUser(studentAuth);
+    vi.setSystemTime(new Date("2030-01-01T12:45:00.000Z"));
+
+    const paused = await invokeProfessorCapability({
+      capability: "get_current_class_session",
+      input: { enrolmentId: secondEnrolment },
+    });
+    expect(paused).toMatchObject({
+      ok: true,
+      data: {
+        selection: "UPCOMING",
+        session: { sessionId: upcoming.rows[0].id },
+      },
+    });
+
+    await db.exec("reset role");
+    await db.query(
+      "update public.enrolments set status='WITHDRAWN' where id=$1",
+      [secondEnrolment],
+    );
+    await asUser(studentAuth);
+
+    expect(
+      await invokeProfessorCapability({
+        capability: "get_current_class_session",
+        input: { enrolmentId: secondEnrolment },
+      }),
+    ).toMatchObject({
+      ok: true,
+      data: { selection: "NONE", session: null },
+    });
+  });
+
+  it("Checkpoint 1C pages exact-version learning resources and fails closed on oversized content", async () => {
+    const first = await invokeProfessorCapability({
+      capability: "get_learning_resources",
+      input: { enrolmentId: secondEnrolment, lessonId: secondLesson },
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("Expected first resource page");
+    expect(first.data.resources).toHaveLength(5);
+    expect(first.data.nextCursor).toEqual({ afterPosition: 5 });
+    expect(
+      first.data.resources.every(
+        (resource) =>
+          resource.kind === "LECTURE_NOTE" && resource.body.length === 12000,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(first)).not.toContain("Neighbour resource sentinel");
+
+    const second = await invokeProfessorCapability({
+      capability: "get_learning_resources",
+      input: {
+        enrolmentId: secondEnrolment,
+        lessonId: secondLesson,
+        cursor: first.data.nextCursor!,
+      },
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("Expected second resource page");
+    expect(second.data.resources).toHaveLength(1);
+    expect(second.data.resources[0]).toMatchObject({
+      kind: "REFERENCE_LINK",
+      position: 6,
+      url: "https://example.com/reviewed",
+    });
+    expect(second.data.nextCursor).toBeNull();
+
+    expect(
+      await invokeProfessorCapability({
+        capability: "get_learning_resources",
+        input: { enrolmentId, lessonId: secondLesson },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "NOT_FOUND_OR_FORBIDDEN" },
+    });
+
+    state.transformRows = (table, rows) =>
+      table === "learning_resources"
+        ? rows.map((row, index) =>
+            index === 0 ? { ...row, body: "X".repeat(12001) } : row,
+          )
+        : rows;
+    expect(
+      await invokeProfessorCapability({
+        capability: "get_learning_resources",
+        input: { enrolmentId: secondEnrolment, lessonId: secondLesson },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "SERVICE_UNAVAILABLE" },
+    });
+  });
+
+  it("Checkpoint 1C returns privacy-minimized learning history with stable cursor pagination", async () => {
+    const first = await invokeProfessorCapability({
+      capability: "get_permitted_learning_history",
+      input: { enrolmentId: secondEnrolment, objectiveId: secondObjective },
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("Expected first history page");
+    expect(first.data.events).toHaveLength(25);
+    expect(first.data.nextCursor).not.toBeNull();
+    expect(
+      first.data.events.every((event) => event.objectiveId === secondObjective),
+    ).toBe(true);
+    expect(JSON.stringify(first)).not.toMatch(
+      /Private evidence-reference sentinel|Sensitive practical reference|recorded_by|idempotency_key|evidence_reference/,
+    );
+
+    const second = await invokeProfessorCapability({
+      capability: "get_permitted_learning_history",
+      input: {
+        enrolmentId: secondEnrolment,
+        objectiveId: secondObjective,
+        cursor: first.data.nextCursor!,
+      },
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("Expected second history page");
+    expect(second.data.events).toHaveLength(5);
+    expect(second.data.nextCursor).toBeNull();
+
+    const ids = [
+      ...first.data.events.map((event) => event.evidenceId),
+      ...second.data.events.map((event) => event.evidenceId),
+    ];
+    expect(ids).toHaveLength(30);
+    expect(new Set(ids).size).toBe(30);
+
+    const otherObjective = await invokeProfessorCapability({
+      capability: "get_permitted_learning_history",
+      input: { enrolmentId: secondEnrolment, objectiveId: anotherObjective },
+    });
+    expect(otherObjective).toMatchObject({
+      ok: true,
+      data: {
+        objectiveId: anotherObjective,
+        events: [
+          {
+            objectiveId: anotherObjective,
+            evidenceKind: "PRACTICAL_TASK",
+            result: "PARTIAL",
+          },
+        ],
+      },
+    });
+  });
+
+  it("Checkpoint 1C reads only persisted lesson mastery and fails on overflow", async () => {
+    state.calls = [];
+    const result = await invokeProfessorCapability({
+      capability: "get_current_mastery_state",
+      input: { enrolmentId: secondEnrolment, lessonId: secondLesson },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("Expected persisted mastery");
+    expect(result.data.persistedOnly).toBe(true);
+    expect(result.data.records).toHaveLength(2);
+
+    const primary = result.data.records.find(
+      (record) => record.objectiveId === secondObjective,
+    );
+    expect(primary).toMatchObject({
+      state: "DEVELOPING",
+      policyVersion: "MASTERY_V1",
+      evidenceCount: 30,
+      correctEvidenceCount: 30,
+      correctSessionCount: 1,
+      correctKindCount: 1,
+    });
+    expect(
+      state.calls
+        .filter((call) => call.rpc)
+        .every((call) => call.rpc === "assert_academic_action_allowed"),
+    ).toBe(true);
+
+    const empty = await invokeProfessorCapability({
+      capability: "get_current_mastery_state",
+      input: { enrolmentId: secondEnrolment, lessonId: thirdLesson },
+    });
+    expect(empty).toMatchObject({
+      ok: true,
+      data: { persistedOnly: true, records: [] },
+    });
+
+    state.transformRows = (table, rows) =>
+      table === "objective_mastery" && rows.length
+        ? Array.from({ length: 201 }, () => ({ ...rows[0] }))
+        : rows;
+    expect(
+      await invokeProfessorCapability({
+        capability: "get_current_mastery_state",
+        input: { enrolmentId: secondEnrolment, lessonId: secondLesson },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "SERVICE_UNAVAILABLE" },
+    });
+  });
+
+  it("Checkpoint 1C keeps all four new reads self-scoped even for a multi-role STUDENT", async () => {
+    const foreignRequests = [
+      {
+        capability: "get_current_class_session",
+        input: { enrolmentId: otherEnrolment },
+      },
+      {
+        capability: "get_learning_resources",
+        input: { enrolmentId: otherEnrolment, lessonId },
+      },
+      {
+        capability: "get_permitted_learning_history",
+        input: { enrolmentId: otherEnrolment },
+      },
+      {
+        capability: "get_current_mastery_state",
+        input: { enrolmentId: otherEnrolment, lessonId },
+      },
+    ] as const;
+
+    for (const request of foreignRequests) {
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "NOT_FOUND_OR_FORBIDDEN" },
+      });
+    }
+
+    await db.exec("reset role");
+    await db.query(
+      "insert into public.role_grants values($1,'ACADEMIC_ADMIN'),($1,'PLATFORM_ADMIN'),($1,'REGISTRAR'),($1,'INSTRUCTOR'),($1,'COUNSELLOR')",
+      [studentId],
+    );
+    await asUser(studentAuth);
+
+    for (const request of foreignRequests) {
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "NOT_FOUND_OR_FORBIDDEN" },
+      });
+    }
+  });
+
+  it("Checkpoint 1C blocks all four new reads before content access during a controlled attempt", async () => {
+    await db.query("select public.start_assessment_attempt($1)", [
+      assessmentId,
+    ]);
+
+    const protectedRequests = [
+      {
+        capability: "get_current_class_session",
+        input: { enrolmentId },
+      },
+      {
+        capability: "get_learning_resources",
+        input: { enrolmentId, lessonId },
+      },
+      {
+        capability: "get_permitted_learning_history",
+        input: { enrolmentId },
+      },
+      {
+        capability: "get_current_mastery_state",
+        input: { enrolmentId, lessonId },
+      },
+    ] as const;
+
+    for (const request of protectedRequests) {
+      state.calls = [];
+      const result = await invokeProfessorCapability(request);
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "ACTIVITY_BLOCKED" },
+      });
+      expect(
+        state.calls.some((call) =>
+          [
+            "class_sessions",
+            "learning_resources",
+            "learning_evidence",
+            "objective_mastery",
+          ].includes(call.table ?? ""),
+        ),
+      ).toBe(false);
+      expect(JSON.stringify(result)).not.toMatch(
+        /Protected prompt sentinel|Protected answer sentinel|Protected guidance sentinel/,
+      );
+    }
   });
 });

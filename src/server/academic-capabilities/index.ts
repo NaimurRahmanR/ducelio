@@ -27,6 +27,10 @@ import {
   getStudentLessonObjectives,
 } from "../learning-context";
 import { PROFESSOR_PROFILE, professorCatalogue } from "./catalogue";
+import { getStudentRelevantClassSession } from "../class-sessions";
+import { getStudentLessonResources } from "../learning-resources";
+import { getStudentPermittedLearningHistory } from "../learning-evidence";
+import { getStudentLessonMastery } from "../objective-mastery";
 
 const envelopeSchema = z.strictObject({
   capability: z.string().min(1).max(80),
@@ -123,6 +127,10 @@ export async function invokeProfessorCapability(
             get_current_learner_context: activity.explanationAllowed,
             get_lesson_context: activity.explanationAllowed,
             get_lesson_objectives: activity.explanationAllowed,
+            get_current_class_session: activity.explanationAllowed,
+            get_learning_resources: activity.explanationAllowed,
+            get_permitted_learning_history: activity.explanationAllowed,
+            get_current_mastery_state: activity.explanationAllowed,
           },
         };
         break;
@@ -135,6 +143,18 @@ export async function invokeProfessorCapability(
         break;
       case "get_lesson_objectives":
         output = await getStudentLessonObjectives(input.data);
+        break;
+      case "get_current_class_session":
+        output = await getStudentRelevantClassSession(input.data);
+        break;
+      case "get_learning_resources":
+        output = await getStudentLessonResources(input.data);
+        break;
+      case "get_permitted_learning_history":
+        output = await getStudentPermittedLearningHistory(input.data);
+        break;
+      case "get_current_mastery_state":
+        output = await getStudentLessonMastery(input.data);
         break;
     }
     // Reject unexpected output fields, including fields accidentally added by a service.
@@ -152,6 +172,13 @@ export async function invokeProfessorCapability(
         return fail("CONTEXT_CONFLICT");
     }
 
+    if (
+      "objectiveId" in data &&
+      data.objectiveId !==
+        ("objectiveId" in input.data ? input.data.objectiveId : null)
+    )
+      return fail("CONTEXT_CONFLICT");
+
     const currentPrincipal = await requireStudentPrincipal();
     if (currentPrincipal.id !== actorId) {
       authorizedScope = null;
@@ -166,6 +193,9 @@ export async function invokeProfessorCapability(
         enrolment_id: data.enrolmentId,
         programme_version_id: data.programmeVersionId,
         ...("lessonId" in data ? { lesson_id: data.lessonId } : {}),
+        ...("objectiveId" in data && data.objectiveId
+          ? { objective_id: data.objectiveId }
+          : {}),
       };
     }
     return { ok: true, data, provenance: provenance(null) };

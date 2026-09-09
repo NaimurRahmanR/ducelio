@@ -2,18 +2,18 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1A/1B — provider-independent Professor read capability boundary; local validation complete, PR review pending
+LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1C â€” four additional safe Professor reads on the provider-independent capability boundary; local validation complete
 CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None in the local Phase 3 checkpoint gate: 218/218 tests across 26 files, lint, route/type generation, TypeScript, production build and formatting passed. Phase 3 PR CI/review, hosted acceptance and independent concurrent PostgreSQL acceptance have not been performed.
-NEXT EXACT ACTION: Review the Checkpoint 1A/1B diff and security boundaries on `phase-3-ai-academic-layer`, commit the reviewed slice, and obtain PR CI/review before any merge. Further capabilities, durable execution auditing and provider integration require their own reviewed scope.
+KNOWN FAILURES: None in the completed local 1C gate: 246/246 tests across 26 files, lint, route/type generation, TypeScript, production build, formatting and git diff --check passed. Phase 3 Checkpoint 1C PR CI/review, hosted acceptance and independent concurrent PostgreSQL acceptance have not been performed.
+NEXT EXACT ACTION: Commit and push the reviewed Checkpoint 1C slice on `phase-3-ai-academic-layer`. Then proceed to the separately reviewed Checkpoint 1D security boundary before any provider/model integration.
 
-## Phase 1 — complete
+## Phase 1 â€” complete
 
 Phase 1 established the engineering and institutional foundation: Next.js/React/TypeScript, Supabase/PostgreSQL migrations, authentication and stable identity, backend RBAC/RLS, versioned programme structure, audited Counsellor services, student academy UI, Counsellor workspace, Administration shell, fictional previews, automated tests and architecture/security documentation.
 
 The eight-checkpoint Phase 1 record remains in `phase-1-completion-report.md`. Hosted Auth/OAuth/SMTP acceptance was outside that historical local delivery.
 
-## Phase 2 — complete and merged
+## Phase 2 â€” complete and merged
 
 The deterministic Academy Operating System now includes:
 
@@ -43,7 +43,7 @@ Migration `202609090020_phase2_final_review_hardening.sql` closes those findings
 
 The corrected final Phase 2 gate passed ESLint, route/type generation, TypeScript, **152/152 tests across 24 files**, production webpack build and Prettier locally. The corrected PR-head GitHub Actions run passed on Linux/Node 24. PR #1 was then merged into `main` at `9b902e742dd8557d51b1c31e0b6a4f522c07982a`, and the post-merge `main` CI run also passed.
 
-## Phase 3 checkpoint 1A/1B — local implementation complete
+## Phase 3 checkpoint 1A/1B â€” local implementation complete
 
 The first provider-independent capability boundary exposes exactly five server-only reads: `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. The contracts and limitations are documented in `14-academic-capabilities.md`.
 
@@ -62,6 +62,26 @@ Validation on 2026-09-09 with Node 24.19.0 on PATH:
 - `git diff --check`: passed.
 
 This progress entry was updated only after the implementation passed the local checkpoint gates. The changes remain on the Phase 3 feature branch; no merge to `main` or Phase 3 PR CI success is claimed.
+
+## Phase 3 checkpoint 1C â€” additional safe Professor reads
+
+Checkpoint 1C extends the same server-only gateway from five to exactly nine allowlisted Professor capabilities and bumps the strict contract to `PROFESSOR_READ_V2`. The four additions are `get_current_class_session`, `get_learning_resources`, `get_permitted_learning_history` and `get_current_mastery_state`.
+
+All four additions remain authenticated-STUDENT/self-scope only, including for multi-role users. They derive scope from the owned Enrolment and its historical ProgrammeVersion rather than accepting actor, role, cohort or version overrides. They use the fixed EXPLAIN firewall before retrieval and before release; an active controlled assessment blocks them before protected academic data is selected.
+
+The current-session read uses server time and exact owned cohort/version scope, excludes cancelled/completed sessions by selecting SCHEDULED rows only, and returns explicit CURRENT, UPCOMING or NONE. Resource reads are exact lesson/version, ordered and paginated at five items. Permitted learning history is deliberately privacy-minimised and omits evidence references, recorder identity, idempotency keys and free-text/private prose while using a deterministic recorded-at/UUID cursor. Mastery reads expose only persisted ObjectiveMastery state/counters for the exact owned lesson/version; they perform no recalculation, evidence write or policy mutation and fail closed on an oversized non-paginated projection.
+
+No migration, provider/model SDK, prompt/chat surface, public capability route, evidence write, mastery-evaluation request or handoff was added. The test-only PGlite/PostgREST adapter was extended for the reviewed query subset; a row-alias collision found by the new history integration test was fixed in the adapter without changing the production history service.
+
+Local validation on 2026-09-09 using bundled Node 24.20.0:
+
+- Capability suites: **94/94 tests passed** (72 contract/gateway + 22 database-backed workflow).
+- `npm run check`: ESLint, route/type generation, TypeScript and **246/246 tests across 26 files passed**.
+- `npm run build`: production webpack build passed; no new application routes.
+- `git diff --check`: passed before documentation cleanup.
+- Final `format:check` and `git diff --check` passed after the documentation update.
+
+The Checkpoint 1C tree remains on `phase-3-ai-academic-layer`; no Checkpoint 1C commit, PR CI success or merge to `main` is claimed here. Durable capability execution audit and a serialized assessment/content release boundary remain intentionally deferred and must be closed before provider/model execution.
 
 ## Current scope boundary
 

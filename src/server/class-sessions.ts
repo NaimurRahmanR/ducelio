@@ -6,6 +6,16 @@ import {
 } from "@/domain/academy";
 import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
+import { getOwnedStudentEnrolment } from "./academy";
+import {
+  AcademicContextUnavailable,
+  enrolmentContextInputSchema,
+} from "@/domain/learning-context";
+import {
+  academicTimestampSchema,
+  currentClassSessionSchema,
+} from "@/domain/academic-reads";
+import { assertStudentExplanationAllowed } from "./academic-activity";
 
 const cohortSchema = z.object({
   id: z.uuid(),
@@ -158,4 +168,92 @@ export async function getStudentClassSessions() {
   const { data, error } = await client.rpc("list_my_class_sessions");
   if (error) throw new Error("Your class sessions could not be loaded.");
   return z.array(studentSessionSchema).parse(data);
+}
+
+// The timetable RPC intentionally omits cohort/version IDs and returns all sessions.
+// This bounded projection extends the owning service without broadening that RPC.
+export async function getStudentRelevantClassSession(input: unknown) {
+  const payload = enrolmentContextInputSchema.parse(input);
+  await assertStudentExplanationAllowed();
+  const enrolment = await getOwnedStudentEnrolment(payload);
+  const selectedAt = new Date().toISOString();
+  const scope = {
+    enrolmentId: enrolment.enrolmentId,
+    programmeVersionId: enrolment.programmeVersionId,
+    cohortId: enrolment.cohortId,
+    selectedAt,
+  };
+  if (!["ACTIVE", "PAUSED"].includes(enrolment.enrolmentStatus)) {
+    await assertStudentExplanationAllowed();
+    return currentClassSessionSchema.parse({
+      ...scope,
+      selection: "NONE",
+      session: null,
+    });
+  }
+  const client = await createSupabase();
+  const { data, error } = await client
+    .from("class_sessions")
+    .select(
+      "id,cohort_id,programme_version_id,lesson_id,scheduled_start,scheduled_end,status",
+    )
+    .eq("cohort_id", enrolment.cohortId)
+    .eq("programme_version_id", enrolment.programmeVersionId)
+    .eq("status", "SCHEDULED")
+    .gt("scheduled_end", selectedAt)
+    .order("scheduled_start")
+    .order("id")
+    .limit(2);
+  if (error) throw new Error("Current class session could not be loaded.");
+  const rows = z
+    .array(
+      z.object({
+        id: z.uuid(),
+        cohort_id: z.uuid(),
+        programme_version_id: z.uuid(),
+        lesson_id: z.uuid(),
+        scheduled_start: academicTimestampSchema,
+        scheduled_end: academicTimestampSchema,
+        status: z.literal("SCHEDULED"),
+      }),
+    )
+    .max(2)
+    .parse(data);
+  const now = Date.parse(selectedAt);
+  for (const row of rows) {
+    if (
+      row.cohort_id !== enrolment.cohortId ||
+      row.programme_version_id !== enrolment.programmeVersionId
+    )
+      throw new AcademicContextUnavailable();
+    if (
+      Date.parse(row.scheduled_end) <= now ||
+      Date.parse(row.scheduled_end) <= Date.parse(row.scheduled_start)
+    )
+      throw new Error("Invalid current session projection.");
+  }
+  if (
+    rows.length === 2 &&
+    (Date.parse(rows[1].scheduled_start) <= now ||
+      Date.parse(rows[0].scheduled_start) > Date.parse(rows[1].scheduled_start))
+  )
+    throw new Error("Ambiguous current session projection.");
+  const row = rows[0];
+  const result = currentClassSessionSchema.parse(
+    row
+      ? {
+          ...scope,
+          selection:
+            Date.parse(row.scheduled_start) <= now ? "CURRENT" : "UPCOMING",
+          session: {
+            sessionId: row.id,
+            lessonId: row.lesson_id,
+            scheduledStart: row.scheduled_start,
+            scheduledEnd: row.scheduled_end,
+          },
+        }
+      : { ...scope, selection: "NONE", session: null },
+  );
+  await assertStudentExplanationAllowed();
+  return result;
 }
