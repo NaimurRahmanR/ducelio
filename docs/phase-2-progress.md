@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 12 — governed registrar corrections and exception handling
-CURRENT PARTIAL CHECKPOINT: 13 — institutional notifications and deterministic support triggers
-KNOWN FAILURES: Checkpoint 13 has not yet passed the local Node 24 quality gate.
-NEXT EXACT ACTION: Pull Checkpoint 13 locally, run the focused notification workflow tests, then run lint, typecheck, full tests, production build and Prettier format check.
+LAST COMPLETED CHECKPOINT: 13 — institutional notifications and deterministic support triggers
+CURRENT PARTIAL CHECKPOINT: None
+KNOWN FAILURES: None after the final local Node 24 quality gate.
+NEXT EXACT ACTION: Checkpoint 14 — Phase 2 integration hardening: resolve accumulated cross-cutting integrity, authorization, timezone, concurrency, service-contract and documentation issues before the final Phase 2 audit/PR.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -119,7 +119,7 @@ NEXT EXACT ACTION: Pull Checkpoint 13 locally, run the focused notification work
 - Full integration validation exposed two stale enrolment tests that still treated REGISTRAR as the ordinary enrolment operator; those tests were updated to use ACADEMIC_ADMIN while dedicated registrar tests preserve the new boundary.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 135/135 tests in 21 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
-## Checkpoint 13 — institutional notifications and deterministic support triggers — in progress
+## Checkpoint 13 — institutional notifications and deterministic support triggers — complete
 
 - Migration: `202609090018_phase2_notifications_support_triggers.sql`.
 - Added immutable-provenance learner notifications with learner-scoped RLS and an idempotent mark-read service. Notifications do not modify their source academic/support records.
@@ -128,7 +128,7 @@ NEXT EXACT ACTION: Pull Checkpoint 13 locally, run the focused notification work
 - Added learner notifications for deterministic support events and open counsellor follow-ups due today or tomorrow. Duplicate scans cannot duplicate notices for the same source.
 - Added Administration → Notifications operations, a learner notification page behind the academy bell, server services/actions and focused workflow tests.
 - The current evaluator is an authorised ACADEMIC_ADMIN/PLATFORM_ADMIN backend operation. Production scheduling, email and push delivery remain future operational integrations and are not claimed by this checkpoint.
-- Local Node 24 validation is required before this checkpoint can be marked complete.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 143/143 tests in 22 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
