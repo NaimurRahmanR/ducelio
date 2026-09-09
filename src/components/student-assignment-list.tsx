@@ -94,7 +94,9 @@ function AssignmentItem({
         <form action={formAction} className="support-form">
           <input type="hidden" name="assignmentId" value={assignment.id} />
           <div className="field">
-            <label htmlFor={`assignment-body-${assignment.id}`}>Your response</label>
+            <label htmlFor={`assignment-body-${assignment.id}`}>
+              Your response
+            </label>
             <textarea
               id={`assignment-body-${assignment.id}`}
               name="body"

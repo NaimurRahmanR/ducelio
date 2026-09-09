@@ -16,7 +16,9 @@ export async function StudentAssignments() {
         <div>
           <p className="eyebrow">COURSEWORK</p>
           <h1>Assignments</h1>
-          <p>Published coursework, submission windows and your attempt history.</p>
+          <p>
+            Published coursework, submission windows and your attempt history.
+          </p>
         </div>
       </div>
       <div className="section-content">
@@ -26,8 +28,8 @@ export async function StudentAssignments() {
             <Badge tone="muted">NOT CONTROLLED ASSESSMENT</Badge>
           </div>
           <p className="muted">
-            Assignment submissions are stored as coursework attempts. They do not
-            automatically become grades, learning evidence or mastery.
+            Assignment submissions are stored as coursework attempts. They do
+            not automatically become grades, learning evidence or mastery.
           </p>
           <StudentAssignmentList
             assignments={data.assignments}

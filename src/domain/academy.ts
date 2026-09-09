@@ -153,7 +153,8 @@ export const assignmentCreationSchema = z
     reason: z.string().trim().min(5).max(300),
   })
   .refine(
-    (value) => new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
+    (value) =>
+      new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
     "Assignment due time must be after its opening time.",
   );
 export const assignmentDraftUpdateSchema = z
@@ -166,7 +167,8 @@ export const assignmentDraftUpdateSchema = z
     reason: z.string().trim().min(5).max(300),
   })
   .refine(
-    (value) => new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
+    (value) =>
+      new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
     "Assignment due time must be after its opening time.",
   );
 export const assignmentStatusSchema = z.object({

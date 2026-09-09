@@ -25,7 +25,10 @@ const assignmentSchema = z.object({
   closed_at: z.string().nullable(),
   cohorts: z.object({ title: z.string() }),
   lessons: z.object({ title: z.string() }),
-  programme_versions: z.object({ label: z.string(), title_snapshot: z.string().nullable() }),
+  programme_versions: z.object({
+    label: z.string(),
+    title_snapshot: z.string().nullable(),
+  }),
 });
 
 const submissionSchema = z.object({
@@ -40,39 +43,74 @@ const submissionSchema = z.object({
 export async function getAssignmentWorkspace() {
   await requireActor("admin");
   const client = await createSupabase();
-  const [assignments, submissions, cohorts, lessons, instructors] = await Promise.all([
-    client
-      .from("assignments")
-      .select("id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,due_at,status,created_at,published_at,closed_at,cohorts(title),lessons(title),programme_versions(label,title_snapshot)")
-      .order("created_at", { ascending: false })
-      .limit(500),
-    client
-      .from("assignment_submissions")
-      .select("id,assignment_id,enrolment_id,student_id,attempt_number,submitted_at")
-      .order("submitted_at", { ascending: false })
-      .limit(1000),
-    client
-      .from("cohorts")
-      .select("id,title,programme_version_id")
-      .order("starts_on", { ascending: false })
-      .limit(200),
-    client
-      .from("lessons")
-      .select("id,title,programme_version_id")
-      .order("title")
-      .limit(500),
-    client.rpc("list_assignable_instructors"),
-  ]);
+  const [assignments, submissions, cohorts, lessons, instructors] =
+    await Promise.all([
+      client
+        .from("assignments")
+        .select(
+          "id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,due_at,status,created_at,published_at,closed_at,cohorts(title),lessons(title),programme_versions(label,title_snapshot)",
+        )
+        .order("created_at", { ascending: false })
+        .limit(500),
+      client
+        .from("assignment_submissions")
+        .select(
+          "id,assignment_id,enrolment_id,student_id,attempt_number,submitted_at",
+        )
+        .order("submitted_at", { ascending: false })
+        .limit(1000),
+      client
+        .from("cohorts")
+        .select("id,title,programme_version_id")
+        .order("starts_on", { ascending: false })
+        .limit(200),
+      client
+        .from("lessons")
+        .select("id,title,programme_version_id")
+        .order("title")
+        .limit(500),
+      client.rpc("list_assignable_instructors"),
+    ]);
 
-  if (assignments.error || submissions.error || cohorts.error || lessons.error || instructors.error)
+  if (
+    assignments.error ||
+    submissions.error ||
+    cohorts.error ||
+    lessons.error ||
+    instructors.error
+  )
     throw new Error("Assignment workspace could not be loaded.");
 
   return {
     assignments: z.array(assignmentSchema).parse(assignments.data),
     submissions: z.array(submissionSchema).parse(submissions.data),
-    cohorts: z.array(z.object({ id: z.uuid(), title: z.string(), programme_version_id: z.uuid() })).parse(cohorts.data),
-    lessons: z.array(z.object({ id: z.uuid(), title: z.string(), programme_version_id: z.uuid() })).parse(lessons.data),
-    instructors: z.array(z.object({ user_id: z.uuid(), display_name: z.string(), title: z.string() })).parse(instructors.data),
+    cohorts: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string(),
+          programme_version_id: z.uuid(),
+        }),
+      )
+      .parse(cohorts.data),
+    lessons: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string(),
+          programme_version_id: z.uuid(),
+        }),
+      )
+      .parse(lessons.data),
+    instructors: z
+      .array(
+        z.object({
+          user_id: z.uuid(),
+          display_name: z.string(),
+          title: z.string(),
+        }),
+      )
+      .parse(instructors.data),
   };
 }
 
@@ -129,7 +167,9 @@ export async function getStudentAssignments() {
   const [assignments, submissions] = await Promise.all([
     client
       .from("assignments")
-      .select("id,title,instructions,opens_at,due_at,status,lessons(title),programme_versions(label,title_snapshot)")
+      .select(
+        "id,title,instructions,opens_at,due_at,status,lessons(title),programme_versions(label,title_snapshot)",
+      )
       .order("due_at", { ascending: true })
       .limit(200),
     client
@@ -141,17 +181,33 @@ export async function getStudentAssignments() {
   if (assignments.error || submissions.error)
     throw new Error("Your assignments could not be loaded.");
   return {
-    assignments: z.array(z.object({
-      id: z.uuid(),
-      title: z.string(),
-      instructions: z.string(),
-      opens_at: z.string(),
-      due_at: z.string(),
-      status: z.enum(["PUBLISHED", "CLOSED"]),
-      lessons: z.object({ title: z.string() }),
-      programme_versions: z.object({ label: z.string(), title_snapshot: z.string().nullable() }),
-    })).parse(assignments.data),
-    submissions: z.array(submissionSchema.pick({ id: true, assignment_id: true, attempt_number: true, submitted_at: true })).parse(submissions.data),
+    assignments: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string(),
+          instructions: z.string(),
+          opens_at: z.string(),
+          due_at: z.string(),
+          status: z.enum(["PUBLISHED", "CLOSED"]),
+          lessons: z.object({ title: z.string() }),
+          programme_versions: z.object({
+            label: z.string(),
+            title_snapshot: z.string().nullable(),
+          }),
+        }),
+      )
+      .parse(assignments.data),
+    submissions: z
+      .array(
+        submissionSchema.pick({
+          id: true,
+          assignment_id: true,
+          attempt_number: true,
+          submitted_at: true,
+        }),
+      )
+      .parse(submissions.data),
   };
 }
 

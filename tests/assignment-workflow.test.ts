@@ -16,7 +16,9 @@ let assignmentId: string;
 let firstSubmissionId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -105,16 +107,25 @@ describe("governed assignments", () => {
     assignmentId = created.rows[0].id;
     await resetRole();
 
-    const row = await db.query<{ status: string; programme_version_id: string }>(
+    const row = await db.query<{
+      status: string;
+      programme_version_id: string;
+    }>(
       "select status,programme_version_id from public.assignments where id=$1",
       [assignmentId],
     );
-    expect(row.rows[0]).toEqual({ status: "DRAFT", programme_version_id: versionId });
+    expect(row.rows[0]).toEqual({
+      status: "DRAFT",
+      programme_version_id: versionId,
+    });
   });
 
   it("keeps drafts hidden from the learner and publishes through the lifecycle service", async () => {
     await asAuth(learnerAuth);
-    const hidden = await db.query("select id from public.assignments where id=$1", [assignmentId]);
+    const hidden = await db.query(
+      "select id from public.assignments where id=$1",
+      [assignmentId],
+    );
     await resetRole();
     expect(hidden.rows).toHaveLength(0);
 
@@ -169,13 +180,18 @@ describe("governed assignments", () => {
     );
     expect(attempts.rows.map((row) => row.attempt_number)).toEqual([1, 2]);
     await expect(
-      db.query("update public.assignment_submissions set body='Changed' where id=$1", [second.rows[0].id]),
+      db.query(
+        "update public.assignment_submissions set body='Changed' where id=$1",
+        [second.rows[0].id],
+      ),
     ).rejects.toThrow("append-only");
   });
 
   it("freezes published assignment content", async () => {
     await expect(
-      db.query("update public.assignments set title='Changed' where id=$1", [assignmentId]),
+      db.query("update public.assignments set title='Changed' where id=$1", [
+        assignmentId,
+      ]),
     ).rejects.toThrow("Invalid assignment lifecycle transition");
   });
 
