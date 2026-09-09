@@ -62,11 +62,11 @@ The reset applies all migrations and the fictional local seed. It must never be 
 
 For a managed project, use `supabase link --project-ref YOUR_PROJECT_REF`, review pending migrations, then `supabase db push`. Normal `db push` does not include the local seed. Configure the publishable key, trusted `APP_URL`, confirm-email requirement, SMTP and providers using [Authentication setup](docs/04-auth-and-identity.md).
 
-Set environment values before building and rebuild production output after configuration changes. Apply **all 19 ordered migrations** currently in `supabase/migrations`. Sign up and verify real test users, then provision privileged roles and institutional relationships through reviewed operator workflows in [Operations and security](docs/13-operations-and-security.md). SQL demo users intentionally have no Auth identity or password.
+Set environment values before building and rebuild production output after configuration changes. Apply **all 20 ordered migrations** currently in `supabase/migrations`. Sign up and verify real test users, then provision privileged roles and institutional relationships through reviewed operator workflows in [Operations and security](docs/13-operations-and-security.md). SQL demo users intentionally have no Auth identity or password.
 
 ## Phase 2 Academy OS
 
-The Phase 2 branch implements governed ProgrammeVersion publication, Enrolment lifecycle, Counsellor assignment, ClassSession scheduling, AttendanceRecord operations, LessonSegment/LessonProgress, versioned LearningResource delivery, append-only LearningEvidence, deterministic `MASTERY_V1`, Assignment workflows, controlled-assessment activity firewalls, Registrar correction history, Notification records and deterministic `SUPPORT_V1` support triggers.
+The Phase 2 branch implements governed ProgrammeVersion publication, Enrolment lifecycle, Counsellor assignment, ClassSession scheduling, AttendanceRecord operations, LessonSegment/LessonProgress, versioned LearningResource delivery, append-only LearningEvidence, deterministic `MASTERY_V1`, Assignment workflows, controlled-assessment activity firewalls, Registrar correction history, Notification records and deterministic `SUPPORT_V1` support triggers. The final review hardening additionally enforces instructor-to-class authoring scope, support-notification privacy minimisation and deterministic finalisation of stale controlled-assessment attempts.
 
 The deterministic backend remains authoritative. Typed student identifiers never authenticate; client-supplied roles are not trusted; AI actors do not receive database credentials. Controlled assessment questions are released only through server-owned attempt state, and protected answer keys are not learner-readable.
 
