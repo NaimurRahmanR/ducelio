@@ -1,21 +1,21 @@
 # Implementation progress
 
-This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md` and `phase-2-progress.md`.
+This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 2 checkpoint 13 — institutional notifications and deterministic support triggers
-CURRENT PARTIAL CHECKPOINT: Phase 2 checkpoint 14 — integration hardening
-KNOWN FAILURES: Checkpoint 14 has not yet passed the local Node 24 quality gate.
-NEXT EXACT ACTION: Pull the checkpoint-14 hardening changes and run the focused hardening tests followed by lint, typecheck, the full test suite, production build and Prettier check. Do not mark Phase 2 complete until the final audit/PR checkpoint also passes.
+LAST COMPLETED CHECKPOINT: Phase 2 checkpoint 14 — integration hardening
+CURRENT PARTIAL CHECKPOINT: Phase 2 checkpoint 15 — final audit and PR readiness
+KNOWN FAILURES: None from the completed Checkpoint 14 local gate; the documentation/audit tree created by Checkpoint 15 still requires the final exact-tree local gate and pull-request CI.
+NEXT EXACT ACTION: Pull the final Phase 2 audit/documentation commits, run the exact Node 24 gate (`npm run check`, `npm run build`, `npm run format:check`, clean git status), then open the `phase-2-academy-os` → `main` pull request and require GitHub CI/review before merge.
 
 ## Phase 1 — complete
 
-Phase 1 established the local engineering and institutional foundation: Next.js/React/TypeScript, Supabase/PostgreSQL migrations, authentication and stable identity, backend RBAC and RLS, versioned programme structure, audited Counsellor services, student academy UI, Counsellor workspace, Administration shell, fictional previews, automated tests and architecture/security documentation.
+Phase 1 established the engineering and institutional foundation: Next.js/React/TypeScript, Supabase/PostgreSQL migrations, authentication and stable identity, backend RBAC/RLS, versioned programme structure, audited Counsellor services, student academy UI, Counsellor workspace, Administration shell, fictional previews, automated tests and architecture/security documentation.
 
-The full eight-checkpoint Phase 1 ledger, validation evidence, limitations and external configuration requirements are preserved in `phase-1-completion-report.md`. Hosted Supabase/Auth/OAuth/SMTP acceptance remains external to the local implementation.
+The eight-checkpoint Phase 1 record remains in `phase-1-completion-report.md`. Hosted Auth/OAuth/SMTP acceptance was outside that historical local delivery.
 
-## Phase 2 — checkpoints 1–13 complete
+## Phase 2 — implementation complete through Checkpoint 14
 
-Phase 2 has implemented the deterministic Academy Operating System through:
+The deterministic Academy Operating System now includes:
 
 1. governed ProgrammeVersion publication;
 2. governed Enrolment creation/lifecycle;
@@ -29,32 +29,28 @@ Phase 2 has implemented the deterministic Academy Operating System through:
 10. governed Assignment authoring and append-only learner submissions;
 11. controlled Assessment foundations, protected content release and technical academic-activity firewalls;
 12. governed Registrar corrections with explicit official-record boundaries;
-13. institutional Notification records and deterministic `SUPPORT_V1` support triggers.
+13. learner Notification records and deterministic `SUPPORT_V1` support triggers;
+14. cross-checkpoint authorization, concurrency, timezone, idempotency, projection and audit hardening.
 
-The exact migrations, tests, local gate results and checkpoint-specific boundaries are recorded in `phase-2-progress.md`.
+Checkpoint 14's final local Node 24 gate passed ESLint, route/type generation and TypeScript, **149/149 tests across 23 files**, production webpack build and Prettier; the working tree was clean and synchronized at that checkpoint.
 
-## Checkpoint 14 — integration hardening — in progress
+## Checkpoint 15 — final audit and PR readiness — in progress
 
-The hardening checkpoint is resolving accumulated cross-checkpoint correctness and contract issues before the final Phase 2 audit. Current work includes:
+The final audit reviewed the feature branch against `main`, the current architecture/RBAC/domain/assessment/support documents, the ordered migration set, CI workflow and cross-cutting hardening contracts. The branch is based directly on the current `main` merge base with no reported behind commits at audit time. The remaining Phase 2 closure work is intentionally release/process work rather than another product feature.
 
-- explicit academic-vs-Registrar mutation boundaries at both server and database layers;
-- consistent server access for assigned INSTRUCTOR operations already permitted by their database RPCs;
-- safer duplicate-enrolment semantics that do not silently treat PAUSED/WITHDRAWN/COMPLETED history as a new successful enrolment;
-- instructor-row serialization before class-session overlap checks;
-- a safe learner class-session projection that does not depend on nested access to another user's identity row;
-- browser-timezone conversion of `datetime-local` values before class/assignment/assessment timestamps reach server validation;
-- cohort-version-filtered lesson selectors in authoring workspaces;
-- automatic internal idempotency references for learner assignment submissions and assessment response revisions;
-- monotonic controlled-assessment attempt numbering after VOIDED attempts plus stronger response/attempt identity constraints;
-- use of ProgrammeVersion title snapshots in learner-support programme context;
-- minimisation of large LearningResource note bodies from generic audit payloads;
-- role-scoped Administration navigation/workspaces;
-- current domain/progress documentation and focused regression tests.
+Checkpoint 15 documentation now:
 
-Checkpoint 14 is not complete until its focused tests and the complete Node 24 quality gate pass locally.
+- refreshes README and repository rules from Phase 1 wording to the actual Phase 2 Academy OS;
+- reconciles the database ledger to all 19 migrations;
+- records the post-Phase 2 future academic-agent boundary;
+- advances the roadmap to permissioned-agent interfaces rather than direct database integration;
+- updates production/staging security requirements for controlled assessments, Registrar boundaries, deterministic support triggers and true concurrency testing;
+- records residual scope and production-readiness limitations in `phase-2-completion-report.md`.
 
-## Remaining Phase 2 closure
+## Current scope boundary
 
-After checkpoint 14 passes, Phase 2 requires a final integration/audit checkpoint: review residual limitations, update all completion documentation, run the exact clean quality gates, review the branch diff/security posture, then open/review the pull request so GitHub CI runs against `main` before merge.
+No AI academic actor is integrated. The deterministic backend remains authoritative. `MASTERY_V1` is evidence-based and does not infer mastery from engagement. `SUPPORT_V1` uses reviewed authoritative conditions and does not infer inactivity/motivation/risk from behavioural telemetry. Controlled-assessment protected content is released from server-owned attempt state and future AI tools must call the technical activity firewall.
 
-Passing local tests does not make Ducelio production-ready. Hosted JWT/RLS/Auth/provider checks, SMTP, backups, rate limiting/abuse controls, privacy/support-data governance, accessibility/browser/device acceptance and security review remain required before real learners or protected assessments are operated in production.
+Formal grading/result publication, pass/fail, academic completion/certification, institutional announcement authoring, production notification scheduling/email/push, payments, uploads/offline/PWA and AI academic actors remain outside Phase 2.
+
+Passing local/PR CI does not make Ducelio production-ready. Hosted Supabase/JWT/PostgREST/RPC acceptance, real provider/SMTP tests, true concurrent PostgreSQL scenarios, backups/restore, rate limiting/abuse controls, privacy/support-data governance, monitoring, accessibility/browser/device acceptance and deployment security review remain required before real learners or protected assessments are operated.
