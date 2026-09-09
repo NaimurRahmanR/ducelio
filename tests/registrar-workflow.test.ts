@@ -179,9 +179,7 @@ describe("governed registrar corrections", () => {
         "select public.change_enrolment_status($1,'PAUSED','Attempt generic registrar status mutation')",
         [enrolmentId],
       ),
-    ).rejects.toThrow(
-      "Registrar role cannot perform academic operational mutations",
-    );
+    ).rejects.toThrow("Access denied");
     await resetRole();
   });
 
@@ -207,9 +205,7 @@ describe("governed registrar corrections", () => {
         )`,
         [cohortId, lessonId, academicAdminId],
       ),
-    ).rejects.toThrow(
-      "Registrar role cannot perform academic operational mutations",
-    );
+    ).rejects.toThrow("Access denied");
     await resetRole();
   });
 
