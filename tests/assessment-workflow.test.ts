@@ -17,7 +17,9 @@ let questionId: string;
 let attemptId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -115,9 +117,10 @@ describe("controlled assessments", () => {
 
     await asAuth(learnerAuth);
     await expect(
-      db.query("select id from public.assessment_questions where assessment_id=$1", [
-        assessmentId,
-      ]),
+      db.query(
+        "select id from public.assessment_questions where assessment_id=$1",
+        [assessmentId],
+      ),
     ).rejects.toThrow("permission denied");
     await expect(
       db.query(
@@ -189,7 +192,9 @@ describe("controlled assessments", () => {
       "select public.academic_action_allowed('EXAMINER_DELIVERY') as allowed",
     );
     await expect(
-      db.query("select public.assert_academic_action_allowed('GIVE_FINAL_ANSWER')"),
+      db.query(
+        "select public.assert_academic_action_allowed('GIVE_FINAL_ANSWER')",
+      ),
     ).rejects.toThrow("blocked");
     await resetRole();
     expect(state.rows[0].state).toBe("CONTROLLED_ASSESSMENT_ACTIVE");
@@ -220,9 +225,10 @@ describe("controlled assessments", () => {
     );
     expect(revisions.rows.map((row) => row.revision_number)).toEqual([1, 2]);
     await expect(
-      db.query("update public.assessment_responses set body='Changed' where id=$1", [
-        second.rows[0].id,
-      ]),
+      db.query(
+        "update public.assessment_responses set body='Changed' where id=$1",
+        [second.rows[0].id],
+      ),
     ).rejects.toThrow("append-only");
   });
 
@@ -260,9 +266,10 @@ describe("controlled assessments", () => {
 
   it("freezes published assessment questions and answer keys", async () => {
     await expect(
-      db.query("update public.assessment_questions set prompt='Changed' where id=$1", [
-        questionId,
-      ]),
+      db.query(
+        "update public.assessment_questions set prompt='Changed' where id=$1",
+        [questionId],
+      ),
     ).rejects.toThrow("immutable");
     await expect(
       db.query(
