@@ -3,13 +3,13 @@
 Delivery candidate date: 9 September 2026  
 Branch: `phase-2-academy-os`  
 Target: `main`  
-Status: **IMPLEMENTATION COMPLETE; CHECKPOINT 15 PR/CI GATE PENDING**
+Status: **IMPLEMENTATION COMPLETE; CHECKPOINT 15 REVIEW CORRECTIONS REQUIRE FINAL LOCAL/CI REVALIDATION**
 
 This report records the deterministic Academy OS delivered in Phase 2 and the boundary between completed repository work and production/deployment work that remains outside the phase. Phase 2 must not be described as merged or production-ready until the current branch passes its final exact-tree local gate, pull-request CI/review and merge process.
 
 ## 1. Phase 2 delivery
 
-Phase 2 adds fourteen implementation/hardening checkpoints on top of the Phase 1 foundation:
+Phase 2 adds fourteen implementation/hardening checkpoints on top of the Phase 1 foundation, followed by the final Checkpoint 15 audit/review gate:
 
 1. governed ProgrammeVersion publication;
 2. governed Enrolment creation/lifecycle;
@@ -24,9 +24,10 @@ Phase 2 adds fourteen implementation/hardening checkpoints on top of the Phase 1
 11. controlled Assessment foundations, protected content release and server-owned activity firewalls;
 12. governed Registrar corrections and immutable correction provenance;
 13. learner Notification records and deterministic `SUPPORT_V1` support triggers;
-14. cross-checkpoint integration hardening for authorization, concurrency, timezone handling, idempotency, safe projections, assessment identity and audit minimisation.
+14. cross-checkpoint integration hardening for authorization, concurrency, timezone handling, idempotency, safe projections, assessment identity and audit minimisation;
+15. final documentation/security/PR review, including forward-only correction of review findings.
 
-The repository contains 19 ordered migrations in total: the five Phase 1/foundation migrations plus fourteen Phase 2 migrations (`006` through `019`). The executable migrations and tests remain the source of truth; `06-database-schema.md` is the human-readable ledger.
+The repository contains **20 ordered migrations** in total: the five Phase 1/foundation migrations plus fifteen Phase 2 migrations (`006` through `020`). Migration `020` is the final-review corrective migration. The executable migrations and tests remain the source of truth; `06-database-schema.md` is the human-readable ledger.
 
 ## 2. Deterministic authority and identity
 
@@ -54,6 +55,8 @@ Browser `datetime-local` controls for class, assignment and assessment authoring
 
 Attendance is authoritative and bound to a class session plus matching enrolment. Corrections preserve record identity and audit provenance. Registrar correction history stores before/after status, bounded reason, actor and timestamp rather than replacing history.
 
+The final PR review also tightened instructor authoring scope: an INSTRUCTOR cannot create coursework or a controlled assessment for an arbitrary known cohort merely by assigning themselves. Instructor-initiated creation now requires a real non-cancelled ClassSession relationship for the same cohort/lesson; Academic Admin or Platform Admin may still create and explicitly assign an instructor.
+
 ## 5. Learning evidence and mastery
 
 LessonProgress is explicitly separate from mastery. Navigation, elapsed time, attendance, resource consumption and page views are not mastery inputs.
@@ -74,6 +77,8 @@ Controlled assessments are a separate stricter module. Question and answer-key t
 
 Assessment responses are append-only revisions. Checkpoint 14 database-binds response identity to attempt, assessment and learner, serializes attempt starts for a learner, and preserves monotonic attempt numbering after an administrator VOIDED an earlier attempt.
 
+Checkpoint 15 additionally closes stale ACTIVE-attempt lifecycle behavior. Before a learner starts a new controlled attempt, an expired ACTIVE attempt or one whose assessment was administratively closed is deterministically finalized as SUBMITTED and remains attempt-consuming rather than silently VOIDED. The learner UI keys its active-attempt shell to the server-owned activity state so an expired shell does not block the next valid start action.
+
 Phase 2 does not implement automatic grading, gradebook/result publication or pass/fail decisions.
 
 ## 7. Registrar, support and notifications
@@ -84,6 +89,8 @@ Registrar correction authority is intentionally narrower than academic authority
 
 Notification records are learner-visible projections with immutable source provenance and learner-controlled read state. Re-evaluation is idempotent and does not alter source academic/support records. Production scheduler, email and push delivery are not implemented.
 
+The final review found that the initial notification operations RLS was broader than the source support-data boundary. Migration `020` corrects that: Academic Admin/Platform Admin notification reads are limited to academic-origin notification kinds they are already authorised to operate, while personal plan-overdue and Counsellor follow-up notices remain learner-only in the notification table. Counsellor-authored follow-up titles are no longer copied into the cross-boundary notification projection.
+
 ## 8. Audit and data minimisation
 
 Institutional mutations use audit provenance where defined. Protected assessment prompts/answer keys/marking guidance and learner response bodies are excluded from assessment audit payloads. Private support narrative is not copied into generic audit records. Phase 2 hardening also removes full lecture-note bodies from generic LearningResource audit payloads; authoritative content remains in the resource record.
@@ -92,7 +99,7 @@ Database-owner credentials remain a privileged operational trust boundary becaus
 
 ## 9. Validation evidence
 
-Checkpoint 14's final local Node 24 gate completed successfully on the integrated code tree:
+Checkpoint 14's integrated local Node 24 gate completed successfully:
 
 - ESLint: PASS;
 - Next route type generation + TypeScript: PASS;
@@ -100,21 +107,23 @@ Checkpoint 14's final local Node 24 gate completed successfully on the integrate
 - production `next build --webpack`: PASS;
 - Prettier format check: PASS;
 - working tree: clean;
-- local branch: synchronized with `origin/phase-2-academy-os` at that checkpoint.
+- branch synchronized with origin.
 
-Checkpoint 15 changes completion/documentation records after that gate. Therefore the exact final branch tree still requires one final local `npm run check`, `npm run build` and `npm run format:check` before the pull request is treated as ready.
+The first Checkpoint 15 PR-ready tree also passed GitHub Actions on Linux/Node 24. The subsequent manual PR security review found three issues described above, so that earlier green CI run is no longer the release gate for the current head. Migration `020`, the learner assessment-shell correction and dedicated final-review regression tests now require a new exact-tree local gate and a new green PR CI run before merge.
 
 The GitHub CI workflow targets pull requests into `main`, uses Node 24, runs `npm ci`, `npm run check`, `npm run format:check` and `npm run build`. A feature-branch push alone does not satisfy this CI requirement.
 
 ## 10. Final branch audit
 
-The Phase 2 audit compares `main` with `phase-2-academy-os` rather than trusting checkpoint summaries alone. At the start of Checkpoint 15, GitHub reported the feature branch directly ahead of the current `main` merge base with **0 commits behind**. The diff contains the Phase 2 migrations, server/domain changes, learner/staff workspaces, focused tests and documentation described above.
+The Phase 2 audit compares `main` with `phase-2-academy-os` rather than trusting checkpoint summaries alone. At the start of Checkpoint 15, GitHub reported the feature branch directly ahead of the current `main` merge base with 0 commits behind.
 
-Cross-cutting issues discovered during development were resolved before this report, including stale Registrar mutation assumptions, duplicate-enrolment semantics, instructor scheduling serialization, learner timetable identity projection, server-timezone parsing of `datetime-local`, version-mismatched lesson selection, server/DB role-contract mismatch, learner-visible infrastructure idempotency keys, VOID retry attempt numbering, assessment response identity, mutable support programme labels, large resource audit payloads and stale Phase 1 documentation.
+Cross-cutting issues discovered during development were resolved before the initial PR, including stale Registrar mutation assumptions, duplicate-enrolment semantics, instructor scheduling serialization, learner timetable identity projection, server-timezone parsing of `datetime-local`, version-mismatched lesson selection, server/DB role-contract mismatch, learner-visible infrastructure idempotency keys, VOID retry attempt numbering, assessment response identity, mutable support programme labels, large resource audit payloads and stale Phase 1 documentation.
+
+The PR review then added three further corrections: explicit instructor-to-class authoring scope, support-notification privacy minimisation, and expired/closed controlled-attempt finalisation.
 
 ## 11. Known limitations / non-production items
 
-The following are **not blockers to merging the Phase 2 deterministic implementation**, but are blockers or required work before appropriate production use:
+The following are not blockers to merging the Phase 2 deterministic implementation, but are blockers or required work before appropriate production use:
 
 - hosted Supabase Auth/JWT/PostgREST/RPC/RLS acceptance with real users;
 - Google/LinkedIn provider and SMTP/email-flow acceptance;
@@ -138,13 +147,12 @@ Protected controlled-assessment foundations must not be marketed as production-r
 
 Phase 2 closes only after this sequence:
 
-1. pull the final Checkpoint 15 documentation/audit commits locally;
+1. pull the final review-correction commits locally;
 2. run the exact Node 24 quality gate on that tree;
 3. confirm clean working tree and synchronized feature branch;
-4. open `phase-2-academy-os` → `main` pull request;
-5. review the PR diff/security boundaries;
-6. require GitHub CI to pass on the PR head;
-7. address any review/CI finding before merge;
-8. merge only the reviewed green PR.
+4. confirm the existing PR represents the new head;
+5. require the updated GitHub CI run to pass;
+6. review the corrected diff and confirm no unresolved blocker remains;
+7. merge only the reviewed green PR.
 
-Until those steps finish, the correct status is **Phase 2 implementation complete, final PR/CI gate pending**.
+Until those steps finish, the correct status is **Phase 2 implementation complete, final corrected PR/CI gate pending**.
