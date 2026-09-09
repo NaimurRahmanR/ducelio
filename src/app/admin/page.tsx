@@ -6,6 +6,7 @@ import { LearningEvidenceWorkspace } from "@/components/learning-evidence-worksp
 import { ObjectiveMasteryWorkspace } from "@/components/objective-mastery-workspace";
 import { AssignmentWorkspace } from "@/components/assignment-workspace";
 import { AssessmentWorkspace } from "@/components/assessment-workspace";
+import { RegistrarWorkspace } from "@/components/registrar-workspace";
 import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
 import { ClassSessionWorkspace } from "@/components/class-session-workspace";
@@ -18,6 +19,7 @@ import { getLearningEvidenceWorkspace } from "@/server/learning-evidence";
 import { getObjectiveMasteryWorkspace } from "@/server/objective-mastery";
 import { getAssignmentWorkspace } from "@/server/assignments";
 import { getAssessmentWorkspace } from "@/server/assessments";
+import { getRegistrarWorkspace } from "@/server/registrar";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
 import { getClassSessionWorkspace } from "@/server/class-sessions";
@@ -51,6 +53,12 @@ export default async function Page({
     section === "Assignments" ? await getAssignmentWorkspace() : null;
   const assessmentWorkspace =
     section === "Assessments" ? await getAssessmentWorkspace() : null;
+  const registrarWorkspace =
+    section === "Registry" &&
+    (data.actor.roles.includes("REGISTRAR") ||
+      data.actor.roles.includes("PLATFORM_ADMIN"))
+      ? await getRegistrarWorkspace()
+      : null;
   const enrolmentWorkspace =
     section === "Students" ? await getEnrolmentWorkspace() : null;
   const counsellorWorkspace =
@@ -115,6 +123,13 @@ export default async function Page({
           cohorts={assessmentWorkspace.cohorts}
           lessons={assessmentWorkspace.lessons}
           instructors={assessmentWorkspace.instructors}
+        />
+      )}
+      {section === "Registry" && registrarWorkspace && (
+        <RegistrarWorkspace
+          enrolments={registrarWorkspace.enrolments}
+          attendance={registrarWorkspace.attendance}
+          corrections={registrarWorkspace.corrections}
         />
       )}
       {section === "Students" && enrolmentWorkspace && (
