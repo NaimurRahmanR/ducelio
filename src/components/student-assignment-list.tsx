@@ -60,6 +60,7 @@ function AssignmentItem({
   const attempts = submissions.filter(
     (submission) => submission.assignment_id === assignment.id,
   );
+  const nextAttemptKey = `assignment:${assignment.id}:attempt:${attempts.length + 1}`;
 
   return (
     <div className="support-record">
@@ -93,6 +94,7 @@ function AssignmentItem({
       {isOpen ? (
         <form action={formAction} className="support-form">
           <input type="hidden" name="assignmentId" value={assignment.id} />
+          <input type="hidden" name="idempotencyKey" value={nextAttemptKey} />
           <div className="field">
             <label htmlFor={`assignment-body-${assignment.id}`}>
               Your response
@@ -105,19 +107,10 @@ function AssignmentItem({
               required
             />
           </div>
-          <div className="field">
-            <label htmlFor={`assignment-key-${assignment.id}`}>
-              Submission reference
-            </label>
-            <input
-              id={`assignment-key-${assignment.id}`}
-              name="idempotencyKey"
-              minLength={8}
-              maxLength={200}
-              placeholder="Use a new stable reference for each attempt"
-              required
-            />
-          </div>
+          <p className="muted">
+            Submission retries are deduplicated automatically. A new governed
+            attempt receives a new internal reference after this one is recorded.
+          </p>
           <button className="button" disabled={pending}>
             {pending ? "Submitting…" : "Submit assignment"}
           </button>
