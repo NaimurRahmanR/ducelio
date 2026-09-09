@@ -141,6 +141,44 @@ export const learningEvidenceSchema = z.object({
   idempotencyKey: z.string().trim().min(8).max(200),
   reason: z.string().trim().min(5).max(300),
 });
+export const assignmentCreationSchema = z
+  .object({
+    cohortId: z.uuid(),
+    lessonId: z.uuid(),
+    instructorId: z.uuid(),
+    title: z.string().trim().min(1).max(200),
+    instructions: z.string().trim().min(1).max(12000),
+    opensAt: z.iso.datetime({ offset: true }),
+    dueAt: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) => new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
+    "Assignment due time must be after its opening time.",
+  );
+export const assignmentDraftUpdateSchema = z
+  .object({
+    assignmentId: z.uuid(),
+    title: z.string().trim().min(1).max(200),
+    instructions: z.string().trim().min(1).max(12000),
+    opensAt: z.iso.datetime({ offset: true }),
+    dueAt: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) => new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
+    "Assignment due time must be after its opening time.",
+  );
+export const assignmentStatusSchema = z.object({
+  assignmentId: z.uuid(),
+  status: z.enum(["PUBLISHED", "CLOSED"]),
+  reason: z.string().trim().min(5).max(300),
+});
+export const assignmentSubmissionSchema = z.object({
+  assignmentId: z.uuid(),
+  body: z.string().trim().min(1).max(20000),
+  idempotencyKey: z.string().trim().min(8).max(200),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,
