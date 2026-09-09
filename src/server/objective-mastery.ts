@@ -29,10 +29,6 @@ const adminMasterySchema = z.object({
     position: z.number(),
   }),
   lessons: z.object({ title: z.string() }),
-  student_profiles: z.object({
-    student_number: z.string(),
-    app_users: z.object({ display_name: z.string() }),
-  }),
 });
 
 const historySchema = z.object({
@@ -57,7 +53,7 @@ export async function getObjectiveMasteryWorkspace() {
     client
       .from("objective_mastery")
       .select(
-        "id,enrolment_id,student_id,objective_id,lesson_id,programme_version_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position),lessons(title),student_profiles!objective_mastery_student_id_fkey(student_number,app_users(display_name))",
+        "id,enrolment_id,student_id,objective_id,lesson_id,programme_version_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position),lessons(title)",
       )
       .order("evaluated_at", { ascending: false })
       .limit(1000),
