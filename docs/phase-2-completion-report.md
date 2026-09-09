@@ -1,11 +1,11 @@
 # Ducelio Phase 2 completion report
 
-Delivery candidate date: 9 September 2026  
-Branch: `phase-2-academy-os`  
-Target: `main`  
-Status: **IMPLEMENTATION COMPLETE; CHECKPOINT 15 REVIEW CORRECTIONS REQUIRE FINAL LOCAL/CI REVALIDATION**
+Delivery date: 9 September 2026  
+Source branch: `phase-2-academy-os`  
+Merged target: `main`  
+Status: **COMPLETE AND MERGED**
 
-This report records the deterministic Academy OS delivered in Phase 2 and the boundary between completed repository work and production/deployment work that remains outside the phase. Phase 2 must not be described as merged or production-ready until the current branch passes its final exact-tree local gate, pull-request CI/review and merge process.
+This report records the deterministic Academy OS delivered in Phase 2 and the boundary between completed repository work and production/deployment work that remains outside the phase. Phase 2 is merged and repository-validated; this does not mean Ducelio is production-ready for real learners or protected examinations.
 
 ## 1. Phase 2 delivery
 
@@ -99,23 +99,23 @@ Database-owner credentials remain a privileged operational trust boundary becaus
 
 ## 9. Validation evidence
 
-Checkpoint 14's integrated local Node 24 gate completed successfully:
+The corrected final Phase 2 tree passed the exact local Node 24 gate:
 
 - ESLint: PASS;
 - Next route type generation + TypeScript: PASS;
-- Vitest/PostgreSQL workflow suite: **149/149 tests across 23 files PASS**;
+- Vitest/PostgreSQL workflow suite: **152/152 tests across 24 files PASS**;
 - production `next build --webpack`: PASS;
 - Prettier format check: PASS;
 - working tree: clean;
-- branch synchronized with origin.
+- feature branch synchronized with origin before merge.
 
-The first Checkpoint 15 PR-ready tree also passed GitHub Actions on Linux/Node 24. The subsequent manual PR security review found three issues described above, so that earlier green CI run is no longer the release gate for the current head. Migration `020`, the learner assessment-shell correction and dedicated final-review regression tests now require a new exact-tree local gate and a new green PR CI run before merge.
+The corrected PR head then passed GitHub Actions on Linux/Node 24, including `npm ci`, `npm run check`, `npm run format:check` and `npm run build`. The three manual-review blockers were considered closed before merge.
 
-The GitHub CI workflow targets pull requests into `main`, uses Node 24, runs `npm ci`, `npm run check`, `npm run format:check` and `npm run build`. A feature-branch push alone does not satisfy this CI requirement.
+PR #1 was merged into `main` as commit `9b902e742dd8557d51b1c31e0b6a4f522c07982a`. A subsequent CI run triggered by the merge commit on `main` also passed the complete quality, formatting and production-build workflow.
 
 ## 10. Final branch audit
 
-The Phase 2 audit compares `main` with `phase-2-academy-os` rather than trusting checkpoint summaries alone. At the start of Checkpoint 15, GitHub reported the feature branch directly ahead of the current `main` merge base with 0 commits behind.
+The Phase 2 audit compared `main` with `phase-2-academy-os` rather than trusting checkpoint summaries alone. At the start of Checkpoint 15, GitHub reported the feature branch directly ahead of the then-current `main` merge base with 0 commits behind.
 
 Cross-cutting issues discovered during development were resolved before the initial PR, including stale Registrar mutation assumptions, duplicate-enrolment semantics, instructor scheduling serialization, learner timetable identity projection, server-timezone parsing of `datetime-local`, version-mismatched lesson selection, server/DB role-contract mismatch, learner-visible infrastructure idempotency keys, VOID retry attempt numbering, assessment response identity, mutable support programme labels, large resource audit payloads and stale Phase 1 documentation.
 
@@ -123,7 +123,7 @@ The PR review then added three further corrections: explicit instructor-to-class
 
 ## 11. Known limitations / non-production items
 
-The following are not blockers to merging the Phase 2 deterministic implementation, but are blockers or required work before appropriate production use:
+The following are not blockers to the completed Phase 2 repository delivery, but are blockers or required work before appropriate production use:
 
 - hosted Supabase Auth/JWT/PostgREST/RPC/RLS acceptance with real users;
 - Google/LinkedIn provider and SMTP/email-flow acceptance;
@@ -143,16 +143,17 @@ The following are not blockers to merging the Phase 2 deterministic implementati
 
 Protected controlled-assessment foundations must not be marketed as production-ready exam delivery until hosted security/concurrency/accessibility acceptance and later grading/result controls are complete.
 
-## 12. Checkpoint 15 release gate
+## 12. Checkpoint 15 release gate — complete
 
-Phase 2 closes only after this sequence:
+Phase 2 closed after this sequence completed:
 
-1. pull the final review-correction commits locally;
-2. run the exact Node 24 quality gate on that tree;
-3. confirm clean working tree and synchronized feature branch;
-4. confirm the existing PR represents the new head;
-5. require the updated GitHub CI run to pass;
-6. review the corrected diff and confirm no unresolved blocker remains;
-7. merge only the reviewed green PR.
+1. final review-correction commits were pulled and validated locally;
+2. the exact Node 24 gate passed on the corrected tree;
+3. the working tree was clean and synchronized;
+4. PR #1 represented the corrected head;
+5. updated PR GitHub CI passed;
+6. the corrected diff was reviewed with no unresolved blocker remaining;
+7. PR #1 merged to `main` at `9b902e742dd8557d51b1c31e0b6a4f522c07982a`;
+8. post-merge `main` CI passed.
 
-Until those steps finish, the correct status is **Phase 2 implementation complete, final corrected PR/CI gate pending**.
+**Phase 2 is complete and merged.** Future work starts from the merged `main` baseline on a new feature branch.
