@@ -65,12 +65,12 @@ export async function addEnrolment(
   } catch {
     return {
       error:
-        "Unable to create this enrolment. Check the learner, cohort, published curriculum and your permissions.",
+        "Unable to create this enrolment. Check the learner, cohort, published curriculum, existing enrolment state and your permissions.",
     };
   }
   revalidatePath("/admin");
   revalidatePath("/student");
-  return { message: "Learner enrolled." };
+  return { message: "Learner enrolment confirmed." };
 }
 
 export async function updateEnrolmentStatus(
@@ -121,18 +121,12 @@ export async function addClassSession(
   form: FormData,
 ): Promise<ClassSessionActionState> {
   try {
-    const scheduledStart = new Date(
-      String(form.get("scheduledStart")),
-    ).toISOString();
-    const scheduledEnd = new Date(
-      String(form.get("scheduledEnd")),
-    ).toISOString();
     await createClassSession({
       cohortId: form.get("cohortId"),
       lessonId: form.get("lessonId"),
       instructorId: form.get("instructorId"),
-      scheduledStart,
-      scheduledEnd,
+      scheduledStart: form.get("scheduledStart"),
+      scheduledEnd: form.get("scheduledEnd"),
       reason: form.get("reason"),
     });
   } catch {
@@ -270,16 +264,14 @@ export async function addAssignment(
   form: FormData,
 ): Promise<AssignmentActionState> {
   try {
-    const opensAt = new Date(String(form.get("opensAt"))).toISOString();
-    const dueAt = new Date(String(form.get("dueAt"))).toISOString();
     await createAssignment({
       cohortId: form.get("cohortId"),
       lessonId: form.get("lessonId"),
       instructorId: form.get("instructorId"),
       title: form.get("title"),
       instructions: form.get("instructions"),
-      opensAt,
-      dueAt,
+      opensAt: form.get("opensAt"),
+      dueAt: form.get("dueAt"),
       reason: form.get("reason"),
     });
   } catch {
@@ -318,16 +310,14 @@ export async function addControlledAssessment(
   form: FormData,
 ): Promise<AssessmentActionState> {
   try {
-    const opensAt = new Date(String(form.get("opensAt"))).toISOString();
-    const closesAt = new Date(String(form.get("closesAt"))).toISOString();
     await createAssessment({
       cohortId: form.get("cohortId"),
       lessonId: form.get("lessonId"),
       instructorId: form.get("instructorId"),
       title: form.get("title"),
       instructions: form.get("instructions"),
-      opensAt,
-      closesAt,
+      opensAt: form.get("opensAt"),
+      closesAt: form.get("closesAt"),
       durationMinutes: form.get("durationMinutes"),
       attemptsAllowed: form.get("attemptsAllowed"),
       reason: form.get("reason"),
