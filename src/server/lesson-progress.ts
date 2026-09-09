@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { lessonProgressSchema, lessonSegmentSchema } from "@/domain/academy";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const sessionSchema = z.object({
@@ -105,7 +105,7 @@ export async function getLessonProgressWorkspace() {
 
 export async function createLessonSegment(input: unknown) {
   const payload = lessonSegmentSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("create_lesson_segment", {
     p_lesson_id: payload.lessonId,
@@ -119,7 +119,7 @@ export async function createLessonSegment(input: unknown) {
 
 export async function recordLessonProgress(input: unknown) {
   const payload = lessonProgressSchema.parse(input);
-  await requireActor();
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("record_lesson_progress", {
     p_session_id: payload.sessionId,
