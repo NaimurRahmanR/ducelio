@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   submitCoursework,
   type AssignmentSubmissionActionState,
@@ -36,11 +36,27 @@ function AssignmentItem({
     AssignmentSubmissionActionState,
     FormData
   >(submitCoursework, {});
-  const now = Date.now();
-  const isOpen =
-    assignment.status === "PUBLISHED" &&
-    now >= new Date(assignment.opens_at).getTime() &&
-    now <= new Date(assignment.due_at).getTime();
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const updateWindowState = () => {
+      const now = Date.now();
+      setIsOpen(
+        assignment.status === "PUBLISHED" &&
+          now >= new Date(assignment.opens_at).getTime() &&
+          now <= new Date(assignment.due_at).getTime(),
+      );
+    };
+
+    const initialCheck = window.setTimeout(updateWindowState, 0);
+    const interval = window.setInterval(updateWindowState, 60_000);
+
+    return () => {
+      window.clearTimeout(initialCheck);
+      window.clearInterval(interval);
+    };
+  }, [assignment.status, assignment.opens_at, assignment.due_at]);
+
   const attempts = submissions.filter(
     (submission) => submission.assignment_id === assignment.id,
   );
@@ -105,7 +121,9 @@ function AssignmentItem({
           </button>
         </form>
       ) : (
-        <p className="muted">This assignment is not currently open for submission.</p>
+        <p className="muted">
+          This assignment is not currently open for submission.
+        </p>
       )}
     </div>
   );
