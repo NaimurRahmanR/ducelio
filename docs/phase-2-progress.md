@@ -3,9 +3,9 @@
 Branch: `phase-2-academy-os`
 
 LAST COMPLETED CHECKPOINT: 13 — institutional notifications and deterministic support triggers
-CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 14 — Phase 2 integration hardening: resolve accumulated cross-cutting integrity, authorization, timezone, concurrency, service-contract and documentation issues before the final Phase 2 audit/PR.
+CURRENT PARTIAL CHECKPOINT: 14 — Phase 2 integration hardening
+KNOWN FAILURES: Checkpoint 14 has not yet passed the local Node 24 quality gate.
+NEXT EXACT ACTION: Pull Checkpoint 14 locally, run `tests/integration-hardening.test.ts`, then run lint, typecheck, the full test suite, production build and Prettier format check. Resolve any regressions before the final Phase 2 audit/PR checkpoint.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -129,6 +129,25 @@ NEXT EXACT ACTION: Checkpoint 14 — Phase 2 integration hardening: resolve accu
 - Added Administration → Notifications operations, a learner notification page behind the academy bell, server services/actions and focused workflow tests.
 - The current evaluator is an authorised ACADEMIC_ADMIN/PLATFORM_ADMIN backend operation. Production scheduling, email and push delivery remain future operational integrations and are not claimed by this checkpoint.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 143/143 tests in 22 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 14 — Phase 2 integration hardening — in progress
+
+- Migration: `202609090019_phase2_integration_hardening.sql`.
+- Tightened ordinary enrolment and class-session mutation authority to ACADEMIC_ADMIN/PLATFORM_ADMIN while preserving the dedicated Registrar correction path.
+- Duplicate ACTIVE enrolment requests are idempotent; PAUSED/WITHDRAWN/COMPLETED history can no longer be silently presented as a newly successful enrolment.
+- Class scheduling now locks the instructor row before instructor-overlap checks, closing the cross-cohort concurrent double-booking window for the governed RPC.
+- Added `list_my_class_sessions()` as a safe learner-facing projection so timetable rendering no longer depends on nested RLS access to another user's `app_users` identity row.
+- Institutional `datetime-local` authoring controls now convert local wall time to an ISO instant in the browser before server validation, avoiding server-timezone interpretation of class, assignment and assessment times.
+- Class, assignment and assessment authoring UIs filter lessons by the selected cohort's ProgrammeVersion before submission; database version checks remain authoritative.
+- Server role checks now align with database RPC boundaries: assigned INSTRUCTOR operations can reach attendance/progress/evidence/coursework/assessment RPCs, while Registrar-only users do not gain those mutation paths.
+- Learner assignment submissions and assessment response revisions now receive internal deterministic idempotency references instead of asking learners to invent infrastructure keys.
+- Controlled-assessment retry hardening preserves monotonically increasing attempt numbers after VOIDED attempts, serializes attempt starts per learner and adds a composite response-to-attempt identity constraint.
+- Learner-support programme context uses the immutable ProgrammeVersion title snapshot rather than the mutable parent Programme title.
+- Generic LearningResource audit payloads no longer copy full lecture-note bodies.
+- Administration navigation is role-scoped: Registrar-only users get Overview/Registry; Academic Admin does not receive Registry/Audit; Platform Admin retains all sections.
+- Removed stale admin placeholder copy and updated the domain/progress documentation to match implemented Phase 2 state.
+- Added focused integration-hardening regressions for enrolment history semantics, safe timetable projection, voided assessment retries, response identity, resource audit minimisation and scheduling conflict preservation.
+- Local Node 24 validation is required before this checkpoint can be marked complete.
 
 ## Scope boundary
 
