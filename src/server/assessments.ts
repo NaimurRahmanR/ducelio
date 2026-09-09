@@ -1,0 +1,332 @@
+import "server-only";
+import { z } from "zod";
+import { requireActor } from "./identity";
+import { createSupabase } from "./supabase";
+
+const assessmentCreationSchema = z
+  .object({
+    cohortId: z.uuid(),
+    lessonId: z.uuid(),
+    instructorId: z.uuid(),
+    title: z.string().trim().min(1).max(200),
+    instructions: z.string().trim().min(1).max(12000),
+    opensAt: z.iso.datetime({ offset: true }),
+    closesAt: z.iso.datetime({ offset: true }),
+    durationMinutes: z.coerce.number().int().min(1).max(360),
+    attemptsAllowed: z.coerce.number().int().min(1).max(5),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) =>
+      new Date(value.closesAt).getTime() > new Date(value.opensAt).getTime(),
+    "Assessment close time must be after its opening time.",
+  );
+
+const assessmentQuestionSchema = z.object({
+  assessmentId: z.uuid(),
+  position: z.coerce.number().int().positive(),
+  prompt: z.string().trim().min(1).max(12000),
+  maxMarks: z.coerce.number().int().min(1).max(100),
+  expectedAnswer: z.string().trim().min(1).max(12000),
+  markingGuidance: z.string().trim().max(12000).nullable(),
+  reason: z.string().trim().min(5).max(300),
+});
+
+const assessmentStatusSchema = z.object({
+  assessmentId: z.uuid(),
+  status: z.enum(["PUBLISHED", "CLOSED"]),
+  reason: z.string().trim().min(5).max(300),
+});
+
+const assessmentResponseSchema = z.object({
+  attemptId: z.uuid(),
+  questionId: z.uuid(),
+  body: z.string().trim().min(1).max(20000),
+  idempotencyKey: z.string().trim().min(8).max(200),
+});
+
+const assessmentSchema = z.object({
+  id: z.uuid(),
+  cohort_id: z.uuid(),
+  programme_version_id: z.uuid(),
+  lesson_id: z.uuid(),
+  instructor_id: z.uuid(),
+  title: z.string(),
+  instructions: z.string(),
+  opens_at: z.string(),
+  closes_at: z.string(),
+  duration_minutes: z.number(),
+  attempts_allowed: z.number(),
+  status: z.enum(["DRAFT", "PUBLISHED", "CLOSED"]),
+  created_at: z.string(),
+  cohorts: z.object({ title: z.string() }),
+  lessons: z.object({ title: z.string() }),
+  programme_versions: z.object({
+    label: z.string(),
+    title_snapshot: z.string().nullable(),
+  }),
+});
+
+const questionSchema = z.object({
+  id: z.uuid(),
+  position: z.number(),
+  prompt: z.string(),
+  max_marks: z.number(),
+});
+
+const attemptSchema = z.object({
+  id: z.uuid(),
+  assessment_id: z.uuid(),
+  attempt_number: z.number(),
+  state: z.enum(["ACTIVE", "SUBMITTED", "VOIDED"]),
+  started_at: z.string(),
+  expires_at: z.string(),
+  submitted_at: z.string().nullable(),
+});
+
+const responseSchema = z.object({
+  id: z.uuid(),
+  attempt_id: z.uuid(),
+  question_id: z.uuid(),
+  revision_number: z.number(),
+  recorded_at: z.string(),
+});
+
+export async function getAssessmentWorkspace() {
+  await requireActor("admin");
+  const client = await createSupabase();
+  const [assessments, attempts, cohorts, lessons, instructors] =
+    await Promise.all([
+      client
+        .from("assessments")
+        .select(
+          "id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,created_at,cohorts(title),lessons(title),programme_versions(label,title_snapshot)",
+        )
+        .order("created_at", { ascending: false })
+        .limit(300),
+      client
+        .from("assessment_attempts")
+        .select(
+          "id,assessment_id,attempt_number,state,started_at,expires_at,submitted_at",
+        )
+        .order("started_at", { ascending: false })
+        .limit(1000),
+      client
+        .from("cohorts")
+        .select("id,title,programme_version_id")
+        .order("starts_on", { ascending: false })
+        .limit(200),
+      client
+        .from("lessons")
+        .select("id,title,programme_version_id")
+        .order("title")
+        .limit(500),
+      client.rpc("list_assignable_instructors"),
+    ]);
+
+  if (
+    assessments.error ||
+    attempts.error ||
+    cohorts.error ||
+    lessons.error ||
+    instructors.error
+  )
+    throw new Error("Assessment workspace could not be loaded.");
+
+  const parsedAssessments = z.array(assessmentSchema).parse(assessments.data);
+  const questionsByAssessment: Record<string, z.infer<typeof questionSchema>[]> = {};
+  for (const assessment of parsedAssessments) {
+    const { data, error } = await client.rpc("list_assessment_authoring_questions", {
+      p_assessment_id: assessment.id,
+    });
+    if (error) throw new Error("Assessment questions could not be loaded.");
+    questionsByAssessment[assessment.id] = z.array(questionSchema).parse(data);
+  }
+
+  return {
+    assessments: parsedAssessments,
+    attempts: z.array(attemptSchema).parse(attempts.data),
+    questionsByAssessment,
+    cohorts: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string(),
+          programme_version_id: z.uuid(),
+        }),
+      )
+      .parse(cohorts.data),
+    lessons: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string(),
+          programme_version_id: z.uuid(),
+        }),
+      )
+      .parse(lessons.data),
+    instructors: z
+      .array(
+        z.object({
+          user_id: z.uuid(),
+          display_name: z.string(),
+          title: z.string(),
+        }),
+      )
+      .parse(instructors.data),
+  };
+}
+
+export async function createAssessment(input: unknown) {
+  const payload = assessmentCreationSchema.parse(input);
+  await requireActor("admin");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("create_assessment", {
+    p_cohort_id: payload.cohortId,
+    p_lesson_id: payload.lessonId,
+    p_instructor_id: payload.instructorId,
+    p_title: payload.title,
+    p_instructions: payload.instructions,
+    p_opens_at: payload.opensAt,
+    p_closes_at: payload.closesAt,
+    p_duration_minutes: payload.durationMinutes,
+    p_attempts_allowed: payload.attemptsAllowed,
+    p_reason: payload.reason,
+  });
+  if (error) throw new Error("Assessment could not be created.");
+  return z.uuid().parse(data);
+}
+
+export async function addAssessmentQuestion(input: unknown) {
+  const payload = assessmentQuestionSchema.parse(input);
+  await requireActor("admin");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("add_assessment_question", {
+    p_assessment_id: payload.assessmentId,
+    p_position: payload.position,
+    p_prompt: payload.prompt,
+    p_max_marks: payload.maxMarks,
+    p_expected_answer: payload.expectedAnswer,
+    p_marking_guidance: payload.markingGuidance,
+    p_reason: payload.reason,
+  });
+  if (error) throw new Error("Assessment question could not be added.");
+  return z.uuid().parse(data);
+}
+
+export async function changeAssessmentStatus(input: unknown) {
+  const payload = assessmentStatusSchema.parse(input);
+  await requireActor("admin");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("change_assessment_status", {
+    p_assessment_id: payload.assessmentId,
+    p_status: payload.status,
+    p_reason: payload.reason,
+  });
+  if (error) throw new Error("Assessment status could not be changed.");
+  return z.uuid().parse(data);
+}
+
+export async function getStudentAssessments() {
+  await requireActor("student");
+  const client = await createSupabase();
+  const [assessments, attempts, responses, activity] = await Promise.all([
+    client
+      .from("assessments")
+      .select(
+        "id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,lessons(title),programme_versions(label,title_snapshot)",
+      )
+      .order("opens_at", { ascending: true })
+      .limit(100),
+    client
+      .from("assessment_attempts")
+      .select(
+        "id,assessment_id,attempt_number,state,started_at,expires_at,submitted_at",
+      )
+      .order("started_at", { ascending: false })
+      .limit(100),
+    client
+      .from("assessment_responses")
+      .select("id,attempt_id,question_id,revision_number,recorded_at")
+      .order("recorded_at", { ascending: false })
+      .limit(1000),
+    client.rpc("current_academic_activity_state"),
+  ]);
+
+  if (assessments.error || attempts.error || responses.error || activity.error)
+    throw new Error("Your assessments could not be loaded.");
+
+  const parsedAttempts = z.array(attemptSchema).parse(attempts.data);
+  const activeAttempt = parsedAttempts.find((attempt) => attempt.state === "ACTIVE");
+  let activeQuestions: z.infer<typeof questionSchema>[] = [];
+  if (activeAttempt) {
+    const { data, error } = await client.rpc("get_active_assessment_questions", {
+      p_assessment_id: activeAttempt.assessment_id,
+    });
+    if (!error) activeQuestions = z.array(questionSchema).parse(data);
+  }
+
+  return {
+    assessments: z
+      .array(
+        z.object({
+          id: z.uuid(),
+          title: z.string(),
+          instructions: z.string(),
+          opens_at: z.string(),
+          closes_at: z.string(),
+          duration_minutes: z.number(),
+          attempts_allowed: z.number(),
+          status: z.enum(["PUBLISHED", "CLOSED"]),
+          lessons: z.object({ title: z.string() }),
+          programme_versions: z.object({
+            label: z.string(),
+            title_snapshot: z.string().nullable(),
+          }),
+        }),
+      )
+      .parse(assessments.data),
+    attempts: parsedAttempts,
+    responses: z.array(responseSchema).parse(responses.data),
+    activityState: z
+      .enum(["NORMAL", "CONTROLLED_ASSESSMENT_ACTIVE"])
+      .parse(activity.data),
+    activeQuestions,
+  };
+}
+
+export async function startAssessmentAttempt(assessmentId: unknown) {
+  const id = z.uuid().parse(assessmentId);
+  await requireActor("student");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("start_assessment_attempt", {
+    p_assessment_id: id,
+  });
+  if (error) throw new Error("Assessment attempt could not be started.");
+  return z.uuid().parse(data);
+}
+
+export async function recordAssessmentResponse(input: unknown) {
+  const payload = assessmentResponseSchema.parse(input);
+  await requireActor("student");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("record_assessment_response", {
+    p_attempt_id: payload.attemptId,
+    p_question_id: payload.questionId,
+    p_body: payload.body,
+    p_idempotency_key: payload.idempotencyKey,
+  });
+  if (error) throw new Error("Assessment response could not be saved.");
+  return z.uuid().parse(data);
+}
+
+export async function submitAssessmentAttempt(attemptId: unknown) {
+  const id = z.uuid().parse(attemptId);
+  await requireActor("student");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("submit_assessment_attempt", {
+    p_attempt_id: id,
+  });
+  if (error) throw new Error("Assessment attempt could not be submitted.");
+  return z.uuid().parse(data);
+}
