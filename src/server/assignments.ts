@@ -6,7 +6,7 @@ import {
   assignmentStatusSchema,
   assignmentSubmissionSchema,
 } from "@/domain/academy";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const assignmentSchema = z.object({
@@ -116,7 +116,7 @@ export async function getAssignmentWorkspace() {
 
 export async function createAssignment(input: unknown) {
   const payload = assignmentCreationSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("create_assignment", {
     p_cohort_id: payload.cohortId,
@@ -134,7 +134,7 @@ export async function createAssignment(input: unknown) {
 
 export async function updateDraftAssignment(input: unknown) {
   const payload = assignmentDraftUpdateSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("update_draft_assignment", {
     p_assignment_id: payload.assignmentId,
@@ -150,7 +150,7 @@ export async function updateDraftAssignment(input: unknown) {
 
 export async function changeAssignmentStatus(input: unknown) {
   const payload = assignmentStatusSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("change_assignment_status", {
     p_assignment_id: payload.assignmentId,
