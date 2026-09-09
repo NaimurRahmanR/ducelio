@@ -2,10 +2,10 @@
 
 Branch: `phase-2-academy-os`
 
-LAST COMPLETED CHECKPOINT: 8 — deterministic learning evidence collection
-CURRENT PARTIAL CHECKPOINT: 9 — deterministic objective mastery policy, current state and immutable transition history
-KNOWN FAILURES: Not yet locally validated after Checkpoint 9 implementation.
-NEXT EXACT ACTION: Pull Checkpoint 9 locally and run lint, typecheck, tests, production build and Prettier format check.
+LAST COMPLETED CHECKPOINT: 9 — deterministic objective mastery policy, current state and immutable transition history
+CURRENT PARTIAL CHECKPOINT: None
+KNOWN FAILURES: None after the final local Node 24 quality gate.
+NEXT EXACT ACTION: Checkpoint 10 — governed assignments, kept separate from controlled assessments and assessment-firewall enforcement.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -75,14 +75,14 @@ NEXT EXACT ACTION: Pull Checkpoint 9 locally and run lint, typecheck, tests, pro
 - Evidence collection does not update objective mastery. It supplies auditable input for the later deterministic mastery policy rather than treating a correct observation, page view or click as mastery.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 105/105 tests in 17 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
-## Checkpoint 9 — deterministic objective mastery — in progress
+## Checkpoint 9 — deterministic objective mastery — complete
 
 - Migration: `202609090014_phase2_objective_mastery.sql`.
 - Added current objective mastery state and append-only transition history bound to learner enrolment, lesson objective and curriculum version.
 - `MASTERY_V1` keeps first evidence at DEVELOPING; DEMONSTRATED requires correct evidence across at least two distinct class sessions and two evidence kinds; later partial/incorrect evidence moves a demonstrated objective to NEEDS_REINFORCEMENT; later correct evidence can restore DEMONSTRATED when diversity remains sufficient.
 - Evidence insert, mastery evaluation, current-state update, history transition and audit run in one database transaction. Existing evidence is deterministically replayed during migration to reconstruct current state.
 - Added RLS read boundaries, admin Evidence workspace mastery/history views, learner Results mastery display and focused mastery transition tests.
-- Local validation is still required before this checkpoint can be marked complete.
+- Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 112/112 tests in 18 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Scope boundary
 
