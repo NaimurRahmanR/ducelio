@@ -19,7 +19,9 @@ let secondSessionId: string;
 let masteryId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -193,7 +195,12 @@ describe("deterministic objective mastery", () => {
 
   it("restores DEMONSTRATED after later correct evidence when diversity remains sufficient", async () => {
     await asAuth(adminAuth);
-    await recordEvidence(secondSessionId, "PRACTICAL_TASK", "CORRECT", "fourth");
+    await recordEvidence(
+      secondSessionId,
+      "PRACTICAL_TASK",
+      "CORRECT",
+      "fourth",
+    );
     await resetRole();
 
     const row = await db.query<{ state: string }>(
@@ -208,7 +215,9 @@ describe("deterministic objective mastery", () => {
       "select from_state,to_state from public.objective_mastery_history where mastery_id=$1 order by changed_at,id",
       [masteryId],
     );
-    expect(history.rows.map((row) => `${row.from_state}->${row.to_state}`)).toEqual([
+    expect(
+      history.rows.map((row) => `${row.from_state}->${row.to_state}`),
+    ).toEqual([
       "NOT_STARTED->DEVELOPING",
       "DEVELOPING->DEMONSTRATED",
       "DEMONSTRATED->NEEDS_REINFORCEMENT",

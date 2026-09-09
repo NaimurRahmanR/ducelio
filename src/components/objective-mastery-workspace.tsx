@@ -1,10 +1,7 @@
 import { Badge, Card, EmptyState } from "./ui";
 
 type MasteryState =
-  | "NOT_STARTED"
-  | "DEVELOPING"
-  | "DEMONSTRATED"
-  | "NEEDS_REINFORCEMENT";
+  "NOT_STARTED" | "DEVELOPING" | "DEMONSTRATED" | "NEEDS_REINFORCEMENT";
 
 type Enrolment = {
   id: string;

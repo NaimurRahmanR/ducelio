@@ -320,8 +320,8 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               ))
             ) : (
               <EmptyState title="No objective mastery state yet">
-                Your mastery state appears only after validated learning evidence
-                has been processed by the academy policy.
+                Your mastery state appears only after validated learning
+                evidence has been processed by the academy policy.
               </EmptyState>
             )}
           </Card>
