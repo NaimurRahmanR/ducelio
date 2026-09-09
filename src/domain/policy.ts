@@ -1,5 +1,11 @@
 import type { Role } from "./academy";
 export type Actor = { id: string; displayName: string; roles: Role[] };
+export class AuthenticationRequired extends Error {
+  constructor() {
+    super("Authentication required");
+    this.name = "AuthenticationRequired";
+  }
+}
 export class AccessDenied extends Error {
   constructor() {
     super("Access denied");

@@ -2,10 +2,10 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 2 checkpoint 15 — final audit, review hardening and merge
+LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1A/1B — provider-independent Professor read capability boundary; local validation complete, PR review pending
 CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None at Phase 2 closure. The corrected final tree passed 152/152 tests across 24 files locally and in PR CI; PR #1 merged to `main` at `9b902e7`; post-merge `main` CI passed.
-NEXT EXACT ACTION: Review `docs/12-roadmap.md`, choose the next development phase, and create a new feature branch from the merged `main` baseline. Do not continue feature development directly on `main`.
+KNOWN FAILURES: None in the local Phase 3 checkpoint gate: 218/218 tests across 26 files, lint, route/type generation, TypeScript, production build and formatting passed. Phase 3 PR CI/review, hosted acceptance and independent concurrent PostgreSQL acceptance have not been performed.
+NEXT EXACT ACTION: Review the Checkpoint 1A/1B diff and security boundaries on `phase-3-ai-academic-layer`, commit the reviewed slice, and obtain PR CI/review before any merge. Further capabilities, durable execution auditing and provider integration require their own reviewed scope.
 
 ## Phase 1 — complete
 
@@ -42,6 +42,26 @@ The final review found and corrected three additional blockers before merge:
 Migration `202609090020_phase2_final_review_hardening.sql` closes those findings by requiring instructor-initiated coursework/assessment creation to match a real non-cancelled ClassSession relationship, minimising Counsellor follow-up notification content and keeping support-only notification kinds outside Academic Admin/Platform Admin reads, and deterministically finalising expired/closed ACTIVE assessment attempts before another start. The learner controlled-assessment UI renders an active protected-content shell only when server-owned activity state is actually `CONTROLLED_ASSESSMENT_ACTIVE`.
 
 The corrected final Phase 2 gate passed ESLint, route/type generation, TypeScript, **152/152 tests across 24 files**, production webpack build and Prettier locally. The corrected PR-head GitHub Actions run passed on Linux/Node 24. PR #1 was then merged into `main` at `9b902e742dd8557d51b1c31e0b6a4f522c07982a`, and the post-merge `main` CI run also passed.
+
+## Phase 3 checkpoint 1A/1B — local implementation complete
+
+The first provider-independent capability boundary exposes exactly five server-only reads: `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. The contracts and limitations are documented in `14-academic-capabilities.md`.
+
+All five require the authenticated human principal to hold STUDENT. PROFESSOR is a fixed server-selected capability profile, not a RoleGrant or database principal. Multi-role users receive only their own STUDENT enrolment scope. New narrow Academy OS read services enforce explicit ownership and exact enrolled programme-version relationships alongside existing RLS; historical enrolment reads do not acquire a generic current-publication filter.
+
+The gateway orchestrates Academy OS services, validates strict bounded input/output contracts and returns stable errors plus metadata-only provenance for successes and denials. Academic-content reads use the existing server-owned EXPLAIN firewall before retrieval and before return. Permission snapshots remain informational. No evidence/mastery/handoff write, provider SDK, model call, chat UI or public capability endpoint was added.
+
+No new migration, database grants, dependencies or environment configuration were needed. Provenance is returned in the result envelope; a durable capability execution audit is not implemented or claimed. Separate activity checks do not constitute a transaction or a concurrency lock spanning delivery. Durable audit, concurrent release review, hosted acceptance, rate/cost controls, retention, homework integrity and human review/escalation remain required before external academic-agent rollout.
+
+Validation on 2026-09-09 with Node 24.19.0 on PATH:
+
+- Relevant capability suites: **66/66 tests passed**.
+- `npm run check`: ESLint, route/type generation, TypeScript and **218/218 tests across 26 files passed**, preserving all 152 Phase 2 regression tests.
+- `npm run build`: production webpack build passed; no new application routes.
+- `npm run format:check`: passed.
+- `git diff --check`: passed.
+
+This progress entry was updated only after the implementation passed the local checkpoint gates. The changes remain on the Phase 3 feature branch; no merge to `main` or Phase 3 PR CI success is claimed.
 
 ## Current scope boundary
 
