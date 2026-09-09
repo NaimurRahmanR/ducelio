@@ -125,7 +125,10 @@ export function StudentAssessments({
     AssessmentActionState,
     FormData
   >(finishControlledAssessment, {});
-  const activeAttempt = attempts.find((attempt) => attempt.state === "ACTIVE");
+  const activeAttempt =
+    activityState === "CONTROLLED_ASSESSMENT_ACTIVE"
+      ? attempts.find((attempt) => attempt.state === "ACTIVE")
+      : undefined;
 
   return (
     <>
