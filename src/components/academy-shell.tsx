@@ -138,7 +138,9 @@ export function AcademyShell({
             </span>
             <Link
               className="icon-link"
-              aria-label={demo ? "Academy announcements" : "Academy notifications"}
+              aria-label={
+                demo ? "Academy announcements" : "Academy notifications"
+              }
               href={demo ? base + "/announcements" : base + "/notifications"}
             >
               <Bell size={19} />
@@ -165,7 +167,9 @@ export function AcademyShell({
             Academy menu
             <span>
               {active?.[0] ??
-                (pathname.endsWith("/notifications") ? "Notifications" : "Study plan")}
+                (pathname.endsWith("/notifications")
+                  ? "Notifications"
+                  : "Study plan")}
             </span>
           </summary>
           <nav aria-label="Mobile academy navigation">

@@ -57,7 +57,9 @@ export function StudentNotificationList({
 }: {
   notifications: Notification[];
 }) {
-  const unread = notifications.filter((notification) => !notification.read_at).length;
+  const unread = notifications.filter(
+    (notification) => !notification.read_at,
+  ).length;
   return (
     <div className="section-content">
       <Card>
@@ -70,16 +72,20 @@ export function StudentNotificationList({
         </div>
         <p className="muted">
           These notices are generated from explicit academy records and support
-          rules. They do not change grades, deadlines, attendance or mastery state.
+          rules. They do not change grades, deadlines, attendance or mastery
+          state.
         </p>
         {notifications.length ? (
           notifications.map((notification) => (
-            <NotificationRecord key={notification.id} notification={notification} />
+            <NotificationRecord
+              key={notification.id}
+              notification={notification}
+            />
           ))
         ) : (
           <EmptyState title="No academy notifications">
-            When a deterministic institutional or support rule produces a learner
-            notice, it will appear here.
+            When a deterministic institutional or support rule produces a
+            learner notice, it will appear here.
           </EmptyState>
         )}
       </Card>

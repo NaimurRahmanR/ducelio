@@ -22,7 +22,9 @@ let masteryId: string;
 let notificationId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -181,10 +183,22 @@ describe("deterministic support notifications", () => {
     );
     expect(events.rows).toEqual(
       expect.arrayContaining([
-        { kind: "MISSED_CLASS", source_reference: `attendance:${attendanceId}` },
-        { kind: "DEADLINE_APPROACHING", source_reference: `assignment:${assignmentId}` },
-        { kind: "PLAN_OVERDUE", source_reference: `study-plan-item:${planItemId}` },
-        { kind: "OBJECTIVE_REINFORCEMENT", source_reference: `mastery:${masteryId}` },
+        {
+          kind: "MISSED_CLASS",
+          source_reference: `attendance:${attendanceId}`,
+        },
+        {
+          kind: "DEADLINE_APPROACHING",
+          source_reference: `assignment:${assignmentId}`,
+        },
+        {
+          kind: "PLAN_OVERDUE",
+          source_reference: `study-plan-item:${planItemId}`,
+        },
+        {
+          kind: "OBJECTIVE_REINFORCEMENT",
+          source_reference: `mastery:${masteryId}`,
+        },
       ]),
     );
 
@@ -253,9 +267,10 @@ describe("deterministic support notifications", () => {
   });
 
   it("resolves plan and mastery support events when their owning records change", async () => {
-    await db.query("update public.study_plan_items set status='DONE' where id=$1", [
-      planItemId,
-    ]);
+    await db.query(
+      "update public.study_plan_items set status='DONE' where id=$1",
+      [planItemId],
+    );
     await db.query(
       "update public.objective_mastery set state='DEMONSTRATED' where id=$1",
       [masteryId],

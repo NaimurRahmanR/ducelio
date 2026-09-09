@@ -51,9 +51,12 @@ export async function markNotificationRead(input: unknown) {
   const notificationId = z.uuid().parse(input);
   await requireActor("student");
   const client = await createSupabase();
-  const { data, error } = await client.rpc("mark_institutional_notification_read", {
-    p_notification_id: notificationId,
-  });
+  const { data, error } = await client.rpc(
+    "mark_institutional_notification_read",
+    {
+      p_notification_id: notificationId,
+    },
+  );
   if (error) throw new Error("Notification could not be marked as read.");
   return z.uuid().parse(data);
 }
@@ -74,7 +77,8 @@ export async function getNotificationOperationsWorkspace() {
     )
     .order("created_at", { ascending: false })
     .limit(100);
-  if (error) throw new Error("Institutional notifications could not be loaded.");
+  if (error)
+    throw new Error("Institutional notifications could not be loaded.");
 
   const notifications = z.array(notificationSchema).parse(data);
   return {
@@ -83,7 +87,8 @@ export async function getNotificationOperationsWorkspace() {
     notifications,
     summary: {
       total: notifications.length,
-      unread: notifications.filter((notification) => !notification.read_at).length,
+      unread: notifications.filter((notification) => !notification.read_at)
+        .length,
     },
   };
 }
@@ -99,9 +104,12 @@ export async function refreshDeterministicSupportTriggers(input: unknown) {
     throw new AccessDenied();
 
   const client = await createSupabase();
-  const { data, error } = await client.rpc("refresh_deterministic_support_triggers", {
-    p_reason: reason,
-  });
+  const { data, error } = await client.rpc(
+    "refresh_deterministic_support_triggers",
+    {
+      p_reason: reason,
+    },
+  );
   if (error)
     throw new Error("Deterministic support rules could not be evaluated.");
   return refreshResultSchema.parse(data);

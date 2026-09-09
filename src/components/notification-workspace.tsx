@@ -33,10 +33,10 @@ export function NotificationWorkspace({
   canManage: boolean;
   summary: { total: number; unread: number } | null;
 }) {
-  const [state, action, pending] = useActionState<NotificationActionState, FormData>(
-    runDeterministicSupportScan,
-    {},
-  );
+  const [state, action, pending] = useActionState<
+    NotificationActionState,
+    FormData
+  >(runDeterministicSupportScan, {});
 
   return (
     <div className="section-content">
@@ -53,14 +53,14 @@ export function NotificationWorkspace({
           )}
         </div>
         <p>
-          Support conditions are derived from authoritative academy records only:
-          recorded absence, approaching assignment deadlines without a submission,
-          overdue study-plan items and objectives marked NEEDS_REINFORCEMENT by the
-          deterministic mastery policy.
+          Support conditions are derived from authoritative academy records
+          only: recorded absence, approaching assignment deadlines without a
+          submission, overdue study-plan items and objectives marked
+          NEEDS_REINFORCEMENT by the deterministic mastery policy.
         </p>
         <p className="muted">
-          The rule set does not infer disengagement from clicks, page views, elapsed
-          time, prompt sentiment or other behavioural proxies.
+          The rule set does not infer disengagement from clicks, page views,
+          elapsed time, prompt sentiment or other behavioural proxies.
         </p>
         {canManage ? (
           <form action={action} className="support-form">
@@ -84,8 +84,8 @@ export function NotificationWorkspace({
           </form>
         ) : (
           <div className="notice">
-            Academic Administrator or Platform Administrator authority is required to
-            evaluate institutional support rules.
+            Academic Administrator or Platform Administrator authority is
+            required to evaluate institutional support rules.
           </div>
         )}
       </Card>
@@ -114,7 +114,9 @@ export function NotificationWorkspace({
                     </td>
                     <td>{notification.student_id}</td>
                     <td>{notification.read_at ? "READ" : "UNREAD"}</td>
-                    <td>{new Date(notification.created_at).toLocaleString()}</td>
+                    <td>
+                      {new Date(notification.created_at).toLocaleString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -122,8 +124,9 @@ export function NotificationWorkspace({
           </div>
         ) : (
           <EmptyState title="No institutional notifications generated">
-            Evaluate SUPPORT_V1 after authoritative records exist. Re-running the
-            same rules is idempotent and does not duplicate existing notifications.
+            Evaluate SUPPORT_V1 after authoritative records exist. Re-running
+            the same rules is idempotent and does not duplicate existing
+            notifications.
           </EmptyState>
         )}
       </Card>

@@ -13,7 +13,9 @@ export async function runDeterministicSupportScan(
   form: FormData,
 ): Promise<NotificationActionState> {
   try {
-    const result = await refreshDeterministicSupportTriggers(form.get("reason"));
+    const result = await refreshDeterministicSupportTriggers(
+      form.get("reason"),
+    );
     revalidatePath("/admin");
     revalidatePath("/support");
     revalidatePath("/student/notifications");

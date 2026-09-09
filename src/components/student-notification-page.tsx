@@ -10,7 +10,9 @@ export async function StudentNotificationPage() {
         <div>
           <p className="eyebrow">YOUR ACADEMY</p>
           <h1>Notifications</h1>
-          <p>Deterministic notices from your academy records and support rules.</p>
+          <p>
+            Deterministic notices from your academy records and support rules.
+          </p>
         </div>
       </div>
       <StudentNotificationList notifications={notifications} />

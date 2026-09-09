@@ -56,7 +56,9 @@ export default async function Page({
   const assessmentWorkspace =
     section === "Assessments" ? await getAssessmentWorkspace() : null;
   const notificationWorkspace =
-    section === "Notifications" ? await getNotificationOperationsWorkspace() : null;
+    section === "Notifications"
+      ? await getNotificationOperationsWorkspace()
+      : null;
   const registrarWorkspace =
     section === "Registry" &&
     (data.actor.roles.includes("REGISTRAR") ||
