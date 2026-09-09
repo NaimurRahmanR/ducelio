@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { LiveStudent } from "@/components/live-student";
 import { StudentAssignments } from "@/components/student-assignments";
+import { StudentAssessmentPage } from "@/components/student-assessment-page";
 
 export default async function Page({
   params,
@@ -26,5 +27,6 @@ export default async function Page({
     notFound();
 
   if (section === "assignments") return <StudentAssignments />;
+  if (section === "assessments") return <StudentAssessmentPage />;
   return <LiveStudent section={section} />;
 }
