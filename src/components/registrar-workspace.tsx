@@ -47,10 +47,10 @@ type Correction = {
 };
 
 function EnrolmentCorrectionForm({ enrolment }: { enrolment: Enrolment }) {
-  const [state, action, pending] = useActionState<RegistrarActionState, FormData>(
-    correctEnrolmentRecord,
-    {},
-  );
+  const [state, action, pending] = useActionState<
+    RegistrarActionState,
+    FormData
+  >(correctEnrolmentRecord, {});
   const options = ["ACTIVE", "PAUSED", "WITHDRAWN"].filter(
     (status) => status !== enrolment.status,
   );
@@ -58,7 +58,8 @@ function EnrolmentCorrectionForm({ enrolment }: { enrolment: Enrolment }) {
   if (enrolment.status === "COMPLETED") {
     return (
       <p className="muted">
-        Completed enrolments are locked from registrar correction in this checkpoint.
+        Completed enrolments are locked from registrar correction in this
+        checkpoint.
       </p>
     );
   }
@@ -67,7 +68,9 @@ function EnrolmentCorrectionForm({ enrolment }: { enrolment: Enrolment }) {
     <form action={action} className="support-form">
       <input type="hidden" name="enrolmentId" value={enrolment.id} />
       <div className="field">
-        <label htmlFor={`enrolment-status-${enrolment.id}`}>Correct status</label>
+        <label htmlFor={`enrolment-status-${enrolment.id}`}>
+          Correct status
+        </label>
         <select id={`enrolment-status-${enrolment.id}`} name="status" required>
           {options.map((status) => (
             <option key={status} value={status}>
@@ -77,7 +80,9 @@ function EnrolmentCorrectionForm({ enrolment }: { enrolment: Enrolment }) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor={`enrolment-reason-${enrolment.id}`}>Correction reason</label>
+        <label htmlFor={`enrolment-reason-${enrolment.id}`}>
+          Correction reason
+        </label>
         <textarea
           id={`enrolment-reason-${enrolment.id}`}
           name="reason"
@@ -97,10 +102,10 @@ function EnrolmentCorrectionForm({ enrolment }: { enrolment: Enrolment }) {
 }
 
 function AttendanceCorrectionForm({ attendance }: { attendance: Attendance }) {
-  const [state, action, pending] = useActionState<RegistrarActionState, FormData>(
-    correctAttendanceRecord,
-    {},
-  );
+  const [state, action, pending] = useActionState<
+    RegistrarActionState,
+    FormData
+  >(correctAttendanceRecord, {});
   const options = ["PRESENT", "LATE", "ABSENT", "EXCUSED"].filter(
     (status) => status !== attendance.status,
   );
@@ -109,8 +114,14 @@ function AttendanceCorrectionForm({ attendance }: { attendance: Attendance }) {
     <form action={action} className="support-form">
       <input type="hidden" name="attendanceRecordId" value={attendance.id} />
       <div className="field">
-        <label htmlFor={`attendance-status-${attendance.id}`}>Correct status</label>
-        <select id={`attendance-status-${attendance.id}`} name="status" required>
+        <label htmlFor={`attendance-status-${attendance.id}`}>
+          Correct status
+        </label>
+        <select
+          id={`attendance-status-${attendance.id}`}
+          name="status"
+          required
+        >
           {options.map((status) => (
             <option key={status} value={status}>
               {status}
@@ -119,7 +130,9 @@ function AttendanceCorrectionForm({ attendance }: { attendance: Attendance }) {
         </select>
       </div>
       <div className="field">
-        <label htmlFor={`attendance-reason-${attendance.id}`}>Correction reason</label>
+        <label htmlFor={`attendance-reason-${attendance.id}`}>
+          Correction reason
+        </label>
         <textarea
           id={`attendance-reason-${attendance.id}`}
           name="reason"
@@ -157,9 +170,9 @@ export function RegistrarWorkspace({
           </div>
         </div>
         <p>
-          Correct existing official enrolment and attendance records with a bounded
-          reason. This workspace does not grant curriculum, evidence, mastery,
-          assessment or teaching authority.
+          Correct existing official enrolment and attendance records with a
+          bounded reason. This workspace does not grant curriculum, evidence,
+          mastery, assessment or teaching authority.
         </p>
       </Card>
 
@@ -172,7 +185,8 @@ export function RegistrarWorkspace({
                 <Badge tone="blue">{enrolment.status}</Badge>
                 <h3>{enrolment.student_profiles.app_users.display_name}</h3>
                 <p>
-                  {enrolment.student_profiles.student_number} · {enrolment.cohort_title_snapshot}
+                  {enrolment.student_profiles.student_number} ·{" "}
+                  {enrolment.cohort_title_snapshot}
                 </p>
                 <p className="muted">
                   Cohort started {enrolment.cohort_starts_on_snapshot}
@@ -183,7 +197,8 @@ export function RegistrarWorkspace({
           </div>
         ) : (
           <EmptyState title="No enrolment records available">
-            Existing official enrolments will appear here for authorised registrar review.
+            Existing official enrolments will appear here for authorised
+            registrar review.
           </EmptyState>
         )}
       </Card>
@@ -196,15 +211,22 @@ export function RegistrarWorkspace({
               <div className="support-record" key={record.id}>
                 <Badge tone="blue">{record.status}</Badge>
                 <h3>{record.class_sessions.lessons.title}</h3>
-                <p>{new Date(record.class_sessions.scheduled_start).toLocaleString()}</p>
-                <p className="muted">Last updated {new Date(record.updated_at).toLocaleString()}</p>
+                <p>
+                  {new Date(
+                    record.class_sessions.scheduled_start,
+                  ).toLocaleString()}
+                </p>
+                <p className="muted">
+                  Last updated {new Date(record.updated_at).toLocaleString()}
+                </p>
                 <AttendanceCorrectionForm attendance={record} />
               </div>
             ))}
           </div>
         ) : (
           <EmptyState title="No attendance records available">
-            Existing official attendance records will appear here for authorised registrar review.
+            Existing official attendance records will appear here for authorised
+            registrar review.
           </EmptyState>
         )}
       </Card>
@@ -230,7 +252,9 @@ export function RegistrarWorkspace({
                     <td>{correction.before_value}</td>
                     <td>{correction.after_value}</td>
                     <td>{correction.reason}</td>
-                    <td>{new Date(correction.corrected_at).toLocaleString()}</td>
+                    <td>
+                      {new Date(correction.corrected_at).toLocaleString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -238,7 +262,8 @@ export function RegistrarWorkspace({
           </div>
         ) : (
           <EmptyState title="No registrar corrections recorded">
-            Reviewed changes will appear here without rewriting correction history.
+            Reviewed changes will appear here without rewriting correction
+            history.
           </EmptyState>
         )}
       </Card>

@@ -16,7 +16,9 @@ let attendanceId: string;
 let firstCorrectionId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 
@@ -116,15 +118,24 @@ describe("governed registrar corrections", () => {
       "select public.registrar_correct_enrolment_status($1,'ACTIVE','Restore corrected active status')",
       [enrolmentId],
     );
-    const history = await db.query<{ before_value: string; after_value: string }>(
+    const history = await db.query<{
+      before_value: string;
+      after_value: string;
+    }>(
       "select before_value,after_value from public.registrar_corrections where enrolment_id=$1 order by corrected_at,id",
       [enrolmentId],
     );
     await resetRole();
 
     expect(history.rows).toHaveLength(2);
-    expect(history.rows[0]).toEqual({ before_value: "ACTIVE", after_value: "PAUSED" });
-    expect(history.rows[1]).toEqual({ before_value: "PAUSED", after_value: "ACTIVE" });
+    expect(history.rows[0]).toEqual({
+      before_value: "ACTIVE",
+      after_value: "PAUSED",
+    });
+    expect(history.rows[1]).toEqual({
+      before_value: "PAUSED",
+      after_value: "ACTIVE",
+    });
   });
 
   it("records an attendance correction without replacing record identity", async () => {
@@ -133,7 +144,11 @@ describe("governed registrar corrections", () => {
       "select public.registrar_correct_attendance_status($1,'EXCUSED','Approved documented attendance correction') as id",
       [attendanceId],
     );
-    const current = await db.query<{ id: string; status: string; updated_by: string }>(
+    const current = await db.query<{
+      id: string;
+      status: string;
+      updated_by: string;
+    }>(
       "select id,status,updated_by from public.attendance_records where id=$1",
       [attendanceId],
     );
@@ -151,7 +166,10 @@ describe("governed registrar corrections", () => {
       status: "EXCUSED",
       updated_by: registrarId,
     });
-    expect(history.rows[0]).toEqual({ before_value: "PRESENT", after_value: "EXCUSED" });
+    expect(history.rows[0]).toEqual({
+      before_value: "PRESENT",
+      after_value: "EXCUSED",
+    });
   });
 
   it("prevents registrar-only actors from bypassing the enrolment correction ledger", async () => {
@@ -161,7 +179,9 @@ describe("governed registrar corrections", () => {
         "select public.change_enrolment_status($1,'PAUSED','Attempt generic registrar status mutation')",
         [enrolmentId],
       ),
-    ).rejects.toThrow("Registrar role cannot perform academic operational mutations");
+    ).rejects.toThrow(
+      "Registrar role cannot perform academic operational mutations",
+    );
     await resetRole();
   });
 
@@ -172,7 +192,9 @@ describe("governed registrar corrections", () => {
         "select public.record_attendance($1,$2,'LATE','Attempt ordinary attendance mutation')",
         [sessionId, enrolmentId],
       ),
-    ).rejects.toThrow("Registrar role cannot perform academic operational mutations");
+    ).rejects.toThrow(
+      "Registrar role cannot perform academic operational mutations",
+    );
     await resetRole();
   });
 
@@ -185,7 +207,9 @@ describe("governed registrar corrections", () => {
         )`,
         [cohortId, lessonId, academicAdminId],
       ),
-    ).rejects.toThrow("Registrar role cannot perform academic operational mutations");
+    ).rejects.toThrow(
+      "Registrar role cannot perform academic operational mutations",
+    );
     await resetRole();
   });
 
@@ -208,7 +232,9 @@ describe("governed registrar corrections", () => {
       ),
     ).rejects.toThrow("append-only");
     await expect(
-      db.query("delete from public.registrar_corrections where id=$1", [firstCorrectionId]),
+      db.query("delete from public.registrar_corrections where id=$1", [
+        firstCorrectionId,
+      ]),
     ).rejects.toThrow("append-only");
   });
 });

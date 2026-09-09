@@ -2,11 +2,11 @@
 
 Deny by default. Each operation checks authenticated actor + institutional role + object ownership or assignment. A role alone is insufficient for learner records.
 
-| Role           | Current boundary                                                                                                         |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Role           | Current boundary                                                                                                        |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | STUDENT        | Own academic and learner-visible support context; own permitted learner actions                                         |
 | INSTRUCTOR     | Assigned academic operations where an explicit service permits them; private learner support denied by default          |
-| COUNSELLOR     | Only currently assigned learners' support context and support writes                                                     |
+| COUNSELLOR     | Only currently assigned learners' support context and support writes                                                    |
 | ACADEMIC_ADMIN | Academic structure and governed academic operations; no private counselling prose and no Registrar correction authority |
 | REGISTRAR      | Official-record read context plus governed enrolment/attendance correction workflows; no academic teaching authority    |
 | PLATFORM_ADMIN | Platform administration, audit and explicitly permitted institutional overrides; private support prose is not automatic |

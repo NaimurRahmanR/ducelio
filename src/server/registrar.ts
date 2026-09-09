@@ -112,11 +112,14 @@ export async function correctEnrolmentStatus(input: unknown) {
   }
 
   const client = await createSupabase();
-  const { data, error } = await client.rpc("registrar_correct_enrolment_status", {
-    p_enrolment_id: payload.enrolmentId,
-    p_status: payload.status,
-    p_reason: payload.reason,
-  });
+  const { data, error } = await client.rpc(
+    "registrar_correct_enrolment_status",
+    {
+      p_enrolment_id: payload.enrolmentId,
+      p_status: payload.status,
+      p_reason: payload.reason,
+    },
+  );
   if (error) throw new Error("Enrolment correction could not be recorded.");
   return z.uuid().parse(data);
 }
@@ -132,11 +135,14 @@ export async function correctAttendanceStatus(input: unknown) {
   }
 
   const client = await createSupabase();
-  const { data, error } = await client.rpc("registrar_correct_attendance_status", {
-    p_attendance_record_id: payload.attendanceRecordId,
-    p_status: payload.status,
-    p_reason: payload.reason,
-  });
+  const { data, error } = await client.rpc(
+    "registrar_correct_attendance_status",
+    {
+      p_attendance_record_id: payload.attendanceRecordId,
+      p_status: payload.status,
+      p_reason: payload.reason,
+    },
+  );
   if (error) throw new Error("Attendance correction could not be recorded.");
   return z.uuid().parse(data);
 }
