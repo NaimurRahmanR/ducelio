@@ -2,72 +2,69 @@
 
 ## Verification boundary
 
-Phase 1 has local code, PostgreSQL/PGlite and HTTP tests. A hosted Supabase/Auth/SMTP/OAuth end-to-end test is still required. PGlite emulates auth.uid() and the auth.users table for deterministic tests; it does not emulate GoTrue, PostgREST, real JWTs, network failures, SMTP or concurrent PostgreSQL sessions.
+Phase 2 has local application, PostgreSQL/PGlite and workflow regression coverage. The latest completed local gate after Checkpoint 14 passed lint, route/type generation, TypeScript, 149 tests across 23 files, production build and Prettier. That evidence validates the checked-in deterministic contracts under the local test harness; it is not hosted production acceptance.
 
-The initial application uses no service-role key. Browser credentials are limited to a Supabase publishable key. All record queries are session-bound. Security-definer functions use a fixed empty search_path, fully qualified tables, explicit authorization and restricted execution grants.
+PGlite emulates `auth.uid()` and an `auth.users` table for deterministic tests. It does not emulate GoTrue, PostgREST, real JWTs, network failures, SMTP/OAuth providers or true independent concurrent PostgreSQL sessions. Hosted Supabase/Auth/provider acceptance is still required. Row-locking and uniqueness strategies are tested functionally but must also be exercised with real concurrent sessions before production.
+
+The application uses no service-role key in ordinary application flows. Browser configuration is limited to a Supabase publishable key. Server identity is resolved from Supabase Auth and stable Ducelio identity; editable metadata and typed Student IDs are not authorization. Security-definer functions use fixed search paths, explicit actor/relationship checks and restricted execution grants. RLS remains a defence layer for direct REST/table reads.
+
+## Phase 2 security posture
+
+- Published/enrolled curriculum is versioned and history-preserving; mutable parent labels are not used where historical snapshots are required.
+- Academic mutation services distinguish ACADEMIC_ADMIN/PLATFORM_ADMIN authority from Registrar correction authority. Registrar corrections to existing enrolment/attendance records preserve immutable before/after provenance.
+- Assigned INSTRUCTOR operations are limited to RPCs that explicitly permit the instructor relationship; private Counsellor prose remains outside instructor/admin access by default.
+- Class scheduling rejects cohort/instructor overlaps and serializes governed scheduling on both cohort and instructor records. Browser-local authoring times are converted to ISO instants before server validation.
+- LearningEvidence is append-only and version/session/objective bound. `MASTERY_V1` is deterministic, versioned and based on validated evidence diversity rather than clicks/time/progress.
+- Controlled assessment question/answer-key tables are not learner-readable. Protected prompts are released only to a learner with a server-owned ACTIVE attempt inside the assessment/attempt window. Answer keys and marking guidance are not returned through learner delivery.
+- Controlled assessment attempts/responses are append-only/history-preserving; response identity is database-bound to the attempt/assessment/learner, and attempt numbering remains monotonic after administrative voids.
+- `current_academic_activity_state()` plus `academic_action_allowed()` / `assert_academic_action_allowed()` provide the technical controlled-assessment firewall for future academic-agent tools. Prompt-only enforcement is not acceptable.
+- `SUPPORT_V1` uses authoritative ABSENT attendance, approaching Assignment deadlines without submission, overdue planned study items and `NEEDS_REINFORCEMENT` mastery. It does not infer inactivity, motivation or risk from engagement telemetry or conversational sentiment.
+- Notification provenance is immutable; learner read-state does not modify source academic/support records.
+- Audit payloads minimise protected assessment content, learner submission bodies, private support prose and full lecture-note bodies where those records have dedicated authoritative storage.
 
 ## Required deployment configuration
 
-- Set APP_URL to the exact HTTPS production origin. The local default is http://127.0.0.1:3000. Use one origin consistently.
-- Populate NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY. The latter must be a publishable/anon key, never a service-role or secret key.
-- Apply all five migrations in order. Preserve deployed migration files; add corrective migrations.
-- Enable verified email, custom SMTP, sender-domain verification, recovery and confirmation templates, exact redirect allowlists, Google and LinkedIn OIDC.
-- Apply suitable Supabase and edge rate limits to sign-in, signup, resend and recovery. A CAPTCHA setting needs a corresponding challenge/token UI before enforcement; that integration is not in Phase 1.
+- Set `APP_URL` to the exact HTTPS production origin. The local default is `http://127.0.0.1:3000`; use one origin consistently so PKCE/session cookies remain bound correctly.
+- Populate `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Never place a service-role/secret key in browser configuration.
+- Apply all **19** migrations in lexical order. Preserve deployed migration files and use corrective migrations rather than rewriting history.
+- Enable verified email, custom SMTP, sender-domain verification, recovery/confirmation templates and exact redirect allowlists. Configure Google/LinkedIn only when live credentials and callbacks can be tested.
+- Apply suitable Supabase/edge rate limits to authentication and public write paths. A CAPTCHA setting needs a corresponding challenge/token UI before enforcement; that integration is not implemented.
 - Configure HTTPS termination/HSTS, production secrets, secure cookies, backups, restore exercises, logging/alerts and error monitoring. Do not cache session-dependent responses at a CDN.
-- The initial CSP restricts framing, base URLs and objects. It is not a full nonce-based script CSP; review a strict script policy with Next.js before public rollout.
-- Review account lifecycle, session revocation, email linking and admin provisioning on staging. Manual cross-email merges are not implemented.
-- Choose retention/deletion/export policies for academic and support data. Private interactions must not contain unnecessary clinical or other sensitive details.
-- Establish human-reviewed assignment, support escalation, role-grant and registry workflows. Database owners can bypass RLS; production access to operator credentials must be restricted and externally audited.
+- The current security headers are not a substitute for a reviewed strict CSP. Review Next.js-compatible script policy before public rollout.
+- Review account lifecycle, session revocation, provider linking and privileged-role provisioning on staging. Manual cross-email account merging is not implemented.
+- Choose retention/deletion/export policies for academic, assessment and support data. Private interactions should not contain unnecessary clinical, demographic or similarly sensitive narrative.
+- Restrict database-owner/operator credentials. Database owners can bypass RLS; operator access therefore needs independent access control, logging and review.
+- Configure a reviewed production scheduler before relying on deterministic support-trigger evaluation. Email/push delivery is not implemented by Phase 2.
 
 ## Staff and support provisioning
 
-Signup provisions a student profile and STUDENT grant. The first privileged account requires reviewed SQL executed by the database operator; it cannot self-promote through the application. Use real Auth UUIDs from the Supabase dashboard, never student numbers as authentication.
+Signup provisions a student profile and STUDENT grant. The first privileged account requires reviewed operator action; it cannot self-promote through the application. Resolve the stable Ducelio `app_users.id` from a verified Auth UUID and never use a student number as authentication.
 
-Example template for a **disposable staging/local project**, after two test users have signed up and verified their email. Replace both UUID placeholders and the reason before running:
+Use reviewed transactions/operator tooling to create staff profiles and role grants. Grant only the roles required: COUNSELLOR for assigned learner-support relationships, INSTRUCTOR for explicitly assigned academic operations, ACADEMIC_ADMIN for governed academic administration, REGISTRAR for official-record correction workflows and PLATFORM_ADMIN for the narrow platform/audit/override boundary. Do not grant PLATFORM_ADMIN merely for convenience.
 
-```sql
-begin;
-select set_config('app.audit_reason', 'Approved staging setup; ticket REPLACE_ME', true);
-do $$
-declare
-  learner uuid;
-  counsellor uuid;
-begin
-  select id into strict learner from public.app_users
-    where auth_user_id = 'REPLACE_WITH_VERIFIED_LEARNER_AUTH_UUID'::uuid and not is_demo;
-  select id into strict counsellor from public.app_users
-    where auth_user_id = 'REPLACE_WITH_VERIFIED_COUNSELLOR_AUTH_UUID'::uuid and not is_demo;
-  insert into public.staff_profiles(user_id,title)
-    values(counsellor,'Learner success counsellor') on conflict do nothing;
-  insert into public.role_grants(user_id,role)
-    values(counsellor,'COUNSELLOR') on conflict do nothing;
-  insert into public.student_support_profiles(student_id,study_goal,weekly_hours)
-    values(learner,'Establish a consistent study routine',6) on conflict do nothing;
-  insert into public.study_plans(student_id,title)
-    values(learner,'Initial study plan') on conflict do nothing;
-  insert into public.counsellor_assignments(student_id,counsellor_id)
-    values(learner,counsellor) on conflict do nothing;
-end $$;
-commit;
-```
+Counsellor reassignment should use the permissioned service when acting through the application. The transaction closes the prior relationship and creates the next; closed history is not rewritten. Before real counselling use, establish historical case-transfer, retention, export and escalation policy.
 
-Use a separate reviewed transaction to grant ACADEMIC_ADMIN, REGISTRAR or PLATFORM_ADMIN to the exact intended account. Do not grant PLATFORM_ADMIN simply to view a demo. Role assignments, relationship changes and the supported academic/support writes are audited. Operator-generated audit events may have null actor_id because they have no Auth session; retain the operator identity in database access logs and use a review-ticket reason.
-
-The seed's programme/cohort may be used for explicitly labelled development enrolment after resolving the authenticated app_user ID. Real curricula must be prepared, validated and published separately. Enrolments require a published version. Changing learner/cohort/version or enrolled_at in place is rejected; use a reviewed new enrolment and status transition.
-
-Reassignment should use the permissioned assignCounsellor service when acting as an authenticated academic/platform administrator. The transaction closes the previous relationship and creates the new one. Closed assignment history cannot be rewritten. Ending an assignment remains possible after the former counsellor role is revoked.
+Real curriculum must be prepared, validated and published separately from the fictional seed. Enrolments bind a published ProgrammeVersion and preserve historical cohort/version snapshots. Existing PAUSED/WITHDRAWN/COMPLETED enrolment history is not silently presented as a fresh successful enrolment.
 
 ## Staging acceptance checklist
 
-1. Register and confirm an email user; prove confirmation codes work in the originating browser and token-hash templates work as configured.
-2. Exercise valid/invalid/expired OAuth callbacks for Google and LinkedIn; verify one stable Ducelio identity for safely linked verified providers.
-3. Exercise login, logout, password recovery, mismatched password confirmation, expired recovery, global sign-out and session expiry.
-4. Verify STUDENT, INSTRUCTOR, COUNSELLOR, ACADEMIC_ADMIN, REGISTRAR and PLATFORM_ADMIN boundaries using real JWTs and direct REST/RPC requests.
-5. Attempt cross-learner URLs and direct RPC calls, access after reassignment/role revocation, unverified access and audit modification.
-6. Create a real plan item, follow-up and private interaction; verify persistence, refreshed UI and audit provenance. Verify students cannot read private interactions.
-7. Run true concurrent PostgreSQL tests for publication/content edits, enrolment and reassignment/support writes.
-8. Review keyboard-only navigation, screen readers, 200% text zoom, mobile devices, contrast and browser support. Local sanity checks are not a formal accessibility certification.
+1. Register/confirm real email users; test confirmation, login/logout, recovery/reset, expiry and global sign-out with actual Supabase sessions.
+2. Exercise valid/invalid/expired Google and LinkedIn callbacks and verify one stable Ducelio identity for intentionally linked verified providers.
+3. Verify STUDENT, INSTRUCTOR, COUNSELLOR, ACADEMIC_ADMIN, REGISTRAR and PLATFORM_ADMIN boundaries using real JWTs plus direct PostgREST/RPC requests, including forged actor/student IDs.
+4. Attempt cross-learner reads/writes, private support access, role escalation, protected assessment-table reads, answer-key retrieval and audit/history mutation.
+5. Exercise ProgrammeVersion publication, enrolment lifecycle, Counsellor reassignment, ClassSession scheduling, attendance/progress/evidence, assignment and assessment workflows through browser and direct RPC clients.
+6. Run true concurrent PostgreSQL scenarios for duplicate enrolment, programme publication/content mutation, Counsellor reassignment, same-cohort and cross-cohort instructor scheduling, learning-evidence idempotency, assignment submissions and assessment-attempt starts.
+7. Validate controlled assessment windows with real server clocks/JWTs: one-active-attempt rules, expiry, protected prompt release, response revisions, submit/void/retry and answer-key non-disclosure.
+8. Validate deterministic support-trigger idempotency/resolution and notification read-state without allowing trigger evaluation to mutate its source academic record.
+9. Exercise role revocation and reassignment during active sessions; verify stale browser state cannot preserve backend authorization.
+10. Review keyboard-only navigation, screen readers, 200% zoom, mobile devices, contrast, focus/error announcements and browser support. Local visual sanity checks are not WCAG certification.
+11. Configure/verify backups and a restore exercise; confirm monitoring does not log credentials, Auth tokens, protected assessment text or private Counsellor prose.
+12. Run deployment/security review, rate-limit/abuse tests and dependency/security checks before allowing real learner data.
 
-## Scope limits
+## Scope limits after Phase 2
 
-No full curriculum editors, registrar operations, assessment engine, mastery engine, support automation, notifications, external messaging, payments, AI services, uploads or offline/PWA synchronization are implemented. Caseload/programme/audit lists are bounded for Phase 1; add pagination before scaling. The public demo is static fixture rendering and grants no production identity.
+Phase 2 does **not** implement automatic grading, gradebook/result publication, pass/fail decisions, academic completion/certification, institutional announcement authoring, production support-trigger scheduling, email/push messaging, payments, uploads, offline/PWA synchronisation or AI academic actors. It does not contain official external-exam questions or claim external awarding-body endorsement.
+
+Many staff lists are intentionally bounded and need pagination/operational search before scale. Explicit multi-institution tenant isolation is not yet a product guarantee. Protected assessment foundations must not be advertised as production-ready until the staging/security checklist above and later grading/result controls are completed.
+
+The public demo remains fictional/read-only and grants no production identity. Passing local or GitHub CI is necessary engineering evidence, not production authorization.
