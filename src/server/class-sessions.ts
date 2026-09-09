@@ -4,7 +4,7 @@ import {
   classSessionCreationSchema,
   classSessionStatusSchema,
 } from "@/domain/academy";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const cohortSchema = z.object({
@@ -52,6 +52,19 @@ const sessionSchema = z.object({
     label: z.string(),
     title_snapshot: z.string().nullable(),
   }),
+});
+
+const studentSessionSchema = z.object({
+  id: z.uuid(),
+  scheduled_start: z.string(),
+  scheduled_end: z.string(),
+  status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]),
+  cohort_title: z.string(),
+  lesson_title: z.string(),
+  instructor_name: z.string(),
+  instructor_title: z.string(),
+  programme_title: z.string(),
+  programme_version_label: z.string(),
 });
 
 export async function getClassSessionWorkspace() {
@@ -112,7 +125,7 @@ export async function getClassSessionWorkspace() {
 
 export async function createClassSession(input: unknown) {
   const payload = classSessionCreationSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("create_class_session", {
     p_cohort_id: payload.cohortId,
@@ -128,7 +141,7 @@ export async function createClassSession(input: unknown) {
 
 export async function changeClassSessionStatus(input: unknown) {
   const payload = classSessionStatusSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("change_class_session_status", {
     p_session_id: payload.sessionId,
@@ -142,45 +155,7 @@ export async function changeClassSessionStatus(input: unknown) {
 export async function getStudentClassSessions() {
   await requireActor("student");
   const client = await createSupabase();
-  const { data, error } = await client
-    .from("class_sessions")
-    .select(
-      "id,scheduled_start,scheduled_end,status,cohorts(title),lessons(title),staff_profiles!class_sessions_instructor_id_fkey(title,app_users(display_name)),programme_versions(label,title_snapshot)",
-    )
-    .order("scheduled_start", { ascending: true })
-    .limit(100);
+  const { data, error } = await client.rpc("list_my_class_sessions");
   if (error) throw new Error("Your class sessions could not be loaded.");
-
-  return z
-    .array(
-      z.object({
-        id: z.uuid(),
-        scheduled_start: z.string(),
-        scheduled_end: z.string(),
-        status: z.enum(["SCHEDULED", "COMPLETED", "CANCELLED"]),
-        cohorts: z.object({ title: z.string() }),
-        lessons: z.object({ title: z.string() }),
-        staff_profiles: z.object({
-          title: z.string(),
-          app_users: z.object({ display_name: z.string() }),
-        }),
-        programme_versions: z.object({
-          label: z.string(),
-          title_snapshot: z.string().nullable(),
-        }),
-      }),
-    )
-    .parse(data)
-    .map((session) => ({
-      id: session.id,
-      scheduled_start: session.scheduled_start,
-      scheduled_end: session.scheduled_end,
-      status: session.status,
-      cohort_title: session.cohorts.title,
-      lesson_title: session.lessons.title,
-      instructor_name: session.staff_profiles.app_users.display_name,
-      instructor_title: session.staff_profiles.title,
-      programme_title: session.programme_versions.title_snapshot ?? "Programme",
-      programme_version_label: session.programme_versions.label,
-    }));
+  return z.array(studentSessionSchema).parse(data);
 }
