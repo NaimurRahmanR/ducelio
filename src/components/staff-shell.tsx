@@ -14,6 +14,7 @@ export const adminSections = [
   "Evidence",
   "Assignments",
   "Assessments",
+  "Notifications",
   "Announcements",
   "Registry",
   "Audit",
