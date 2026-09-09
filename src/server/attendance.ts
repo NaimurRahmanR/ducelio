@@ -1,7 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { attendanceRecordSchema } from "@/domain/academy";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const sessionSchema = z.object({
@@ -82,7 +82,7 @@ export async function getAttendanceWorkspace() {
 
 export async function recordAttendance(input: unknown) {
   const payload = attendanceRecordSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("record_attendance", {
     p_session_id: payload.sessionId,
