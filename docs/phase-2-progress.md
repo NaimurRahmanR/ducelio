@@ -3,9 +3,9 @@
 Branch: `phase-2-academy-os`
 
 LAST COMPLETED CHECKPOINT: 14 — Phase 2 integration hardening
-CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 15 — final Phase 2 audit and PR readiness: reconcile remaining documentation, review the complete Phase 2 diff and security boundaries, run the final exact-tree quality gate, open the Phase 2 pull request to `main`, and require GitHub CI/review before merge.
+CURRENT PARTIAL CHECKPOINT: 15 — final Phase 2 audit and PR readiness
+KNOWN FAILURES: None from the completed Checkpoint 14 local gate. The final documentation/audit tree has not yet passed the exact-tree local gate or pull-request CI.
+NEXT EXACT ACTION: Pull the Checkpoint 15 documentation/audit commits locally; run Node 24 `npm run check`, `npm run build`, `npm run format:check` and confirm a clean synchronized tree. If green, open `phase-2-academy-os` → `main`, require GitHub CI/review, resolve findings, then close Phase 2 only on the reviewed green PR.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -112,11 +112,11 @@ NEXT EXACT ACTION: Checkpoint 15 — final Phase 2 audit and PR readiness: recon
 - Migration: `202609090017_phase2_registrar_corrections.sql`.
 - Added append-only `registrar_corrections` history for documented corrections to existing enrolment-status and attendance-status records, including before/after values, bounded reason, actor and timestamp.
 - Registrar correction RPCs preserve authoritative record identity while writing immutable correction provenance and the ordinary institutional audit trail.
-- Completed enrolments remain outside this correction workflow; academic completion requires a separate academic-authority workflow.
-- Registrar-only actors are blocked at the database trigger layer from the older broad `is_academic_admin()` mutation paths for enrolments, class sessions, attendance, lesson progress and learning evidence. This closes the legacy role-overlap bypass without reducing Registrar read context.
+- Completed enrolments remain outside this correction workflow; academic completion requires a separate academic completion workflow.
+- Registrar-only actors are blocked from ordinary academic mutation paths; explicit correction RPCs provide the bounded official-record exception path.
 - Academic admins do not automatically receive Registrar correction authority. REGISTRAR or PLATFORM_ADMIN is required for these exception workflows.
 - Added dedicated server service/actions, Administration → Registry correction workspace and focused role-boundary/correction-history tests.
-- Full integration validation exposed two stale enrolment tests that still treated REGISTRAR as the ordinary enrolment operator; those tests were updated to use ACADEMIC_ADMIN while dedicated registrar tests preserve the new boundary.
+- Full integration validation exposed stale enrolment tests that still treated REGISTRAR as the ordinary enrolment operator; those tests were corrected to use ACADEMIC_ADMIN while dedicated Registrar tests preserve the new boundary.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 135/135 tests in 21 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
 ## Checkpoint 13 — institutional notifications and deterministic support triggers — complete
@@ -140,7 +140,7 @@ NEXT EXACT ACTION: Checkpoint 15 — final Phase 2 audit and PR readiness: recon
 - Institutional `datetime-local` authoring controls now convert local wall time to an ISO instant in the browser before server validation, avoiding server-timezone interpretation of class, assignment and assessment times.
 - Class, assignment and assessment authoring UIs filter lessons by the selected cohort's ProgrammeVersion before submission; database version checks remain authoritative.
 - Server role checks now align with database RPC boundaries: assigned INSTRUCTOR operations can reach attendance/progress/evidence/coursework/assessment RPCs, while Registrar-only users do not gain those mutation paths.
-- Learner assignment submissions and assessment response revisions now receive internal deterministic idempotency references instead of asking learners to invent infrastructure keys.
+- Learner assignment submissions and assessment response revisions now receive internal idempotency references instead of asking learners to invent infrastructure keys.
 - Controlled-assessment retry hardening preserves monotonically increasing attempt numbers after VOIDED attempts, serializes attempt starts per learner and adds a composite response-to-attempt identity constraint.
 - Learner-support programme context uses the immutable ProgrammeVersion title snapshot rather than the mutable parent Programme title.
 - Generic LearningResource audit payloads no longer copy full lecture-note bodies.
@@ -149,6 +149,16 @@ NEXT EXACT ACTION: Checkpoint 15 — final Phase 2 audit and PR readiness: recon
 - Added focused integration-hardening regressions for enrolment history semantics, safe timetable projection, voided assessment retries, response identity, resource audit minimisation and scheduling conflict preservation.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 149/149 tests in 23 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
+## Checkpoint 15 — final Phase 2 audit and PR readiness — in progress
+
+- Compared `main` with `phase-2-academy-os`; at audit start the feature branch shared the current `main` merge base, was ahead and reported zero commits behind.
+- Reviewed the branch-wide Phase 2 change inventory, ordered migration set, deterministic authority model, RBAC/Registrar separation, Counsellor privacy, evidence/mastery rules, controlled-assessment firewall, notification/support-trigger boundary and CI workflow.
+- Updated README and `AGENTS.md` to describe the current Phase 2 system rather than historical Phase 1 scope.
+- Reconciled `06-database-schema.md` to all 19 migrations and refreshed the operations/security checklist for real JWT/PostgREST/RPC, true-concurrency, protected-assessment and support-trigger acceptance.
+- Updated the future-agent boundary and roadmap so post-Phase 2 AI work must use reviewed permissioned tools rather than direct database authority.
+- Added `phase-2-completion-report.md` with delivery scope, security/audit findings, validation evidence, residual non-production limitations and the final PR/CI gate.
+- No new product feature is introduced in Checkpoint 15. The exact documentation/audit tree must still pass the final local gate before the pull request is opened.
+
 ## Scope boundary
 
-Phase 2 remains deterministic Academy OS work. No AI actor receives authoritative database access, no navigation/time signal counts as mastery evidence, and assessment/homework firewalls are technically enforced before any academic-agent integration. Hosted Supabase/JWT/provider/staging acceptance remains required before production use.
+Phase 2 remains deterministic Academy OS work. No AI actor receives authoritative database access, no navigation/time signal counts as mastery evidence, and controlled-assessment firewalls are technically enforced before any academic-agent integration. Homework-specific AI integrity policy remains future work. Hosted Supabase/JWT/PostgREST/provider/staging acceptance remains required before production use.
