@@ -6,6 +6,7 @@ import { LearningEvidenceWorkspace } from "@/components/learning-evidence-worksp
 import { ObjectiveMasteryWorkspace } from "@/components/objective-mastery-workspace";
 import { AssignmentWorkspace } from "@/components/assignment-workspace";
 import { AssessmentWorkspace } from "@/components/assessment-workspace";
+import { NotificationWorkspace } from "@/components/notification-workspace";
 import { RegistrarWorkspace } from "@/components/registrar-workspace";
 import { EnrolmentWorkspace } from "@/components/enrolment-workspace";
 import { CounsellorAssignmentWorkspace } from "@/components/counsellor-assignment-workspace";
@@ -19,6 +20,7 @@ import { getLearningEvidenceWorkspace } from "@/server/learning-evidence";
 import { getObjectiveMasteryWorkspace } from "@/server/objective-mastery";
 import { getAssignmentWorkspace } from "@/server/assignments";
 import { getAssessmentWorkspace } from "@/server/assessments";
+import { getNotificationOperationsWorkspace } from "@/server/notifications";
 import { getRegistrarWorkspace } from "@/server/registrar";
 import { getEnrolmentWorkspace } from "@/server/enrolments";
 import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignments";
@@ -53,6 +55,8 @@ export default async function Page({
     section === "Assignments" ? await getAssignmentWorkspace() : null;
   const assessmentWorkspace =
     section === "Assessments" ? await getAssessmentWorkspace() : null;
+  const notificationWorkspace =
+    section === "Notifications" ? await getNotificationOperationsWorkspace() : null;
   const registrarWorkspace =
     section === "Registry" &&
     (data.actor.roles.includes("REGISTRAR") ||
@@ -123,6 +127,13 @@ export default async function Page({
           cohorts={assessmentWorkspace.cohorts}
           lessons={assessmentWorkspace.lessons}
           instructors={assessmentWorkspace.instructors}
+        />
+      )}
+      {section === "Notifications" && notificationWorkspace && (
+        <NotificationWorkspace
+          notifications={notificationWorkspace.notifications}
+          canManage={notificationWorkspace.canManage}
+          summary={notificationWorkspace.summary}
         />
       )}
       {section === "Registry" && registrarWorkspace && (
