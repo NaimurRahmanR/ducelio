@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   addControlledAssessment,
   addProtectedAssessmentQuestion,
@@ -8,6 +8,7 @@ import {
   type AssessmentActionState,
 } from "@/app/admin/actions";
 import { Badge, Card, EmptyState } from "./ui";
+import { LocalDateTimeField } from "./local-datetime-field";
 
 type Assessment = {
   id: string;
@@ -80,6 +81,16 @@ export function AssessmentWorkspace({
     AssessmentActionState,
     FormData
   >(publishOrCloseAssessment, {});
+  const [selectedCohortId, setSelectedCohortId] = useState("");
+  const selectedCohort = cohorts.find(
+    (cohort) => cohort.id === selectedCohortId,
+  );
+  const matchingLessons = selectedCohort
+    ? lessons.filter(
+        (lesson) =>
+          lesson.programme_version_id === selectedCohort.programme_version_id,
+      )
+    : [];
 
   return (
     <>
@@ -97,7 +108,12 @@ export function AssessmentWorkspace({
         </p>
         <Message state={createState} />
         <form action={createAction} className="support-form">
-          <select name="cohortId" required defaultValue="">
+          <select
+            name="cohortId"
+            required
+            value={selectedCohortId}
+            onChange={(event) => setSelectedCohortId(event.target.value)}
+          >
             <option value="" disabled>
               Choose cohort
             </option>
@@ -107,11 +123,17 @@ export function AssessmentWorkspace({
               </option>
             ))}
           </select>
-          <select name="lessonId" required defaultValue="">
+          <select
+            name="lessonId"
+            required
+            disabled={!selectedCohort}
+            defaultValue=""
+            key={selectedCohortId || "no-cohort"}
+          >
             <option value="" disabled>
-              Choose lesson
+              {selectedCohort ? "Choose lesson" : "Choose cohort first"}
             </option>
-            {lessons.map((lesson) => (
+            {matchingLessons.map((lesson) => (
               <option key={lesson.id} value={lesson.id}>
                 {lesson.title}
               </option>
@@ -140,12 +162,16 @@ export function AssessmentWorkspace({
             placeholder="Learner instructions"
             required
           />
-          <label>
-            Opens <input type="datetime-local" name="opensAt" required />
-          </label>
-          <label>
-            Closes <input type="datetime-local" name="closesAt" required />
-          </label>
+          <LocalDateTimeField
+            id="assessment-opens"
+            name="opensAt"
+            label="Opens"
+          />
+          <LocalDateTimeField
+            id="assessment-closes"
+            name="closesAt"
+            label="Closes"
+          />
           <input
             type="number"
             name="durationMinutes"
