@@ -30,14 +30,8 @@ export function AdminWorkspace({
   const descriptions: Record<string, string> = {
     Cohorts:
       "Cohort operations will preserve each learner’s enrolled curriculum version.",
-    Assignments:
-      "Assignment authoring, submission and grading are not yet enabled.",
-    Assessments:
-      "Controlled assessment delivery will be added with technical assessment firewalls.",
     Announcements:
-      "Institutional announcement publishing is a later milestone.",
-    Registry:
-      "Official-record corrections, extensions and enrolment changes require reviewed, auditable workflows.",
+      "Institutional announcement publishing remains a later operational milestone.",
   };
   return (
     <div className="section-content">
@@ -164,7 +158,8 @@ export function AdminWorkspace({
             </EmptyState>
           )}
           <p className="muted">
-            Support-note prose is excluded from audit payloads.
+            Support-note prose and large protected/learning-content bodies are
+            excluded from the relevant audit payloads.
           </p>
         </Card>
       )}
