@@ -3,9 +3,9 @@
 Branch: `phase-2-academy-os`
 
 LAST COMPLETED CHECKPOINT: 9 — deterministic objective mastery policy, current state and immutable transition history
-CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 10 — governed assignments, kept separate from controlled assessments and assessment-firewall enforcement.
+CURRENT PARTIAL CHECKPOINT: 10 — governed coursework assignments and learner submissions
+KNOWN FAILURES: Checkpoint 10 has not yet passed the local Node 24 quality gate.
+NEXT EXACT ACTION: Pull Checkpoint 10 locally and run lint, typecheck, tests, production build and Prettier format check.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -83,6 +83,15 @@ NEXT EXACT ACTION: Checkpoint 10 — governed assignments, kept separate from co
 - Evidence insert, mastery evaluation, current-state update, history transition and audit run in one database transaction. Existing evidence is deterministically replayed during migration to reconstruct current state.
 - Added RLS read boundaries, admin Evidence workspace mastery/history views, learner Results mastery display and focused mastery transition tests.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 112/112 tests in 18 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 10 — governed assignments — in progress
+
+- Migration: `202609090015_phase2_assignments.sql`.
+- Added cohort/version/lesson-bound coursework assignments with DRAFT → PUBLISHED → CLOSED lifecycle, draft correction service, immutable published content and audited status changes.
+- Added append-only learner submission attempts with active-enrolment, opening/deadline and idempotency enforcement. Learners can read only their own submissions; authorised staff can read coursework for their institutional scope.
+- Assignment submissions do not automatically create grades, learning evidence or mastery. Controlled assessments remain a separate future module with stricter server-owned firewalls.
+- Added admin assignment authoring/lifecycle workspace, learner assignment/submission page, server actions/services and focused workflow tests.
+- Local validation is required before this checkpoint can be marked complete.
 
 ## Scope boundary
 
