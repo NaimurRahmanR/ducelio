@@ -93,7 +93,7 @@ afterAll(async () => {
 });
 
 describe("controlled assessments", () => {
-  it("creates a draft with protected question content hidden from learner tables", async () => {
+  it("creates a draft with protected question content denied to learner tables", async () => {
     await asAuth(adminAuth);
     const assessment = await db.query<{ id: string }>(
       `select public.create_assessment(
@@ -114,17 +114,18 @@ describe("controlled assessments", () => {
     await resetRole();
 
     await asAuth(learnerAuth);
-    const questions = await db.query(
-      "select id from public.assessment_questions where assessment_id=$1",
-      [assessmentId],
-    );
-    const keys = await db.query(
-      "select question_id from public.assessment_answer_keys where question_id=$1",
-      [questionId],
-    );
+    await expect(
+      db.query("select id from public.assessment_questions where assessment_id=$1", [
+        assessmentId,
+      ]),
+    ).rejects.toThrow("permission denied");
+    await expect(
+      db.query(
+        "select question_id from public.assessment_answer_keys where question_id=$1",
+        [questionId],
+      ),
+    ).rejects.toThrow("permission denied");
     await resetRole();
-    expect(questions.rows).toHaveLength(0);
-    expect(keys.rows).toHaveLength(0);
   });
 
   it("does not release questions before an active server-owned attempt", async () => {
@@ -153,20 +154,27 @@ describe("controlled assessments", () => {
     attemptId = attempt.rows[0].id;
     const questions = await db.query<{
       id: string;
+      position: number;
       prompt: string;
       max_marks: number;
     }>("select * from public.get_active_assessment_questions($1)", [
       assessmentId,
     ]);
-    const keys = await db.query(
-      "select expected_answer from public.assessment_answer_keys where question_id=$1",
-      [questionId],
-    );
+    await expect(
+      db.query(
+        "select expected_answer from public.assessment_answer_keys where question_id=$1",
+        [questionId],
+      ),
+    ).rejects.toThrow("permission denied");
     await resetRole();
     expect(questions.rows).toEqual([
-      { id: questionId, position: 1, prompt: "Explain least privilege.", max_marks: 10 },
+      {
+        id: questionId,
+        position: 1,
+        prompt: "Explain least privilege.",
+        max_marks: 10,
+      },
     ]);
-    expect(keys.rows).toHaveLength(0);
   });
 
   it("blocks normal academic-help actions while the assessment is active", async () => {
@@ -236,16 +244,17 @@ describe("controlled assessments", () => {
 
   it("keeps protected answer keys unreadable to the learner after submission", async () => {
     await asAuth(learnerAuth);
-    const keys = await db.query(
-      "select expected_answer from public.assessment_answer_keys where question_id=$1",
-      [questionId],
-    );
+    await expect(
+      db.query(
+        "select expected_answer from public.assessment_answer_keys where question_id=$1",
+        [questionId],
+      ),
+    ).rejects.toThrow("permission denied");
     const responses = await db.query<{ revision_number: number }>(
       "select revision_number from public.assessment_responses where attempt_id=$1 order by revision_number",
       [attemptId],
     );
     await resetRole();
-    expect(keys.rows).toHaveLength(0);
     expect(responses.rows).toHaveLength(2);
   });
 
