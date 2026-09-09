@@ -3,31 +3,53 @@ import { ArrowLeft, ShieldCheck, HeartHandshake } from "lucide-react";
 import { Brand, Badge } from "./ui";
 import { logout } from "@/app/auth/actions";
 import type { ReactNode } from "react";
+import type { Role } from "@/domain/academy";
+
 export const adminSections = [
   "Overview",
   "Programmes",
+  "Resources",
   "Students",
   "Cohorts",
   "Counsellors",
   "Sessions",
+  "Evidence",
   "Assignments",
   "Assessments",
+  "Notifications",
   "Announcements",
   "Registry",
   "Audit",
-];
+] as const;
+
+export function adminSectionsForRoles(roles: Role[]) {
+  if (roles.includes("PLATFORM_ADMIN")) return [...adminSections];
+
+  const allowed = new Set<string>(["Overview"]);
+  if (roles.includes("ACADEMIC_ADMIN")) {
+    for (const section of adminSections) {
+      if (section !== "Registry" && section !== "Audit") allowed.add(section);
+    }
+  }
+  if (roles.includes("REGISTRAR")) allowed.add("Registry");
+
+  return adminSections.filter((section) => allowed.has(section));
+}
+
 export function StaffShell({
   children,
   kind,
   demo = false,
   name,
   section = "Overview",
+  sections = adminSections,
 }: {
   children: ReactNode;
   kind: "admin" | "counsellor";
   demo?: boolean;
   name: string;
   section?: string;
+  sections?: readonly string[];
 }) {
   const base = demo ? "/demo/admin" : "/admin";
   return (
@@ -83,7 +105,7 @@ export function StaffShell({
         )}
         {kind === "admin" && (
           <nav className="staff-tabs" aria-label="Administration sections">
-            {adminSections.map((s) => (
+            {sections.map((s) => (
               <Link
                 key={s}
                 href={

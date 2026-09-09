@@ -30,6 +30,157 @@ export const assignmentSchema = z
     (v) => v.studentId !== v.counsellorId,
     "A student cannot be their own counsellor.",
   );
+export const programmePublicationSchema = z.object({
+  programmeVersionId: z.uuid(),
+  reason: z.string().trim().min(5).max(300),
+});
+export const enrolmentCreationSchema = z.object({
+  studentId: z.uuid(),
+  cohortId: z.uuid(),
+  reason: z.string().trim().min(5).max(300),
+});
+export const enrolmentStatusSchema = z.object({
+  enrolmentId: z.uuid(),
+  status: z.enum(["ACTIVE", "PAUSED", "WITHDRAWN"]),
+  reason: z.string().trim().min(5).max(300),
+});
+export const classSessionCreationSchema = z
+  .object({
+    cohortId: z.uuid(),
+    lessonId: z.uuid(),
+    instructorId: z.uuid(),
+    scheduledStart: z.iso.datetime({ offset: true }),
+    scheduledEnd: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) =>
+      new Date(value.scheduledEnd).getTime() >
+      new Date(value.scheduledStart).getTime(),
+    "Class session end must be after its start.",
+  );
+export const classSessionStatusSchema = z.object({
+  sessionId: z.uuid(),
+  status: z.enum(["COMPLETED", "CANCELLED"]),
+  reason: z.string().trim().min(5).max(300),
+});
+export const attendanceRecordSchema = z.object({
+  sessionId: z.uuid(),
+  enrolmentId: z.uuid(),
+  status: z.enum(["PRESENT", "LATE", "ABSENT", "EXCUSED"]),
+  reason: z.string().trim().min(5).max(300),
+});
+export const lessonSegmentSchema = z.object({
+  lessonId: z.uuid(),
+  title: z.string().trim().min(1).max(200),
+  position: z.coerce.number().int().positive(),
+  reason: z.string().trim().min(5).max(300),
+});
+export const lessonProgressSchema = z.object({
+  sessionId: z.uuid(),
+  enrolmentId: z.uuid(),
+  segmentId: z.uuid(),
+  status: z.enum(["IN_PROGRESS", "COMPLETED"]),
+  reason: z.string().trim().min(5).max(300),
+});
+export const learningResourceSchema = z
+  .object({
+    lessonId: z.uuid(),
+    kind: z.enum(["LECTURE_NOTE", "REFERENCE_LINK"]),
+    title: z.string().trim().min(1).max(200),
+    body: z.string().trim().max(12000).nullable(),
+    url: z.string().trim().nullable(),
+    position: z.coerce.number().int().positive(),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .superRefine((value, ctx) => {
+    if (value.kind === "LECTURE_NOTE") {
+      if (!value.body) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["body"],
+          message: "Lecture notes require body text.",
+        });
+      }
+      if (value.url) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["url"],
+          message: "Lecture notes cannot include a reference URL.",
+        });
+      }
+    } else {
+      if (value.body) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["body"],
+          message: "Reference links cannot include note body text.",
+        });
+      }
+      if (!value.url || !/^https:\/\/\S+$/i.test(value.url)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["url"],
+          message: "Reference links require an HTTPS URL.",
+        });
+      }
+    }
+  });
+export const learningEvidenceSchema = z.object({
+  sessionId: z.uuid(),
+  enrolmentId: z.uuid(),
+  objectiveId: z.uuid(),
+  evidenceKind: z.enum([
+    "CLASS_RESPONSE",
+    "RETRIEVAL_CHECK",
+    "PRACTICAL_TASK",
+    "DEBUGGING_TASK",
+  ]),
+  result: z.enum(["CORRECT", "PARTIAL", "INCORRECT"]),
+  evidenceReference: z.string().trim().min(1).max(300),
+  idempotencyKey: z.string().trim().min(8).max(200),
+  reason: z.string().trim().min(5).max(300),
+});
+export const assignmentCreationSchema = z
+  .object({
+    cohortId: z.uuid(),
+    lessonId: z.uuid(),
+    instructorId: z.uuid(),
+    title: z.string().trim().min(1).max(200),
+    instructions: z.string().trim().min(1).max(12000),
+    opensAt: z.iso.datetime({ offset: true }),
+    dueAt: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) =>
+      new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
+    "Assignment due time must be after its opening time.",
+  );
+export const assignmentDraftUpdateSchema = z
+  .object({
+    assignmentId: z.uuid(),
+    title: z.string().trim().min(1).max(200),
+    instructions: z.string().trim().min(1).max(12000),
+    opensAt: z.iso.datetime({ offset: true }),
+    dueAt: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(5).max(300),
+  })
+  .refine(
+    (value) =>
+      new Date(value.dueAt).getTime() > new Date(value.opensAt).getTime(),
+    "Assignment due time must be after its opening time.",
+  );
+export const assignmentStatusSchema = z.object({
+  assignmentId: z.uuid(),
+  status: z.enum(["PUBLISHED", "CLOSED"]),
+  reason: z.string().trim().min(5).max(300),
+});
+export const assignmentSubmissionSchema = z.object({
+  assignmentId: z.uuid(),
+  body: z.string().trim().min(1).max(20000),
+  idempotencyKey: z.string().trim().min(8).max(200),
+});
 export function assertMatchingVersion(
   enrolmentVersion: string,
   cohortVersion: string,

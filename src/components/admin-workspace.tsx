@@ -28,22 +28,10 @@ export function AdminWorkspace({
   demo?: boolean;
 }) {
   const descriptions: Record<string, string> = {
-    Students:
-      "Learner registry and enrolment workflows will be added through authorised institutional services.",
     Cohorts:
       "Cohort operations will preserve each learner’s enrolled curriculum version.",
-    Counsellors:
-      "Counsellor assignment services are implemented. The institutional assignment editor is a later workflow.",
-    Sessions:
-      "Class scheduling and attendance operations are planned for a later milestone.",
-    Assignments:
-      "Assignment authoring, submission and grading are not yet enabled.",
-    Assessments:
-      "Controlled assessment delivery will be added with technical assessment firewalls.",
     Announcements:
-      "Institutional announcement publishing is a later milestone.",
-    Registry:
-      "Official-record corrections, extensions and enrolment changes require reviewed, auditable workflows.",
+      "Institutional announcement publishing remains a later operational milestone.",
   };
   return (
     <div className="section-content">
@@ -63,12 +51,11 @@ export function AdminWorkspace({
             )}
           </div>
           <Card className="admin-principle">
-            <Badge tone="gold">ACADEMY OS · PHASE 1</Badge>
+            <Badge tone="gold">ACADEMY OS · PHASE 2</Badge>
             <h2 className="detail-title">Built on institutional truth.</h2>
             <p>
-              Identity, programme versions, learner relationships and
-              permissions form the foundation. Academic operations will grow
-              through controlled services.
+              Programme publication, enrolment, learner support relationships
+              and class scheduling grow through governed, auditable services.
             </p>
             <div className="admin-boundaries">
               <div>
@@ -82,7 +69,7 @@ export function AdminWorkspace({
                 </p>
               </div>
               <div>
-                <h3>Auditable changes</h3>
+                <h3>Auditable operations</h3>
                 <p>Institutional writes carry provenance and an audit trail.</p>
               </div>
             </div>
@@ -93,7 +80,7 @@ export function AdminWorkspace({
         <Card>
           <div className="section-heading">
             <h2>Programme registry</h2>
-            <Badge tone="muted">READ-ONLY</Badge>
+            <Badge tone="muted">REGISTER</Badge>
           </div>
           {programmes.length ? (
             <div className="data-table-wrap">
@@ -124,8 +111,8 @@ export function AdminWorkspace({
             </div>
           ) : (
             <EmptyState title="No programmes registered">
-              The programme publishing workflow is a later milestone. Add
-              records only through approved institutional processes.
+              Create programme records only through approved institutional
+              processes.
             </EmptyState>
           )}
         </Card>
@@ -171,7 +158,8 @@ export function AdminWorkspace({
             </EmptyState>
           )}
           <p className="muted">
-            Support-note prose is excluded from audit payloads.
+            Support-note prose and large protected/learning-content bodies are
+            excluded from the relevant audit payloads.
           </p>
         </Card>
       )}

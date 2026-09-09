@@ -195,7 +195,7 @@ export async function getStudentProgrammeMembership(studentId: string) {
   const { client } = await supportContext(studentId);
   const { data, error } = await client
     .from("enrolments")
-    .select("status,programme_versions(label,programmes(title))")
+    .select("status,programme_versions(label,title_snapshot)")
     .eq("student_id", studentId)
     .order("enrolled_at", { ascending: false });
   if (error) throw new Error("Learner programme context could not be loaded.");
@@ -205,13 +205,13 @@ export async function getStudentProgrammeMembership(studentId: string) {
         status: z.string(),
         programme_versions: z.object({
           label: z.string(),
-          programmes: z.object({ title: z.string() }),
+          title_snapshot: z.string().nullable(),
         }),
       }),
     )
     .parse(data);
   return rows.map((row) => ({
-    title: row.programme_versions.programmes.title,
+    title: row.programme_versions.title_snapshot ?? "Programme",
     version: row.programme_versions.label,
     status: row.status,
   }));

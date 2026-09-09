@@ -3,8 +3,9 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createSupabase } from "./supabase";
 import { config } from "@/lib/env";
-import { roleSchema } from "@/domain/academy";
-import { canEnter, type Actor, type Area } from "@/domain/policy";
+import { roleSchema, type Role } from "@/domain/academy";
+import { AccessDenied, canEnter, type Actor, type Area } from "@/domain/policy";
+
 export const getCurrentActor = cache(async (): Promise<Actor | null> => {
   if (!config().configured) return null;
   const client = await createSupabase();
@@ -32,9 +33,17 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
     roles: (grants ?? []).map((g) => roleSchema.parse(g.role)),
   };
 });
+
 export async function requireActor(area?: Area) {
   const actor = await getCurrentActor();
   if (!actor) redirect("/login");
   if (area && !canEnter(actor, area)) redirect("/login?error=forbidden");
+  return actor;
+}
+
+export async function requireAnyRole(roles: readonly Role[]) {
+  const actor = await requireActor();
+  if (!roles.some((role) => actor.roles.includes(role)))
+    throw new AccessDenied();
   return actor;
 }

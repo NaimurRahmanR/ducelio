@@ -6,14 +6,13 @@ const enrolmentSchema = z.object({
   id: z.uuid(),
   status: z.string(),
   programme_version_id: z.uuid(),
-  cohorts: z.object({ title: z.string() }),
+  cohort_title_snapshot: z.string(),
+  cohort_starts_on_snapshot: z.string(),
   programme_versions: z.object({
     label: z.string(),
-    programmes: z.object({
-      title: z.string(),
-      examination_body: z.string(),
-      is_demo: z.boolean(),
-    }),
+    title_snapshot: z.string(),
+    examination_body_snapshot: z.string(),
+    is_demo: z.boolean(),
   }),
 });
 export async function getStudentAcademy() {
@@ -22,7 +21,7 @@ export async function getStudentAcademy() {
   const { data, error } = await client
     .from("enrolments")
     .select(
-      "id,status,programme_version_id,cohorts(title),programme_versions(label,programmes(title,examination_body,is_demo))",
+      "id,status,programme_version_id,cohort_title_snapshot,cohort_starts_on_snapshot,programme_versions(label,title_snapshot,examination_body_snapshot,is_demo)",
     )
     .eq("student_id", actor.id)
     .order("enrolled_at", { ascending: false });

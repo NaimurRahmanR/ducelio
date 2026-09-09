@@ -125,7 +125,11 @@ export function AcademyShell({
             My academy <span>/</span>{" "}
             <strong>
               {active?.[0] ??
-                (pathname.endsWith("lecture") ? "Lecture Hall" : "Study plan")}
+                (pathname.endsWith("/notifications")
+                  ? "Notifications"
+                  : pathname.endsWith("lecture")
+                    ? "Lecture Hall"
+                    : "Study plan")}
             </strong>
           </div>
           <div className="topbar-actions">
@@ -134,8 +138,10 @@ export function AcademyShell({
             </span>
             <Link
               className="icon-link"
-              aria-label="Academy announcements"
-              href={base + "/announcements"}
+              aria-label={
+                demo ? "Academy announcements" : "Academy notifications"
+              }
+              href={demo ? base + "/announcements" : base + "/notifications"}
             >
               <Bell size={19} />
             </Link>
@@ -158,10 +164,22 @@ export function AcademyShell({
         <details className="mobile-menu">
           <summary>
             <Menu size={18} />
-            Academy menu<span>{active?.[0] ?? "Study plan"}</span>
+            Academy menu
+            <span>
+              {active?.[0] ??
+                (pathname.endsWith("/notifications")
+                  ? "Notifications"
+                  : "Study plan")}
+            </span>
           </summary>
           <nav aria-label="Mobile academy navigation">
             {nav}
+            {!demo && (
+              <Link className="nav-link" href="/student/notifications">
+                <Bell size={18} strokeWidth={1.7} />
+                Notifications
+              </Link>
+            )}
             <Link className="nav-link" href={base + "/study-plan"}>
               Study plan
             </Link>
