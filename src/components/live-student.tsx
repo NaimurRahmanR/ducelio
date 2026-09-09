@@ -6,6 +6,7 @@ import { getStudentAttendance } from "@/server/attendance";
 import { getStudentLessonProgress } from "@/server/lesson-progress";
 import { getStudentLearningResources } from "@/server/learning-resources";
 import { getStudentLearningEvidence } from "@/server/learning-evidence";
+import { getStudentObjectiveMastery } from "@/server/objective-mastery";
 import {
   getAssignedCounsellor,
   getStudyPlan,
@@ -14,6 +15,7 @@ import {
   getOpenSupportEvents,
 } from "@/server/support";
 import { SupportForms } from "./support-forms";
+
 export async function LiveStudent({ section = "" }: { section?: string }) {
   const { actor, enrolments, profile } = await getStudentAcademy();
   const [
@@ -27,6 +29,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     lessonProgress,
     resources,
     evidence,
+    mastery,
   ] = await Promise.all([
     getAssignedCounsellor(actor.id),
     getStudyPlan(actor.id),
@@ -38,6 +41,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     getStudentLessonProgress(),
     getStudentLearningResources(),
     getStudentLearningEvidence(),
+    getStudentObjectiveMastery(),
   ]);
   const attendanceBySession = new Map(
     attendance.map((record) => [record.session_id, record]),
@@ -89,7 +93,8 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                   )}
                   <p className="muted">
                     Lesson progress and objective mastery are separate. Mastery
-                    will only come from validated learning evidence.
+                    comes only from validated learning evidence processed by the
+                    deterministic policy.
                   </p>
                 </div>
               ))
@@ -192,7 +197,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             <Card>
               <div className="section-heading">
                 <h2>Your learning evidence</h2>
-                <Badge tone="muted">NOT MASTERY</Badge>
+                <Badge tone="muted">INPUT TO MASTERY</Badge>
               </div>
               {evidence.length ? (
                 evidence.map((record) => (
@@ -216,14 +221,14 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                     </p>
                     <p className="muted">
                       Recorded {new Date(record.recorded_at).toLocaleString()}.
-                      Evidence alone does not establish mastery.
+                      Evidence is evaluated by policy before mastery changes.
                     </p>
                   </div>
                 ))
               ) : (
                 <EmptyState title="No learning evidence recorded">
                   Validated observations against your learning objectives will
-                  appear here. Mastery remains a separate later decision.
+                  appear here.
                 </EmptyState>
               )}
             </Card>
@@ -265,6 +270,58 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               <EmptyState title="No learning resources available">
                 Lecture notes and approved references for your enrolled
                 curriculum will appear here after publication.
+              </EmptyState>
+            )}
+          </Card>
+        )}
+        {section === "results" && (
+          <Card>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">DETERMINISTIC OBJECTIVE STATE</p>
+                <h2>Your mastery</h2>
+              </div>
+              <Badge tone="blue">MASTERY_V1</Badge>
+            </div>
+            <p className="muted">
+              Demonstrated requires correct evidence across at least two class
+              sessions and at least two evidence kinds. A later partial or
+              incorrect observation can move an objective to needs
+              reinforcement.
+            </p>
+            {mastery.length ? (
+              mastery.map((record) => (
+                <div className="support-record" key={record.id}>
+                  <Badge
+                    tone={
+                      record.state === "DEMONSTRATED"
+                        ? "green"
+                        : record.state === "NEEDS_REINFORCEMENT"
+                          ? "gold"
+                          : record.state === "DEVELOPING"
+                            ? "blue"
+                            : "muted"
+                    }
+                  >
+                    {record.state.replaceAll("_", " ")}
+                  </Badge>
+                  <h3>{record.lesson_objectives.description}</h3>
+                  <p>{record.lessons.title}</p>
+                  <p className="muted">
+                    {record.evidence_count} evidence records ·{" "}
+                    {record.correct_session_count} correct sessions ·{" "}
+                    {record.correct_kind_count} correct evidence kinds
+                  </p>
+                  <p className="muted">
+                    Evaluated {new Date(record.evaluated_at).toLocaleString()} ·{" "}
+                    {record.policy_version}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <EmptyState title="No objective mastery state yet">
+                Your mastery state appears only after validated learning evidence
+                has been processed by the academy policy.
               </EmptyState>
             )}
           </Card>
@@ -377,6 +434,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
           "profile",
           "classes",
           "notes",
+          "results",
         ].includes(section) && (
           <Card>
             <EmptyState
