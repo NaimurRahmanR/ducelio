@@ -13,6 +13,11 @@ import { recordLessonProgress } from "@/server/lesson-progress";
 import { createLearningResource } from "@/server/learning-resources";
 import { recordLearningEvidence } from "@/server/learning-evidence";
 import { createAssignment, changeAssignmentStatus } from "@/server/assignments";
+import {
+  addAssessmentQuestion,
+  changeAssessmentStatus,
+  createAssessment,
+} from "@/server/assessments";
 
 export type ProgrammeActionState = { error?: string; message?: string };
 export type EnrolmentActionState = { error?: string; message?: string };
@@ -26,6 +31,7 @@ export type LessonProgressActionState = { error?: string; message?: string };
 export type LearningResourceActionState = { error?: string; message?: string };
 export type LearningEvidenceActionState = { error?: string; message?: string };
 export type AssignmentActionState = { error?: string; message?: string };
+export type AssessmentActionState = { error?: string; message?: string };
 
 export async function publishProgramme(
   _state: ProgrammeActionState,
@@ -305,4 +311,79 @@ export async function publishOrCloseAssignment(
   revalidatePath("/admin");
   revalidatePath("/student/assignments");
   return { message: "Assignment status updated." };
+}
+
+export async function addControlledAssessment(
+  _state: AssessmentActionState,
+  form: FormData,
+): Promise<AssessmentActionState> {
+  try {
+    const opensAt = new Date(String(form.get("opensAt"))).toISOString();
+    const closesAt = new Date(String(form.get("closesAt"))).toISOString();
+    await createAssessment({
+      cohortId: form.get("cohortId"),
+      lessonId: form.get("lessonId"),
+      instructorId: form.get("instructorId"),
+      title: form.get("title"),
+      instructions: form.get("instructions"),
+      opensAt,
+      closesAt,
+      durationMinutes: form.get("durationMinutes"),
+      attemptsAllowed: form.get("attemptsAllowed"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to create this assessment. Check the cohort, lesson, instructor, release window, duration and permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  return { message: "Assessment draft created." };
+}
+
+export async function addProtectedAssessmentQuestion(
+  _state: AssessmentActionState,
+  form: FormData,
+): Promise<AssessmentActionState> {
+  try {
+    const rawGuidance = String(form.get("markingGuidance") ?? "").trim();
+    await addAssessmentQuestion({
+      assessmentId: form.get("assessmentId"),
+      position: form.get("position"),
+      prompt: form.get("prompt"),
+      maxMarks: form.get("maxMarks"),
+      expectedAnswer: form.get("expectedAnswer"),
+      markingGuidance: rawGuidance || null,
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to add this protected question. Check the draft assessment, question position, marks, answer key and permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  return { message: "Protected assessment question added." };
+}
+
+export async function publishOrCloseAssessment(
+  _state: AssessmentActionState,
+  form: FormData,
+): Promise<AssessmentActionState> {
+  try {
+    await changeAssessmentStatus({
+      assessmentId: form.get("assessmentId"),
+      status: form.get("status"),
+      reason: form.get("reason"),
+    });
+  } catch {
+    return {
+      error:
+        "Unable to change this assessment status. Check the protected-question requirements, lifecycle transition and permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  revalidatePath("/student/assessments");
+  return { message: "Assessment status updated." };
 }
