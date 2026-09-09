@@ -59,8 +59,8 @@ for select to authenticated using (
 
 -- Existing early Phase 2 services used is_academic_admin(), which includes REGISTRAR
 -- for broad read access. Prevent a registrar-only actor from using those academic
--- mutation paths. A deliberate registrar correction can temporarily opt in only
--- for the attendance row it is correcting.
+-- mutation paths. Deliberate registrar corrections temporarily opt in only inside
+-- the governed correction RPC.
 create function public.guard_registrar_academic_mutation() returns trigger
 language plpgsql set search_path='' as $$
 begin
@@ -76,6 +76,10 @@ begin
 end $$;
 
 revoke all on function public.guard_registrar_academic_mutation() from public;
+
+create trigger registrar_boundary
+before insert or update or delete on public.enrolments
+for each row execute function public.guard_registrar_academic_mutation();
 
 create trigger registrar_boundary
 before insert or update or delete on public.class_sessions
@@ -129,7 +133,9 @@ begin
   end if;
 
   perform set_config('app.audit_reason',trim(p_reason),true);
+  perform set_config('app.registrar_correction','true',true);
   update public.enrolments set status=p_status where id=p_enrolment_id;
+  perform set_config('app.registrar_correction','false',true);
 
   insert into public.registrar_corrections(
     student_id,correction_kind,enrolment_id,before_value,after_value,reason,corrected_by,corrected_at
