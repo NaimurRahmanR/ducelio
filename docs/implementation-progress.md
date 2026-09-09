@@ -4,8 +4,8 @@ This file is the high-level implementation status. Detailed checkpoint evidence 
 
 LAST COMPLETED CHECKPOINT: Phase 2 checkpoint 14 — integration hardening
 CURRENT PARTIAL CHECKPOINT: Phase 2 checkpoint 15 — final audit and PR readiness
-KNOWN FAILURES: None from the completed Checkpoint 14 local gate; the documentation/audit tree created by Checkpoint 15 still requires the final exact-tree local gate and pull-request CI.
-NEXT EXACT ACTION: Pull the final Phase 2 audit/documentation commits, run the exact Node 24 gate (`npm run check`, `npm run build`, `npm run format:check`, clean git status), then open the `phase-2-academy-os` → `main` pull request and require GitHub CI/review before merge.
+KNOWN FAILURES: The first PR-ready Checkpoint 15 tree passed local validation and GitHub CI, but manual PR review found three blockers. Forward-only migration 020, a controlled-assessment UI correction and dedicated regression tests now address them; the corrected head still requires a fresh exact-tree local gate and updated PR CI before merge.
+NEXT EXACT ACTION: Pull the final-review correction commits, run the exact Node 24 gate (`npm run check`, `npm run build`, `npm run format:check`, clean git status), then verify PR #1 CI on the same head and merge only after the corrected diff has no unresolved blocker.
 
 ## Phase 1 — complete
 
@@ -15,7 +15,7 @@ The eight-checkpoint Phase 1 record remains in `phase-1-completion-report.md`. H
 
 ## Phase 2 — implementation complete through Checkpoint 14
 
-The deterministic Academy Operating System now includes:
+The deterministic Academy Operating System includes:
 
 1. governed ProgrammeVersion publication;
 2. governed Enrolment creation/lifecycle;
@@ -36,16 +36,15 @@ Checkpoint 14's final local Node 24 gate passed ESLint, route/type generation an
 
 ## Checkpoint 15 — final audit and PR readiness — in progress
 
-The final audit reviewed the feature branch against `main`, the current architecture/RBAC/domain/assessment/support documents, the ordered migration set, CI workflow and cross-cutting hardening contracts. The branch is based directly on the current `main` merge base with no reported behind commits at audit time. The remaining Phase 2 closure work is intentionally release/process work rather than another product feature.
+Checkpoint 15 reviewed the feature branch against `main`, reconciled current architecture/security documentation, opened PR #1 and obtained an initial green Linux/Node 24 GitHub Actions run. The manual PR security review then found three issues that required code changes rather than a rubber-stamp merge:
 
-Checkpoint 15 documentation now:
+- INSTRUCTOR-only actors could self-select as assignment/assessment instructor for an arbitrary known cohort without an existing relationship;
+- support-only plan/follow-up notification detail crossed into Academic Admin notification reads even though the source support records were separately permissioned;
+- expired/closed controlled-assessment attempts could remain state `ACTIVE`, leaving stale lifecycle/UI state and blocking a later assessment start.
 
-- refreshes README and repository rules from Phase 1 wording to the actual Phase 2 Academy OS;
-- reconciles the database ledger to all 19 migrations;
-- records the post-Phase 2 future academic-agent boundary;
-- advances the roadmap to permissioned-agent interfaces rather than direct database integration;
-- updates production/staging security requirements for controlled assessments, Registrar boundaries, deterministic support triggers and true concurrency testing;
-- records residual scope and production-readiness limitations in `phase-2-completion-report.md`.
+The corrected branch now adds migration `202609090020_phase2_final_review_hardening.sql`, making 20 ordered migrations in total. It requires instructor-initiated coursework/assessment creation to match a real non-cancelled ClassSession relationship, minimises Counsellor follow-up notification content and keeps support-only notification kinds outside Academic Admin/Platform Admin reads, and deterministically finalises expired/closed ACTIVE assessment attempts before another start. The student controlled-assessment UI now renders an active protected-content shell only when the server-owned activity state is actually `CONTROLLED_ASSESSMENT_ACTIVE`.
+
+`tests/final-review-hardening.test.ts` adds focused regression coverage for all three review findings. The previous **149/149** result predates these changes; the corrected expected suite is **152 tests across 24 files**, subject to the required fresh quality gate.
 
 ## Current scope boundary
 
