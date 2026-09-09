@@ -84,11 +84,7 @@ function AssessmentResponseForm({
       <form action={action} className="support-form">
         <input type="hidden" name="attemptId" value={attempt.id} />
         <input type="hidden" name="questionId" value={question.id} />
-        <input
-          type="hidden"
-          name="idempotencyKey"
-          value={nextRevisionKey}
-        />
+        <input type="hidden" name="idempotencyKey" value={nextRevisionKey} />
         <textarea
           name="body"
           rows={8}

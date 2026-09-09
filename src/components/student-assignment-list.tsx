@@ -109,7 +109,8 @@ function AssignmentItem({
           </div>
           <p className="muted">
             Submission retries are deduplicated automatically. A new governed
-            attempt receives a new internal reference after this one is recorded.
+            attempt receives a new internal reference after this one is
+            recorded.
           </p>
           <button className="button" disabled={pending}>
             {pending ? "Submitting…" : "Submit assignment"}

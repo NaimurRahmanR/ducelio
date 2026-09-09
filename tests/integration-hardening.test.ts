@@ -18,7 +18,9 @@ let questionId: string;
 let secondAttemptId: string;
 
 async function asAuth(authId: string) {
-  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [authId]);
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [
+    authId,
+  ]);
   await db.exec("set role authenticated");
 }
 

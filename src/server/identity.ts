@@ -43,6 +43,7 @@ export async function requireActor(area?: Area) {
 
 export async function requireAnyRole(roles: readonly Role[]) {
   const actor = await requireActor();
-  if (!roles.some((role) => actor.roles.includes(role))) throw new AccessDenied();
+  if (!roles.some((role) => actor.roles.includes(role)))
+    throw new AccessDenied();
   return actor;
 }

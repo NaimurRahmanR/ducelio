@@ -1,7 +1,4 @@
-import {
-  StaffShell,
-  adminSectionsForRoles,
-} from "@/components/staff-shell";
+import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { AdminWorkspace } from "@/components/admin-workspace";
 import { ProgrammePublication } from "@/components/programme-publication";
 import { LearningResourceWorkspace } from "@/components/learning-resource-workspace";
