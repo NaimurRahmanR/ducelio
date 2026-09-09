@@ -1,11 +1,11 @@
 # Phase 2 — Academy OS progress
 
-Branch: `phase-2-academy-os`
+Branch: `main` (merged from `phase-2-academy-os`)
 
-LAST COMPLETED CHECKPOINT: 14 — Phase 2 integration hardening
-CURRENT PARTIAL CHECKPOINT: 15 — final Phase 2 audit and PR readiness
-KNOWN FAILURES: The first PR-ready tree passed local validation and GitHub CI, but manual PR review found three blockers. Corrective migration 020, learner assessment-shell handling and dedicated regression tests are now on the branch and require a fresh exact-tree local/PR gate.
-NEXT EXACT ACTION: Pull the final-review correction commits locally; run Node 24 `npm run check`, `npm run build`, `npm run format:check` and confirm a clean synchronized tree. Then verify the updated PR CI on the new head, review the corrected diff, and merge only when all gates are green with no unresolved blocker.
+LAST COMPLETED CHECKPOINT: 15 — final Phase 2 audit, review hardening and merge
+CURRENT PARTIAL CHECKPOINT: None
+KNOWN FAILURES: None at Phase 2 closure. The corrected final tree passed 152/152 tests across 24 files locally and in PR CI; PR #1 merged to `main` at `9b902e7`; post-merge `main` CI also passed.
+NEXT EXACT ACTION: Begin the next development phase from the merged `main` baseline on a new feature branch after reviewing `docs/12-roadmap.md`. Do not continue feature work directly on `main`.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -149,7 +149,7 @@ NEXT EXACT ACTION: Pull the final-review correction commits locally; run Node 24
 - Added focused integration-hardening regressions for enrolment history semantics, safe timetable projection, voided assessment retries, response identity, resource audit minimisation and scheduling conflict preservation.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 149/149 tests in 23 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
 
-## Checkpoint 15 — final Phase 2 audit and PR readiness — in progress
+## Checkpoint 15 — final Phase 2 audit and PR readiness — complete
 
 - Compared `main` with `phase-2-academy-os`; at audit start the feature branch shared the current `main` merge base, was ahead and reported zero commits behind.
 - Reconciled README, repository rules, migration/security documentation, future-agent boundary, roadmap and the Phase 2 completion report to the implemented deterministic Academy OS.
@@ -158,7 +158,11 @@ NEXT EXACT ACTION: Pull the final-review correction commits locally; run Node 24
 - Added forward-only migration `202609090020_phase2_final_review_hardening.sql`: instructor-initiated coursework/assessment creation now requires a real non-cancelled ClassSession relationship; support-follow-up notification titles are minimised and support-only notification kinds stay outside Academic Admin/Platform Admin reads; expired/closed ACTIVE controlled attempts are deterministically finalised before a new start.
 - Updated the learner controlled-assessment UI so only server-owned `CONTROLLED_ASSESSMENT_ACTIVE` state renders the active protected-content shell.
 - Added `tests/final-review-hardening.test.ts` covering instructor relationship scope, support-notification privacy and expired-attempt finalisation.
-- The previous 149/149 local/CI result predates these review corrections. The current head must now pass the fresh local exact-tree gate and updated PR CI before Checkpoint 15 can close.
+- Final corrected local gate: ESLint, route/type generation, TypeScript, **152/152 tests across 24 files**, production webpack build and Prettier all passed with a clean synchronized feature tree.
+- Corrected PR-head GitHub Actions passed on Linux/Node 24. Review blockers were considered closed before merge.
+- PR #1 was merged into `main` as merge commit `9b902e742dd8557d51b1c31e0b6a4f522c07982a`.
+- Post-merge `main` CI passed all quality, formatting and production-build steps.
+- Phase 2 is closed. This ledger is the final Phase 2 record; later work should start from `main` on a new feature branch.
 
 ## Scope boundary
 
