@@ -4,7 +4,7 @@ import {
   enrolmentCreationSchema,
   enrolmentStatusSchema,
 } from "@/domain/academy";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const learnerSchema = z.object({
@@ -98,7 +98,7 @@ export async function getEnrolmentWorkspace() {
 
 export async function createEnrolment(input: unknown) {
   const payload = enrolmentCreationSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("create_enrolment", {
     p_student_id: payload.studentId,
@@ -111,7 +111,7 @@ export async function createEnrolment(input: unknown) {
 
 export async function changeEnrolmentStatus(input: unknown) {
   const payload = enrolmentStatusSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("change_enrolment_status", {
     p_enrolment_id: payload.enrolmentId,
