@@ -8,6 +8,7 @@ const otherLearnerId = "10000000-0000-4000-8000-000000000003";
 const adminId = "10000000-0000-4000-8000-000000000002";
 const learnerAuth = "88000000-0000-4000-8000-000000000001";
 const adminAuth = "88000000-0000-4000-8000-000000000002";
+const versionId = "20000000-0000-4000-8000-000000000002";
 const cohortId = "50000000-0000-4000-8000-000000000001";
 const lessonId = "40000000-0000-4000-8000-000000000001";
 let enrolmentId: string;
@@ -100,7 +101,10 @@ describe("phase 2 integration hardening", () => {
       instructor_name: string;
       instructor_title: string;
       lesson_title: string;
-    }>("select id,instructor_name,instructor_title,lesson_title from public.list_my_class_sessions() where id=$1", [sessionId]);
+    }>(
+      "select id,instructor_name,instructor_title,lesson_title from public.list_my_class_sessions() where id=$1",
+      [sessionId],
+    );
     await resetRole();
 
     expect(rows.rows[0]).toEqual({
@@ -178,7 +182,7 @@ describe("phase 2 integration hardening", () => {
 
   it("keeps large lecture-note content out of generic audit payloads", async () => {
     const programmeId = "2f000000-0000-4000-8000-000000000001";
-    const versionId = "2f000000-0000-4000-8000-000000000002";
+    const draftVersionId = "2f000000-0000-4000-8000-000000000002";
     const moduleId = "3f000000-0000-4000-8000-000000000001";
     const draftLessonId = "4f000000-0000-4000-8000-000000000001";
     await db.query(
@@ -188,16 +192,16 @@ describe("phase 2 integration hardening", () => {
     );
     await db.query(
       "insert into public.programme_versions(id,programme_id,label) values($1,$2,'Hardening draft')",
-      [versionId, programmeId],
+      [draftVersionId, programmeId],
     );
     await db.query(
       "insert into public.modules(id,programme_version_id,title,position) values($1,$2,'Hardening module',1)",
-      [moduleId, versionId],
+      [moduleId, draftVersionId],
     );
     await db.query(
       `insert into public.lessons(id,module_id,programme_version_id,title,position)
        values($1,$2,$3,'Hardening lesson',1)`,
-      [draftLessonId, moduleId, versionId],
+      [draftLessonId, moduleId, draftVersionId],
     );
 
     await asAuth(adminAuth);
@@ -220,7 +224,13 @@ describe("phase 2 integration hardening", () => {
     expect(audit.rows[0]).toEqual({ title: "Hardening note", body: null });
   });
 
-  it("keeps instructor scheduling conflicts enforced after the concurrency lock hardening", async () => {
+  it("rejects a cross-cohort instructor overlap after the concurrency hardening", async () => {
+    const secondCohortId = "5f000000-0000-4000-8000-000000000001";
+    await db.query(
+      "insert into public.cohorts(id,programme_version_id,title,starts_on) values($1,$2,'Hardening second cohort',current_date)",
+      [secondCohortId, versionId],
+    );
+
     await asAuth(adminAuth);
     await expect(
       db.query(
@@ -228,9 +238,9 @@ describe("phase 2 integration hardening", () => {
           $1,$2,$3,now()+interval '1 day 30 minutes',now()+interval '1 day 2 hours',
           'Attempt overlapping instructor session'
         )`,
-        [cohortId, lessonId, adminId],
+        [secondCohortId, lessonId, adminId],
       ),
-    ).rejects.toThrow("overlapping");
+    ).rejects.toThrow("Instructor already has an overlapping class session");
     await resetRole();
   });
 });
