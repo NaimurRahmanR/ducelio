@@ -3,9 +3,9 @@
 Branch: `phase-2-academy-os`
 
 LAST COMPLETED CHECKPOINT: 11 — controlled assessment foundations with protected content release and technical activity firewalls
-CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None after the final local Node 24 quality gate.
-NEXT EXACT ACTION: Checkpoint 12 — governed registrar corrections and exception handling for authoritative institutional records, with bounded reasons, immutable history and explicit role boundaries.
+CURRENT PARTIAL CHECKPOINT: 12 — governed registrar corrections and exception handling
+KNOWN FAILURES: Checkpoint 12 has not yet passed the local Node 24 quality gate.
+NEXT EXACT ACTION: Pull Checkpoint 12 locally and run lint, typecheck, tests, production build and Prettier format check.
 
 ## Checkpoint 1 — governed programme publication — complete
 
@@ -106,6 +106,17 @@ NEXT EXACT ACTION: Checkpoint 12 — governed registrar corrections and exceptio
 - The quality gate caught a SQL parser issue around the `position` output name, which was corrected without changing the assessment contract. Tests were also corrected to assert direct learner permission denial on protected tables rather than expecting empty rows.
 - Automatic marking, grades/results and AI Examiner/Tutor integration remain deliberately outside this checkpoint.
 - Final local validation after formatting: ESLint passed with no warnings; Next route type generation and TypeScript passed; 127/127 tests in 20 files passed; production webpack build passed; Prettier format check passed; working tree clean and branch synchronized with origin.
+
+## Checkpoint 12 — governed registrar corrections — in progress
+
+- Migration: `202609090017_phase2_registrar_corrections.sql`.
+- Added append-only `registrar_corrections` history for documented corrections to existing enrolment-status and attendance-status records, including before/after values, bounded reason, actor and timestamp.
+- Registrar correction RPCs preserve the authoritative record identity while writing immutable correction provenance and the ordinary institutional audit trail.
+- Completed enrolments remain outside this correction workflow; academic completion requires a separate academic-authority workflow.
+- Registrar-only actors are blocked at the database trigger layer from the older broad `is_academic_admin()` mutation paths for enrolments, class sessions, attendance, lesson progress and learning evidence. This closes the legacy role-overlap bypass without reducing Registrar read context.
+- Academic admins do not automatically receive Registrar correction authority. REGISTRAR or PLATFORM_ADMIN is required for these exception workflows.
+- Added dedicated server service/actions, Administration → Registry correction workspace and focused role-boundary/correction-history tests.
+- Local Node 24 validation is required before this checkpoint can be marked complete.
 
 ## Scope boundary
 
