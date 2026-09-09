@@ -5,7 +5,7 @@ import {
   correctAttendanceRecord,
   correctEnrolmentRecord,
   type RegistrarActionState,
-} from "@/app/admin/actions";
+} from "@/app/admin/registrar-actions";
 import { Badge, Card, EmptyState } from "./ui";
 
 type Enrolment = {
