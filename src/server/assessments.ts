@@ -1,6 +1,6 @@
 import "server-only";
 import { z } from "zod";
-import { requireActor } from "./identity";
+import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
 const assessmentCreationSchema = z
@@ -185,7 +185,7 @@ export async function getAssessmentWorkspace() {
 
 export async function createAssessment(input: unknown) {
   const payload = assessmentCreationSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("create_assessment", {
     p_cohort_id: payload.cohortId,
@@ -205,7 +205,7 @@ export async function createAssessment(input: unknown) {
 
 export async function addAssessmentQuestion(input: unknown) {
   const payload = assessmentQuestionSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("add_assessment_question", {
     p_assessment_id: payload.assessmentId,
@@ -222,7 +222,7 @@ export async function addAssessmentQuestion(input: unknown) {
 
 export async function changeAssessmentStatus(input: unknown) {
   const payload = assessmentStatusSchema.parse(input);
-  await requireActor("admin");
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const client = await createSupabase();
   const { data, error } = await client.rpc("change_assessment_status", {
     p_assessment_id: payload.assessmentId,
