@@ -37,6 +37,7 @@ import {
   closeAcademicContentRelease,
   type AcademicContentRelease,
 } from "../academic-content-release";
+import type { CapabilityOutput } from "@/domain/academic-capabilities";
 
 const envelopeSchema = z.strictObject({
   capability: z.string().min(1).max(80),
@@ -65,6 +66,28 @@ export function invokeProfessorCapability(
 export async function invokeProfessorCapability(
   request: unknown,
 ): Promise<CapabilityResult> {
+  return (await invokeWithContentConsumer(request)).result;
+}
+
+// Trusted server composition point, not a new JSON capability or public route.
+// The callback runs inside the original release and receives only validated data.
+export async function withValidatedProfessorContent(
+  request: unknown,
+  consume: (context: {
+    release: AcademicContentRelease;
+    data: CapabilityOutput<CapabilityName>;
+  }) => Promise<void>,
+): Promise<{ result: CapabilityResult; releaseFinalizationFailed: boolean }> {
+  return invokeWithContentConsumer(request, consume);
+}
+
+async function invokeWithContentConsumer(
+  request: unknown,
+  consume?: (context: {
+    release: AcademicContentRelease;
+    data: CapabilityOutput<CapabilityName>;
+  }) => Promise<void>,
+): Promise<{ result: CapabilityResult; releaseFinalizationFailed: boolean }> {
   const invocationId = randomUUID();
   let actorId: string | null = null;
   let capability: CapabilityName | null = null;
@@ -110,6 +133,8 @@ export async function invokeProfessorCapability(
       const name = capabilityNameSchema.safeParse(envelope.data.capability);
       if (!name.success) return fail("CAPABILITY_UNAVAILABLE");
       capability = name.data;
+      if (consume && !professorCatalogue[capability].academicRead)
+        return fail("INVALID_INPUT");
       const definition = capabilitySchemas[capability];
       const input = definition.input.safeParse(envelope.data.input);
       if (!input.success) return fail("INVALID_INPUT");
@@ -198,6 +223,7 @@ export async function invokeProfessorCapability(
       )
         return fail("CONTEXT_CONFLICT");
 
+      if (consume && release) await consume({ release, data });
       const currentPrincipal = await requireStudentPrincipal();
       if (currentPrincipal.id !== actorId) {
         authorizedScope = null;
@@ -237,10 +263,13 @@ export async function invokeProfessorCapability(
     try {
       await closeAcademicContentRelease(release, result.ok);
     } catch {
-      return fail("SERVICE_UNAVAILABLE");
+      return {
+        result: fail("SERVICE_UNAVAILABLE"),
+        releaseFinalizationFailed: true,
+      };
     }
   }
-  return result;
+  return { result, releaseFinalizationFailed: false };
 }
 
 export const professorCapabilities: ProfessorCapabilities = {
