@@ -8,7 +8,7 @@ Phase 2 implemented and hardened the deterministic Academy Operating System: gov
 
 Phase 2 is complete and merged. Checkpoint 15 closed the final review/security corrections, local gates, PR CI/review and merge at `9b902e7`; post-merge main CI passed. Historical evidence remains in the Phase 1/2 completion records.
 
-## Phase 3 â€” academic capability layer
+## Phase 3 Ã¢â‚¬â€ academic capability layer
 
 Phase 3 has begun on `phase-3-ai-academic-layer`. Checkpoint 1A/1B is complete, reviewed and approved on that feature branch at `c8c9ad9`. Its provider-independent Professor read boundary exposes `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. Every capability requires the authenticated human STUDENT and self-owned enrolment scope; PROFESSOR is a server-selected capability profile, not a RoleGrant or database principal.
 
@@ -20,7 +20,7 @@ The 1D-A database audit proves only release authorization lifecycle metadata. Au
 
 Checkpoint 1D-A is committed and pushed at `902e915` on the feature branch. Local validation and second review passed. PR CI was not run; it is not merged to main. Hosted/true-concurrency acceptance remains outstanding.
 
-Checkpoint 1D-B1 adds provider-neutral trusted execution governance to the uncommitted working tree. A controller HMAC-SHA256 attestation supplements the authenticated learner session; narrow DB operations independently enforce learner/release binding, immutable lifecycle audit, replay rejection, admission ceilings and bounded lifetime. The B1 runtime intentionally abstains with no provider and a zero-call/zero-spend budget. This control-plane audit is separate from 1D-A learner release authorization and future B2 provider execution evidence. See `15-academic-execution-governance.md` for secret provisioning, the signing protocol, privacy/retention semantics and acceptance limits. B1 has passed final second review and is approved for feature-branch checkpointing; PR CI, merge and hosted/production acceptance are not claimed.
+Checkpoint 1D-B1 is committed and pushed at `85d3b85` and included in PR #2. A controller HMAC-SHA256 attestation supplements the authenticated learner session; narrow DB operations independently enforce learner/release binding, immutable lifecycle audit, replay rejection, admission ceilings and bounded lifetime. The B1 runtime intentionally abstains with no provider and a zero-call/zero-spend budget. This control-plane audit is separate from 1D-A learner release authorization and future B2 provider execution evidence. See `15-academic-execution-governance.md` for secret provisioning, the signing protocol, privacy/retention semantics and acceptance limits. B1 has passed final second review and PR #2 CI passed at `85d3b85`; merge and hosted/production acceptance are not claimed.
 
 Provider integration remains blocked. B2 must review actual provider isolation/execution evidence, nonzero estimates and usage/cost reconciliation, lease latency/cancellation, retention duration, failure/abstention/escalation and human-review delivery policy. Production secret provisioning, perimeter abuse protection and hosted concurrent acceptance remain prerequisites; local execution-admission tests do not establish distributed or hosted acceptance.
 

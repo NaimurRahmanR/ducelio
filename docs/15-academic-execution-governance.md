@@ -1,4 +1,4 @@
-# Professor execution governance â€” Phase 3 Checkpoint 1D-B1
+# Professor execution governance Ã¢â‚¬â€ Phase 3 Checkpoint 1D-B1
 
 B1 adds a provider-neutral trusted execution control plane. No provider, model call, prompt, generated answer, chat, public endpoint, academic write or actual usage/cost accounting exists. `PROFESSOR_READ_V2` is unchanged. The new execution policy is `PROFESSOR_EXECUTION_V1`, with execution kind `CONTROL_PLANE_ONLY`.
 
@@ -130,7 +130,7 @@ Execution rows and lifecycle audit contain identifiers, fixed profile/policy/kin
 
 ## Verification and B2 prerequisites
 
-The corrected local gate used bundled Node **v24.19.0**: **115 focused B1 tests** (68 execution DB + 47 execution workflow); `npm run check` passed lint/type generation/TypeScript and **438 tests across 29 files**, preserving the earlier capability/release and Academy OS coverage. Production build, formatting and `git diff --check` also passed. B1 has passed final second review and is approved for feature-branch checkpointing; no PR CI, merge or production acceptance is claimed.
+The corrected local gate used bundled Node **v24.19.0**: **115 focused B1 tests** (68 execution DB + 47 execution workflow); `npm run check` passed lint/type generation/TypeScript and **438 tests across 29 files**, preserving the earlier capability/release and Academy OS coverage. Production build, formatting and `git diff --check` also passed. B1 has passed final second review, is committed/pushed at `85d3b85`, and PR #2 CI passed on that head; no merge or production acceptance is claimed.
 
 The fixture includes service_role with BYPASSRLS, broad schema/table/function defaults and pre-existing audit/release column grants. ACL and real-operation tests deny service-role INSERT/UPDATE/DELETE of execution/release/audit rows, key/helper access and even a valid signed execution RPC, preserve audit SELECT/authenticated entry points, and reject unsafe inherited rights in deployment acceptance. Exact workflow assertions cover all four DB-governed terminal codes at START and FINALIZE with one terminal audit and no redundant cleanup command, plus successful/failed necessary cleanup after transport uncertainty. Privileged activity/deadline fault injection does not claim normal assessment start bypasses the release lock.
 
@@ -138,4 +138,4 @@ Local focused tests exercise actual Node signing and pgcrypto reconstruction in 
 
 These tests do not prove hosted Supabase/JWT/PostgREST acceptance, production secret provisioning, cryptographic side-channel resistance, process/network isolation, true multi-process distributed admission, true concurrent PostgreSQL behavior or any provider acceptance. PGlite exercises sequential semantics; **two independent concurrent PostgreSQL connections have not been tested**.
 
-Provider integration remains blocked pending the B1 feature-branch checkpoint/CI, hosted key/grant/pgcrypto/RPC acceptance, protected provisioning/rotation/logging/backup review, true concurrent learner-lock acceptance, provider/process isolation, generation/lease-expiry design, model-specific budget/reconciliation/overrun controls, retention decisions and reviewed failure/abstention/escalation/human-review delivery policy. No legal retention duration or commercial quota has been invented.
+Provider integration remains blocked pending PR #2 final review/merge and post-merge main CI, hosted key/grant/pgcrypto/RPC acceptance, protected provisioning/rotation/logging/backup review, true concurrent learner-lock acceptance, provider/process isolation, generation/lease-expiry design, model-specific budget/reconciliation/overrun controls, retention decisions and reviewed failure/abstention/escalation/human-review delivery policy. No legal retention duration or commercial quota has been invented.

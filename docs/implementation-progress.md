@@ -2,20 +2,20 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1D-B1 — provider-neutral trusted execution governance; local validation and final second review passed; approved for feature-branch checkpointing. PR CI, merge and hosted/production acceptance remain outstanding.
+LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1D-B1 — provider-neutral trusted execution governance; committed/pushed at `85d3b85`; local validation and final second review passed; PR #2 CI passed on that head. Merge and hosted/production acceptance remain outstanding.
 CURRENT PARTIAL CHECKPOINT: None
 COMPLETED ITEMS: HMAC-authenticated controller commands, migration 022, metadata-only execution/audit lifecycle, replay rejection, admission ceilings, zero-provider budget, bounded timeout, server-only composition with 1D-A, security/regression tests and documentation.
-INCOMPLETE ITEMS: Feature-branch checkpoint/PR CI; production provisioning/hosted acceptance; B2 provider execution, isolation, usage reconciliation, latency/cancellation, retention and human-review delivery decisions.
-KNOWN FAILURES: None in the corrected local B1 gate: 438/438 tests across 29 files, lint, route/type generation, TypeScript, production build, formatting and git diff --check passed. Final second review passed. Production/true-concurrency acceptance is not established. No provider exists.
-NEXT EXACT ACTION: Checkpoint the reviewed B1 tree on `phase-3-ai-academic-layer`, push it, then verify GitHub/PR CI status before beginning separately reviewed B2 provider integration.
+INCOMPLETE ITEMS: PR #2 final review/merge and post-merge main CI; production provisioning/hosted acceptance; B2 provider execution, isolation, usage reconciliation, latency/cancellation, retention and human-review delivery decisions.
+KNOWN FAILURES: None in the corrected local B1 gate or PR #2 CI at `85d3b85`. Production/true-concurrency acceptance is not established. No provider exists.
+NEXT EXACT ACTION: Complete PR #2 final review, merge to `main` if the updated CI remains green, verify post-merge main CI, then begin separately reviewed B2 provider integration.
 
-## Phase 1 â€” complete
+## Phase 1 Ã¢â‚¬â€ complete
 
 Phase 1 established the engineering and institutional foundation: Next.js/React/TypeScript, Supabase/PostgreSQL migrations, authentication and stable identity, backend RBAC/RLS, versioned programme structure, audited Counsellor services, student academy UI, Counsellor workspace, Administration shell, fictional previews, automated tests and architecture/security documentation.
 
 The eight-checkpoint Phase 1 record remains in `phase-1-completion-report.md`. Hosted Auth/OAuth/SMTP acceptance was outside that historical local delivery.
 
-## Phase 2 â€” complete and merged
+## Phase 2 Ã¢â‚¬â€ complete and merged
 
 The deterministic Academy Operating System now includes:
 
@@ -45,7 +45,7 @@ Migration `202609090020_phase2_final_review_hardening.sql` closes those findings
 
 The corrected final Phase 2 gate passed ESLint, route/type generation, TypeScript, **152/152 tests across 24 files**, production webpack build and Prettier locally. The corrected PR-head GitHub Actions run passed on Linux/Node 24. PR #1 was then merged into `main` at `9b902e742dd8557d51b1c31e0b6a4f522c07982a`, and the post-merge `main` CI run also passed.
 
-## Phase 3 checkpoint 1A/1B â€” local implementation complete
+## Phase 3 checkpoint 1A/1B Ã¢â‚¬â€ local implementation complete
 
 The first provider-independent capability boundary exposes exactly five server-only reads: `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. The contracts and limitations are documented in `14-academic-capabilities.md`.
 
@@ -65,7 +65,7 @@ Validation on 2026-09-09 with Node 24.19.0 on PATH:
 
 This progress entry was updated only after the implementation passed the local checkpoint gates. The changes remain on the Phase 3 feature branch; no merge to `main` or Phase 3 PR CI success is claimed.
 
-## Phase 3 checkpoint 1C â€” additional safe Professor reads
+## Phase 3 checkpoint 1C Ã¢â‚¬â€ additional safe Professor reads
 
 Checkpoint 1C extends the same server-only gateway from five to exactly nine allowlisted Professor capabilities and bumps the strict contract to `PROFESSOR_READ_V2`. The four additions are `get_current_class_session`, `get_learning_resources`, `get_permitted_learning_history` and `get_current_mastery_state`.
 
@@ -85,7 +85,7 @@ Local validation on 2026-09-09 using bundled Node 24.20.0:
 
 Checkpoint 1C is committed on `phase-3-ai-academic-layer` at `f21755b` (`feat: extend professor academic reads`), the clean starting tree verified for 1D-A. This entry does not claim 1C PR CI success or merge to main. At 1C completion, durable capability execution audit and a serialized assessment/content release boundary were deferred.
 
-## Phase 3 checkpoint 1D-A â€” serialized release authorization and audit
+## Phase 3 checkpoint 1D-A Ã¢â‚¬â€ serialized release authorization and audit
 
 Migration `202609090021_phase3_academic_content_release.sql` adds the minimal `academic_content_releases` lifecycle and begin/close RPCs. The database derives the authenticated learner, fixes PROFESSOR, validates the exact seven academic reads and V2 contract, and uses a non-renewable 30-second DB-clock expiry. Identity is immutable, terminal states cannot be rewritten, deletes are forbidden, RLS is enabled and authenticated users receive no direct release-table privileges. Existing `audit_events` and its Platform Admin read policy provide the institutional audit surface.
 
@@ -108,7 +108,7 @@ Local PGlite tests exercise actual SQL locks, sequential assessment/release excl
 
 No additional dependency, credential or environment configuration was needed for 1D-A. Migration 021 was applied only to local test databases in that checkpoint; hosted deployment/acceptance is not claimed. Checkpoint 1D-A is committed and pushed at `902e915` (`feat: serialize academic content release`) on the feature branch. Local validation and second review passed. PR CI was not run and it is not merged to main; hosted/true-concurrency acceptance remains outstanding.
 
-## Phase 3 checkpoint 1D-B1 â€” provider-neutral trusted execution governance
+## Phase 3 checkpoint 1D-B1 Ã¢â‚¬â€ provider-neutral trusted execution governance
 
 The interrupted B1 working tree was resumed in place at `902e915`, preserving the prior implementation. Migration `202609100022_phase3_trusted_execution_governance.sql` adds `academic_execution_private.controller_keys`, `academic_executions`, constrained `govern_professor_execution` commands and dedicated metadata-only audit/immutability triggers. It uses Node and pgcrypto HMAC-SHA256 instead of introducing a service-role credential or a new application SQL connection. No dependency or provider was added.
 
@@ -124,7 +124,7 @@ No production secret was provisioned. The private DB key store starts empty; the
 
 Initial B1 validation on 2026-09-10 using bundled Node **v24.19.0**:
 
-- Focused suites: **265/265 tests across five files** â€” 56 execution DB, 38 execution workflow, 116 capability/gateway, 29 capability/RLS workflow and 26 release lifecycle tests.
+- Focused suites: **265/265 tests across five files** Ã¢â‚¬â€ 56 execution DB, 38 execution workflow, 116 capability/gateway, 29 capability/RLS workflow and 26 release lifecycle tests.
 - `npm run check`: lint, route/type generation, TypeScript and **417/417 tests across 29 files** passed, preserving all prior 323 tests. A missing generic type argument found on the first typecheck was corrected before the passing run.
 - `npm run build`: production webpack build passed; no new routes.
 - `npm run format:check` and `git diff --check`: passed, including the final documentation update.
@@ -139,7 +139,7 @@ Corrected validation with bundled **v24.19.0**: focused B1 DB/workflow suites pa
 
 Verifier wording now distinguishes the inaccessible private raw verifier from the public fixed-protocol MAC validation result. Roadmap/progress headings have proper UTF-8 em dashes without unrelated prose rewrites. Historical controller-key UUID attribution is explicitly deferred: audit proves some active key verified the command, not which key authorized each transition. Hosted ACL/default/membership/ownership acceptance, production secret provisioning and all earlier production/B2 limitations remain outstanding.
 
-The corrected B1 implementation passed final second review and is approved for feature-branch checkpointing. PR CI, merge and hosted/production acceptance are not claimed; B2 has not begun.
+The corrected B1 implementation passed final second review, is committed/pushed at `85d3b85`, and PR #2 CI passed on that head. Merge and hosted/production acceptance are not claimed; B2 has not begun.
 
 ## Current scope boundary
 
