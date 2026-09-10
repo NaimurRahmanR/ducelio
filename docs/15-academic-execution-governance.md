@@ -1,4 +1,4 @@
-# Professor execution governance Ã¢â‚¬â€ Phase 3 Checkpoint 1D-B1
+# Professor execution governance â€” Phase 3 Checkpoint 1D-B1
 
 B1 adds a provider-neutral trusted execution control plane. No provider, model call, prompt, generated answer, chat, public endpoint, academic write or actual usage/cost accounting exists. `PROFESSOR_READ_V2` is unchanged. The new execution policy is `PROFESSOR_EXECUTION_V1`, with execution kind `CONTROL_PLANE_ONLY`.
 

@@ -8,7 +8,7 @@ Phase 2 implemented and hardened the deterministic Academy Operating System: gov
 
 Phase 2 is complete and merged. Checkpoint 15 closed the final review/security corrections, local gates, PR CI/review and merge at `9b902e7`; post-merge main CI passed. Historical evidence remains in the Phase 1/2 completion records.
 
-## Phase 3 Ã¢â‚¬â€ academic capability layer
+## Phase 3 â€” academic capability layer
 
 Phase 3 has begun on `phase-3-ai-academic-layer`. Checkpoint 1A/1B is complete, reviewed and approved on that feature branch at `c8c9ad9`. Its provider-independent Professor read boundary exposes `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. Every capability requires the authenticated human STUDENT and self-owned enrolment scope; PROFESSOR is a server-selected capability profile, not a RoleGrant or database principal.
 
