@@ -15,6 +15,9 @@ export type CapabilityDbState = {
   calls: Call[];
   failTable?: string;
   failRpc?: string;
+  beforeRead?: (table: string) => Promise<void>;
+  beforeRpc?: (name: string, args?: Record<string, unknown>) => Promise<void>;
+  transformRpc?: (name: string, data: unknown) => unknown;
   transformRows?: (
     table: string,
     rows: Record<string, unknown>[],
@@ -82,6 +85,7 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
 
       async function execute(): Promise<Reply> {
         return reply(async () => {
+          await state.beforeRead?.(table);
           if (state.failTable === table) throw new Error("Database failure");
           let join = "";
           let nested = "";
@@ -180,18 +184,34 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
           "current_academic_activity_state",
           "academic_action_allowed",
           "assert_academic_action_allowed",
+          "begin_academic_content_release",
+          "close_academic_content_release",
         ].includes(name)
       )
         throw new Error("Unexpected RPC in capability test");
       state.calls.push({ rpc: name, args });
       return reply(async () => {
+        await state.beforeRpc?.(name, args);
         if (state.failRpc === name) throw new Error("RPC failure");
-        const values = args ? [args.p_action] : [];
+        const values =
+          name === "begin_academic_content_release"
+            ? [
+                args?.p_invocation_id,
+                args?.p_capability_name,
+                args?.p_contract_version,
+              ]
+            : name === "close_academic_content_release"
+              ? [args?.p_release_id, args?.p_complete]
+              : args
+                ? [args.p_action]
+                : [];
         const { rows } = await db.query<{ value: unknown }>(
-          `select public.${identifier(name)}(${values.length ? "$1" : ""}) as value`,
+          `select public.${identifier(name)}(${values.map((_, index) => `$${index + 1}`).join(",")}) as value`,
           values,
         );
-        return rows[0].value;
+        return state.transformRpc
+          ? state.transformRpc(name, rows[0].value)
+          : rows[0].value;
       });
     },
   };

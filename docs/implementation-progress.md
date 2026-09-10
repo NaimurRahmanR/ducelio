@@ -2,18 +2,18 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1C â€” four additional safe Professor reads on the provider-independent capability boundary; local validation complete
+LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1D-A â€” serialized DB content-release authorization and durable metadata-only release auditing; local validation complete, human/second review pending
 CURRENT PARTIAL CHECKPOINT: None
-KNOWN FAILURES: None in the completed local 1C gate: 246/246 tests across 26 files, lint, route/type generation, TypeScript, production build, formatting and git diff --check passed. Phase 3 Checkpoint 1C PR CI/review, hosted acceptance and independent concurrent PostgreSQL acceptance have not been performed.
-NEXT EXACT ACTION: Commit and push the reviewed Checkpoint 1C slice on `phase-3-ai-academic-layer`. Then proceed to the separately reviewed Checkpoint 1D security boundary before any provider/model integration.
+KNOWN FAILURES: None in the completed local 1D-A gate: 323/323 tests across 27 files, lint, route/type generation, TypeScript, production build, formatting and git diff --check passed. Hosted acceptance, true concurrent PostgreSQL acceptance and trusted provider execution controls remain outstanding; provider integration is blocked.
+NEXT EXACT ACTION: Begin separately reviewed Checkpoint 1D-B after the reviewed 1D-A tree is checkpointed on `phase-3-ai-academic-layer`. Provider integration remains blocked until the remaining 1D-B controls and hosted true-concurrency acceptance are complete.
 
-## Phase 1 â€” complete
+## Phase 1 Ã¢â‚¬â€ complete
 
 Phase 1 established the engineering and institutional foundation: Next.js/React/TypeScript, Supabase/PostgreSQL migrations, authentication and stable identity, backend RBAC/RLS, versioned programme structure, audited Counsellor services, student academy UI, Counsellor workspace, Administration shell, fictional previews, automated tests and architecture/security documentation.
 
 The eight-checkpoint Phase 1 record remains in `phase-1-completion-report.md`. Hosted Auth/OAuth/SMTP acceptance was outside that historical local delivery.
 
-## Phase 2 â€” complete and merged
+## Phase 2 Ã¢â‚¬â€ complete and merged
 
 The deterministic Academy Operating System now includes:
 
@@ -43,7 +43,7 @@ Migration `202609090020_phase2_final_review_hardening.sql` closes those findings
 
 The corrected final Phase 2 gate passed ESLint, route/type generation, TypeScript, **152/152 tests across 24 files**, production webpack build and Prettier locally. The corrected PR-head GitHub Actions run passed on Linux/Node 24. PR #1 was then merged into `main` at `9b902e742dd8557d51b1c31e0b6a4f522c07982a`, and the post-merge `main` CI run also passed.
 
-## Phase 3 checkpoint 1A/1B â€” local implementation complete
+## Phase 3 checkpoint 1A/1B Ã¢â‚¬â€ local implementation complete
 
 The first provider-independent capability boundary exposes exactly five server-only reads: `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. The contracts and limitations are documented in `14-academic-capabilities.md`.
 
@@ -63,7 +63,7 @@ Validation on 2026-09-09 with Node 24.19.0 on PATH:
 
 This progress entry was updated only after the implementation passed the local checkpoint gates. The changes remain on the Phase 3 feature branch; no merge to `main` or Phase 3 PR CI success is claimed.
 
-## Phase 3 checkpoint 1C â€” additional safe Professor reads
+## Phase 3 checkpoint 1C Ã¢â‚¬â€ additional safe Professor reads
 
 Checkpoint 1C extends the same server-only gateway from five to exactly nine allowlisted Professor capabilities and bumps the strict contract to `PROFESSOR_READ_V2`. The four additions are `get_current_class_session`, `get_learning_resources`, `get_permitted_learning_history` and `get_current_mastery_state`.
 
@@ -81,7 +81,30 @@ Local validation on 2026-09-09 using bundled Node 24.20.0:
 - `git diff --check`: passed before documentation cleanup.
 - Final `format:check` and `git diff --check` passed after the documentation update.
 
-The Checkpoint 1C tree remains on `phase-3-ai-academic-layer`; no Checkpoint 1C commit, PR CI success or merge to `main` is claimed here. Durable capability execution audit and a serialized assessment/content release boundary remain intentionally deferred and must be closed before provider/model execution.
+Checkpoint 1C is committed on `phase-3-ai-academic-layer` at `f21755b` (`feat: extend professor academic reads`), the clean starting tree verified for 1D-A. This entry does not claim 1C PR CI success or merge to main. At 1C completion, durable capability execution audit and a serialized assessment/content release boundary were deferred.
+
+## Phase 3 checkpoint 1D-A â€” serialized release authorization and audit
+
+Migration `202609090021_phase3_academic_content_release.sql` adds the minimal `academic_content_releases` lifecycle and begin/close RPCs. The database derives the authenticated learner, fixes PROFESSOR, validates the exact seven academic reads and V2 contract, and uses a non-renewable 30-second DB-clock expiry. Identity is immutable, terminal states cannot be rewritten, deletes are forbidden, RLS is enabled and authenticated users receive no direct release-table privileges. Existing `audit_events` and its Platform Admin read policy provide the institutional audit surface.
+
+Release begin/close and assessment start take the same learner `student_profiles` FOR UPDATE lock. Begin checks EXPLAIN and conservatively checks live-clock attempts after lock acquisition. Assessment start refuses while any valid ACTIVE release exists. After removing the inserted exclusion block, the replacement start function was verified identical to migration 020; all existing governed Phase 2 behavior is preserved.
+
+The existing gateway obtains one release before content service execution and holds it through strict output/context checks, principal revalidation and final EXPLAIN enforcement. It finalizes before successful return, aborts service/validation failures, rejects expired or replayed completion, and discards content if closure/audit fails. Database unavailability can leave an ACTIVE lease until its bounded expiry. The two introspection capabilities do not lease. All nine external JSON contracts stay `PROFESSOR_READ_V2`; no owning academic read service or mastery policy is replaced.
+
+Durable audit is **release authorization lifecycle metadata only**, atomically recorded with ACTIVE/COMPLETED/ABORTED/EXPIRED/BLOCKED transitions. BLOCKED returns a structured denial so its audit commits. Events include only learner/profile/capability/version, invocation/release identifiers and lifecycle times/state. The dedicated trigger ignores caller audit reasons and stores no content, resource bodies, objective/evidence prose, assessment prompts/answers/guidance, support prose, response bodies, credentials or arbitrary payloads.
+
+Authenticated users can directly invoke both release RPCs using their session. They are not gateway-only: a COMPLETED event means the authenticated owner closed a release authorization, and does not prove gateway validation, content delivery or AI execution. Trusted provider execution identity/audit remains 1D-B, together with rate/cost/retention and failure/abstention/escalation controls. No provider/model integration, SDK, prompt/chat UI, public endpoint, academic write, evidence/mastery mutation or handoff was added. Provider integration remains blocked.
+
+Validation on 2026-09-10 using bundled Node **24.19.0**:
+
+- Focused suites: **171/171** (116 capability/gateway, 29 real-service/RLS workflow, 26 release lifecycle). All prior 94 capability tests remain passing.
+- `npm run check`: lint, route/type generation, TypeScript and **323/323 tests across 27 files** passed, preserving all earlier Phase 1/2/3 tests.
+- `npm run build`: production webpack build passed; no routes added.
+- `npm run format:check` and `git diff --check`: passed; repeated after documentation changes.
+
+Local PGlite tests exercise actual SQL locks, sequential assessment/release exclusion, expiry, terminal immutability, direct-call ownership/privileges, committed denial audit, audit-failure rollback and real gateway finalization/replay failures. **No two independent concurrent PostgreSQL connections were tested.** Hosted Supabase/JWT/PostgREST acceptance and true concurrency acceptance remain production prerequisites. Release authorization ordering does not retract network bytes or guarantee response arrival precedes a later assessment start.
+
+No additional dependency, credential or environment configuration is needed for the implementation. Migration 021 was applied only to local test databases in this run; hosted deployment/acceptance is not claimed. The implementation was reviewed from the uncommitted working tree and approved for feature-branch checkpointing. PR CI success, merge and hosted acceptance are not claimed for 1D-A.
 
 ## Current scope boundary
 

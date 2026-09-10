@@ -19,6 +19,13 @@ const mocks = vi.hoisted(() => ({
   resources: vi.fn(),
   history: vi.fn(),
   mastery: vi.fn(),
+  beginRelease: vi.fn(),
+  closeRelease: vi.fn(),
+}));
+vi.mock("@/server/academic-content-release", async (original) => ({
+  ...(await original<typeof import("@/server/academic-content-release")>()),
+  beginAcademicContentRelease: mocks.beginRelease,
+  closeAcademicContentRelease: mocks.closeRelease,
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
@@ -49,6 +56,7 @@ vi.mock("@/server/academic-activity", async (original) => ({
   getStudentAcademicActivity: mocks.activity,
 }));
 import { AcademicActivityBlocked } from "@/server/academic-activity";
+import { AcademicContentReleaseDenied } from "@/server/academic-content-release";
 import { invokeProfessorCapability } from "@/server/academic-capabilities";
 
 const id = (n: number) =>
@@ -107,6 +115,13 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.actor.mockResolvedValue(principal);
   mocks.student.mockResolvedValue(principal);
+  mocks.beginRelease.mockImplementation(async (invocationId) => ({
+    ok: true,
+    release_id: id(9),
+    student_id: principal.id,
+    invocation_id: invocationId,
+  }));
+  mocks.closeRelease.mockResolvedValue(undefined);
   mocks.firewall.mockResolvedValue(undefined);
   mocks.activity.mockResolvedValue({
     activityState: "NORMAL",
@@ -155,6 +170,145 @@ beforeEach(() => {
 });
 
 describe("Professor capability boundary", () => {
+  const contentCases = requests.slice(2).map((request, index) => ({
+    request,
+    service: [
+      mocks.enrolment,
+      mocks.lesson,
+      mocks.objectives,
+      mocks.session,
+      mocks.resources,
+      mocks.history,
+      mocks.mastery,
+    ][index],
+  }));
+  it.each(contentCases)(
+    "holds a release through validation for $request.capability",
+    async ({ request, service }) => {
+      const result = await invokeProfessorCapability(request);
+      expect(result.ok).toBe(true);
+      expect(mocks.beginRelease).toHaveBeenCalledWith(
+        result.provenance.invocation_id,
+        request.capability,
+      );
+      expect(mocks.beginRelease.mock.invocationCallOrder[0]).toBeLessThan(
+        service.mock.invocationCallOrder[0],
+      );
+      expect(mocks.student.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.closeRelease.mock.invocationCallOrder[0],
+      );
+      expect(mocks.firewall.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        mocks.closeRelease.mock.invocationCallOrder[0],
+      );
+      expect(mocks.closeRelease).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ release_id: id(9) }),
+        true,
+      );
+    },
+  );
+  it.each(contentCases)(
+    "does not load content when a release is denied for $request.capability",
+    async ({ request, service }) => {
+      mocks.beginRelease.mockRejectedValue(
+        new AcademicContentReleaseDenied("ACTIVITY_BLOCKED"),
+      );
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "ACTIVITY_BLOCKED" },
+      });
+      expect(service).not.toHaveBeenCalled();
+      expect(mocks.closeRelease).not.toHaveBeenCalled();
+    },
+  );
+  it.each(contentCases)(
+    "aborts service and malformed-output failures for $request.capability",
+    async ({ request, service }) => {
+      service.mockRejectedValueOnce(new Error("Private response body"));
+      service.mockResolvedValueOnce({ support_prose: "Private support" });
+      for (let n = 0; n < 2; n++) {
+        const result = await invokeProfessorCapability(request);
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: "SERVICE_UNAVAILABLE" },
+        });
+        expect(result).not.toHaveProperty("data");
+        expect(mocks.closeRelease).toHaveBeenLastCalledWith(
+          expect.anything(),
+          false,
+        );
+      }
+      expect(mocks.closeRelease).toHaveBeenCalledTimes(2);
+    },
+  );
+  it.each(contentCases)(
+    "aborts changed principal/role and final firewall denial for $request.capability",
+    async ({ request }) => {
+      mocks.student.mockResolvedValueOnce({ ...principal, id: id(8) });
+      mocks.student.mockRejectedValueOnce(new AccessDenied());
+      for (const code of ["CONTEXT_CONFLICT", "FORBIDDEN"]) {
+        expect(await invokeProfessorCapability(request)).toMatchObject({
+          ok: false,
+          error: { code },
+        });
+        expect(mocks.closeRelease).toHaveBeenLastCalledWith(
+          expect.anything(),
+          false,
+        );
+      }
+      mocks.firewall
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new AcademicActivityBlocked());
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "ACTIVITY_BLOCKED" },
+      });
+      expect(mocks.closeRelease).toHaveBeenLastCalledWith(
+        expect.anything(),
+        false,
+      );
+    },
+  );
+  it.each(contentCases)(
+    "discards content on close or abort failure for $request.capability",
+    async ({ request, service }) => {
+      mocks.closeRelease.mockRejectedValue(new Error("SQL audit secret"));
+      for (let n = 0; n < 2; n++) {
+        if (n) service.mockRejectedValueOnce(new AcademicContextUnavailable());
+        const result = await invokeProfessorCapability(request);
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: "SERVICE_UNAVAILABLE" },
+        });
+        expect(result).not.toHaveProperty("data");
+        expect(JSON.stringify(result)).not.toContain("SQL audit secret");
+      }
+    },
+  );
+  it.each(contentCases)(
+    "aborts inconsistent release identity for $request.capability",
+    async ({ request, service }) => {
+      mocks.beginRelease.mockResolvedValue({
+        ok: true,
+        release_id: id(9),
+        student_id: id(8),
+        invocation_id: id(7),
+      });
+      expect(await invokeProfessorCapability(request)).toMatchObject({
+        ok: false,
+        error: { code: "CONTEXT_CONFLICT" },
+      });
+      expect(service).not.toHaveBeenCalled();
+      expect(mocks.closeRelease).toHaveBeenCalledWith(expect.anything(), false);
+    },
+  );
+  it.each(requests.slice(0, 2))(
+    "never leases introspection $capability",
+    async (request) => {
+      expect((await invokeProfessorCapability(request)).ok).toBe(true);
+      expect(mocks.beginRelease).not.toHaveBeenCalled();
+      expect(mocks.closeRelease).not.toHaveBeenCalled();
+    },
+  );
   it.each(requests)(
     "requires authentication for $capability",
     async (request) => {
@@ -274,6 +428,12 @@ describe("Professor capability boundary", () => {
         { action: "EXAMINER_DELIVERY" },
         { objectiveId: id(8) },
         { programmeVersionId: id(8) },
+        { releaseId: id(8) },
+        { studentId: id(8) },
+        { actorId: id(8) },
+        { contractVersion: "FORGED" },
+        { auditState: "COMPLETED" },
+        { authorizedScope: {} },
       ]) {
         if (
           request.capability === "get_permitted_learning_history" &&

@@ -219,6 +219,9 @@ beforeEach(async () => {
   state.calls = [];
   state.failTable = undefined;
   state.failRpc = undefined;
+  state.beforeRead = undefined;
+  state.beforeRpc = undefined;
+  state.transformRpc = undefined;
   state.transformRows = undefined;
   mocks.client.mockImplementation(async () => capabilityDbClient(db, state));
   await asUser(studentAuth);
@@ -232,6 +235,197 @@ afterAll(async () => {
 });
 
 describe("Professor reads through Academy OS services and PostgreSQL RLS", () => {
+  const releaseRequests = [
+    "get_current_learner_context",
+    "get_lesson_context",
+    "get_lesson_objectives",
+    "get_current_class_session",
+    "get_learning_resources",
+    "get_permitted_learning_history",
+    "get_current_mastery_state",
+  ].map((capability) => () => ({
+    capability,
+    input: {
+      enrolmentId,
+      ...([
+        "get_current_learner_context",
+        "get_current_class_session",
+        "get_permitted_learning_history",
+      ].includes(capability)
+        ? {}
+        : { lessonId }),
+    },
+  }));
+
+  it("keeps a real DB release active through each of the seven services and closes before success", async () => {
+    for (const request of releaseRequests) {
+      let inspected = false;
+      state.beforeRead = async (table) => {
+        if (table !== "enrolments" || inspected) return;
+        inspected = true;
+        await db.exec("reset role");
+        expect(
+          (
+            await db.query(
+              "select id from public.academic_content_releases where student_id=$1 and state='ACTIVE'",
+              [studentId],
+            )
+          ).rows,
+        ).toHaveLength(1);
+        await db.exec("set role authenticated; savepoint release_exclusion");
+        await expect(
+          db.query("select public.start_assessment_attempt($1)", [
+            assessmentId,
+          ]),
+        ).rejects.toThrow("Academic activity is busy. Retry shortly.");
+        await db.exec(
+          "rollback to savepoint release_exclusion; release savepoint release_exclusion",
+        );
+      };
+      const result = await invokeProfessorCapability(request());
+      expect(result.ok).toBe(true);
+      expect(inspected).toBe(true);
+      await db.exec("reset role");
+      const release = (
+        await db.query<{ id: string; state: string }>(
+          "select id,state from public.academic_content_releases where invocation_id=$1",
+          [result.provenance.invocation_id],
+        )
+      ).rows[0];
+      expect(release.state).toBe("COMPLETED");
+      const audit = (
+        await db.query<{ action: string; after_state: unknown }>(
+          "select action,after_state from public.audit_events where target_type='academic_content_releases' and target_id=$1 order by occurred_at,id",
+          [release.id],
+        )
+      ).rows;
+      expect(audit.map((e) => e.action)).toEqual([
+        "CONTENT_RELEASE_ACTIVE",
+        "CONTENT_RELEASE_COMPLETED",
+      ]);
+      expect(JSON.stringify(audit)).not.toMatch(
+        /sentinel|evidence_reference|recorded_by|body|description|prompt|answer|guidance|summary/,
+      );
+      await db.exec("set role authenticated");
+    }
+  });
+  it("persists ABORTED for actual service failures and malformed projections", async () => {
+    for (const malformed of [false, true]) {
+      state.failTable = malformed ? undefined : "lessons";
+      state.transformRows = (table, rows) =>
+        malformed && table === "lessons"
+          ? rows.map((row) => ({ ...row, title: null }))
+          : rows;
+      const result = await invokeProfessorCapability({
+        capability: "get_lesson_context",
+        input: { enrolmentId, lessonId },
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "SERVICE_UNAVAILABLE" },
+      });
+      await db.exec("reset role");
+      expect(
+        (
+          await db.query<{ state: string }>(
+            "select state from public.academic_content_releases where invocation_id=$1",
+            [result.provenance.invocation_id],
+          )
+        ).rows[0].state,
+      ).toBe("ABORTED");
+      await db.exec("set role authenticated");
+    }
+  });
+  it("discards loaded content if closure fails and leaves only a bounded ACTIVE lease", async () => {
+    state.failRpc = "close_academic_content_release";
+    const result = await invokeProfessorCapability({
+      capability: "get_learning_resources",
+      input: { enrolmentId: secondEnrolment, lessonId: secondLesson },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "SERVICE_UNAVAILABLE" },
+    });
+    expect(result).not.toHaveProperty("data");
+    await db.exec("reset role");
+    expect(
+      (
+        await db.query<{ state: string; seconds: number }>(
+          "select state,extract(epoch from expires_at-started_at)::int as seconds from public.academic_content_releases where invocation_id=$1",
+          [result.provenance.invocation_id],
+        )
+      ).rows[0],
+    ).toEqual({ state: "ACTIVE", seconds: 30 });
+  });
+  it("rejects a prematurely completed direct RPC lease even after the final firewall passed", async () => {
+    state.beforeRpc = async (name, args) => {
+      if (name !== "close_academic_content_release") return;
+      await db.query("select public.close_academic_content_release($1,true)", [
+        args!.p_release_id,
+      ]);
+      await db.query("select public.start_assessment_attempt($1)", [
+        assessmentId,
+      ]);
+    };
+    const result = await invokeProfessorCapability({
+      capability: "get_lesson_context",
+      input: { enrolmentId, lessonId },
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "SERVICE_UNAVAILABLE" },
+    });
+    expect(result).not.toHaveProperty("data");
+  });
+  it("the database refuses completion when STUDENT is revoked after the final principal check", async () => {
+    state.beforeRpc = async (name) => {
+      if (name !== "close_academic_content_release") return;
+      await db.exec("reset role");
+      await db.query(
+        "delete from public.role_grants where user_id=$1 and role='STUDENT'",
+        [studentId],
+      );
+      await db.exec("set role authenticated");
+    };
+    expect(
+      await invokeProfessorCapability({
+        capability: "get_lesson_context",
+        input: { enrolmentId, lessonId },
+      }),
+    ).toMatchObject({ ok: false, error: { code: "SERVICE_UNAVAILABLE" } });
+    await db.exec("reset role");
+    expect(
+      (
+        await db.query<{ state: string }>(
+          "select state from public.academic_content_releases where student_id=$1",
+          [studentId],
+        )
+      ).rows.map((row) => row.state),
+    ).toEqual(["ABORTED"]);
+  });
+  it.each(["begin_academic_content_release", "close_academic_content_release"])(
+    "fails closed on malformed %s backend output",
+    async (target) => {
+      state.transformRpc = (name, data) =>
+        name === target
+          ? { ...(data as object), support_prose: "private-sentinel" }
+          : data;
+      const result = await invokeProfessorCapability({
+        capability: "get_lesson_context",
+        input: { enrolmentId, lessonId },
+      });
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "SERVICE_UNAVAILABLE" },
+      });
+      expect(result).not.toHaveProperty("data");
+      expect(JSON.stringify(result)).not.toContain("private-sentinel");
+      if (target === "begin_academic_content_release")
+        expect(state.calls.some((call) => call.table === "lessons")).toBe(
+          false,
+        );
+    },
+  );
   it("returns only the authenticated learner's own version-bound context", async () => {
     expect(await getOwnedStudentEnrolment({ enrolmentId })).toMatchObject({
       enrolmentId,
@@ -827,7 +1021,13 @@ describe("Professor reads through Academy OS services and PostgreSQL RLS", () =>
     expect(
       state.calls
         .filter((call) => call.rpc)
-        .every((call) => call.rpc === "assert_academic_action_allowed"),
+        .every((call) =>
+          [
+            "assert_academic_action_allowed",
+            "begin_academic_content_release",
+            "close_academic_content_release",
+          ].includes(call.rpc!),
+        ),
     ).toBe(true);
 
     const empty = await invokeProfessorCapability({
