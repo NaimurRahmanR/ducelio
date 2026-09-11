@@ -1,7 +1,18 @@
 import "server-only";
 import { z } from "zod";
-import { requireActor } from "./identity";
+import { requireActor, requireStudentPrincipal } from "./identity";
 import { createSupabase } from "./supabase";
+import { getStudentLessonContext } from "./learning-context";
+import { assertStudentExplanationAllowed } from "./academic-activity";
+import {
+  AcademicContextUnavailable,
+  lessonContextInputSchema,
+} from "@/domain/learning-context";
+import {
+  academicTimestampSchema,
+  currentMasterySchema,
+  MASTERY_ROW_LIMIT,
+} from "@/domain/academic-reads";
 
 const masteryStateSchema = z.enum([
   "NOT_STARTED",
@@ -109,4 +120,81 @@ export async function getStudentObjectiveMastery() {
       }),
     )
     .parse(data);
+}
+
+export async function getStudentLessonMastery(input: unknown) {
+  const payload = lessonContextInputSchema.parse(input);
+  await assertStudentExplanationAllowed();
+  const actor = await requireStudentPrincipal();
+  const lesson = await getStudentLessonContext(payload);
+  const client = await createSupabase();
+  const { data, error } = await client
+    .from("objective_mastery")
+    .select(
+      "enrolment_id,student_id,programme_version_id,lesson_id,objective_id,state,policy_version,evaluated_at,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,lesson_objectives!inner(id,lesson_id,programme_version_id)",
+    )
+    .eq("enrolment_id", lesson.enrolmentId)
+    .eq("student_id", actor.id)
+    .eq("programme_version_id", lesson.programmeVersionId)
+    .eq("lesson_id", lesson.lessonId)
+    .order("objective_id")
+    .limit(MASTERY_ROW_LIMIT + 1);
+  if (error) throw new Error("Lesson mastery could not be loaded.");
+  // A non-paginated contract must fail on overflow rather than imply completeness.
+  const rows = z
+    .array(
+      z.object({
+        enrolment_id: z.uuid(),
+        student_id: z.uuid(),
+        programme_version_id: z.uuid(),
+        lesson_id: z.uuid(),
+        objective_id: z.uuid(),
+        state: masteryStateSchema,
+        policy_version: z.string(),
+        evaluated_at: academicTimestampSchema,
+        evidence_count: z.number(),
+        correct_evidence_count: z.number(),
+        correct_session_count: z.number(),
+        correct_kind_count: z.number(),
+        lesson_objectives: z.object({
+          id: z.uuid(),
+          lesson_id: z.uuid(),
+          programme_version_id: z.uuid(),
+        }),
+      }),
+    )
+    .max(MASTERY_ROW_LIMIT)
+    .parse(data);
+  for (const row of rows) {
+    if (
+      row.enrolment_id !== lesson.enrolmentId ||
+      row.student_id !== actor.id ||
+      row.programme_version_id !== lesson.programmeVersionId ||
+      row.lesson_id !== lesson.lessonId ||
+      row.lesson_objectives.id !== row.objective_id ||
+      row.lesson_objectives.lesson_id !== lesson.lessonId ||
+      row.lesson_objectives.programme_version_id !== lesson.programmeVersionId
+    )
+      throw new AcademicContextUnavailable();
+  }
+  if (new Set(rows.map((row) => row.objective_id)).size !== rows.length)
+    throw new Error("Invalid mastery projection.");
+  const result = currentMasterySchema.parse({
+    enrolmentId: lesson.enrolmentId,
+    programmeVersionId: lesson.programmeVersionId,
+    lessonId: lesson.lessonId,
+    persistedOnly: true,
+    records: rows.map((row) => ({
+      objectiveId: row.objective_id,
+      state: row.state,
+      policyVersion: row.policy_version,
+      evaluatedAt: row.evaluated_at,
+      evidenceCount: row.evidence_count,
+      correctEvidenceCount: row.correct_evidence_count,
+      correctSessionCount: row.correct_session_count,
+      correctKindCount: row.correct_kind_count,
+    })),
+  });
+  await assertStudentExplanationAllowed();
+  return result;
 }

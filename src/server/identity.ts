@@ -4,9 +4,16 @@ import { redirect } from "next/navigation";
 import { createSupabase } from "./supabase";
 import { config } from "@/lib/env";
 import { roleSchema, type Role } from "@/domain/academy";
-import { AccessDenied, canEnter, type Actor, type Area } from "@/domain/policy";
+import {
+  AccessDenied,
+  AuthenticationRequired,
+  canEnter,
+  type Actor,
+  type Area,
+} from "@/domain/policy";
 
-export const getCurrentActor = cache(async (): Promise<Actor | null> => {
+// Capability execution must revalidate identity/roles rather than reuse a render cache.
+export async function getAuthenticatedActor(): Promise<Actor | null> {
   if (!config().configured) return null;
   const client = await createSupabase();
   const {
@@ -32,7 +39,16 @@ export const getCurrentActor = cache(async (): Promise<Actor | null> => {
     displayName: profile.display_name,
     roles: (grants ?? []).map((g) => roleSchema.parse(g.role)),
   };
-});
+}
+
+export const getCurrentActor = cache(getAuthenticatedActor);
+
+export async function requireStudentPrincipal() {
+  const actor = await getAuthenticatedActor();
+  if (!actor) throw new AuthenticationRequired();
+  if (!actor.roles.includes("STUDENT")) throw new AccessDenied();
+  return actor;
+}
 
 export async function requireActor(area?: Area) {
   const actor = await getCurrentActor();

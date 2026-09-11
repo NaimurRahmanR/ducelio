@@ -3,6 +3,15 @@ import { z } from "zod";
 import { learningResourceSchema } from "@/domain/academy";
 import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
+import { getStudentLessonContext } from "./learning-context";
+import { assertStudentExplanationAllowed } from "./academic-activity";
+import { AcademicContextUnavailable } from "@/domain/learning-context";
+import {
+  learningResourcesInputSchema,
+  learningResourcesPageSchema,
+  permittedResourceSchema,
+  RESOURCE_PAGE_SIZE,
+} from "@/domain/academic-reads";
 
 const lessonSchema = z.object({
   id: z.uuid(),
@@ -115,4 +124,62 @@ export async function getStudentLearningResources() {
       }),
     )
     .parse(data);
+}
+
+export async function getStudentLessonResources(input: unknown) {
+  const payload = learningResourcesInputSchema.parse(input);
+  await assertStudentExplanationAllowed();
+  const lesson = await getStudentLessonContext({
+    enrolmentId: payload.enrolmentId,
+    lessonId: payload.lessonId,
+  });
+  const client = await createSupabase();
+  const { data, error } = await client
+    .from("learning_resources")
+    .select("id,lesson_id,programme_version_id,kind,title,body,url,position")
+    .eq("lesson_id", lesson.lessonId)
+    .eq("programme_version_id", lesson.programmeVersionId)
+    .gt("position", payload.cursor?.afterPosition ?? 0)
+    .order("position")
+    .limit(RESOURCE_PAGE_SIZE + 1);
+  if (error) throw new Error("Lesson resources could not be loaded.");
+  const rows = z
+    .array(resourceSchema.omit({ lessons: true, programme_versions: true }))
+    .max(RESOURCE_PAGE_SIZE + 1)
+    .parse(data);
+  for (const [index, row] of rows.entries()) {
+    if (
+      row.lesson_id !== lesson.lessonId ||
+      row.programme_version_id !== lesson.programmeVersionId
+    )
+      throw new AcademicContextUnavailable();
+    if (
+      row.position <=
+      (index ? rows[index - 1].position : (payload.cursor?.afterPosition ?? 0))
+    )
+      throw new Error("Invalid resource ordering.");
+  }
+  const projected = rows.map((row) =>
+    permittedResourceSchema.parse({
+      resourceId: row.id,
+      kind: row.kind,
+      title: row.title,
+      body: row.body,
+      url: row.url,
+      position: row.position,
+    }),
+  );
+  const page = projected.slice(0, RESOURCE_PAGE_SIZE);
+  const result = learningResourcesPageSchema.parse({
+    enrolmentId: lesson.enrolmentId,
+    programmeVersionId: lesson.programmeVersionId,
+    lessonId: lesson.lessonId,
+    resources: page,
+    nextCursor:
+      projected.length > RESOURCE_PAGE_SIZE
+        ? { afterPosition: page[page.length - 1].position }
+        : null,
+  });
+  await assertStudentExplanationAllowed();
+  return result;
 }

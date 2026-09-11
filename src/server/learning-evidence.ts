@@ -1,8 +1,21 @@
 import "server-only";
 import { z } from "zod";
 import { learningEvidenceSchema } from "@/domain/academy";
-import { requireActor, requireAnyRole } from "./identity";
+import {
+  requireActor,
+  requireAnyRole,
+  requireStudentPrincipal,
+} from "./identity";
 import { createSupabase } from "./supabase";
+import { getOwnedStudentEnrolment } from "./academy";
+import { assertStudentExplanationAllowed } from "./academic-activity";
+import { AcademicContextUnavailable } from "@/domain/learning-context";
+import {
+  academicTimestampSchema,
+  HISTORY_PAGE_SIZE,
+  learningHistoryInputSchema,
+  learningHistoryPageSchema,
+} from "@/domain/academic-reads";
 
 const sessionSchema = z.object({
   id: z.uuid(),
@@ -166,4 +179,114 @@ export async function getStudentLearningEvidence() {
       }),
     )
     .parse(data);
+}
+
+export async function getStudentPermittedLearningHistory(input: unknown) {
+  const payload = learningHistoryInputSchema.parse(input);
+  await assertStudentExplanationAllowed();
+  const actor = await requireStudentPrincipal();
+  const enrolment = await getOwnedStudentEnrolment({
+    enrolmentId: payload.enrolmentId,
+  });
+  const client = await createSupabase();
+  if (payload.objectiveId) {
+    const { data, error } = await client
+      .from("lesson_objectives")
+      .select("id,programme_version_id")
+      .eq("id", payload.objectiveId)
+      .eq("programme_version_id", enrolment.programmeVersionId)
+      .maybeSingle();
+    if (error)
+      throw new Error("Learning history objective could not be loaded.");
+    if (!data) throw new AcademicContextUnavailable();
+    const objective = z
+      .object({ id: z.uuid(), programme_version_id: z.uuid() })
+      .parse(data);
+    if (
+      objective.id !== payload.objectiveId ||
+      objective.programme_version_id !== enrolment.programmeVersionId
+    )
+      throw new AcademicContextUnavailable();
+  }
+  // Deliberately never select evidence_reference, recorder, idempotency key or prose.
+  let query = client
+    .from("learning_evidence")
+    .select(
+      "id,enrolment_id,student_id,programme_version_id,lesson_id,objective_id,session_id,evidence_kind,result,recorded_at,lesson_objectives!inner(id,lesson_id,programme_version_id)",
+    )
+    .eq("enrolment_id", enrolment.enrolmentId)
+    .eq("student_id", actor.id)
+    .eq("programme_version_id", enrolment.programmeVersionId);
+  if (payload.objectiveId)
+    query = query.eq("objective_id", payload.objectiveId);
+  if (payload.cursor) {
+    // Only strict ISO timestamps and UUIDs enter this PostgREST filter expression.
+    const { beforeRecordedAt, beforeId } = payload.cursor;
+    query = query.or(
+      `recorded_at.lt.${beforeRecordedAt},and(recorded_at.eq.${beforeRecordedAt},id.lt.${beforeId})`,
+    );
+  }
+  const { data, error } = await query
+    .order("recorded_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(HISTORY_PAGE_SIZE + 1);
+  if (error) throw new Error("Learning history could not be loaded.");
+  const rows = z
+    .array(
+      z.object({
+        id: z.uuid(),
+        enrolment_id: z.uuid(),
+        student_id: z.uuid(),
+        programme_version_id: z.uuid(),
+        lesson_id: z.uuid(),
+        objective_id: z.uuid(),
+        session_id: z.uuid(),
+        evidence_kind: evidenceSchema.shape.evidence_kind,
+        result: evidenceSchema.shape.result,
+        recorded_at: academicTimestampSchema,
+        lesson_objectives: z.object({
+          id: z.uuid(),
+          lesson_id: z.uuid(),
+          programme_version_id: z.uuid(),
+        }),
+      }),
+    )
+    .max(HISTORY_PAGE_SIZE + 1)
+    .parse(data);
+  for (const row of rows) {
+    if (
+      row.enrolment_id !== enrolment.enrolmentId ||
+      row.student_id !== actor.id ||
+      row.programme_version_id !== enrolment.programmeVersionId ||
+      (payload.objectiveId && row.objective_id !== payload.objectiveId) ||
+      row.lesson_objectives.id !== row.objective_id ||
+      row.lesson_objectives.lesson_id !== row.lesson_id ||
+      row.lesson_objectives.programme_version_id !==
+        enrolment.programmeVersionId
+    )
+      throw new AcademicContextUnavailable();
+  }
+  if (new Set(rows.map((row) => row.id)).size !== rows.length)
+    throw new Error("Invalid evidence projection.");
+  const page = rows.slice(0, HISTORY_PAGE_SIZE);
+  const last = page[page.length - 1];
+  const result = learningHistoryPageSchema.parse({
+    enrolmentId: enrolment.enrolmentId,
+    programmeVersionId: enrolment.programmeVersionId,
+    objectiveId: payload.objectiveId ?? null,
+    events: page.map((row) => ({
+      evidenceId: row.id,
+      objectiveId: row.objective_id,
+      sessionId: row.session_id,
+      evidenceKind: row.evidence_kind,
+      result: row.result,
+      recordedAt: row.recorded_at,
+    })),
+    nextCursor:
+      rows.length > HISTORY_PAGE_SIZE
+        ? { beforeRecordedAt: last.recorded_at, beforeId: last.id }
+        : null,
+  });
+  await assertStudentExplanationAllowed();
+  return result;
 }
