@@ -1,6 +1,6 @@
 # Institutional delivery lifecycle — Checkpoint 2A
 
-Baseline: `52720f51848bfdcf93d03d709820b44d788911d9`, merged main through Phase 3 1D-B1. PR #2 and post-merge main CI passed, as confirmed by the user. Checkpoint 2A is uncommitted on `phase-3-delivery-lifecycle` and requires second review. No provider/model, endpoint, UI, academic evidence writer, mastery recalculation or official course-completion workflow is introduced.
+Baseline: `52720f51848bfdcf93d03d709820b44d788911d9`, merged main through Phase 3 1D-B1. PR #2 and post-merge main CI passed. Checkpoint 2A implementation completed final second review and was committed at `afc6ba2` on `phase-3-delivery-lifecycle`; PR #3 carries the checkpoint toward main. No provider/model, endpoint, UI, academic evidence writer, mastery recalculation or official course-completion workflow is introduced.
 
 ## Institutional authority and records
 
