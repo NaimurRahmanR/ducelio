@@ -2,7 +2,7 @@
 
 Your ambition. Guided to mastery.
 
-Ducelio is a deterministic Academy Operating System built with Next.js, React, strict TypeScript, Tailwind, Zod and Supabase PostgreSQL/Auth. Phase 2 adds governed academic operations, evidence/mastery, controlled-assessment foundations, Registrar corrections and deterministic learner notifications/support triggers. No AI integration is included in Phase 2.
+Ducelio is a deterministic Academy Operating System built with Next.js, React, strict TypeScript, Tailwind, Zod and Supabase PostgreSQL/Auth. Current `main` is complete through Phase 3 checkpoint 2A and includes governed academic operations, evidence/mastery, controlled-assessment foundations, trusted Professor execution governance and the institutional delivery lifecycle. Commercial V1 now adds reusable Course & Agent Engineering, a real provider/runtime, full learner delivery, commerce and production operations. No live model provider or payment integration exists on the current baseline.
 
 ## Run locally
 
@@ -62,7 +62,7 @@ The reset applies all migrations and the fictional local seed. It must never be 
 
 For a managed project, use `supabase link --project-ref YOUR_PROJECT_REF`, review pending migrations, then `supabase db push`. Normal `db push` does not include the local seed. Configure the publishable key, trusted `APP_URL`, confirm-email requirement, SMTP and providers using [Authentication setup](docs/04-auth-and-identity.md).
 
-Set environment values before building and rebuild production output after configuration changes. Apply **all 20 ordered migrations** currently in `supabase/migrations`. Sign up and verify real test users, then provision privileged roles and institutional relationships through reviewed operator workflows in [Operations and security](docs/13-operations-and-security.md). SQL demo users intentionally have no Auth identity or password.
+Set environment values before building and rebuild production output after configuration changes. Apply **all 23 ordered migrations** currently in `supabase/migrations`. Sign up and verify real test users, then provision privileged roles and institutional relationships through reviewed operator workflows in [Operations and security](docs/13-operations-and-security.md). SQL demo users intentionally have no Auth identity or password.
 
 ## Phase 2 Academy OS
 

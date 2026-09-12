@@ -2,12 +2,12 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 3 through 1D-B1 is merged to main at `52720f51848bfdcf93d03d709820b44d788911d9`; PR #2 is merged and post-merge main CI passed (user-confirmed).
-CURRENT PARTIAL CHECKPOINT: Phase 3 checkpoint 2A — institutional delivery lifecycle, implemented in the uncommitted `phase-3-delivery-lifecycle` tree; second review pending.
-COMPLETED ITEMS: Migration 023, local weekday/time/IANA StudyPlan preferences, immutable schedule revisions, next-slot latest-start policy, start receipts, validated-progress completion, durable catch-up, agent/Counsellor projections, structured learner-request liaison, domain-only optional profile/cooldown foundations and focused tests.
-INCOMPLETE ITEMS: Second review of the locally validated 2A tree; display UI and separately reviewed deferred delivery/production work. B2/provider integration has not begun.
-KNOWN FAILURES: None in the final local 2A gates. Hosted/true-concurrency acceptance is not established. No provider exists.
-NEXT EXACT ACTION: Inspect the validated uncommitted 2A diff in second review. Do not commit, push, merge or begin provider integration without instruction.
+LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 2A — institutional delivery lifecycle is merged to main at `28937559a7c3266fec0fd6898fad129a7cd014d4`; PR #3 is merged and post-merge main CI run #23 passed.
+CURRENT PARTIAL CHECKPOINT: Commercial V1 implementation has not begun. The next checkpoint is reusable Course & Agent Engineering plus the B2 production-capable provider/runtime foundation.
+COMPLETED ITEMS: Phase 1; Phase 2; Phase 3 Professor capability reads, serialized academic-content release, trusted execution governance and the institutional delivery lifecycle through checkpoint 2A.
+INCOMPLETE ITEMS: Commercial V1 Course & Agent Engineering, B2 real-provider runtime, 2A learner UI, Professor/Tutor/Lab/Examiner product surfaces, public sales and prospect Counsellor, payments and entitlement provisioning, grading/results/completion, one complete real cybersecurity course, commercial Admin/AI operations, production communications, hosted acceptance and mobile-ready client APIs.
+KNOWN FAILURES: None in merged checkpoint 2A CI. Hosted Supabase/JWT/PostgREST acceptance, true independent PostgreSQL concurrency, provider execution, payments, SMTP, backups/restore, monitoring, production abuse controls and full commercial end-to-end acceptance remain outstanding.
+NEXT EXACT ACTION: After this truth-sync checkpoint is reviewed and merged, begin the reusable Course & Agent Engineering layer together with the B2 production-capable provider/runtime foundation on a fresh feature branch. Do not reopen checkpoint 2A.
 
 ## Phase 1 — complete
 

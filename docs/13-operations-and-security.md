@@ -26,7 +26,7 @@ The application uses no service-role key in ordinary application flows. Browser 
 
 - Set `APP_URL` to the exact HTTPS production origin. The local default is `http://127.0.0.1:3000`; use one origin consistently so PKCE/session cookies remain bound correctly.
 - Populate `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`. Never place a service-role/secret key in browser configuration.
-- Apply all **19** migrations in lexical order. Preserve deployed migration files and use corrective migrations rather than rewriting history.
+- Apply all **23** migrations in lexical order. Preserve deployed migration files and use corrective migrations rather than rewriting history.
 - Enable verified email, custom SMTP, sender-domain verification, recovery/confirmation templates and exact redirect allowlists. Configure Google/LinkedIn only when live credentials and callbacks can be tested.
 - Apply suitable Supabase/edge rate limits to authentication and public write paths. A CAPTCHA setting needs a corresponding challenge/token UI before enforcement; that integration is not implemented.
 - Configure HTTPS termination/HSTS, production secrets, secure cookies, backups, restore exercises, logging/alerts and error monitoring. Do not cache session-dependent responses at a CDN.
@@ -61,9 +61,9 @@ Real curriculum must be prepared, validated and published separately from the fi
 11. Configure/verify backups and a restore exercise; confirm monitoring does not log credentials, Auth tokens, protected assessment text or private Counsellor prose.
 12. Run deployment/security review, rate-limit/abuse tests and dependency/security checks before allowing real learner data.
 
-## Scope limits after Phase 2
+## Current production scope limits
 
-Phase 2 does **not** implement automatic grading, gradebook/result publication, pass/fail decisions, academic completion/certification, institutional announcement authoring, production support-trigger scheduling, email/push messaging, payments, uploads, offline/PWA synchronisation or AI academic actors. It does not contain official external-exam questions or claim external awarding-body endorsement.
+Current `main` through Phase 3 checkpoint 2A does **not** yet implement production automatic grading, gradebook/result publication, pass/fail decisions, academic completion/certification, institutional announcement authoring, production support-trigger scheduling, email/push messaging, payments, reusable course-package upload/publishing or live AI academic actors. It does not contain official external-exam questions or claim external awarding-body endorsement.
 
 Many staff lists are intentionally bounded and need pagination/operational search before scale. Explicit multi-institution tenant isolation is not yet a product guarantee. Protected assessment foundations must not be advertised as production-ready until the staging/security checklist above and later grading/result controls are completed.
 
