@@ -1,5 +1,7 @@
 # Academic capabilities — Phase 3 Checkpoints 1A–1D-B1
 
+Phase 3 through 1D-B1 is merged at `52720f5`; PR #2 and post-merge main CI passed. Checkpoint 2A adds the separate delivery-lifecycle services described in `16-institutional-delivery-lifecycle.md`. The nine V2 JSON capabilities and migrations 021/022 remain unchanged. The server-only Professor delivery-context port composes scheduling references inside the existing validated content-release boundary and checks active-course eligibility; future lesson references do not authorize early class starts. New structured handoffs are governed learner requests, not AI write capabilities or proof of agent execution. No provider/model exists.
+
 This checkpoint introduces a provider-independent, server-only Professor read boundary. It does not integrate an AI model. The authenticated human Ducelio user remains the institutional principal; `PROFESSOR` is a fixed server-selected capability profile, never a RoleGrant or database principal.
 
 ## Entry point and authority
