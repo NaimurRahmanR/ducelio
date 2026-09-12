@@ -8,9 +8,9 @@ Phase 2 implemented and hardened the deterministic Academy Operating System: gov
 
 Phase 2 is complete and merged. Checkpoint 15 closed the final review/security corrections, local gates, PR CI/review and merge at `9b902e7`; post-merge main CI passed. Historical evidence remains in the Phase 1/2 completion records.
 
-## Phase 3 â€” academic capability layer
+## Phase 3 — academic capability layer
 
-Phase 3 has begun on `phase-3-ai-academic-layer`. Checkpoint 1A/1B is complete, reviewed and approved on that feature branch at `c8c9ad9`. Its provider-independent Professor read boundary exposes `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. Every capability requires the authenticated human STUDENT and self-owned enrolment scope; PROFESSOR is a server-selected capability profile, not a RoleGrant or database principal.
+Phase 3 through 1D-B1 is merged to main at `52720f51848bfdcf93d03d709820b44d788911d9`. PR #2 is merged and post-merge main CI passed (user-confirmed). Checkpoint 1A/1B was reviewed at `c8c9ad9`; its provider-independent Professor read boundary exposes `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. Every capability requires the authenticated human STUDENT and self-owned enrolment scope; PROFESSOR is a server-selected capability profile, not a RoleGrant or database principal.
 
 No AI provider/model integration exists. Checkpoint 1D-A adds serialized database content-release authorization and durable release lifecycle auditing. Release begin/close and assessment start share the authenticated learner's `student_profiles` row lock. The seven content reads hold a bounded lease through validation and close it before successful return. Identity/permission introspection remains available without a lease.
 
@@ -18,19 +18,25 @@ Checkpoint 1C is complete at `f21755b`: the Professor boundary now also exposes 
 
 The 1D-A database audit proves only release authorization lifecycle metadata. Authenticated users can directly invoke the narrow release RPCs; no gateway-only trust or proof of gateway/model execution is claimed. Metadata excludes academic content and private/support prose. Local sequential PGlite acceptance passes; true concurrent hosted PostgreSQL acceptance with independent connections remains outstanding. Ordering valid release before assessment start cannot retract bytes already returned to a client.
 
-Checkpoint 1D-A is committed and pushed at `902e915` on the feature branch. Local validation and second review passed. PR CI was not run; it is not merged to main. Hosted/true-concurrency acceptance remains outstanding.
+Checkpoint 1D-A was committed/pushed at `902e915` after local validation and second review. Its original standalone checkpoint did not run PR CI; it is now included in merged PR #2 at `52720f5`. Hosted/true-concurrency acceptance remains outstanding.
 
-Checkpoint 1D-B1 is committed and pushed at `85d3b85` and included in PR #2. A controller HMAC-SHA256 attestation supplements the authenticated learner session; narrow DB operations independently enforce learner/release binding, immutable lifecycle audit, replay rejection, admission ceilings and bounded lifetime. The B1 runtime intentionally abstains with no provider and a zero-call/zero-spend budget. This control-plane audit is separate from 1D-A learner release authorization and future B2 provider execution evidence. See `15-academic-execution-governance.md` for secret provisioning, the signing protocol, privacy/retention semantics and acceptance limits. B1 has passed final second review and PR #2 CI passed at `85d3b85`; merge and hosted/production acceptance are not claimed.
+Checkpoint 1D-B1 is committed and pushed at `85d3b85` and included in PR #2. A controller HMAC-SHA256 attestation supplements the authenticated learner session; narrow DB operations independently enforce learner/release binding, immutable lifecycle audit, replay rejection, admission ceilings and bounded lifetime. The B1 runtime intentionally abstains with no provider and a zero-call/zero-spend budget. This control-plane audit is separate from 1D-A learner release authorization and future B2 provider execution evidence. See `15-academic-execution-governance.md` for secret provisioning, the signing protocol, privacy/retention semantics and acceptance limits. B1 has passed final second review and PR #2 CI passed at `85d3b85`; it is now merged through PR #2 at `52720f5` and post-merge main CI passed. Hosted/production acceptance remains outstanding.
 
 Provider integration remains blocked. B2 must review actual provider isolation/execution evidence, nonzero estimates and usage/cost reconciliation, lease latency/cancellation, retention duration, failure/abstention/escalation and human-review delivery policy. Production secret provisioning, perimeter abuse protection and hosted concurrent acceptance remain prerequisites; local execution-admission tests do not establish distributed or hosted acceptance.
 
 B1's second-review corrections explicitly close ambient service-role lifecycle/audit mutation privileges and preserve DB-governed terminal failure codes. The corrected local gate passes 438 tests, check/build/format/diff validation and final second review. Hosted ACL/default-privilege and role-membership acceptance remains required. Historical per-transition controller-key UUID attribution is deferred and documented; no B2 work or provider call has begun.
 
-Professor, Tutor, Practical Instructor, Practice Coach, Examiner and AI Counsellor capabilities must call narrowly scoped Academy OS services; the deterministic backend continues to own institutional truth. The controlled-assessment activity firewall must be enforced by those tools rather than by prompts.
+Professor, Tutor, Lab Instructor, Examiner and Counsellor capabilities must call narrowly scoped Academy OS services; the deterministic backend continues to own institutional truth. The controlled-assessment activity firewall must be enforced by those tools rather than by prompts.
 
 Provider rollout must wait for reviewed durable audit, assessment/content concurrency guarantees, provider boundaries, cost/rate controls, prompt/content retention, failure/abstention/escalation policy, homework integrity and human override/review paths. No agent should silently create mastery, grades, official records or support-risk judgments.
 
 Formal grading/result publication, academic completion/certification workflows, institutional announcement authoring, production notification scheduling/email/push and broader curriculum authoring remain separate deterministic work where needed; they should not be smuggled into AI prompts.
+
+## Phase 3 checkpoint 2A — institutional delivery lifecycle
+
+The current uncommitted implementation on `phase-3-delivery-lifecycle` adds learner-selected weekdays/local time/IANA timezone, governed plan confirmation and future schedule changes, next-slot-minus-60-minute latest-start boundaries, immutable starts, validated-progress completion and durable catch-up. It preserves cohort timetable authority and the existing content-release/execution limits. Agent availability, continuing Counsellor modes, bounded learner-request handoffs and admin metadata services form the deterministic control layer for later UI/runtime work. No model/provider exists.
+
+Second review is required before commit. The 15 September display deadline still needs preference/confirmation/start controls and schedule/backlog/routing presentation. See `16-institutional-delivery-lifecycle.md` for the precise scheduling/DST policy, transition anchors, permission boundaries and deferred UI, notifications, profile/cooldown persistence and advanced recovery work. B2 remains blocked by its separate production/provider prerequisites; it is not the next automatic action.
 
 ## Production readiness
 

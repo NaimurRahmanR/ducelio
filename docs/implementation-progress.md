@@ -2,20 +2,20 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: Phase 3 checkpoint 1D-B1 — provider-neutral trusted execution governance; committed/pushed at `85d3b85`; local validation and final second review passed; PR #2 CI passed on that head. Merge and hosted/production acceptance remain outstanding.
-CURRENT PARTIAL CHECKPOINT: None
-COMPLETED ITEMS: HMAC-authenticated controller commands, migration 022, metadata-only execution/audit lifecycle, replay rejection, admission ceilings, zero-provider budget, bounded timeout, server-only composition with 1D-A, security/regression tests and documentation.
-INCOMPLETE ITEMS: PR #2 final review/merge and post-merge main CI; production provisioning/hosted acceptance; B2 provider execution, isolation, usage reconciliation, latency/cancellation, retention and human-review delivery decisions.
-KNOWN FAILURES: None in the corrected local B1 gate or PR #2 CI at `85d3b85`. Production/true-concurrency acceptance is not established. No provider exists.
-NEXT EXACT ACTION: Complete PR #2 final review, merge to `main` if the updated CI remains green, verify post-merge main CI, then begin separately reviewed B2 provider integration.
+LAST COMPLETED CHECKPOINT: Phase 3 through 1D-B1 is merged to main at `52720f51848bfdcf93d03d709820b44d788911d9`; PR #2 is merged and post-merge main CI passed (user-confirmed).
+CURRENT PARTIAL CHECKPOINT: Phase 3 checkpoint 2A — institutional delivery lifecycle, implemented in the uncommitted `phase-3-delivery-lifecycle` tree; second review pending.
+COMPLETED ITEMS: Migration 023, local weekday/time/IANA StudyPlan preferences, immutable schedule revisions, next-slot latest-start policy, start receipts, validated-progress completion, durable catch-up, agent/Counsellor projections, structured learner-request liaison, domain-only optional profile/cooldown foundations and focused tests.
+INCOMPLETE ITEMS: Second review of the locally validated 2A tree; display UI and separately reviewed deferred delivery/production work. B2/provider integration has not begun.
+KNOWN FAILURES: None in the final local 2A gates. Hosted/true-concurrency acceptance is not established. No provider exists.
+NEXT EXACT ACTION: Inspect the validated uncommitted 2A diff in second review. Do not commit, push, merge or begin provider integration without instruction.
 
-## Phase 1 â€” complete
+## Phase 1 — complete
 
 Phase 1 established the engineering and institutional foundation: Next.js/React/TypeScript, Supabase/PostgreSQL migrations, authentication and stable identity, backend RBAC/RLS, versioned programme structure, audited Counsellor services, student academy UI, Counsellor workspace, Administration shell, fictional previews, automated tests and architecture/security documentation.
 
 The eight-checkpoint Phase 1 record remains in `phase-1-completion-report.md`. Hosted Auth/OAuth/SMTP acceptance was outside that historical local delivery.
 
-## Phase 2 â€” complete and merged
+## Phase 2 — complete and merged
 
 The deterministic Academy Operating System now includes:
 
@@ -45,7 +45,7 @@ Migration `202609090020_phase2_final_review_hardening.sql` closes those findings
 
 The corrected final Phase 2 gate passed ESLint, route/type generation, TypeScript, **152/152 tests across 24 files**, production webpack build and Prettier locally. The corrected PR-head GitHub Actions run passed on Linux/Node 24. PR #1 was then merged into `main` at `9b902e742dd8557d51b1c31e0b6a4f522c07982a`, and the post-merge `main` CI run also passed.
 
-## Phase 3 checkpoint 1A/1B â€” local implementation complete
+## Phase 3 checkpoint 1A/1B — local implementation complete
 
 The first provider-independent capability boundary exposes exactly five server-only reads: `get_actor_context`, `get_activity_permissions`, `get_current_learner_context`, `get_lesson_context` and `get_lesson_objectives`. The contracts and limitations are documented in `14-academic-capabilities.md`.
 
@@ -65,7 +65,7 @@ Validation on 2026-09-09 with Node 24.19.0 on PATH:
 
 This progress entry was updated only after the implementation passed the local checkpoint gates. The changes remain on the Phase 3 feature branch; no merge to `main` or Phase 3 PR CI success is claimed.
 
-## Phase 3 checkpoint 1C â€” additional safe Professor reads
+## Phase 3 checkpoint 1C — additional safe Professor reads
 
 Checkpoint 1C extends the same server-only gateway from five to exactly nine allowlisted Professor capabilities and bumps the strict contract to `PROFESSOR_READ_V2`. The four additions are `get_current_class_session`, `get_learning_resources`, `get_permitted_learning_history` and `get_current_mastery_state`.
 
@@ -85,7 +85,7 @@ Local validation on 2026-09-09 using bundled Node 24.20.0:
 
 Checkpoint 1C is committed on `phase-3-ai-academic-layer` at `f21755b` (`feat: extend professor academic reads`), the clean starting tree verified for 1D-A. This entry does not claim 1C PR CI success or merge to main. At 1C completion, durable capability execution audit and a serialized assessment/content release boundary were deferred.
 
-## Phase 3 checkpoint 1D-A â€” serialized release authorization and audit
+## Phase 3 checkpoint 1D-A — serialized release authorization and audit
 
 Migration `202609090021_phase3_academic_content_release.sql` adds the minimal `academic_content_releases` lifecycle and begin/close RPCs. The database derives the authenticated learner, fixes PROFESSOR, validates the exact seven academic reads and V2 contract, and uses a non-renewable 30-second DB-clock expiry. Identity is immutable, terminal states cannot be rewritten, deletes are forbidden, RLS is enabled and authenticated users receive no direct release-table privileges. Existing `audit_events` and its Platform Admin read policy provide the institutional audit surface.
 
@@ -106,9 +106,9 @@ Validation on 2026-09-10 using bundled Node **24.19.0**:
 
 Local PGlite tests exercise actual SQL locks, sequential assessment/release exclusion, expiry, terminal immutability, direct-call ownership/privileges, committed denial audit, audit-failure rollback and real gateway finalization/replay failures. **No two independent concurrent PostgreSQL connections were tested.** Hosted Supabase/JWT/PostgREST acceptance and true concurrency acceptance remain production prerequisites. Release authorization ordering does not retract network bytes or guarantee response arrival precedes a later assessment start.
 
-No additional dependency, credential or environment configuration was needed for 1D-A. Migration 021 was applied only to local test databases in that checkpoint; hosted deployment/acceptance is not claimed. Checkpoint 1D-A is committed and pushed at `902e915` (`feat: serialize academic content release`) on the feature branch. Local validation and second review passed. PR CI was not run and it is not merged to main; hosted/true-concurrency acceptance remains outstanding.
+No additional dependency, credential or environment configuration was needed for 1D-A. Migration 021 was applied only to local test databases in that checkpoint; hosted deployment/acceptance is not claimed. Checkpoint 1D-A is committed and pushed at `902e915` (`feat: serialize academic content release`) on the feature branch. Local validation and second review passed. Standalone PR CI was not run at that checkpoint. It is now included in merged PR #2 at `52720f5`; hosted/true-concurrency acceptance remains outstanding.
 
-## Phase 3 checkpoint 1D-B1 â€” provider-neutral trusted execution governance
+## Phase 3 checkpoint 1D-B1 — provider-neutral trusted execution governance
 
 The interrupted B1 working tree was resumed in place at `902e915`, preserving the prior implementation. Migration `202609100022_phase3_trusted_execution_governance.sql` adds `academic_execution_private.controller_keys`, `academic_executions`, constrained `govern_professor_execution` commands and dedicated metadata-only audit/immutability triggers. It uses Node and pgcrypto HMAC-SHA256 instead of introducing a service-role credential or a new application SQL connection. No dependency or provider was added.
 
@@ -139,7 +139,17 @@ Corrected validation with bundled **v24.19.0**: focused B1 DB/workflow suites pa
 
 Verifier wording now distinguishes the inaccessible private raw verifier from the public fixed-protocol MAC validation result. Roadmap/progress headings have proper UTF-8 em dashes without unrelated prose rewrites. Historical controller-key UUID attribution is explicitly deferred: audit proves some active key verified the command, not which key authorized each transition. Hosted ACL/default/membership/ownership acceptance, production secret provisioning and all earlier production/B2 limitations remain outstanding.
 
-The corrected B1 implementation passed final second review, is committed/pushed at `85d3b85`, and PR #2 CI passed on that head. Merge and hosted/production acceptance are not claimed; B2 has not begun.
+The corrected B1 implementation passed final second review, was committed/pushed at `85d3b85`, and PR #2 CI passed on that head. Phase 3 through B1 is now merged at `52720f5`; post-merge main CI passed. Hosted/production acceptance remains outstanding; B2 has not begun.
+
+## Phase 3 checkpoint 2A — institutional delivery lifecycle
+
+Starting branch `phase-3-delivery-lifecycle` was clean at exact SHA `52720f51848bfdcf93d03d709820b44d788911d9`. The bundled Node v24.19.0 baseline passed 438 tests across 29 files. No existing Phase 1/2/3 implementation was discarded.
+
+Migration 023 adds separate enrolment StudyPlans, immutable schedule/revision records, start receipts, catch-up requirements and bounded handoffs. The corrected DELIVERY_V1 policy accepts learner-selected ISO weekdays, local start time and an IANA timezone; latest start is the next scheduled slot minus 60 minutes, including a hypothetical final next slot. It is an inclusive start boundary, not a response/completion deadline. DST, historical changes, valid starts completing later and late first progress are tested. Existing LessonProgress governs planned-segment completion; mastery remains exclusively MASTERY_V1 over validated evidence.
+
+Academic-role access closes after course completion while historical materials and continuing Counsellor access remain available. Explicit staff metadata projections retain existing RBAC/privacy boundaries. Handoffs have fixed generated summaries and LEARNER_REQUEST provenance, never fabricated agent execution. Cooldown and optional prospect profile are domain-only, with storage/enforcement deferred. No provider, public AI endpoint, academic write capability or new credential was added. Full policy, rationale, limits and the 15 September display-UI work remaining are in `16-institutional-delivery-lifecycle.md`.
+
+Final corrected local validation used Node **v24.20.0** and npm **11.19.0**. `npm run check` passed ESLint, route/type generation, TypeScript and **622 tests across 31 files**, preserving the 438-test baseline. The delivery suites comprise **184 tests**: 151 delivery-workflow tests and 33 delivery-server tests. `npm run build`, `npm run format:check` and `git diff --check` passed. The original midnight-UTC/fixed-24-hour draft was corrected before any commit. Hosted Supabase, true-concurrency, production acceptance and checkpoint CI remain outstanding. No commit, push or merge is claimed for 2A. The uncommitted tree has passed final second review.
 
 ## Current scope boundary
 
