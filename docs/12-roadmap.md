@@ -34,9 +34,25 @@ Formal grading/result publication, academic completion/certification workflows, 
 
 ## Phase 3 checkpoint 2A — institutional delivery lifecycle
 
-Checkpoint 2A implementation on `phase-3-delivery-lifecycle` completed final second review and was committed at `afc6ba2`. PR #3 carries learner-selected weekdays/local time/IANA timezone, governed plan confirmation and future schedule changes, next-slot-minus-60-minute latest-start boundaries, immutable starts, validated-progress completion and durable catch-up. It preserves cohort timetable authority and the existing content-release/execution limits. Agent availability, continuing Counsellor modes, bounded learner-request handoffs and admin metadata services form the deterministic control layer for later UI/runtime work. No model/provider exists.
+Checkpoint 2A is complete and merged through PR #3. The reviewed feature head was `79bb3653c451b11ffd6e03c94e8de3e9ca1a9fbc`; GitHub created merge commit `28937559a7c3266fec0fd6898fad129a7cd014d4` on `main`. Post-merge Ducelio CI run #23 passed lint, route/type generation, TypeScript/tests, formatting and the production build.
 
-Final second review is complete. The 15 September display deadline still needs preference/confirmation/start controls and schedule/backlog/routing presentation. See `16-institutional-delivery-lifecycle.md` for the precise scheduling/DST policy, transition anchors, permission boundaries and deferred UI, notifications, profile/cooldown persistence and advanced recovery work. B2 remains blocked by its separate production/provider prerequisites; it is not the next automatic action.
+The merged checkpoint provides learner-selected weekdays/local time/IANA timezone, governed plan confirmation and future schedule changes, next-slot-minus-60-minute latest-start boundaries, immutable learner starts, validated-progress completion, durable catch-up, course-time-bound academic-agent availability, continuing Counsellor modes, bounded learner-request handoffs and admin delivery projections.
+
+Checkpoint 2A does not contain a model/provider runtime, production classroom, learner delivery controls, payment system, grading/result publication, official course-completion workflow or hosted production acceptance. Those are now Commercial V1 work rather than reasons to reopen 2A.
+
+## Commercial V1 — platform completion
+
+The product programme now targets a production-ready Ducelio commercial academy platform by **30 September 2026**, with one complete real cybersecurity course proving the platform.
+
+Commercial V1 must make courses and academic agents reusable platform configuration rather than bespoke application development. The Course & Agent Engineering layer must support validated course packages containing programme metadata, curriculum versions, modules, lessons, objectives, learning resources, practicals, assignments, assessments, rubrics, mastery mappings, scheduling defaults and role-specific Professor/Tutor/Lab Instructor/Examiner/Counsellor configuration.
+
+The target course workflow is **upload → validate → preview → configure agents → test → publish**. Adding a normal later course must not require a new database migration, bespoke React route or bespoke core server endpoint.
+
+The first real course is the reference implementation. By approximately **15 October 2026**, the wider initial cybersecurity catalogue should be loadable through the same engineering system rather than through repeated core application redevelopment.
+
+The backend must remain client-independent so the web application and later iOS/Android applications share the same institutional authority, enrolment, curriculum, delivery, AI runtime, assessment, mastery, records, notification and entitlement services.
+
+Commercial V1 also includes the real provider/runtime boundary, learner delivery UI, academic-agent experiences, public sales/Counsellor experience, real checkout and payment-backed entitlement provisioning, grading/results/course completion, commercial Admin operations, production communications and production acceptance.
 
 ## Production readiness
 
