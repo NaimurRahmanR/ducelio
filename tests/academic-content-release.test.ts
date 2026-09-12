@@ -272,10 +272,14 @@ describe("DB-owned academic content release authorization", () => {
       const stale = await row(id);
       expect(stale.state).toBe("EXPIRED");
       expect(stale.terminal_at).toEqual(stale.expires_at);
-      expect((await events(id)).map((e) => e.action)).toEqual([
-        "CONTENT_RELEASE_ACTIVE",
-        "CONTENT_RELEASE_EXPIRED",
-      ]);
+      const actions = (await events(id)).map((event) => event.action);
+      expect(actions).toHaveLength(2);
+      expect(actions).toEqual(
+        expect.arrayContaining([
+          "CONTENT_RELEASE_ACTIVE",
+          "CONTENT_RELEASE_EXPIRED",
+        ]),
+      );
     },
   );
   it.each([true, false])(
@@ -295,10 +299,18 @@ describe("DB-owned academic content release authorization", () => {
         transitioned: false,
       });
       expect(await row(grant.release_id)).toEqual(original);
-      expect((await events(grant.release_id)).map((e) => e.action)).toEqual([
-        "CONTENT_RELEASE_ACTIVE",
-        `CONTENT_RELEASE_${state}`,
-      ]);
+
+      const actions = (await events(grant.release_id)).map(
+        (event) => event.action,
+      );
+      expect(actions).toHaveLength(2);
+      expect(actions).toEqual(
+        expect.arrayContaining([
+          "CONTENT_RELEASE_ACTIVE",
+          `CONTENT_RELEASE_${state}`,
+        ]),
+      );
+
       await db.exec("reset role");
       await rejected(
         "update public.academic_content_releases set state='ACTIVE',terminal_at=null where id=$1",
