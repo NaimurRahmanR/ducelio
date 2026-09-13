@@ -29,6 +29,7 @@ const links = [
   ["Calendar", "calendar", CalendarDays],
   ["Classes", "classes", Video],
   ["Assignments", "assignments", ClipboardList],
+  ["Practicals", "practicals", ClipboardList],
   ["Assessments", "assessments", FileCheck2],
   ["Notes", "notes", NotebookPen],
   ["Results", "results", ChartNoAxesCombined],
@@ -58,24 +59,26 @@ export function AcademyShell({
     .join("");
   const nav = (
     <>
-      {links.map(([label, slug, Icon]) => {
-        const href = slug ? base + "/" + slug : base;
-        return (
-          <Link
-            key={label}
-            className={pathname === href ? "nav-link active" : "nav-link"}
-            href={href}
-            aria-current={pathname === href ? "page" : undefined}
-            onClick={(e) =>
-              e.currentTarget.closest("details")?.removeAttribute("open")
-            }
-          >
-            <Icon size={18} strokeWidth={1.7} />
-            {label}
-            {label === "Support" && <span className="nav-dot" />}
-          </Link>
-        );
-      })}
+      {links
+        .filter(([, slug]) => !demo || slug !== "practicals")
+        .map(([label, slug, Icon]) => {
+          const href = slug ? base + "/" + slug : base;
+          return (
+            <Link
+              key={label}
+              className={pathname === href ? "nav-link active" : "nav-link"}
+              href={href}
+              aria-current={pathname === href ? "page" : undefined}
+              onClick={(e) =>
+                e.currentTarget.closest("details")?.removeAttribute("open")
+              }
+            >
+              <Icon size={18} strokeWidth={1.7} />
+              {label}
+              {label === "Support" && <span className="nav-dot" />}
+            </Link>
+          );
+        })}
     </>
   );
   return (
