@@ -1,11 +1,18 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   zeroUsage,
   type ProviderAdapter,
+  type RuntimeBudgetPolicy,
   type RuntimeResult,
 } from "@/domain/academic-runtime";
 import type { RuntimeProfile } from "@/domain/academic-runtime-profile";
+import {
+  PROVIDER_EXECUTION_DB_CEILING,
+  providerExecutionBudgetProposalSchema,
+  mapRuntimeResultToFinalizeCommand,
+} from "@/domain/academic-provider-execution";
 import {
   agentRoleSchema,
   isCapabilityAuthorized,
@@ -20,6 +27,11 @@ import { requireStudentPrincipal } from "../identity";
 import { getAgentConfigForEnrolment } from "../academic-agent-config";
 import { getDeliveryAgentAccess } from "../delivery";
 import { withValidatedProfessorContent } from "../academic-capabilities";
+import type { AcademicContentRelease } from "../academic-content-release";
+import {
+  attestProviderExecutionCommand,
+  ProviderExecutionDenied,
+} from "../academic-provider-execution/authority";
 import {
   resolveAdapterForProfile,
   resolveRuntimeProfile,
@@ -181,49 +193,273 @@ async function executeRoleCapabilityCore(
 
   const adapter = deps.resolveAdapter(profile);
 
+  // The DB-owned V2 hard ceiling (migration 025) always wins: propose the
+  // SMALLER of what this profile's own budgetPolicy allows and what the
+  // database will ever admit. This can only narrow a request, never widen
+  // one — the database independently re-enforces these same maximums as
+  // table CHECK constraints regardless of what is proposed here, so a
+  // compromised/corrupt request can never raise the admitted envelope.
+  const proposedBudget = {
+    maxProviderCalls: Math.min(
+      profile.budgetPolicy.maxProviderCalls,
+      PROVIDER_EXECUTION_DB_CEILING.maxProviderCalls,
+    ),
+    maxOutputTokens: Math.min(
+      profile.budgetPolicy.maxOutputTokens,
+      PROVIDER_EXECUTION_DB_CEILING.maxOutputTokens,
+    ),
+    maxEstimatedCostMicrousd: Math.min(
+      profile.budgetPolicy.maxEstimatedCostMicrousd,
+      PROVIDER_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
+    ),
+  };
+  // A profile that itself admits zero of any of these (a valid, if
+  // degenerate, runtimeBudgetPolicySchema shape) can never satisfy V2's
+  // AUTHORIZE, which structurally requires a nonzero bounded budget
+  // (migration 025). Recognising that here avoids an avoidable DB
+  // round-trip; the outcome is identical to what AUTHORIZE would itself
+  // report (BUDGET_BLOCKED, PRE_CALL — no provider call was made).
+  const budgetParsed =
+    proposedBudget.maxProviderCalls >= 1 &&
+    proposedBudget.maxOutputTokens >= 1 &&
+    proposedBudget.maxEstimatedCostMicrousd >= 1
+      ? providerExecutionBudgetProposalSchema.safeParse(proposedBudget)
+      : null;
+
   // Provider execution happens INSIDE the consumer callback, while the
   // original academic-content release this exact gateway call begins is
-  // still open — never after it closes, and never a second release. The
-  // outcome is captured in this closure; it is trusted only once the
-  // surrounding gateway call (final principal/activity recheck AND release
-  // finalization, both of which happen strictly after this callback
-  // returns) has itself succeeded. See the checks immediately below.
+  // still open — never after it closes, and never a second release.
+  // AUTHORIZE and START (migration 025's DB-owned V2 governance) also
+  // happen in here, strictly before any provider call, so a failed
+  // admission never reaches the provider at all. The outcome is captured
+  // in this closure; it is trusted only once the surrounding gateway call
+  // (final principal/activity recheck AND release finalization, both of
+  // which happen strictly after this callback returns) has itself
+  // succeeded — see the checks immediately below. Crucially, FINALIZE
+  // (which durably reconciles usage and terminalizes the V2 execution) is
+  // deliberately NOT called in here: it only happens after this callback
+  // returns and the release has already closed, so SUCCEEDED can never be
+  // persisted before that closure succeeds (the Critical Success Rule).
   let providerResult: RuntimeResult | null = null;
+  let providerExecutionId: string | null = null;
+  let providerExecutionStarted = false;
+  let providerExecutionAuthorized = false;
+  let capturedRelease: AcademicContentRelease | null = null;
+  // Real providerCalls/tokens/cost already consumed must not disappear from
+  // the returned RuntimeResult merely because the response itself is
+  // discarded on a later failure path: this always reflects the actual
+  // provider usage captured so far, never the zero placeholder, once a
+  // provider call may have happened.
+  function lastKnownUsage() {
+    return providerResult ? providerResult.usage : usage;
+  }
   const outcome = await withValidatedProfessorContent(
     { capability: capabilityName.data, input: capabilityInput },
-    async ({ data }) => {
-      // The provider context is the capability's own validated, bounded
-      // output — never payload/browser/course-package JSON. This is the
-      // only place in the whole boundary where "context" is assembled.
-      const context = { capability: capabilityName.data, data };
-      providerResult = await runGovernedProviderExecution(
-        adapter,
-        { role: payload.role, capability: payload.capability, context },
-        profile.budgetPolicy,
-      );
+    async ({ release, data }) => {
+      capturedRelease = release;
+      if (!budgetParsed || !budgetParsed.success) {
+        providerResult = {
+          outcome: "BUDGET_BLOCKED",
+          usage,
+          stage: "PRE_CALL",
+        };
+        return;
+      }
+      providerExecutionId = randomUUID();
+      try {
+        await attestProviderExecutionCommand(providerExecutionId, release, {
+          operation: "AUTHORIZE",
+          budget: budgetParsed.data,
+        });
+        providerExecutionAuthorized = true;
+        await attestProviderExecutionCommand(providerExecutionId, release, {
+          operation: "START",
+        });
+        providerExecutionStarted = true;
+        // The provider context is the capability's own validated, bounded
+        // output — never payload/browser/course-package JSON. This is the
+        // only place in the whole boundary where "context" is assembled.
+        const context = { capability: capabilityName.data, data };
+        // The runtime harness must never be given more room than the V2
+        // execution was actually admitted for: reuse the profile's own
+        // budgetPolicy for everything NOT re-negotiated at AUTHORIZE
+        // (maxAttempts, maxInputContextBytes, totalDeadlineMs), but replace
+        // maxProviderCalls/maxOutputTokens/maxEstimatedCostMicrousd with the
+        // exact capped values the DB just admitted (`budgetParsed.data`) —
+        // never the profile's own, possibly larger, originals. A generous
+        // profile can therefore never cause the provider to be asked for
+        // more output tokens, calls or cost headroom than
+        // academic_provider_executions actually recorded as admitted.
+        const effectiveRuntimePolicy: RuntimeBudgetPolicy = {
+          ...profile.budgetPolicy,
+          maxProviderCalls: budgetParsed.data.maxProviderCalls,
+          maxOutputTokens: budgetParsed.data.maxOutputTokens,
+          maxEstimatedCostMicrousd: budgetParsed.data.maxEstimatedCostMicrousd,
+        };
+        providerResult = await runGovernedProviderExecution(
+          adapter,
+          { role: payload.role, capability: payload.capability, context },
+          effectiveRuntimePolicy,
+        );
+      } catch (error) {
+        // AUTHORIZE/START denials are ordinary, bounded outcomes here
+        // (rate limits, an out-of-envelope proposal, an activity/policy
+        // change mid-flight, expiry) — never an exception that should abort
+        // an otherwise-valid content release. A genuinely unexpected error
+        // (not ProviderExecutionDenied) is rethrown below unchanged.
+        if (!(error instanceof ProviderExecutionDenied)) throw error;
+        providerResult = {
+          outcome: "ABSTAINED",
+          usage,
+          reason:
+            error.code === "ACTIVITY_BLOCKED"
+              ? "ACTIVITY_BLOCKED"
+              : "POLICY_BLOCKED",
+        };
+        // If AUTHORIZE itself was admitted but a later step failed without
+        // the database already having closed the execution out on its own
+        // (databaseTerminal), the row would otherwise dangle AUTHORIZED
+        // until it lazily expires. Best-effort cleanup; a failure here is
+        // not itself surfaced, since the DB-owned timeout policy remains
+        // the backstop (never a fabricated terminal success).
+        if (providerExecutionAuthorized && !error.databaseTerminal) {
+          try {
+            await attestProviderExecutionCommand(providerExecutionId, release, {
+              operation: "FINALIZE",
+              state: "FAILED",
+              reason: "INTERNAL_ERROR",
+              budgetStage: null,
+              usage: zeroUsage(),
+            });
+          } catch {
+            // Lazy DB-owned expiry remains the backstop.
+          }
+        }
+      }
     },
   );
 
+  // Best-effort cleanup used only by the two release/gateway failure paths
+  // below, where a V2 execution may have reached RUNNING (a real provider
+  // call may have happened) but the surrounding release itself did not
+  // survive to let the normal FINALIZE path run. Swallows its own failure:
+  // the DB-owned timeout policy remains the backstop either way, and both
+  // call sites already return ABSTAINED regardless of whether this cleanup
+  // succeeds.
+  async function finalizeProviderExecutionAfterRelease(
+    state: "FAILED",
+    reason:
+      "CONTENT_RELEASE_UNAVAILABLE" | "ACTIVITY_BLOCKED" | "POLICY_BLOCKED",
+  ) {
+    if (!providerExecutionStarted || !providerExecutionId || !capturedRelease)
+      return;
+    try {
+      await attestProviderExecutionCommand(
+        providerExecutionId,
+        capturedRelease,
+        {
+          operation: "FINALIZE",
+          state,
+          reason,
+          budgetStage: null,
+          usage: lastKnownUsage(),
+        },
+      );
+    } catch {
+      // Lazy DB-owned expiry remains the backstop.
+    }
+  }
+
   // Release finalization failure discards any provider output outright,
   // even if the provider call itself succeeded inside the callback above.
+  // The execution's own real usage (if a provider call actually happened)
+  // is still durably reconciled below — never hidden — but no success can
+  // escape this boundary. The RETURNED RuntimeResult must also carry that
+  // same real usage rather than the zero placeholder: real providerCalls/
+  // tokens/cost already consumed must not disappear merely because the
+  // response itself is discarded.
   if (outcome.releaseFinalizationFailed) {
-    return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+    await finalizeProviderExecutionAfterRelease(
+      "FAILED",
+      "CONTENT_RELEASE_UNAVAILABLE",
+    );
+    return {
+      outcome: "ABSTAINED",
+      usage: lastKnownUsage(),
+      reason: "POLICY_BLOCKED",
+    };
   }
   // The gateway's own final principal/activity recheck (which runs after
   // the callback returns and before the release closes) failing also
   // discards any provider output, for the same reason: content validity is
   // re-proven only up to that recheck, not merely at the moment the
-  // callback captured it.
+  // callback captured it. Same usage-preservation rule as above.
   if (!outcome.result.ok) {
-    if (outcome.result.error.code === "ACTIVITY_BLOCKED")
-      return { outcome: "ABSTAINED", usage, reason: "ACTIVITY_BLOCKED" };
-    return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+    const activityBlocked = outcome.result.error.code === "ACTIVITY_BLOCKED";
+    await finalizeProviderExecutionAfterRelease(
+      "FAILED",
+      activityBlocked ? "ACTIVITY_BLOCKED" : "POLICY_BLOCKED",
+    );
+    return {
+      outcome: "ABSTAINED",
+      usage: lastKnownUsage(),
+      reason: activityBlocked ? "ACTIVITY_BLOCKED" : "POLICY_BLOCKED",
+    };
   }
-  // The callback never ran (capability/release denied before reaching it,
-  // e.g. CONTEXT_CONFLICT surfaced some other way): zero provider calls,
-  // nothing to return.
+  // The callback never produced a result at all (should not happen once
+  // outcome.result.ok is true, but fail closed rather than assume).
   if (!providerResult) {
     return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+  }
+  // No V2 execution was ever authorized/started (admission was denied, or
+  // the profile's own budget could never satisfy AUTHORIZE) — nothing to
+  // durably terminalize; the bounded abstention captured above is already
+  // the whole truth.
+  if (!providerExecutionStarted || !providerExecutionId || !capturedRelease) {
+    return providerResult;
+  }
+
+  // Durably reconcile the ACTUAL captured usage and terminalize the V2
+  // execution now — strictly after the release above has already closed
+  // successfully. This is the only place a SUCCEEDED provider response can
+  // ever escape this boundary, and only once this FINALIZE call itself is
+  // confirmed by the database. mapRuntimeResultToFinalizeCommand strictly
+  // validates the real usage against the durable ledger's own schema
+  // (never silently clamping it) and is deliberately called INSIDE this
+  // try block: an impossible usage value must fail this FINALIZE attempt
+  // exactly like any other persistence uncertainty below, never send a
+  // falsified number, and never fabricate a terminal success either way.
+  try {
+    const finalizeCommand = mapRuntimeResultToFinalizeCommand(providerResult);
+    const snapshot = await attestProviderExecutionCommand(
+      providerExecutionId,
+      capturedRelease,
+      { operation: "FINALIZE", ...finalizeCommand },
+    );
+    if (snapshot.state !== finalizeCommand.state) {
+      // The database did not confirm the exact outcome requested (it may
+      // have independently forced a different terminal state, e.g. a
+      // lazily-discovered timeout). Never let a mismatched success escape,
+      // but the RETURNED usage still reflects what the provider actually
+      // consumed — it does not vanish because the outcome is uncertain.
+      return {
+        outcome: "ABSTAINED",
+        usage: lastKnownUsage(),
+        reason: "POLICY_BLOCKED",
+      };
+    }
+  } catch {
+    // FINALIZE itself could not be durably confirmed: fail closed rather
+    // than fabricate a terminal success. The row may still resolve later
+    // under the DB-owned timeout policy; no successful response escapes
+    // under this uncertainty, even though a real provider call already
+    // happened and consumed real usage — which the returned RuntimeResult
+    // still truthfully carries, even though it was never durably persisted.
+    return {
+      outcome: "ABSTAINED",
+      usage: lastKnownUsage(),
+      reason: "POLICY_BLOCKED",
+    };
   }
   return providerResult;
 }
