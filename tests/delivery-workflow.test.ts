@@ -8,6 +8,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import {
@@ -66,14 +67,34 @@ async function context(cursor = 0): Promise<DeliveryContext> {
 }
 async function historical(cadence = 7) {
   const plan = await save(cadence);
+  // Anchor the daily schedule at a fixed UTC noon, not '00:00' and not the
+  // live wall-clock time-of-day. Two boundary effects matter here and a
+  // noon anchor sits with a full margin against both, with no dependence
+  // on when the test happens to run:
+  //  - DELIVERY_V1's deadline rule is "next slot minus 60 minutes". For a
+  //    daily cadence, today's occurrence's own latest-start deadline is
+  //    (tomorrow at the anchor time) minus 60 minutes. With a '00:00'
+  //    anchor that wraps back onto *today* at 23:00, so this fixture would
+  //    flake during the last UTC hour of any day (production correctly
+  //    marking today's occurrence MISSED in that window — not a bug, but a
+  //    fixture that must not assume "today" is always still open). Any
+  //    anchor outside [00:00,01:00) UTC keeps that deadline on tomorrow's
+  //    date instead, clear of today entirely.
+  //  - change_future_delivery_schedule's transition-anchor logic requires
+  //    the new schedule's first eligible slot to land at least 60 minutes
+  //    after the old schedule's anchor occurrence. That gap is smallest
+  //    when the old anchor sits just before midnight and the new
+  //    schedule's local start time is just after it — exactly what an
+  //    anchor tied to "now" can coincidentally produce. Noon keeps at
+  //    least 12 hours of margin against any start time a test picks.
   await db.query(
-    "select public.save_delivery_study_plan($1,null,'00:00','UTC')",
+    "select public.save_delivery_study_plan($1,null,'12:00','UTC')",
     [enrolment],
   );
   await owner();
   // Privileged historical fixture only: no public RPC accepts a past start or clock.
   await db.query(
-    "select delivery_private.generate_schedule($1,$2,'00:00','UTC',(clock_timestamp() at time zone 'UTC')::date-3,true)",
+    "select delivery_private.generate_schedule($1,$2,'12:00','UTC',(clock_timestamp() at time zone 'UTC')::date-3,true)",
     [plan, Array.from({ length: cadence }, (_, i) => i + 1)],
   );
   await db.query(
@@ -123,6 +144,20 @@ async function progress(index: number, status = "COMPLETED") {
   await user();
 }
 beforeAll(async () => {
+  // Freeze the system clock for this entire file at a fixed UTC noon,
+  // comfortably clear of every boundary this suite's invariants care
+  // about: the UTC day boundary (DELIVERY_V1's "next slot minus 60
+  // minutes" deadline rule and the transition-anchor 60-minute-gap check
+  // both get flaky right around midnight), and any Europe/London DST
+  // transition (mid-June sits squarely inside BST with no change nearby).
+  // Fixtures that need "today" to already be under way (e.g. historical(),
+  // below) rely on clock_timestamp() having passed this same instant, so
+  // every test in the file — not just the fixture setup — must see it.
+  // Only Date is faked (not timers), matching the repository's existing
+  // pattern (see academic-capability-workflow.test.ts) and avoiding any
+  // risk of freezing setTimeout/setInterval under PGlite's async WASM I/O.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
   fixture = await executionFixture();
   db = fixture.db;
   await owner();
@@ -184,6 +219,7 @@ afterEach(async () => {
   await db.exec("rollback; reset role; reset request.jwt.claim.sub");
 });
 afterAll(async () => {
+  vi.useRealTimers();
   await db?.close();
 });
 
@@ -775,8 +811,19 @@ describe("DELIVERY_V1 local-time latest-start policy", () => {
   it("preserves the predecessor deadline and uses an explicit transition anchor for preference changes", async () => {
     await historical();
     const before = await context();
+    // change_future_delivery_schedule validates p_effective_on against
+    // (clock_timestamp() at time zone p_timezone)::date, not the session's
+    // own current_date. Computing "tomorrow" from the session/UTC date
+    // instead of Europe/London's own local date is a real-clock trap: for
+    // part of the UTC day, while Europe/London observes BST (UTC+1),
+    // London's local date is already one day ahead of UTC's current_date,
+    // so "UTC today + 1" equals London's *own* current date rather than a
+    // date strictly after it, and the function correctly rejects it as not
+    // being "after today" in the selected timezone. Deriving the boundary
+    // from the same timezone the call itself targets keeps this
+    // deterministic regardless of the UTC/BST offset at run time.
     const boundary = await scalar<string>(
-      "select (current_date+1)::text as value",
+      "select ((clock_timestamp() at time zone 'Europe/London')::date+1)::text as value",
     );
     await db.query(
       "select public.change_future_delivery_schedule($1,array[1,3,5],'19:00','Europe/London',$2)",
