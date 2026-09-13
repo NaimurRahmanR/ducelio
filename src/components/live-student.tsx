@@ -14,6 +14,8 @@ import {
   getStudentSupportProfile,
   getOpenSupportEvents,
 } from "@/server/support";
+import { listMyProfessorClassroomSessionIds } from "@/server/professor-classroom";
+import { previewClassroomEligibility } from "@/domain/professor-classroom";
 import { SupportForms } from "./support-forms";
 
 export async function LiveStudent({ section = "" }: { section?: string }) {
@@ -30,6 +32,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     resources,
     evidence,
     mastery,
+    openedClassroomSessionIds,
   ] = await Promise.all([
     getAssignedCounsellor(actor.id),
     getStudyPlan(actor.id),
@@ -42,10 +45,12 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     getStudentLearningResources(),
     getStudentLearningEvidence(),
     getStudentObjectiveMastery(),
+    listMyProfessorClassroomSessionIds(),
   ]);
   const attendanceBySession = new Map(
     attendance.map((record) => [record.session_id, record]),
   );
+  const now = new Date();
   const titles: Record<string, string> = {
     "": "Your academy",
     programme: "Your programme",
@@ -113,6 +118,17 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               {sessions.length ? (
                 sessions.map((session) => {
                   const attendanceRecord = attendanceBySession.get(session.id);
+                  const preview = previewClassroomEligibility(
+                    {
+                      status: session.status,
+                      scheduledStart: session.scheduled_start,
+                      scheduledEnd: session.scheduled_end,
+                    },
+                    now,
+                  );
+                  const alreadyOpened = openedClassroomSessionIds.has(
+                    session.id,
+                  );
                   return (
                     <div className="support-record" key={session.id}>
                       <Badge
@@ -154,6 +170,30 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                         <p className="muted">
                           Attendance has not yet been recorded.
                         </p>
+                      )}
+                      {preview.kind === "CANCELLED" && (
+                        <p className="muted">
+                          This class is cancelled and cannot be entered.
+                        </p>
+                      )}
+                      {preview.kind === "FUTURE" && (
+                        <p className="muted">
+                          Starts at{" "}
+                          {new Date(session.scheduled_start).toLocaleString()}
+                        </p>
+                      )}
+                      {preview.kind === "LIVE" && (
+                        <ButtonLink href={`/student/classroom/${session.id}`}>
+                          {alreadyOpened ? "Resume class" : "Start class"}
+                        </ButtonLink>
+                      )}
+                      {preview.kind === "CATCH_UP" && (
+                        <ButtonLink
+                          href={`/student/classroom/${session.id}`}
+                          secondary
+                        >
+                          {alreadyOpened ? "Resume catch-up" : "Start catch-up"}
+                        </ButtonLink>
                       )}
                     </div>
                   );
