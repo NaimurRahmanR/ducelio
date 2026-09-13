@@ -54,6 +54,8 @@ The backend must remain client-independent so the web application and later iOS/
 
 Commercial V1 also includes the real provider/runtime boundary, learner delivery UI, academic-agent experiences, public sales/Counsellor experience, real checkout and payment-backed entitlement provisioning, grading/results/course completion, commercial Admin operations, production communications and production acceptance.
 
+The Course & Agent Engineering domain/server/persistence foundation and the B2 provider-neutral runtime harness are implemented locally on `commercial-v1-course-agent-runtime` (starting SHA `ccfb8c8ae0a2ab172286b5f97c8305e9386d9eb7`); see `18-course-agent-engineering.md` and `implementation-progress.md` for exact scope. Real provider execution is deliberately not yet composed into the live migration-022 execution RPC, whose admitted envelope remains zero provider calls until a dedicated, separately reviewed migration raises it; no admin authoring UI or per-cohort assignment/assessment materialisation exists yet.
+
 ## Production readiness
 
 Before real learners or protected assessments are operated, complete hosted Supabase/Auth/JWT/PostgREST/RPC acceptance, provider and SMTP tests, true concurrent PostgreSQL scenarios, backups/restore exercises, rate limits/abuse controls, privacy/support-data governance, monitoring/alerting, accessibility/browser/device acceptance and deployment security review. Add pagination/operational tooling before scale and decide explicit tenant isolation before supporting multiple institutions.
