@@ -23,6 +23,7 @@ import {
   type CapabilityName,
 } from "@/domain/academic-capabilities";
 import { DeliveryDenied } from "@/domain/delivery";
+import { professorClassroomInteractionSchema } from "@/domain/professor-classroom";
 import { requireStudentPrincipal } from "../identity";
 import { getAgentConfigForEnrolment } from "../academic-agent-config";
 import { getDeliveryAgentAccess } from "../delivery";
@@ -70,6 +71,18 @@ const requestSchema = z.strictObject({
   // — never inferred from arbitrary caller JSON.
   lessonId: z.uuid().optional(),
   objectiveId: z.uuid().optional(),
+  // Narrow, reviewed extension for the Commercial V1 Professor classroom
+  // (src/server/professor-classroom.ts): an OPTIONAL, strictly-typed
+  // interaction descriptor. This is not a general "extra JSON" escape
+  // hatch — professorClassroomInteractionSchema is a closed
+  // z.discriminatedUnion of exactly two shapes (BEGIN_LESSON, or
+  // LEARNER_QUESTION carrying only the one reviewed bounded-plain-text
+  // learnerMessage field), so arbitrary caller JSON still can never reach
+  // provider context. Every other existing caller (that never supplies
+  // this field) is completely unaffected: it is appended to the provider
+  // context only when present, alongside the capability's own validated
+  // output, never in place of it.
+  interaction: professorClassroomInteractionSchema.optional(),
 });
 export type RoleCapabilityRequest = z.infer<typeof requestSchema>;
 
@@ -92,6 +105,16 @@ const LESSON_SCOPED_CAPABILITIES: ReadonlySet<CapabilityName> = new Set([
   "get_learning_resources",
   "get_current_mastery_state",
 ]);
+// The ONLY role+capability combination a classroom `interaction` may ever
+// be attached to (src/server/professor-classroom.ts never constructs a
+// request with `interaction` for anything else, but this boundary does not
+// trust that -- it re-derives and enforces the constraint itself,
+// independent of any caller). This is deliberately not a second classroom
+// capability: it is the single existing, reviewed get_lesson_context read,
+// with lessonId as its only selector -- objectiveId must be absent, since
+// it is never a valid selector for this capability and its presence would
+// mean a caller is trying to use it as an alternate one.
+const CLASSROOM_INTERACTION_CAPABILITY: CapabilityName = "get_lesson_context";
 
 type ProfileResolver = (ref: string | null) => RuntimeProfile | null;
 type AdapterResolver = (profile: RuntimeProfile) => ProviderAdapter | null;
@@ -170,6 +193,27 @@ async function executeRoleCapabilityCore(
   }
   if (EMPTY_INPUT_CAPABILITIES.has(capabilityName.data)) {
     return { outcome: "ABSTAINED", usage, reason: "NO_EXECUTION_PATH" };
+  }
+
+  // Correction pass (independent review): a classroom `interaction` is
+  // semantically valid ONLY for role PROFESSOR, capability EXACTLY
+  // get_lesson_context, with lessonId present and objectiveId absent (never
+  // used as an alternate selector). This is checked and refused HERE,
+  // before capabilityInput is even assembled and long before
+  // withValidatedProfessorContent, the provider adapter, or migration 025's
+  // AUTHORIZE/START/FINALIZE governance are ever reached — an interaction
+  // supplied against any other capability fails closed with zero provider
+  // calls and zero execution attestation, not merely a refusal deep inside
+  // that path.
+  if (payload.interaction) {
+    const boundToReviewedClassroomCapability =
+      payload.role === "PROFESSOR" &&
+      capabilityName.data === CLASSROOM_INTERACTION_CAPABILITY &&
+      payload.lessonId !== undefined &&
+      payload.objectiveId === undefined;
+    if (!boundToReviewedClassroomCapability) {
+      return { outcome: "ABSTAINED", usage, reason: "NO_EXECUTION_PATH" };
+    }
   }
 
   // The capability's own input schema — never a generic caller-supplied
@@ -277,9 +321,15 @@ async function executeRoleCapabilityCore(
         });
         providerExecutionStarted = true;
         // The provider context is the capability's own validated, bounded
-        // output — never payload/browser/course-package JSON. This is the
-        // only place in the whole boundary where "context" is assembled.
-        const context = { capability: capabilityName.data, data };
+        // output — never payload/browser/course-package JSON — with the
+        // caller's optional, strictly-typed interaction descriptor appended
+        // only when present (see requestSchema above). This is the only
+        // place in the whole boundary where "context" is assembled.
+        const context = {
+          capability: capabilityName.data,
+          data,
+          ...(payload.interaction ? { interaction: payload.interaction } : {}),
+        };
         // The runtime harness must never be given more room than the V2
         // execution was actually admitted for: reuse the profile's own
         // budgetPolicy for everything NOT re-negotiated at AUTHORIZE

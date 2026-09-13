@@ -11,12 +11,39 @@ import { resolveConfiguredProvider } from "./provider";
 // inject a URL, credential or budget of its own (see
 // src/domain/academic-runtime-profile.ts).
 //
-// No profile ships enabled by default. Commercial V1 has not made a
-// provider choice; this intentionally stays empty until a real provider has
-// been separately reviewed, provisioned and added here under its own
-// change. Until then every modelProfileRef fails closed.
+// PROFESSOR_COMMERCIAL_V1 is the one reviewed, code-owned Commercial V1
+// production profile: HTTP_JSON (the existing generic, provider-neutral
+// adapter -- no vendor SDK, no OpenAI/Anthropic/Google-specific dependency)
+// with a deliberately conservative budget policy, comfortably inside
+// migration 025's DB-owned V2 hard ceiling (1..3 calls, 1..4000 output
+// tokens, 1..200000 micro-USD) so AUTHORIZE never has to narrow it further.
+// Adding a profile here IS the review gate, exactly like adding a
+// migration is for schema; a stored modelProfileRef is only ever a lookup
+// key into this object (src/domain/academic-runtime-profile.ts) and can
+// never itself supply a provider endpoint, credential or budget. Whether
+// any enrolment's academic-agent configuration actually references this
+// ref remains a separate, existing admin decision (set_agent_config); this
+// registry only decides what such a reference COULD resolve to.
+//
+// resolveConfiguredProvider() below still independently fails closed to
+// null (NO_PROVIDER_CONFIGURED) whenever ACADEMIC_PROVIDER_BASE_URL or
+// ACADEMIC_PROVIDER_API_KEY is missing or malformed -- adding this profile
+// does not, by itself, make any live provider call possible.
 const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
-  Object.freeze({});
+  Object.freeze({
+    PROFESSOR_COMMERCIAL_V1: Object.freeze({
+      ref: "PROFESSOR_COMMERCIAL_V1",
+      adapterKind: "HTTP_JSON",
+      budgetPolicy: Object.freeze({
+        maxProviderCalls: 1,
+        maxAttempts: 2,
+        maxInputContextBytes: 16_000,
+        maxOutputTokens: 900,
+        totalDeadlineMs: 15_000,
+        maxEstimatedCostMicrousd: 40_000,
+      }),
+    }),
+  });
 
 export function resolveRuntimeProfile(
   ref: string | null,
