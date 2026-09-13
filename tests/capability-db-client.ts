@@ -187,13 +187,15 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
           "begin_academic_content_release",
           "close_academic_content_release",
           "govern_professor_execution",
+          "govern_professor_provider_execution",
         ].includes(name)
       )
         throw new Error("Unexpected RPC in capability test");
       state.calls.push({
         rpc: name,
         args:
-          name === "govern_professor_execution"
+          name === "govern_professor_execution" ||
+          name === "govern_professor_provider_execution"
             ? { ...args, p_mac: "[REDACTED]" }
             : args,
       });
@@ -217,17 +219,39 @@ export function capabilityDbClient(db: PGlite, state: CapabilityDbState) {
                 "p_expires_at",
                 "p_mac",
               ].map((key) => args?.[key])
-            : name === "begin_academic_content_release"
+            : name === "govern_professor_provider_execution"
               ? [
-                  args?.p_invocation_id,
-                  args?.p_capability_name,
-                  args?.p_contract_version,
-                ]
-              : name === "close_academic_content_release"
-                ? [args?.p_release_id, args?.p_complete]
-                : args
-                  ? [args.p_action]
-                  : [];
+                  "p_key_id",
+                  "p_execution_id",
+                  "p_release_id",
+                  "p_operation",
+                  "p_state",
+                  "p_reason",
+                  "p_budget_stage",
+                  "p_max_calls",
+                  "p_max_output",
+                  "p_max_cost",
+                  "p_calls",
+                  "p_attempts",
+                  "p_input",
+                  "p_output",
+                  "p_cost",
+                  "p_elapsed",
+                  "p_issued_at",
+                  "p_expires_at",
+                  "p_mac",
+                ].map((key) => args?.[key])
+              : name === "begin_academic_content_release"
+                ? [
+                    args?.p_invocation_id,
+                    args?.p_capability_name,
+                    args?.p_contract_version,
+                  ]
+                : name === "close_academic_content_release"
+                  ? [args?.p_release_id, args?.p_complete]
+                  : args
+                    ? [args.p_action]
+                    : [];
         const { rows } = await db.query<{ value: unknown }>(
           `select public.${identifier(name)}(${values.map((_, index) => `$${index + 1}`).join(",")}) as value`,
           values,

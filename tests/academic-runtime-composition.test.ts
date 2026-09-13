@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getAgentConfigForEnrolment: vi.fn(),
   getDeliveryAgentAccess: vi.fn(),
   withValidatedProfessorContent: vi.fn(),
+  attestProviderExecutionCommand: vi.fn(),
 }));
 vi.mock("@/server/identity", () => ({
   requireStudentPrincipal: mocks.requireStudentPrincipal,
@@ -18,6 +19,23 @@ vi.mock("@/server/delivery", () => ({
 vi.mock("@/server/academic-capabilities", () => ({
   withValidatedProfessorContent: mocks.withValidatedProfessorContent,
 }));
+// This file exercises the pre-existing (pre-V2) composition boundary
+// behaviour (gateway/release timing, adapter wiring), not migration 025's
+// own DB-owned governance semantics -- those have their own dedicated
+// coverage in tests/academic-provider-execution-workflow.test.ts and
+// tests/academic-provider-execution-db.test.ts. Mocked here to a
+// pass-through default so this file's existing assertions about
+// runGovernedProviderExecution/gateway behaviour continue to hold
+// unchanged; see beforeEach below.
+vi.mock("@/server/academic-provider-execution/authority", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/server/academic-provider-execution/authority")
+  >("@/server/academic-provider-execution/authority");
+  return {
+    ProviderExecutionDenied: actual.ProviderExecutionDenied,
+    attestProviderExecutionCommand: mocks.attestProviderExecutionCommand,
+  };
+});
 
 import { executeRoleCapabilityWithTestOverrides } from "@/server/academic-runtime";
 import { DeterministicFakeProviderAdapter } from "@/server/academic-runtime/test-fake-provider";
@@ -118,6 +136,24 @@ describe("executeRoleCapabilityWithTestOverrides composition boundary", () => {
       roles: ["STUDENT"],
     });
     mocks.getDeliveryAgentAccess.mockResolvedValue(availableAccess());
+    // Pass-through V2 governance: confirms whatever AUTHORIZE/START/FINALIZE
+    // requested, so this file's existing assertions about the underlying
+    // runGovernedProviderExecution/gateway composition are unaffected by
+    // migration 025's own governance being wired in alongside it.
+    mocks.attestProviderExecutionCommand.mockImplementation(
+      async (
+        _id: string,
+        _release: unknown,
+        command: { operation: string; state?: string },
+      ) => ({
+        state:
+          command.operation === "AUTHORIZE"
+            ? "AUTHORIZED"
+            : command.operation === "START"
+              ? "RUNNING"
+              : command.state,
+      }),
+    );
   });
 
   it("requires an authenticated student principal before anything else", async () => {

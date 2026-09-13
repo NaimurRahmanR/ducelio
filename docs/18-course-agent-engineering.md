@@ -274,7 +274,7 @@ oversights.
 
 ## B2 provider-neutral AI runtime
 
-### Scope decision — why real generation is not wired into migration 022
+### Scope decision — why real generation was not wired into migration 022
 
 `docs/15-academic-execution-governance.md` already documents that B1's
 `govern_professor_execution` admits **exactly zero provider calls, zero
@@ -284,11 +284,18 @@ and a database migration."_ Splicing a real provider call into that
 `CONTROL_PLANE_ONLY` execution kind without first raising that DB-owned
 ceiling through its own dedicated, equally rigorous review would mean the
 server silently exceeding the governance layer's own admitted budget. This
-checkpoint therefore builds the complete provider-neutral runtime as a
-standalone, fully tested layer that is not yet called from
-`executeProfessorRead`/`govern_professor_execution`. Composing the two,
-together with the dedicated budget-raising migration that must come first,
-remains the concrete next checkpoint.
+checkpoint therefore built the complete provider-neutral runtime as a
+standalone, fully tested layer, deliberately not yet called from
+`executeProfessorRead`/`govern_professor_execution`.
+
+That composition is now done, in the immediately following Commercial V1
+checkpoint — but not by raising migration 022's own zero envelope: the
+dedicated review instead produced a **separate**, distinctly identifiable
+`PROFESSOR_EXECUTION_V2`/`PROVIDER_BACKED_V1` governance surface (migration
+025), composed into the same `executeRoleCapability` boundary described
+below. Migration 022's historical zero-budget meaning is unchanged. See
+`docs/19-live-professor-execution.md` for the full design and ordering
+guarantees.
 
 ### Capability/context construction: provider execution stays inside the active content release
 
@@ -366,6 +373,19 @@ PROFESSOR, the composition order is:
    adapter's call count at zero; and the context sent to the adapter
    contains only the mocked gateway's own `data`, never an injected field
    from the original request.
+
+> **Updated by the following checkpoint** (`docs/19-live-professor-execution.md`):
+> step 7 now also AUTHORIZEs and STARTs a V2 provider-backed execution
+> (migration 025) inside `consume`, strictly before the provider call; step
+> 8's "only after both of those succeed does this module trust the
+> RuntimeResult" is followed by one further gate, not described above when
+> this section was originally written — a FINALIZE call durably reconciling
+> the real usage and terminalizing that V2 execution, made only after the
+> release has already closed successfully, with a `SUCCEEDED` response
+> escaping only once FINALIZE itself is confirmed. The release-open →
+> consume → release-close → final-result contract this section documents,
+> and `tests/academic-runtime-composition.test.ts`'s coverage of it, are
+> otherwise unchanged.
 
 ### Runtime/model profile resolution
 

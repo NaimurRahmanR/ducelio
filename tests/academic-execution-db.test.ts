@@ -203,7 +203,12 @@ describe("B1 attested execution database governance", () => {
       from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='academic_execution_private' or
       (n.nspname='public' and p.proname in ('govern_professor_execution','begin_academic_content_release','close_academic_content_release','expire_my_academic_content_releases','academic_content_release_explain_allowed','guard_academic_content_release','audit_academic_content_release'))`)
     ).rows;
-    expect(functions).toHaveLength(12);
+    // 12 from migration 022, plus migration 025's 5 additional private V2
+    // functions in the same academic_execution_private schema (guard_
+    // provider_execution, guard_provider_execution_usage, audit_provider_
+    // execution, verify_command_v2, provider_execution_projection) -- all
+    // must still be revoked from both service_role and authenticated below.
+    expect(functions).toHaveLength(17);
     for (const fn of functions) {
       expect(fn.service).toBe(false);
       expect(fn.learner).toBe(
