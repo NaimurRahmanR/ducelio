@@ -1,3 +1,4 @@
+import { getMyCourseworkScope } from "./course-activation";
 import "server-only";
 import { z } from "zod";
 import {
@@ -163,6 +164,13 @@ export async function changeAssignmentStatus(input: unknown) {
 
 export async function getStudentAssignments() {
   await requireActor("student");
+  const scope = await getMyCourseworkScope();
+  // A legitimate STUDENT with zero enrolments (e.g. entitlement not yet
+  // completed) has an empty cohort scope. Real Supabase/PostgREST does not
+  // guarantee `.in("cohort_id", [])` behaves like the empty-array semantics
+  // a local test double might emulate, so this is short-circuited before
+  // any query is ever issued -- never construct that filter.
+  if (scope.cohortIds.length === 0) return { assignments: [], submissions: [] };
   const client = await createSupabase();
   const [assignments, submissions] = await Promise.all([
     client
@@ -170,11 +178,14 @@ export async function getStudentAssignments() {
       .select(
         "id,title,instructions,opens_at,due_at,status,lessons(title),programme_versions(label,title_snapshot)",
       )
+      .in("cohort_id", scope.cohortIds)
+      .in("status", ["PUBLISHED", "CLOSED"])
       .order("due_at", { ascending: true })
       .limit(200),
     client
       .from("assignment_submissions")
       .select("id,assignment_id,attempt_number,submitted_at")
+      .eq("student_id", scope.actorId)
       .order("submitted_at", { ascending: false })
       .limit(500),
   ]);

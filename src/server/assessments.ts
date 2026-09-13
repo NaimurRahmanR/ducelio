@@ -1,3 +1,4 @@
+import { getMyCourseworkScope } from "./course-activation";
 import "server-only";
 import { z } from "zod";
 import { requireActor, requireAnyRole } from "./identity";
@@ -235,6 +236,22 @@ export async function changeAssessmentStatus(input: unknown) {
 
 export async function getStudentAssessments() {
   await requireActor("student");
+  const scope = await getMyCourseworkScope();
+  // A legitimate STUDENT with zero enrolments has an empty cohort scope. Real
+  // Supabase/PostgREST does not guarantee `.in("cohort_id", [])` behaves like
+  // the empty-array semantics a local test double might emulate, so this is
+  // short-circuited before any query is ever issued. No valid controlled
+  // assessment attempt can exist without an enrolment, so NORMAL is the
+  // correct, honest activity state here -- not a fabricated enrolment or
+  // sentinel value.
+  if (scope.cohortIds.length === 0)
+    return {
+      assessments: [],
+      attempts: [],
+      responses: [],
+      activityState: "NORMAL" as const,
+      activeQuestions: [],
+    };
   const client = await createSupabase();
   const [assessments, attempts, responses, activity] = await Promise.all([
     client
@@ -242,6 +259,8 @@ export async function getStudentAssessments() {
       .select(
         "id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,lessons(title),programme_versions(label,title_snapshot)",
       )
+      .in("cohort_id", scope.cohortIds)
+      .in("status", ["PUBLISHED", "CLOSED"])
       .order("opens_at", { ascending: true })
       .limit(100),
     client
@@ -249,11 +268,13 @@ export async function getStudentAssessments() {
       .select(
         "id,assessment_id,attempt_number,state,started_at,expires_at,submitted_at",
       )
+      .eq("student_id", scope.actorId)
       .order("started_at", { ascending: false })
       .limit(100),
     client
       .from("assessment_responses")
       .select("id,attempt_id,question_id,revision_number,recorded_at")
+      .eq("student_id", scope.actorId)
       .order("recorded_at", { ascending: false })
       .limit(1000),
     client.rpc("current_academic_activity_state"),

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { AdminWorkspace } from "@/components/admin-workspace";
 import { ProgrammePublication } from "@/components/programme-publication";
@@ -91,7 +92,14 @@ export default async function Page({
         canAudit={data.actor.roles.includes("PLATFORM_ADMIN")}
       />
       {section === "Programmes" && (
-        <ProgrammePublication versions={versions} canPublish={canPublish} />
+        <>
+          {canPublish && (
+            <Link className="button secondary" href="/admin/activation">
+              Activate course delivery
+            </Link>
+          )}
+          <ProgrammePublication versions={versions} canPublish={canPublish} />
+        </>
       )}
       {section === "Resources" && resourceWorkspace && (
         <LearningResourceWorkspace

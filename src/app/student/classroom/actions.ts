@@ -31,8 +31,8 @@ export type ClassroomActionState = {
 // load. The idempotency check runs before any provider call, so a
 // duplicated/replayed submission of the same logical action can never
 // itself cause a second provider call. executeRoleCapability -- the
-// existing, unmodified governed entrypoint -- is the only path to the
-// provider; this function chooses PROFESSOR and the reviewed classroom
+// existing governed entrypoint, narrowly extended with the closed classroom
+// interaction contract -- is the only path to the provider; this function chooses PROFESSOR and the reviewed classroom
 // capability itself, never from caller input.
 async function requestProfessorClassroom(
   classSessionId: string,
@@ -59,8 +59,8 @@ async function requestProfessorClassroom(
   // automatic one from this boundary.
   //
   // Correction pass (independent review): executeRoleCapability itself is
-  // the existing, unmodified governed entrypoint, but this call site must
-  // not assume it can only ever resolve -- an infrastructure/database/
+  // the governed entrypoint with its closed classroom interaction contract.
+  // This call site must not assume it can only ever resolve -- an infrastructure/database/
   // controller/schema/runtime exception (never expected in normal
   // operation, but never impossible either) must not propagate its raw
   // message, and must not be logged, to the learner. It is mapped to the
