@@ -2,7 +2,7 @@
 
 ## Starting state and scope
 
-Started from clean `commercial-v1-tutor-lab-execution` at `b4cf76354210d7b653010ddc8a61491aca75d139`, the PR #8 Course Activation & Cohort Delivery Materialisation merge. The local baseline was 978 tests across 48 files on bundled Node. This implementation is uncommitted and requires independent review.
+Started from clean `commercial-v1-tutor-lab-execution` at `b4cf76354210d7b653010ddc8a61491aca75d139`, the PR #8 Course Activation & Cohort Delivery Materialisation merge. The local baseline was 978 tests across 48 files on bundled Node. Independent implementation review is complete. The implementation is committed on `commercial-v1-tutor-lab-execution` and is under PR #9 pre-merge CI review.
 
 This checkpoint turns the existing deterministic Tutor/Lab Instructor handoff architecture (`src/domain/delivery.ts`, migration 023) into real, governed, provider-backed learner support — reusing the provider-neutral runtime harness Professor already established, but through a **structurally separate governance surface**. It does not add TUTOR/LAB_INSTRUCTOR to `ROLES_WITH_REVIEWED_EXECUTION_PATH` (that set remains exactly `{"PROFESSOR"}`, unchanged) and does not touch migrations 021/025 (Professor's content-release and provider-execution tables remain hard-coded to `agent_profile='PROFESSOR'`, untouched). Examiner and Counsellor remain non-executing. No grading, no institutional-state mutation, no hosted provider call was made here.
 
