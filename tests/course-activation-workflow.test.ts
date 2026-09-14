@@ -957,7 +957,18 @@ describe("activation ACL and strict contracts", () => {
         activationInput.safeParse({ ...valid, [field]: "forged" }).success,
       ).toBe(false);
   });
-  it("only Professor retains a reviewed execution path", async () => {
+  // Commercial V1 — Governed Tutor + Lab Instructor Execution added a real,
+  // separately governed Tutor/Lab execution path (src/server/tutor-lab-
+  // execution), reachable from this exact file -- so the original "no
+  // provider/model text anywhere in this file" assertion is now
+  // intentionally too strong (this file legitimately imports and documents
+  // that governed path). What must still hold, unchanged: Professor's own
+  // executeRoleCapability entrypoint is never reachable from here (Tutor/Lab
+  // execution is composed through its own separate boundary, never through
+  // executeRoleCapability or ROLES_WITH_REVIEWED_EXECUTION_PATH), and the
+  // browser can never supply a role/provider/model/capability/budget/
+  // destination form field that would let it choose an execution target.
+  it("Professor's executeRoleCapability remains the only entrypoint reached via ROLES_WITH_REVIEWED_EXECUTION_PATH, and Tutor/Lab execution never accepts a browser-selected role/provider/model/capability/budget", async () => {
     const source = await readFile(
       "src/server/academic-runtime/index.ts",
       "utf8",
@@ -965,9 +976,14 @@ describe("activation ACL and strict contracts", () => {
     expect(source).toMatch(
       /ROLES_WITH_REVIEWED_EXECUTION_PATH[^=]*= new Set\(\[\s*"PROFESSOR",?\s*\]\)/,
     );
-    expect(
-      await readFile("src/app/student/practicals/actions.ts", "utf8"),
-    ).not.toMatch(/executeRoleCapability|provider|model/i);
+    const practicalsActions = await readFile(
+      "src/app/student/practicals/actions.ts",
+      "utf8",
+    );
+    expect(practicalsActions).not.toMatch(/executeRoleCapability/);
+    expect(practicalsActions).not.toMatch(
+      /form\.get\(\s*["'](role|provider|model|capability|budget|destination)["']\s*\)/i,
+    );
   });
 });
 
