@@ -2,7 +2,7 @@
 
 ## Starting state and scope
 
-Started from clean `commercial-v1-assessment-policy` at `b20f603346e615ab268af6833dca3449ca3e4a7c`, the PR #9 Governed Tutor + Lab Instructor Execution merge. Working tree verified clean and `HEAD` verified equal to that SHA before any change. Migrations 001–028 are untouched (verified: zero diff). This implementation is uncommitted and requires independent review.
+Started from clean `commercial-v1-assessment-policy` at `b20f603346e615ab268af6833dca3449ca3e4a7c`, the PR #9 Governed Tutor + Lab Instructor Execution merge. Working tree verified clean and `HEAD` verified equal to that SHA before any change. Migrations 001–028 are untouched (verified: zero diff). The final V3 implementation passed independent diff review before commit.
 
 This checkpoint is deliberately narrower than the eventual Examiner/results/leaderboard system. It does **not** implement provider-backed Examiner execution, AI grading, finalized numeric institutional results, numeric lab grading, assessment-derived mastery mutation, remediation, course completion, or leaderboard snapshots/ranking/UI/notifications. Those are separate, independently reviewed future checkpoints. This checkpoint establishes: explicit Quiz/Midterm/Final component identity; deterministic WITH_LABS/NO_LABS weighting; correct assessment availability/latest-start semantics; full-duration one-sitting attempts; deterministic submission provenance (including administrative closure and unclassified legacy history) — the secure foundation later checkpoints will consume.
 
