@@ -2,7 +2,9 @@ import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
-export async function testDatabase() {
+export async function testDatabase(
+  options: { throughMigration?: number } = {},
+) {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`create role anon nologin; create role authenticated nologin;
  create role service_role nologin bypassrls;
@@ -17,7 +19,11 @@ export async function testDatabase() {
  grant usage on schema public,auth to anon,authenticated; grant execute on function auth.uid() to anon,authenticated;`);
   const root = resolve("supabase/migrations");
   for (const file of (await readdir(root))
-    .filter((f) => f.endsWith(".sql"))
+    .filter(
+      (f) =>
+        f.endsWith(".sql") &&
+        Number(f.slice(8, 12)) <= (options.throughMigration ?? Infinity),
+    )
     .sort()) {
     if (file.startsWith("202609100022"))
       await db.exec(`
