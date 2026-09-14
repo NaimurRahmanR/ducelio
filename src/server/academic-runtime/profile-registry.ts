@@ -29,6 +29,26 @@ import { resolveConfiguredProvider } from "./provider";
 // null (NO_PROVIDER_CONFIGURED) whenever ACADEMIC_PROVIDER_BASE_URL or
 // ACADEMIC_PROVIDER_API_KEY is missing or malformed -- adding this profile
 // does not, by itself, make any live provider call possible.
+// TUTOR_COMMERCIAL_V1 / LAB_INSTRUCTOR_COMMERCIAL_V1: the two reviewed
+// Commercial V1 production profiles for Tutor/Lab support (migration 028,
+// TUTOR_LAB_EXECUTION_V1). Each has its own reviewed role binding and
+// budget, deliberately NOT a semantic reuse of PROFESSOR_COMMERCIAL_V1 --
+// every value is comfortably inside migration 028's DB-owned ceiling
+// (maxProviderCalls fixed at 1; 1..2000 output tokens; 1..100000 micro-USD)
+// so AUTHORIZE never has to narrow it further. Conservative and slightly
+// tighter than Professor's profile: Tutor/Lab responses are bounded
+// learner-support guidance, not a full lesson explanation.
+//
+// Correction pass (independent review, truth-sync): maxAttempts is 1, not
+// 2. runGovernedProviderExecution (src/server/academic-runtime/runtime.ts)
+// increments usage.providerCalls on every attempt (success or failure) and
+// refuses to start a further attempt once providerCalls>=maxProviderCalls,
+// checked BEFORE that attempt's own call -- so with maxProviderCalls fixed
+// at 1, a second attempt could never actually reach the provider regardless
+// of what maxAttempts said. maxAttempts=1 makes the profile state honestly
+// what it does: exactly one provider call, no retry. (PROFESSOR_COMMERCIAL_V1
+// above predates this finding and is Professor's own existing, separately
+// reviewed profile -- unrelated to this checkpoint and left unchanged.)
 const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
   Object.freeze({
     PROFESSOR_COMMERCIAL_V1: Object.freeze({
@@ -41,6 +61,30 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
         maxOutputTokens: 900,
         totalDeadlineMs: 15_000,
         maxEstimatedCostMicrousd: 40_000,
+      }),
+    }),
+    TUTOR_COMMERCIAL_V1: Object.freeze({
+      ref: "TUTOR_COMMERCIAL_V1",
+      adapterKind: "HTTP_JSON",
+      budgetPolicy: Object.freeze({
+        maxProviderCalls: 1,
+        maxAttempts: 1,
+        maxInputContextBytes: 12_000,
+        maxOutputTokens: 700,
+        totalDeadlineMs: 15_000,
+        maxEstimatedCostMicrousd: 30_000,
+      }),
+    }),
+    LAB_INSTRUCTOR_COMMERCIAL_V1: Object.freeze({
+      ref: "LAB_INSTRUCTOR_COMMERCIAL_V1",
+      adapterKind: "HTTP_JSON",
+      budgetPolicy: Object.freeze({
+        maxProviderCalls: 1,
+        maxAttempts: 1,
+        maxInputContextBytes: 12_000,
+        maxOutputTokens: 700,
+        totalDeadlineMs: 15_000,
+        maxEstimatedCostMicrousd: 30_000,
       }),
     }),
   });
