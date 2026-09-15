@@ -223,4 +223,4 @@ Trusted result finalization and provider-backed Examiner execution remain 11B.
 
 Leaderboards remain PR12.
 
-No commit, push, PR, merge or 11B implementation is authorized until the final independent V2 patch review is green.
+Final independent V2 review is green. Implementation commit `3c6fe8d280e4d29d456af241c874843da3d7c901` is pushed; PR-head CI and merge remain pending. 11B is not authorized until PR11A is merged and post-merge main CI is green.
