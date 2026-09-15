@@ -62,6 +62,8 @@ export async function buildAssessmentPolicyFixture(opts: {
   attemptsAllowedOverride?: Partial<Record<Component, number>>;
   publish?: boolean;
   skipComponents?: Component[];
+  multiObjectiveQuestion?: boolean;
+  additionalLab?: boolean;
 }) {
   const db =
     opts.db ??
@@ -128,6 +130,13 @@ export async function buildAssessmentPolicyFixture(opts: {
   };
 
   const pkg = buildPackage();
+  if (opts.multiObjectiveQuestion) {
+    pkg.modules[0].lessons[0].objectives.push({
+      key: "obj-2",
+      description: "Apply authentication controls",
+      position: 2,
+    });
+  }
   pkg.packageKey = `commercial-v1-policy-${randomUUID()}`;
   pkg.assignmentTemplates = [];
   pkg.modules[0].lessons[0].practicalActivities = opts.withLabs
@@ -140,6 +149,18 @@ export async function buildAssessmentPolicyFixture(opts: {
           position: 1,
           objectiveRefs: ["obj-1"],
         },
+        ...(opts.additionalLab
+          ? [
+              {
+                key: "lab-2",
+                kind: "PRACTICAL_LAB" as const,
+                title: "Second hands-on lab",
+                instructions: "Validate the control.",
+                position: 2,
+                objectiveRefs: ["obj-1"],
+              },
+            ]
+          : []),
       ]
     : [];
   pkg.assessmentTemplates = COMPONENTS.map((component, idx) => ({
@@ -156,7 +177,10 @@ export async function buildAssessmentPolicyFixture(opts: {
         maxMarks: 10,
         expectedAnswer: `${component} protected answer`,
         markingGuidance: null,
-        objectiveRefs: ["obj-1"],
+        objectiveRefs:
+          opts.multiObjectiveQuestion && component === "QUIZ_1"
+            ? ["obj-1", "obj-2"]
+            : ["obj-1"],
       },
     ],
   }));
