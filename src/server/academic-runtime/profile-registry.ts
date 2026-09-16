@@ -87,6 +87,27 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
         maxEstimatedCostMicrousd: 30_000,
       }),
     }),
+    // EXAMINER_COMMERCIAL_V1: the one reviewed, code-owned Commercial V1
+    // production profile for governed Examiner grading (PR11B1, migration
+    // 202609160031, COMMERCIAL_V1_EXAMINER_V1). A structurally separate
+    // surface from Professor/Tutor/Lab -- HTTP_JSON only, no vendor SDK.
+    // Unlike Tutor/Lab, this ref is never looked up from a stored
+    // academic_agent_configs.modelProfileRef: the Examiner grading
+    // orchestrator (src/server/commercial-v1-examiner-grading) always uses
+    // this exact entry directly, so there is no role->profile binding table
+    // to bypass in the first place.
+    EXAMINER_COMMERCIAL_V1: Object.freeze({
+      ref: "EXAMINER_COMMERCIAL_V1",
+      adapterKind: "HTTP_JSON",
+      budgetPolicy: Object.freeze({
+        maxProviderCalls: 1,
+        maxAttempts: 1,
+        maxInputContextBytes: 128_000,
+        maxOutputTokens: 1200,
+        totalDeadlineMs: 15_000,
+        maxEstimatedCostMicrousd: 50_000,
+      }),
+    }),
   });
 
 export function resolveRuntimeProfile(
