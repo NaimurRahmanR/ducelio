@@ -18,6 +18,7 @@ import {
   LogOut,
   GraduationCap,
   ShieldCheck,
+  Trophy,
 } from "lucide-react";
 import { Brand } from "./ui";
 import { logout } from "@/app/auth/actions";
@@ -30,6 +31,7 @@ const links = [
   ["Classes", "classes", Video],
   ["Assignments", "assignments", ClipboardList],
   ["Practicals", "practicals", ClipboardList],
+  ["Leaderboard", "leaderboard", Trophy],
   ["Assessments", "assessments", FileCheck2],
   ["Notes", "notes", NotebookPen],
   ["Results", "results", ChartNoAxesCombined],
@@ -60,7 +62,10 @@ export function AcademyShell({
   const nav = (
     <>
       {links
-        .filter(([, slug]) => !demo || slug !== "practicals")
+        .filter(
+          ([, slug]) =>
+            !demo || (slug !== "practicals" && slug !== "leaderboard"),
+        )
         .map(([label, slug, Icon]) => {
           const href = slug ? base + "/" + slug : base;
           return (
