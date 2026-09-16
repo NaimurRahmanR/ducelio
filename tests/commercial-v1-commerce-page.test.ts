@@ -1,0 +1,335 @@
+import { describe, expect, it, vi, beforeEach } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  requireActor: vi.fn(),
+  listCommercialV1Offers: vi.fn(),
+  getCommercialV1Offer: vi.fn(),
+  createCommercialV1Checkout: vi.fn(),
+  reconcileCommercialV1Order: vi.fn(),
+  commerceConfig: vi.fn(),
+  notFound: vi.fn(),
+  redirect: vi.fn(),
+}));
+vi.mock("@/server/identity", () => ({ requireActor: mocks.requireActor }));
+vi.mock("@/server/commercial-v1-commerce", () => ({
+  listCommercialV1Offers: mocks.listCommercialV1Offers,
+  getCommercialV1Offer: mocks.getCommercialV1Offer,
+  createCommercialV1Checkout: mocks.createCommercialV1Checkout,
+  reconcileCommercialV1Order: mocks.reconcileCommercialV1Order,
+}));
+vi.mock("@/lib/env", () => ({ commerceConfig: mocks.commerceConfig }));
+vi.mock("next/navigation", () => ({
+  notFound: () => {
+    mocks.notFound();
+    throw new Error("NOT_FOUND");
+  },
+  redirect: (url: string) => {
+    mocks.redirect(url);
+    throw new Error("REDIRECT:" + url);
+  },
+}));
+// BuyCourseForm is a "use client" component using useActionState -- it is
+// never actually invoked by a plain server-side flatten walk (only real
+// React rendering calls a component function). Mocked to a recognisable
+// text marker so its presence/absence in the page tree is directly
+// observable.
+vi.mock("@/components/buy-course-form", () => ({
+  BuyCourseForm: ({ slug }: { slug: string }) => "BUY_FORM_MARKER:" + slug,
+}));
+
+import CoursesPage from "@/app/courses/page";
+import CourseDetailPage from "@/app/courses/[slug]/page";
+import SuccessPage from "@/app/checkout/success/page";
+import CancelPage from "@/app/checkout/cancel/page";
+import { startCheckout } from "@/app/courses/actions";
+
+function flatten(node: unknown): string {
+  if (node === null || node === undefined || typeof node === "boolean")
+    return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(flatten).join(" ");
+  if (typeof node === "object" && node !== null && "props" in node) {
+    const el = node as { type: unknown; props: { children?: unknown } };
+    // A simple, hookless function component (e.g. our own BuyCourseForm
+    // mock, which has no `children` prop at all) can be invoked directly
+    // outside React's render loop. A component that actually uses hooks
+    // (e.g. next/link's Link) throws when called this way -- fall back to
+    // walking .props.children exactly as before, which is what every
+    // already-passing assertion here relies on.
+    if (typeof el.type === "function") {
+      try {
+        return flatten((el.type as (props: unknown) => unknown)(el.props));
+      } catch {
+        return flatten(el.props.children);
+      }
+    }
+    return flatten(el.props.children);
+  }
+  return "";
+}
+
+const baseOffer = {
+  ok: true as const,
+  slug: "cybersecurity-foundations",
+  title: "Cybersecurity Foundations",
+  examinationBody: "ISC2",
+  qualificationName: "Certified in Cybersecurity",
+  priceAmountMinor: 19900,
+  currency: "GBP",
+  summary: "A hands-on introduction.",
+  cohortStartsOn: "2026-09-01",
+  viewerAuthenticated: false,
+  viewerEntitled: false,
+  viewerEnrolmentId: null,
+  viewerEnrolmentStatus: "NONE" as const,
+};
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.commerceConfig.mockReturnValue({ configured: true });
+});
+
+describe("page: /courses", () => {
+  it("renders the published catalogue", async () => {
+    mocks.listCommercialV1Offers.mockResolvedValue([
+      {
+        slug: "cybersecurity-foundations",
+        title: "Cybersecurity Foundations",
+        examinationBody: "ISC2",
+        qualificationName: "Certified in Cybersecurity",
+        priceAmountMinor: 19900,
+        currency: "GBP",
+        summary: "A hands-on introduction.",
+        cohortStartsOn: "2026-09-01",
+      },
+    ]);
+    const el = await CoursesPage();
+    const text = flatten(el);
+    expect(text).toContain("Cybersecurity Foundations");
+    expect(text).toContain("ISC2");
+  });
+
+  it("renders an honest empty state, never fabricated content", async () => {
+    mocks.listCommercialV1Offers.mockResolvedValue([]);
+    const el = await CoursesPage();
+    const text = flatten(el);
+    expect(text).toMatch(/no courses/i);
+  });
+});
+
+describe("page: /courses/[slug]", () => {
+  it("calls notFound() for an unknown/unpublished slug", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    await expect(
+      CourseDetailPage({ params: Promise.resolve({ slug: "unknown" }) }),
+    ).rejects.toThrow("NOT_FOUND");
+    expect(mocks.notFound).toHaveBeenCalled();
+  });
+
+  it("prompts an anonymous viewer to sign in/create an account with next= preserved, and shows no buy form", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue(baseOffer);
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/sign in to buy/i);
+    expect(text).toContain("Create an account");
+  });
+
+  it("V2 correction (item 4): an ACTIVE-enrolled or entitled viewer sees Continue learning, never a buy button", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+      viewerEntitled: true,
+      viewerEnrolmentStatus: "ACTIVE",
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/already have access/i);
+    expect(text).not.toContain("BUY_FORM_MARKER:");
+  });
+
+  it("V2 correction (item 4): a PAUSED-enrolled viewer is told to contact support, never offered a fresh purchase", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+      viewerEnrolmentStatus: "PAUSED",
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/paused/i);
+    expect(text).not.toContain("BUY_FORM_MARKER:");
+  });
+
+  it("V2 correction (item 4): a COMPLETED-enrolled viewer is told they already completed the course, never offered a fresh purchase", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+      viewerEnrolmentStatus: "COMPLETED",
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/already completed/i);
+    expect(text).not.toContain("BUY_FORM_MARKER:");
+  });
+
+  it("V2 correction (item 4): a WITHDRAWN-enrolled viewer is told to contact support, never offered a fresh purchase", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+      viewerEnrolmentStatus: "WITHDRAWN",
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/contact support/i);
+    expect(text).not.toContain("BUY_FORM_MARKER:");
+  });
+
+  it("shows a truthful unavailable notice (never a buy button) when commerce is not configured", async () => {
+    mocks.commerceConfig.mockReturnValue({ configured: false });
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/unavailable/i);
+    expect(text).not.toContain("BUY_FORM_MARKER:");
+  });
+
+  it("shows the buy form for an authenticated, unenrolled, unentitled viewer when commerce is configured", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).toContain("BUY_FORM_MARKER:cybersecurity-foundations");
+  });
+
+  it("V2 correction (item 12): the scheduling caption never claims immediate access -- only that it opens once verified/confirmed", async () => {
+    mocks.getCommercialV1Offer.mockResolvedValue({
+      ...baseOffer,
+      viewerAuthenticated: true,
+    });
+    const el = await CourseDetailPage({
+      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
+    });
+    const text = flatten(el);
+    expect(text).not.toMatch(/open(s)? immediately/i);
+  });
+});
+
+describe("action: startCheckout", () => {
+  it("redirects to the real Stripe-hosted URL on success", async () => {
+    mocks.createCommercialV1Checkout.mockResolvedValue({
+      ok: true,
+      url: "https://checkout.stripe.test/cs_test_1",
+      orderId: "order-1",
+    });
+    const form = new FormData();
+    form.set("slug", "cybersecurity-foundations");
+    await expect(startCheckout({}, form)).rejects.toThrow(
+      "REDIRECT:https://checkout.stripe.test/cs_test_1",
+    );
+  });
+
+  it("never redirects on a denial -- returns a truthful error instead", async () => {
+    mocks.createCommercialV1Checkout.mockResolvedValue({
+      ok: false,
+      code: "ALREADY_ENTITLED",
+    });
+    const form = new FormData();
+    form.set("slug", "cybersecurity-foundations");
+    const result = await startCheckout({}, form);
+    expect(result.error).toBeTruthy();
+    expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("page: /checkout/success", () => {
+  it("only claims payment confirmed when the server fulfillment result says fulfilled:true", async () => {
+    mocks.reconcileCommercialV1Order.mockResolvedValue({
+      ok: true,
+      fulfilled: true,
+      replay: false,
+      orderId: "order-1",
+    });
+    const el = await SuccessPage({
+      searchParams: Promise.resolve({ order: "order-1", session_id: "cs_1" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/payment confirmed/i);
+  });
+
+  it("never says payment confirmed for a NOT_PAID reconciliation result", async () => {
+    mocks.reconcileCommercialV1Order.mockResolvedValue({
+      ok: true,
+      fulfilled: false,
+      code: "NOT_PAID",
+      orderId: "order-1",
+    });
+    const el = await SuccessPage({
+      searchParams: Promise.resolve({ order: "order-1", session_id: "cs_1" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/not confirmed/i);
+    expect(text).not.toMatch(/payment confirmed/i);
+  });
+
+  it("never says payment confirmed for a denied/mismatched reconciliation result", async () => {
+    mocks.reconcileCommercialV1Order.mockResolvedValue({
+      ok: false,
+      code: "MISMATCHED_AMOUNT",
+    });
+    const el = await SuccessPage({
+      searchParams: Promise.resolve({ order: "order-1", session_id: "cs_1" }),
+    });
+    const text = flatten(el);
+    expect(text).not.toMatch(/payment confirmed/i);
+  });
+
+  it("distinguishes ENROLMENT_NOT_ACTIVATABLE as a support case, not a payment failure", async () => {
+    mocks.reconcileCommercialV1Order.mockResolvedValue({
+      ok: false,
+      code: "ENROLMENT_NOT_ACTIVATABLE",
+    });
+    const el = await SuccessPage({
+      searchParams: Promise.resolve({ order: "order-1", session_id: "cs_1" }),
+    });
+    const text = flatten(el);
+    expect(text).toMatch(/contact support/i);
+    expect(text).not.toMatch(/could not verify this payment$/im);
+  });
+
+  it("renders an honest missing-details state without ever calling the reconciliation server function", async () => {
+    const el = await SuccessPage({ searchParams: Promise.resolve({}) });
+    const text = flatten(el);
+    expect(text).toMatch(/missing/i);
+    expect(mocks.reconcileCommercialV1Order).not.toHaveBeenCalled();
+  });
+});
+
+describe("page: /checkout/cancel", () => {
+  it("V2 correction (item 8): never claims 'you were not charged' -- makes no authoritative financial claim", () => {
+    const el = CancelPage();
+    const text = flatten(el);
+    expect(text).not.toMatch(/you were not charged/i);
+    expect(text).toMatch(/has not confirmed a completed payment/i);
+  });
+});

@@ -28,9 +28,11 @@ const labels = {
 export function AuthForm({
   mode,
   configured,
+  next,
 }: {
   mode: AuthMode;
   configured: boolean;
+  next?: string;
 }) {
   const [state, action, pending] = useActionState<AuthState, FormData>(
     actions[mode],
@@ -40,6 +42,7 @@ export function AuthForm({
     mode === "login" || mode === "signup" || mode === "reset-password";
   return (
     <form action={action}>
+      {next && <input type="hidden" name="next" value={next} />}
       {state.error && (
         <div className="notice error" role="alert">
           {state.error}

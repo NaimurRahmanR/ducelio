@@ -7,6 +7,7 @@ import {
   passwordSchema,
   signInSchema,
   signUpSchema,
+  safeAuthDestination,
   type AuthState,
 } from "@/domain/auth";
 const unavailable = {
@@ -15,11 +16,20 @@ const unavailable = {
 };
 const callback = (next = "/student") =>
   config().appUrl + "/auth/callback?next=" + encodeURIComponent(next);
+// PR13 section 11: a commercial purchase's selected course/checkout
+// destination (?next=/courses/...) survives login/signup/email
+// verification. Validated to a same-origin local path (never trusted
+// verbatim) before it is ever embedded in a redirect or an emailed link.
+function nextFromForm(data: FormData) {
+  const raw = data.get("next");
+  return safeAuthDestination(typeof raw === "string" ? raw : null);
+}
 export async function login(
   _state: AuthState,
   data: FormData,
 ): Promise<AuthState> {
   if (!config().configured) return unavailable;
+  const next = nextFromForm(data);
   const parsed = signInSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success)
     return { error: "Enter a valid email address and password." };
@@ -35,13 +45,14 @@ export async function login(
     await client.auth.signOut();
     return { error: "Please verify your email before signing in." };
   }
-  redirect("/student");
+  redirect(next);
 }
 export async function signup(
   _state: AuthState,
   data: FormData,
 ): Promise<AuthState> {
   if (!config().configured) return unavailable;
+  const next = nextFromForm(data);
   const parsed = signUpSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success)
     return {
@@ -53,7 +64,7 @@ export async function signup(
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      emailRedirectTo: callback(),
+      emailRedirectTo: callback(next),
       data: { display_name: parsed.data.displayName },
     },
   });
@@ -133,6 +144,7 @@ export async function resetPassword(
 }
 export async function oauth(data: FormData) {
   const provider = data.get("provider");
+  const next = nextFromForm(data);
   const env = config();
   if (
     (provider !== "google" && provider !== "linkedin_oidc") ||
@@ -143,7 +155,7 @@ export async function oauth(data: FormData) {
   const { data: result, error } = await client.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: callback(),
+      redirectTo: callback(next),
       ...(provider === "linkedin_oidc"
         ? { scopes: "openid profile email" }
         : {}),

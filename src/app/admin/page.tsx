@@ -98,6 +98,11 @@ export default async function Page({
               Activate course delivery
             </Link>
           )}
+          {canPublish && (
+            <Link className="button secondary" href="/admin/commerce">
+              Manage commercial offers
+            </Link>
+          )}
           <ProgrammePublication versions={versions} canPublish={canPublish} />
         </>
       )}
