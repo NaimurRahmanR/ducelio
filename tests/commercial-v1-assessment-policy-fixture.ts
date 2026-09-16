@@ -64,6 +64,7 @@ export async function buildAssessmentPolicyFixture(opts: {
   skipComponents?: Component[];
   multiObjectiveQuestion?: boolean;
   additionalLab?: boolean;
+  additionalQuizQuestion?: boolean;
 }) {
   const db =
     opts.db ??
@@ -185,6 +186,14 @@ export async function buildAssessmentPolicyFixture(opts: {
     ],
   }));
 
+  if (opts.additionalQuizQuestion) {
+    const quiz = pkg.assessmentTemplates[0];
+    quiz.questions.push({
+      ...quiz.questions[0],
+      position: 2,
+      prompt: "Second authoritative question",
+    });
+  }
   await asPolicyUser(db, 2);
   const validated = validateCoursePackage(pkg);
   if (!validated.valid)
