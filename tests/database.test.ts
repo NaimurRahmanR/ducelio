@@ -113,11 +113,84 @@ describe("final curriculum and migration audit", () => {
     );
     expect(rows.rows).toEqual([]);
   });
-  it("does not grant anonymous execution of security-definer functions", async () => {
-    const rows = await db.query<{ proname: string }>(
-      "select proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.prosecdef and has_function_privilege('anon',p.oid,'EXECUTE')",
+  // Independent review (PR13 V3 correction, defect 1): PostgreSQL functions
+  // may be OVERLOADED -- a name-only allowlist would silently accept a
+  // future same-named function with a different argument signature that
+  // accidentally becomes SECURITY DEFINER + anon-executable. The baseline
+  // must therefore identify the exact CALLABLE signature (namespace +
+  // function + identity argument types), never merely a function name.
+  // pg_get_function_identity_arguments includes parameter NAMES
+  // ("p_key_id uuid, ..."); the canonical callable signature is the bare
+  // TYPE list, built directly from proargtypes so it is unambiguous and
+  // matches PostgreSQL's own regprocedure argument-type rendering.
+  const anonSecdefSignatureSql = `
+    select n.nspname||'.'||p.proname||'('
+      ||coalesce((select string_agg(format_type(t,null),',' order by ord)
+                  from unnest(p.proargtypes::oid[]) with ordinality as u(t,ord)),'')
+      ||')' as sig
+    from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.prosecdef and has_function_privilege('anon',p.oid,'EXECUTE')
+  `;
+  it("does not grant anonymous execution of security-definer functions, except EXACTLY the three reviewed Commercial V1 PR13 signatures", async () => {
+    const rows = await db.query<{ sig: string }>(anonSecdefSignatureSql);
+    // PR13 deliberately introduces exactly three anon-callable surfaces,
+    // each individually reviewed and bounded by its own exact argument
+    // signature: two read-only public course-catalogue projections (never
+    // protected content -- see commercial-v1-commerce-domain.test.ts) and
+    // the payment-fulfillment RPC a Stripe webhook must reach despite
+    // having no learner session at all -- gated entirely by a
+    // cryptographic controller claim, never by role (see
+    // commercial-v1-commerce-db.test.ts's HMAC verification suite). This
+    // asserts EXACT SET EQUALITY, both directions: no unexpected extra
+    // signature (a different overload of one of these names, or any other
+    // security-definer function) and no expected signature missing or
+    // changed.
+    const allowed = new Set([
+      "public.list_commercial_v1_offers()",
+      "public.get_commercial_v1_offer(text)",
+      "public.fulfill_commercial_v1_order(uuid,uuid,text,text,text,integer,text,text,bigint,bigint,text)",
+    ]);
+    expect(new Set(rows.rows.map((r) => r.sig))).toEqual(allowed);
+  });
+  it("the exact-signature comparison is genuinely signature-sensitive, not name-only -- a differently-shaped overload of an allowed name is never silently permitted (structural negative regression, rolled back)", async () => {
+    await db.exec("reset role");
+    await db.exec("begin");
+    try {
+      await db.exec(`
+        create function public.get_commercial_v1_offer(p_id uuid) returns jsonb
+        language sql security definer set search_path='' as $$ select '{}'::jsonb $$;
+        grant execute on function public.get_commercial_v1_offer(uuid) to anon;
+      `);
+      const rows = await db.query<{ sig: string }>(
+        anonSecdefSignatureSql + " and p.proname='get_commercial_v1_offer'",
+      );
+      const sigs = rows.rows.map((r) => r.sig).sort();
+      // Both the reviewed text-arg overload and the newly introduced
+      // uuid-arg overload are anon-executable now -- proving the harness
+      // can even observe two distinct overloads of the same name.
+      expect(sigs).toEqual([
+        "public.get_commercial_v1_offer(text)",
+        "public.get_commercial_v1_offer(uuid)",
+      ]);
+      // The reviewed allowlist only ever names the text-arg overload. A
+      // name-only baseline would have treated the uuid-arg overload as
+      // already covered merely because a function of that name was
+      // expected; the exact-signature comparison must not.
+      const reviewedOnly = new Set(["public.get_commercial_v1_offer(text)"]);
+      expect(sigs.filter((s) => !reviewedOnly.has(s))).toEqual([
+        "public.get_commercial_v1_offer(uuid)",
+      ]);
+    } finally {
+      await db.exec("rollback");
+    }
+    // The rollback leaves the shared fixture exactly as every other test
+    // in this file expects it.
+    const after = await db.query<{ sig: string }>(
+      anonSecdefSignatureSql + " and p.proname='get_commercial_v1_offer'",
     );
-    expect(rows.rows).toEqual([]);
+    expect(after.rows.map((r) => r.sig)).toEqual([
+      "public.get_commercial_v1_offer(text)",
+    ]);
   });
   it("keeps enrolled identity and curriculum history fixed", async () => {
     await expect(

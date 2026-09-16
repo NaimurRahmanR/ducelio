@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabase } from "@/server/supabase";
 import { config } from "@/lib/env";
-import { confirmationTypeSchema } from "@/domain/auth";
+import { confirmationTypeSchema, safeAuthDestination } from "@/domain/auth";
 export async function GET(request: NextRequest) {
   const env = config();
   const token_hash = request.nextUrl.searchParams.get("token_hash");
@@ -17,7 +17,9 @@ export async function GET(request: NextRequest) {
     if (!error)
       return NextResponse.redirect(
         new URL(
-          type.data === "recovery" ? "/reset-password" : "/student",
+          type.data === "recovery"
+            ? "/reset-password"
+            : safeAuthDestination(request.nextUrl.searchParams.get("next")),
           env.appUrl,
         ),
       );

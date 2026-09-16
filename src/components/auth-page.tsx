@@ -3,6 +3,7 @@ import { Brand, Badge, ButtonLink } from "@/components/ui";
 import { AuthForm, type AuthMode } from "@/components/auth-form";
 import { config } from "@/lib/env";
 import { oauth } from "@/app/auth/actions";
+import { safeAuthDestination } from "@/domain/auth";
 const copy = {
   login: ["Welcome back.", "Your next chapter is waiting."],
   signup: ["Begin your next chapter.", "A little ambition. A clear direction."],
@@ -23,14 +24,25 @@ export function AuthPage({
   mode,
   error,
   message,
+  next: rawNext,
 }: {
   mode: AuthMode;
   error?: string;
   message?: string;
+  next?: string;
 }) {
   const env = config();
   const [title, subtitle] = copy[mode];
   const social = mode === "login" || mode === "signup";
+  // Only ever a validated same-origin local path (never /student itself,
+  // so the hidden field/links stay absent when there is no real commercial
+  // return target to preserve).
+  const next = rawNext
+    ? safeAuthDestination(rawNext, "") || undefined
+    : undefined;
+  const switchHref =
+    (mode === "login" ? "/signup" : "/login") +
+    (next ? "?next=" + encodeURIComponent(next) : "");
   return (
     <div className="auth-layout">
       <aside className="auth-story">
@@ -96,6 +108,7 @@ export function AuthPage({
               <div className="social-buttons">
                 <form action={oauth}>
                   <input type="hidden" name="provider" value="google" />
+                  {next && <input type="hidden" name="next" value={next} />}
                   <button
                     className="button secondary full"
                     disabled={!env.google}
@@ -105,6 +118,7 @@ export function AuthPage({
                 </form>
                 <form action={oauth}>
                   <input type="hidden" name="provider" value="linkedin_oidc" />
+                  {next && <input type="hidden" name="next" value={next} />}
                   <button
                     className="button secondary full"
                     disabled={!env.linkedin}
@@ -123,14 +137,14 @@ export function AuthPage({
               </div>
             </>
           )}
-          <AuthForm mode={mode} configured={env.configured} />
+          <AuthForm mode={mode} configured={env.configured} next={next} />
           <p className="auth-switch">
             {mode === "login" ? (
               <>
-                New to Ducelio? <Link href="/signup">Create an account</Link>
+                New to Ducelio? <Link href={switchHref}>Create an account</Link>
               </>
             ) : (
-              <Link href="/login">Back to sign in</Link>
+              <Link href={switchHref}>Back to sign in</Link>
             )}
           </p>
           <div className="demo-invite">
