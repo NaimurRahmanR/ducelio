@@ -117,6 +117,8 @@ const assignmentTemplateSchema = z.strictObject({
 });
 
 const assessmentQuestionTemplateSchema = z.strictObject({
+  // Omitted in legacy V1: inherit the assessment anchor lesson.
+  lessonRef: localRef.optional(),
   position,
   prompt: boundedText,
   maxMarks: z.number().int().min(1).max(100),
@@ -546,9 +548,18 @@ export function validateCoursePackage(
       );
       return;
     }
-    const objectives = objectiveKeysByLesson.get(template.lessonRef);
     template.questions.forEach((question, qi) => {
       const questionPath = `${path}.questions[${qi}]`;
+      const questionLesson = question.lessonRef ?? template.lessonRef;
+      if (!lessonRefIndex.has(questionLesson))
+        errors.push(
+          issue(
+            `${questionPath}.lessonRef`,
+            "INVALID_REFERENCE",
+            "Assessment question references an unknown lesson.",
+          ),
+        );
+      const objectives = objectiveKeysByLesson.get(questionLesson);
       if (positions.has(question.position))
         errors.push(
           issue(

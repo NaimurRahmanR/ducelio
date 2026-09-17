@@ -1,7 +1,7 @@
 {
   "schemaVersion": "COURSE_PACKAGE_V1",
   "packageKey": "security-plus-sy0-701",
-  "packageRevision": 1,
+  "packageRevision": 2,
   "programme": {
     "title": "CompTIA Security+ SY0-701 Preparation",
     "examinationBody": "CompTIA",
@@ -1189,91 +1189,121 @@
     },
     {
       "key": "final",
-      "title": "Final Assessment: Risk Management Checkpoint",
+      "title": "Final Assessment: Comprehensive Security+ Preparation Checkpoint",
       "instructions": "Answer each question independently, in your own words.",
-      "lessonRef": "lesson-5-2",
+      "lessonRef": "lesson-5-6",
       "durationMinutes": 90,
       "attemptsAllowed": 1,
       "questions": [
         {
           "position": 1,
-          "prompt": "What is the difference between qualitative and quantitative risk analysis?",
-          "maxMarks": 10,
-          "expectedAnswer": "Qualitative analysis ranks risk using descriptive scales such as low/medium/high; quantitative analysis assigns numeric values such as single loss expectancy and annualised loss expectancy.",
-          "markingGuidance": "Full marks require both approaches correctly described.",
+          "lessonRef": "lesson-1-2",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-1-2-a"
+          ],
+          "prompt": "An employee signs in successfully from the office network and asks to export payroll data. Explain why successful sign-in and network location are insufficient authorization, and identify an accounting control.",
+          "expectedAnswer": "Authentication establishes identity, not permission to export payroll. Authorization must check the requested operation against least-privilege access; an internal network location supplies no implicit trust in Zero Trust. An attributable access/export log supports accounting.",
+          "markingGuidance": "Award 1 mark each for authentication versus permission, operation-specific authorization, least privilege, no implicit internal-network trust, and attributable accounting logs.",
+          "maxMarks": 5
         },
         {
           "position": 2,
-          "prompt": "Given a single loss expectancy of $20,000 and an annualised rate of occurrence of 0.5, calculate the annualised loss expectancy and show your working.",
-          "maxMarks": 10,
-          "expectedAnswer": "Annualised loss expectancy = single loss expectancy x annualised rate of occurrence = $20,000 x 0.5 = $10,000.",
-          "markingGuidance": "Full marks require the correct formula applied and the correct numeric result shown.",
+          "lessonRef": "lesson-1-3",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-1-3-a"
+          ],
+          "prompt": "A team proposes a firewall change to restore a business service. Outline a governed route from proposal to deployment, including how to recover if the change exposes an unintended service.",
+          "expectedAnswer": "Record the requested change and business reason; assess affected systems and exposure; obtain the designated approval; deploy in an agreed window and check the result; use a prepared rollback plan to restore the previous configuration if validation fails.",
+          "markingGuidance": "Award 1 mark each for documented request, impact analysis, approval, controlled implementation with checking, and a usable rollback plan.",
+          "maxMarks": 5
         },
         {
           "position": 3,
-          "prompt": "Name the four risk response strategies and give a one-sentence example of each.",
-          "maxMarks": 10,
-          "expectedAnswer": "Accept (take no further action and absorb the risk), avoid (stop the risky activity entirely), transfer (such as purchasing insurance), mitigate (apply a control to reduce likelihood or impact).",
-          "markingGuidance": "Full marks require all four strategies named with a valid example each.",
+          "lessonRef": "lesson-2-2",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-2-2-a"
+          ],
+          "prompt": "A company trusts a software supplier and allows its updates into production. Explain how compromise of that supplier differs from a phishing email sent directly to an employee, and why supplier trust belongs in attack-surface analysis.",
+          "expectedAnswer": "The supplier scenario uses a supply-chain path through a trusted third party; direct phishing targets employee judgement through a social-engineering channel. A vector is a particular entry path, whereas the attack surface includes all possible entry points. Trusted update relationships therefore remain part of that surface and need scrutiny.",
+          "markingGuidance": "Award 1 mark each for the supply-chain path, phishing as social engineering, vector definition, surface definition, and recognizing trusted suppliers as part of the surface.",
+          "maxMarks": 5
         },
         {
           "position": 4,
-          "prompt": "What is a risk register, and why is it kept as a single ongoing record rather than recreated for each assessment?",
-          "maxMarks": 10,
-          "expectedAnswer": "A risk register records identified risks, their analysis and their current treatment in one place; keeping it as a single ongoing record lets an organisation track how risks and their treatments change over time rather than losing that history with each new assessment.",
-          "markingGuidance": "Full marks require both the definition and the reason for its ongoing nature.",
+          "lessonRef": "lesson-2-5",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-2-5-a"
+          ],
+          "prompt": "Assume a workstation account has been compromised. Explain how segmentation, least privilege, patching, hardening and monitoring can work together to reduce the consequences without assuming any one control is perfect.",
+          "expectedAnswer": "Segmentation restricts lateral movement; least privilege limits accessible actions and data; patching removes known exploitable weaknesses; hardening removes unnecessary services and unsafe defaults; monitoring detects suspicious activity so responders can act. These provide complementary layers.",
+          "markingGuidance": "Award 1 mark for each correctly explained control in the scenario. Do not credit claims that one control guarantees prevention of all compromise.",
+          "maxMarks": 5
         },
         {
           "position": 5,
-          "prompt": "Explain the difference between risk tolerance and risk appetite.",
-          "maxMarks": 10,
-          "expectedAnswer": "Risk appetite describes the general amount and type of risk an organisation is willing to pursue or retain in principle; risk tolerance describes the acceptable variation around that appetite for a specific risk or objective.",
-          "markingGuidance": "Award full marks for a reasonable, clearly explained distinction between the general/strategic and specific/operational framing.",
+          "lessonRef": "lesson-3-2",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-3-2-a"
+          ],
+          "prompt": "A public web server and an internal records database currently share an unrestricted network. Propose a safer placement and explain why an internet-edge firewall alone is insufficient. Include protection for remote administration.",
+          "expectedAnswer": "Place the public service in a screened subnet separated from internal systems, with explicit restricted flows across the boundary. An edge firewall alone does not control movement already inside the network. Remote administration should use an encrypted authenticated connection or tunnel rather than exposing credentials and commands.",
+          "markingGuidance": "Award 1 mark each for separate public-service placement, an internal boundary, restricted permitted flows, the lateral-movement limitation of an edge firewall, and encrypted remote administration.",
+          "maxMarks": 5
         },
         {
           "position": 6,
-          "prompt": "Why can two organisations with the same risk appetite still make different decisions about the same described risk?",
-          "maxMarks": 10,
-          "expectedAnswer": "Their specific tolerance thresholds, existing controls, financial capacity to absorb loss, and business context can differ, so the same general appetite for risk can still lead to different concrete decisions in a specific situation.",
-          "markingGuidance": "Full marks require a reasoned explanation, not merely restating that organisations differ.",
+          "lessonRef": "lesson-3-4",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-3-4-a"
+          ],
+          "prompt": "A small firm keeps its only backup next to the production server. Describe a 3-2-1 improvement and compare a warm recovery site with a cold site when deciding how much downtime the firm can tolerate.",
+          "expectedAnswer": "Keep three copies across two media types with one copy off-site to reduce common-disaster loss. A warm site has infrastructure ready but needs setup; a cold site offers space and power with much more preparation. Choose according to acceptable recovery time and cost, rather than backup possession alone.",
+          "markingGuidance": "Award 1 mark each for three copies, two media types, off-site copy, accurate warm-versus-cold readiness comparison, and linking site choice to downtime tolerance and cost.",
+          "maxMarks": 5
         },
         {
           "position": 7,
-          "prompt": "A proposed control costs $15,000 per year and would reduce annualised loss expectancy from $18,000 to $4,000. Is the control cost-justified? Show your reasoning.",
-          "maxMarks": 10,
-          "expectedAnswer": "The control reduces annualised loss expectancy by $14,000 ($18,000 minus $4,000), which is less than the control's $15,000 annual cost, so on a purely financial basis the control is not cost-justified.",
-          "markingGuidance": "Full marks require the correct reduction calculated and compared against the control cost, with a correct conclusion.",
+          "lessonRef": "lesson-4-6",
           "objectiveRefs": [
-            "obj-5-2-a"
-          ]
+            "obj-4-6-a"
+          ],
+          "prompt": "A departing contractor retains a normal account and standing administrator rights. Propose an identity-lifecycle correction and explain how MFA and privileged access management address different parts of the risk.",
+          "expectedAnswer": "Deprovision access promptly when the engagement ends, including unnecessary elevated rights. Apply least privilege throughout the lifecycle. MFA reduces reliance on a stolen password; privileged access management can require approval, time-limited elevation and session recording. MFA is not a substitute for removing an unneeded account.",
+          "markingGuidance": "Award 1 mark each for prompt deprovisioning, removal of standing excess privilege, accurate MFA purpose, an appropriate PAM mechanism, and explaining why MFA does not justify retaining unnecessary access.",
+          "maxMarks": 5
         },
         {
           "position": 8,
-          "prompt": "Summarise, in your own words, why risk management is described as a continuous process rather than a one-time activity.",
-          "maxMarks": 10,
-          "expectedAnswer": "New risks emerge and existing risks change in likelihood or impact as an organisation's technology, threat landscape and business context evolve, so a risk assessment performed once becomes outdated and must be revisited on an ongoing basis.",
-          "markingGuidance": "Full marks require the answer to explain that risk conditions change over time, not merely assert that risk management is continuous.",
+          "lessonRef": "lesson-4-8",
+          "objectiveRefs": [
+            "obj-4-8-a"
+          ],
+          "prompt": "A monitoring alert suggests a workstation is contacting an unexpected service. Outline the response from analysis through recovery, and explain how a later tabletop exercise could improve the plan without touching production systems.",
+          "expectedAnswer": "Analyse the alert and scope the incident; contain further damage; eradicate the cause; recover normal operations with checks; then review lessons learned. A tabletop uses a hypothetical scenario and structured discussion to rehearse roles and reveal gaps without executing actions on live systems.",
+          "markingGuidance": "Award 1 mark for analysis/scoping, 1 for containment distinct from eradication, 1 for recovery, 1 for lessons learned, and 1 for a discussion-based non-production tabletop.",
+          "maxMarks": 5
+        },
+        {
+          "position": 9,
+          "lessonRef": "lesson-5-2",
           "objectiveRefs": [
             "obj-5-2-a"
-          ]
+          ],
+          "prompt": "A team estimates a single incident loss at 20000 currency units and an annual occurrence rate of 0.25. Calculate annualised loss expectancy and contrast mitigating the risk with transferring it.",
+          "expectedAnswer": "Annualised loss expectancy is 20000 multiplied by 0.25, or 5000 currency units per year, as an estimate rather than a guarantee. Mitigation reduces likelihood or impact through controls; transfer shifts specified financial exposure, for example through insurance. Record the analysis and chosen treatment in the risk register.",
+          "markingGuidance": "Award 1 mark for the multiplication, 1 for the correct yearly value, 1 for mitigation, 1 for transfer, and 1 for recording the treatment or recognizing the estimate is uncertain.",
+          "maxMarks": 5
+        },
+        {
+          "position": 10,
+          "lessonRef": "lesson-5-6",
+          "objectiveRefs": [
+            "obj-5-6-a"
+          ],
+          "prompt": "Design a short awareness activity for new remote staff who may receive suspicious account-reset messages. Include a safe rehearsal and a reporting route; explain why training without a usable reporting route is incomplete.",
+          "expectedAnswer": "Provide an onboarding briefing on recognizing suspicious requests and the expected reporting procedure. Use an authorized controlled simulation without real account compromise. Give staff a clear low-friction reporting channel and reinforce it with reminders. Recognition only helps the organization respond when staff can readily report what they observe.",
+          "markingGuidance": "Award 1 mark each for audience-appropriate briefing, safe controlled rehearsal, a clear reporting channel, reinforcement, and explaining the connection between recognition and response.",
+          "maxMarks": 5
         }
       ]
     }
@@ -1348,5 +1378,5 @@
       "escalationPolicy": "NONE"
     }
   },
-  "reason": "SEC701-A: first real commercial course package foundation for CompTIA Security+ SY0-701 exam preparation."
+  "reason": "SEC701-B: revision 2 adds cumulative multi-lesson final-assessment provenance to the Security+ SY0-701 commercial course foundation."
 }
