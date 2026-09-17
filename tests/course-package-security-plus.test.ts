@@ -159,6 +159,12 @@ describe("Security+ SY0-701 package: official objective coverage", () => {
     expect(coverage.totalWeightPercent).toBe(100);
   });
 
+  it("coverage metadata is bound to the current package revision", () => {
+    const pkg = JSON.parse(rawPackageText) as CoursePackage;
+    expect(coverage.packageKey).toBe(pkg.packageKey);
+    expect(coverage.packageRevision).toBe(pkg.packageRevision);
+  });
+
   it("9. all 28 official objective IDs are present exactly once", () => {
     const ids = coverage.objectives.map((o) => o.officialObjectiveId);
     expect(ids).toHaveLength(28);
@@ -386,5 +392,42 @@ describe("Security+ SY0-701 package: institutional design constraints", () => {
   it("qualification name makes clear this is preparation, not a Ducelio-issued CompTIA certification", () => {
     const q = pkg.programme.qualificationName.toLowerCase();
     expect(q).toContain("preparation");
+  });
+});
+
+describe("SEC701-B revision 2 cumulative final", () => {
+  const pkg = coursePackageSchema.parse(JSON.parse(rawPackageText));
+  const final = pkg.assessmentTemplates.find((t) => t.key === "final")!;
+  it("is revision 2 with a comprehensive ten-question final and end-of-course anchor", () => {
+    expect(pkg.packageRevision).toBe(2);
+    expect(final.title).toBe(
+      "Final Assessment: Comprehensive Security+ Preparation Checkpoint",
+    );
+    expect(final.lessonRef).toBe("lesson-5-6");
+    expect(final.questions).toHaveLength(10);
+  });
+  it("explicitly maps two questions per module across ten actual lessons", () => {
+    const domains: Record<string, number> = {};
+    for (const q of final.questions) {
+      expect(q.lessonRef).toBeDefined();
+      const courseModule = pkg.modules.find((m) =>
+        m.lessons.some((l) => l.key === q.lessonRef),
+      );
+      expect(courseModule).toBeDefined();
+      const lesson = courseModule!.lessons.find((l) => l.key === q.lessonRef)!;
+      domains[courseModule!.key] = (domains[courseModule!.key] ?? 0) + 1;
+      for (const ref of q.objectiveRefs)
+        expect(lesson.objectives.some((o) => o.key === ref)).toBe(true);
+    }
+    expect(Object.values(domains)).toEqual([2, 2, 2, 2, 2]);
+    expect(new Set(final.questions.map((q) => q.lessonRef)).size).toBe(10);
+  });
+  it("removes every final protected field and prompt from operator projection", () => {
+    const safe = JSON.stringify(operatorPreviewSchema.parse(pkg));
+    for (const q of final.questions) {
+      expect(safe).not.toContain(q.expectedAnswer);
+      expect(safe).not.toContain(q.markingGuidance!);
+      expect(safe).not.toContain(q.prompt);
+    }
   });
 });

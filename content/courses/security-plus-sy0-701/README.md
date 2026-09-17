@@ -5,8 +5,8 @@
 for Ducelio (checkpoint SEC701-A). `objective-coverage.json` and
 `sources.json` are provenance metadata alongside it — neither is part of the
 `COURSE_PACKAGE_V1` schema itself, and neither is read by any server code in
-this checkpoint. This is a first revision: bounded and reviewable, not a
-finished, textbook-length course.
+this checkpoint. Revision 2 adds cumulative final-assessment provenance; it
+remains bounded and reviewable, not a finished, textbook-length course.
 
 This README distinguishes two categories of statement throughout:
 
@@ -43,7 +43,7 @@ used purely for provenance and coverage-proof purposes.
   domain, and exactly one principal Ducelio lesson per official top-level
   objective ID (28 lessons total: 4 + 5 + 4 + 9 + 6, matching each domain's
   objective count). This 1:1 lesson-to-objective-ID structure is a Ducelio
-  authoring choice for this first revision, not a CompTIA requirement.
+  authoring choice for this course design, not a CompTIA requirement.
 - **Lesson content.** Every lesson's title, learning objective, lecture-note
   or reference-link resource, and any exercise/practical-lab instructions are
   original Ducelio-authored material. The real SY0-701 objectives document
@@ -69,7 +69,7 @@ used purely for provenance and coverage-proof purposes.
 - **Controlled assessments.** Six original assessment templates — one per
   existing Commercial V1 formal component (`QUIZ_1`/`QUIZ_2`/`MIDTERM`/
   `QUIZ_3`/`QUIZ_4`/`FINAL`, see `docs/23-commercial-v1-assessment-policy.md`)
-  — with 30 original questions total. Every `expectedAnswer` and
+  — with 32 original questions total. Every `expectedAnswer` and
   `markingGuidance` is original Ducelio content, never a leaked or
   remembered real certification question, and remains protected package
   content behind the existing controlled-assessment firewall (never exposed
@@ -79,25 +79,18 @@ used purely for provenance and coverage-proof purposes.
   (`bind_commercial_v1_assessment_component`) and is not performed by this
   package itself.
 
-  **Known foundation limitation (review correction pass).**
-  `COURSE_PACKAGE_V1` currently binds each assessment template to one
-  lesson, and its questions to objectives from that lesson only:
-  `src/domain/course-package.ts` contains the TypeScript assessment-template
-  and cross-reference validation (`assessmentTemplateSchema` and
-  `validateCoursePackage`'s own lesson-scoped `objectiveRefs` checks), and
-  the database independently revalidates packages against this same rule
-  through its existing `assert_full_package_valid` authority. Therefore
-  this SEC701-A revision does not
-  yet claim a cumulative, multi-lesson, certification-style final
-  assessment: `final` is scoped to a single lesson (risk management,
-  domain 5) like every other assessment template here, and is titled
-  accordingly ("Final Assessment: Risk Management Checkpoint"), not as a
-  comprehensive cross-domain checkpoint. Representing a genuinely
-  cumulative assessment remains work for the next commercial-course
-  checkpoint, before commercial launch. This limitation does not make
-  SEC701-A invalid as a first-revision foundation package — it is an
-  accurate description of what this package's `final` template currently
-  covers, not a defect this checkpoint silently worked around.
+  **SEC701-B cumulative final (revision 2).** The assessment retains one
+  institutional anchor lesson (`lesson-5-6`). Each of the ten original final
+  questions explicitly declares its own source `lessonRef`; its `objectiveRefs`
+  resolve only within that lesson. Two questions cover each of the five modules,
+  across ten distinct lessons, using existing Ducelio-authored teaching material.
+  Migration 037 records the anchor in `course_assessment_objectives.lesson_id`
+  and the actual source in `objective_lesson_id`. Older V1 questions that omit
+  `lessonRef` still inherit the template anchor. This extends V1 without
+  reinterpreting old stored packages or making objective keys globally unique.
+  `objective-coverage.json` keeps the same 28 SEC701-A blueprint mappings but
+  now identifies package revision 2; `sources.json` remains source-level provenance.
+  All 28 lesson mappings remain applicable to revision 2.
 
 - **Five-role agent configuration.** All five roles are configured under the
   existing, unmodified role/profile/null policy
@@ -135,3 +128,44 @@ codes. Before this course is activated for a paying cohort, an operator must
 re-verify directly with CompTIA that SY0-701 (objectives v5.0) remains the
 current, sold exam — not merely rely on this README or on `sources.json`'s
 recorded retrieval date (2026-09-17).
+
+## SEC701-B local acceptance and provenance audit
+
+`tests/course-cumulative-assessment-db.test.ts` uses this actual revision-2
+file with the governed database RPCs, not a miniature substitute. It exercises
+import, validation, redacted preview, Apply, five explicit configuration saves,
+COURSE_PREPUBLICATION_TEST_V1, Publish and idempotent Activate, then explicit
+binding of all six components and publication of the existing grading and result
+policies. Ten test-only lab policies divide the unchanged 2000 bp lab allocation;
+the local 7000 bp pass threshold is test input, not a production decision.
+No result is graded, no mastery is changed and no provider is called.
+
+The test proves 5 modules, 28 lessons, 14 practical activities (10 labs),
+3 assignments and 6 assessments, including ten final question/source mappings.
+It exercises configuration/materialised-state drift and exact-state restoration,
+immutable raw-package content, protected answer-key storage and actual controlled
+question release to an enrolled learner under PGlite's test clock.
+A staged 036-to-037 test first activates an unchanged old-style V1 package,
+then applies only migration 037 and compares every old provenance field and
+answer-key row. A stored pre-upgrade draft also validates after the upgrade.
+
+Downstream source audit found three consumers of `course_assessment_objectives`
+in migration 030: `assessment_result_is_valid`, `reconcile_remediation` and
+`derive_and_insert_objective_outcomes`. They join/group by `objective_id` and
+question/assessment identity; none interprets `lesson_id` as the objective's
+source. No downstream function therefore requires replacement. Activation is
+the sole production writer, replaced in 037; the assessment binding continues
+to use the anchor. Existing grading/results regressions remain required.
+The safe operator projection remains unchanged: it reduces questions to counts
+and marks and strips question-level prose, protected keys and source lesson refs.
+
+This is local PGlite/domain acceptance only. Hosted PostgreSQL transaction and
+migration deployment, Supabase/JWT, provider, payment and browser/mobile
+acceptance have not been demonstrated by SEC701-B. It remains subject to
+independent review and does not declare production readiness.
+
+Local validation on Node v24.19.0: focused affected suites passed 286 tests
+across nine files; the strengthened lifecycle/upgrade DB suite separately passed
+12/12. The full check passed lint, typecheck and 1,847 tests across 82 files.
+Build, formatting and diff whitespace checks passed. Migrations 001-036 remain
+byte-identical to the canonical SEC701-A commit; 037 is the only new migration.
