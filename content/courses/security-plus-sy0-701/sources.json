@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "COURSE_SOURCES_V1",
+  "packageKey": "security-plus-sy0-701",
+  "sources": [
+    {
+      "sourceId": "comptia-sy0-701-exam-objectives-v5",
+      "publisher": "CompTIA",
+      "title": "CompTIA Security+ (SY0-701) Certification Exam Objectives",
+      "examCode": "SY0-701",
+      "documentVersion": "5.0",
+      "sourceType": "OFFICIAL_EXAM_OBJECTIVES",
+      "url": "https://assets.ctfassets.net/82ripq7fjls2/6TYWUym0Nudqa8nGEnegjG/0f9b974d3b1837fe85ab8e6553f4d623/CompTIA-Security-Plus-SY0-701-Exam-Objectives.pdf",
+      "retrievedAt": "2026-09-17",
+      "notes": "Consulted for the domain names, the domain weightings, the 28 top-level objective identifiers, and the high-level scope/topic of each top-level objective, used to design the original Ducelio curriculum in package.json and as provenance metadata in objective-coverage.json. No official objective prose, sub-bullet text or exam questions were copied; every lesson, resource, practical activity, assignment and controlled-assessment question in this package is original Ducelio-authored instructional content."
+    }
+  ]
+}
