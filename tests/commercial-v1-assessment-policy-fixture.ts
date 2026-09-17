@@ -219,6 +219,43 @@ export async function buildAssessmentPolicyFixture(opts: {
     "select public.apply_course_package($1,$2) as v",
     [importId, "Apply policy fixture"],
   );
+  // PR15 (migration 35): publish_course_package now requires a current
+  // passing pre-publication test. This fixture supports running against an
+  // older migration snapshot (opts.throughMigration, used by the migration
+  // upgrade regression below), where migration 35 -- and therefore
+  // run_course_package_test -- does not yet exist, so this step is only
+  // exercised once that migration is actually loaded. This fixture does not
+  // exercise agent configuration semantics, so every role is saved
+  // explicitly disabled (the same default CourseAgentForm starts from)
+  // purely to satisfy the governed test gate.
+  if ((opts.throughMigration ?? Infinity) >= 35) {
+    for (const role of [
+      "PROFESSOR",
+      "TUTOR",
+      "LAB_INSTRUCTOR",
+      "EXAMINER",
+      "COUNSELLOR",
+    ]) {
+      await db.query(
+        "select public.set_agent_config($1,$2,false,null,null,'{}',$3,$4)",
+        [
+          programmeVersionId,
+          role,
+          "NONE",
+          "Policy fixture agent configuration",
+        ],
+      );
+    }
+    const testRun = await value(
+      db,
+      "select outcome as v from public.run_course_package_test($1,$2)",
+      [importId, "Policy fixture pre-publication test"],
+    );
+    if (testRun !== "PASS")
+      throw new Error(
+        `Policy fixture pre-publication test did not pass: ${testRun}`,
+      );
+  }
   await db.query("select public.publish_course_package($1,$2)", [
     importId,
     "Publish policy fixture",

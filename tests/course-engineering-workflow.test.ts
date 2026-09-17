@@ -166,7 +166,57 @@ async function applyImport(importId: string, reason: string) {
   return result.rows[0].apply_course_package;
 }
 
+// PR15: publish_course_package now requires a current passing
+// pre-publication test. Every existing successful-publish call site in this
+// file is exercising curriculum-lifecycle behavior, not agent-configuration
+// semantics, so this shared helper saves all five roles explicitly disabled
+// (the same default CourseAgentForm starts from) and runs the governed test
+// before delegating to publish. Tests that specifically exercise the gate
+// itself (a missing/failed/stale test) call the RPCs directly instead of
+// through this helper -- see "pre-publication test gate" below.
+async function runTest(importId: string, reason: string) {
+  await asAuth(adminAuth);
+  const result = await db.query<{
+    outcome: string;
+    failure_code: string | null;
+    failed_roles: string[];
+    fingerprint: string;
+  }>("select * from public.run_course_package_test($1,$2)", [importId, reason]);
+  await resetRole();
+  return result.rows[0];
+}
 async function publishImport(importId: string, reason: string) {
+  await asAuth(adminAuth);
+  // course_package_imports has no direct SELECT grant even for authenticated
+  // admins (migration 024); go through the reviewed preview RPC instead.
+  const versionRow = await db.query<{ programme_version_id: string | null }>(
+    "select programme_version_id from public.get_course_package_preview($1)",
+    [importId],
+  );
+  const versionId = versionRow.rows[0]?.programme_version_id;
+  if (versionId) {
+    for (const role of [
+      "PROFESSOR",
+      "TUTOR",
+      "LAB_INSTRUCTOR",
+      "EXAMINER",
+      "COUNSELLOR",
+    ]) {
+      await db.query(
+        "select public.set_agent_config($1,$2,false,null,null,'{}',$3,$4)",
+        [versionId, role, "NONE", "Workflow fixture agent configuration"],
+      );
+    }
+  }
+  await resetRole();
+  const testRun = await runTest(
+    importId,
+    "Workflow fixture pre-publication test",
+  );
+  if (testRun.outcome !== "PASS")
+    throw new Error(
+      `Workflow fixture pre-publication test did not pass: ${testRun.outcome} ${testRun.failure_code}`,
+    );
   await asAuth(adminAuth);
   const result = await db.query<{ publish_course_package: string }>(
     "select public.publish_course_package($1,$2)",

@@ -2,11 +2,11 @@
 
 PR14 starts from merged main `58c6216fa2a992623f309b78ad459bba3993bca7`
 (PR #15, Commercial V1 PR13 commerce onboarding). PR13 is CLOSED GREEN.
-PR14 V2 passed independent review and its implementation commit
-`c3457f54d0f88822b6d208bc03391e1c919a7a5d` is pushed on
-`commercial-v1-course-engineering-admin`. PR-head CI, merge and post-merge main
-CI still remain before closure. This checkpoint does not declare Commercial V1
-production-ready.
+PR14 V2 passed independent review, and PR14 is CLOSED GREEN, merged via PR
+#16 into main at `77887b84c81b6d2d658c1aa756fc85fdce1ce430`, with post-merge
+main CI passed. This checkpoint alone does not declare Commercial V1
+production-ready; see `30-course-prepublication-test-gate.md` (PR15) for the
+governed test-before-publish stage this checkpoint deliberately left open.
 
 ## Operator journey
 
@@ -112,11 +112,17 @@ corrected package revision. This page does not silently reconcile conflicts.
 
 The frozen Commercial V1 authoring contract includes a distinct
 `upload → validate → preview → configure agents → test → publish` lifecycle.
-PR14 does **not** implement that dedicated governed test-before-publish stage.
-The publication-readiness comparison above proves configuration consistency; it
-is not a substitute for the future governed test stage. Course & Agent
-Engineering therefore remains partially open after PR14, and Commercial V1 is
-not production-ready on the strength of this admin surface alone.
+PR14 did **not** implement that dedicated governed test-before-publish stage;
+its publication-readiness comparison proved configuration consistency only,
+never a substitute for a governed test. PR15
+(`30-course-prepublication-test-gate.md`) closes this gap: a database-
+enforced `run_course_package_test` now sits between explicit agent
+configuration and Publish, and `publish_course_package` fails closed unless a
+current passing test exists for the exact package/version/configuration
+state being published — enforced by the database, not merely this admin
+surface. PR15 is a deterministic governed integrity/readiness check only,
+never a live model/provider call; hosted provider acceptance and production
+infrastructure acceptance remain separate, still-outstanding gates.
 
 ## Scope and tests
 

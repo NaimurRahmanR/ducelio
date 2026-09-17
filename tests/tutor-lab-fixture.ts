@@ -113,6 +113,37 @@ export async function tutorLabFixture(): Promise<TutorLabFixture> {
     "select public.apply_course_package($1,$2) as v",
     [importId, "Apply tutor/lab fixture"],
   );
+  // PR15: publish_course_package now requires a current passing
+  // pre-publication test. This fixture does not exercise agent
+  // configuration semantics, so every role is saved explicitly disabled
+  // (the same default CourseAgentForm starts from) purely to satisfy the
+  // governed test gate.
+  for (const role of [
+    "PROFESSOR",
+    "TUTOR",
+    "LAB_INSTRUCTOR",
+    "EXAMINER",
+    "COUNSELLOR",
+  ]) {
+    await db.query(
+      "select public.set_agent_config($1,$2,false,null,null,'{}',$3,$4)",
+      [
+        programmeVersionId,
+        role,
+        "NONE",
+        "Tutor/Lab fixture agent configuration",
+      ],
+    );
+  }
+  const testRun = await value(
+    db,
+    "select outcome as v from public.run_course_package_test($1,$2)",
+    [importId, "Tutor/Lab fixture pre-publication test"],
+  );
+  if (testRun !== "PASS")
+    throw new Error(
+      `Tutor/Lab fixture pre-publication test did not pass: ${testRun}`,
+    );
   await db.query("select public.publish_course_package($1,$2)", [
     importId,
     "Publish tutor/lab fixture",

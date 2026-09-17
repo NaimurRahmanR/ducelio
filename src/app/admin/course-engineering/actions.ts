@@ -9,17 +9,14 @@ import {
   applyCoursePackage,
   publishCoursePackage,
   rejectCoursePackage,
-  getCoursePackagePreview,
+  runCoursePackageTest,
+  getCoursePackageTestStatus,
 } from "@/server/course-engineering";
-import {
-  listAgentConfigs,
-  setAgentConfig,
-} from "@/server/academic-agent-config";
+import { setAgentConfig } from "@/server/academic-agent-config";
 import { agentConfigInputSchema } from "@/domain/academic-agent-config";
 import {
   MAX_COURSE_UPLOAD_BYTES,
-  agentConfigsMatchProposal,
-  operatorPreviewSchema,
+  describeTestFailure,
   packageActionInputSchema,
   packageActions,
   safeValidationIssues,
@@ -117,23 +114,18 @@ export async function packageLifecycleAction(
     else if (p.operation === "publish") {
       if (!current.programme_version_id)
         return {
-          error:
-            "Save all five role configurations exactly as reviewed in the package proposal before publishing.",
+          error: "Apply this package before it can be tested or published.",
         };
-      const [rawPreview, configs] = await Promise.all([
-        getCoursePackagePreview(p.importId),
-        listAgentConfigs(current.programme_version_id),
-      ]);
-      const preview = operatorPreviewSchema.safeParse(rawPreview.preview);
-      if (
-        rawPreview.id !== current.id ||
-        rawPreview.programme_version_id !== current.programme_version_id ||
-        !preview.success ||
-        !agentConfigsMatchProposal(preview.data.agentConfiguration, configs)
-      )
+      // Operator-workflow readiness only, re-derived server-side. The
+      // database publication authority (publish_course_package) is the
+      // real gate: it independently recomputes the current fingerprint and
+      // fails closed on its own even if this pre-check were ever bypassed
+      // by a forged direct call.
+      const status = await getCoursePackageTestStatus(p.importId);
+      if (status.status !== "PASSED_CURRENT")
         return {
           error:
-            "Save all five role configurations exactly as reviewed in the package proposal before publishing.",
+            "Run a pre-publication test that passes for the exact current package, materialised institutional state and agent-configuration state before publishing.",
         };
       await publishCoursePackage(p.importId, p.reason);
     } else await rejectCoursePackage(p.importId, p.reason);
@@ -188,6 +180,35 @@ export async function saveCourseAgentAction(
     return {
       error:
         "Configuration was not saved. Check access, the applied package, role, reviewed capabilities and reason.",
+    };
+  }
+}
+// Runs the deterministic governed pre-publication readiness check
+// (package/version/configuration integrity only -- never an external
+// model/provider call). The database itself derives PASS/FAIL and persists
+// an immutable ledger row either way; this action only relays the safe
+// result. A FAIL is not an application error: it is returned as a message
+// describing the closed failure code, exactly like validation issues.
+export async function runCourseTestAction(
+  _state: CourseEngineeringState,
+  data: FormData,
+): Promise<CourseEngineeringState> {
+  try {
+    await authorized();
+    const id = z.uuid().parse(data.get("importId"));
+    const reason = z.string().trim().min(5).max(300).parse(data.get("reason"));
+    const result = await runCoursePackageTest(id, reason);
+    refresh();
+    return result.outcome === "PASS"
+      ? {
+          message:
+            "Pre-publication test passed for the exact current package, materialised institutional state and agent-configuration state.",
+        }
+      : { error: describeTestFailure(result.failureCode, result.failedRoles) };
+  } catch {
+    return {
+      error:
+        "The pre-publication test could not be run. Check access, package state and reason.",
     };
   }
 }
