@@ -2,9 +2,11 @@
 
 PR14 starts from merged main `58c6216fa2a992623f309b78ad459bba3993bca7`
 (PR #15, Commercial V1 PR13 commerce onboarding). PR13 is CLOSED GREEN.
-PR14 remains uncommitted and subject to independent review, commit, push,
-PR-head CI, merge and post-merge main CI. This checkpoint does not declare
-Commercial V1 production-ready.
+PR14 V2 passed independent review and its implementation commit
+`c3457f54d0f88822b6d208bc03391e1c919a7a5d` is pushed on
+`commercial-v1-course-engineering-admin`. PR-head CI, merge and post-merge main
+CI still remain before closure. This checkpoint does not declare Commercial V1
+production-ready.
 
 ## Operator journey
 
