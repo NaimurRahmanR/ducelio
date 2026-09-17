@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   attestExaminerExecutionCommand: vi.fn(),
   getExaminerAssessmentContext: vi.fn(),
   getExaminerLabContext: vi.fn(),
-  resolveRuntimeProfile: vi.fn(),
+  resolveRoleBoundRuntimeProfile: vi.fn(),
   resolveAdapterForProfile: vi.fn(),
   runGovernedProviderExecution: vi.fn(),
 }));
@@ -26,7 +26,7 @@ vi.mock("@/server/commercial-v1-examiner-grading/context", () => ({
   getExaminerLabContext: mocks.getExaminerLabContext,
 }));
 vi.mock("@/server/academic-runtime/profile-registry", () => ({
-  resolveRuntimeProfile: mocks.resolveRuntimeProfile,
+  resolveRoleBoundRuntimeProfile: mocks.resolveRoleBoundRuntimeProfile,
   resolveAdapterForProfile: mocks.resolveAdapterForProfile,
 }));
 vi.mock("@/server/academic-runtime/runtime", () => ({
@@ -173,7 +173,12 @@ beforeEach(() => {
     displayName: "Student",
     roles: ["STUDENT"],
   });
-  mocks.resolveRuntimeProfile.mockReturnValue({
+  // PR16A: gradeExaminerTarget calls resolveRoleBoundRuntimeProfile twice --
+  // once pre-AUTHORIZE (role, null) to propose a budget envelope, once
+  // post-AUTHORIZE (role, snapshot.runtimeProfileRef) as the actual
+  // execution authority. Both calls expect the same fixed EXAMINER profile
+  // here, so a single mockReturnValue covers both regardless of args.
+  mocks.resolveRoleBoundRuntimeProfile.mockReturnValue({
     ref: "EXAMINER_COMMERCIAL_V1",
     adapterKind: "HTTP_JSON",
     budgetPolicy: {
@@ -238,6 +243,77 @@ describe("Legitimate grading: AUTHORIZE -> START -> context -> exactly one provi
     expect(mocks.runGovernedProviderExecution).toHaveBeenCalledTimes(1);
     const finalizeCall = mocks.attestExaminerExecutionCommand.mock.calls[2][1];
     expect(finalizeCall.labMarksAwarded).toBe(8);
+  });
+});
+
+// PR16A regression: proves the ACTUAL two resolveRoleBoundRuntimeProfile
+// call sites and their arguments, not merely that grading succeeds --
+// outcome alone cannot distinguish this from a regression that re-defaults
+// from null post-AUTHORIZE, since both currently resolve to the same
+// profile. Uses a distinctive AUTHORIZE-snapshot runtimeProfileRef (never
+// "EXAMINER_COMMERCIAL_V1" itself) so the second call's argument can only
+// have come from snapshot.runtimeProfileRef, never a hardcoded literal or
+// the pre-AUTHORIZE null-proposal call repeated.
+describe("PR16A: resolveRoleBoundRuntimeProfile call sequence (execution source proof)", () => {
+  it("calls resolveRoleBoundRuntimeProfile(EXAMINER, null) for the pre-AUTHORIZE budget proposal, then resolveRoleBoundRuntimeProfile(EXAMINER, snapshot.runtimeProfileRef) as the actual execution authority", async () => {
+    const distinctiveRef = "EXAMINER_COMMERCIAL_V1_MARKER";
+    mocks.attestExaminerExecutionCommand.mockImplementation(
+      async (executionId: string, command: { operation: string }) => {
+        if (command.operation === "AUTHORIZE") {
+          return {
+            snapshot: baseSnapshot({
+              executionId,
+              state: "AUTHORIZED",
+              runtimeProfileRef: distinctiveRef,
+            }),
+            transitioned: true,
+          };
+        }
+        if (command.operation === "START") {
+          return {
+            snapshot: baseSnapshot({
+              executionId,
+              state: "RUNNING",
+              runtimeProfileRef: distinctiveRef,
+            }),
+            transitioned: true,
+          };
+        }
+        return {
+          snapshot: baseSnapshot({
+            executionId,
+            state: "SUCCEEDED",
+            runtimeProfileRef: distinctiveRef,
+            resultRevisionId: "11111111-0000-4000-8000-000000000001",
+            gradeDigest: "a".repeat(64),
+          }),
+          transitioned: true,
+        };
+      },
+    );
+    mocks.runGovernedProviderExecution.mockResolvedValue(
+      successfulRuntimeResult(
+        JSON.stringify({
+          outcome: "GRADED",
+          marks: [{ questionId, marksAwarded: 7 }],
+        }),
+      ),
+    );
+
+    const result = await gradeControlledAssessmentAttempt({ attemptId });
+    expect(result.status).toBe("GRADED");
+
+    expect(mocks.resolveRoleBoundRuntimeProfile).toHaveBeenCalledTimes(2);
+    expect(mocks.resolveRoleBoundRuntimeProfile).toHaveBeenNthCalledWith(
+      1,
+      "EXAMINER",
+      null,
+    );
+    expect(mocks.resolveRoleBoundRuntimeProfile).toHaveBeenNthCalledWith(
+      2,
+      "EXAMINER",
+      distinctiveRef,
+    );
   });
 });
 
@@ -502,6 +578,67 @@ describe("Context failure before any provider call", () => {
       estimatedCostMicrousd: 0,
       elapsedMs: 0,
     });
+  });
+});
+
+// PR16A: normal learner-initiated INITIAL Examiner grading is now
+// programme-version config governed at AUTHORIZE (migration 036).
+describe("PR16A: config-governed AUTHORIZE denials", () => {
+  it.each(["POLICY_BLOCKED", "UNKNOWN_MODEL_PROFILE"] as const)(
+    "%s at AUTHORIZE maps to UNAVAILABLE with zero provider calls and no execution row",
+    async (code) => {
+      mocks.attestExaminerExecutionCommand.mockRejectedValue(
+        new ExaminerExecutionDenied(code),
+      );
+      const result = await gradeControlledAssessmentAttempt({ attemptId });
+      expect(result).toEqual({ status: "UNAVAILABLE" });
+      expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+      expect(mocks.attestExaminerExecutionCommand).toHaveBeenCalledTimes(1);
+    },
+  );
+});
+
+describe("PR16A: durable direct ESCALATED claim at AUTHORIZE (ACADEMIC_REVIEW config)", () => {
+  it("a fresh target escalated by config returns ESCALATED with zero provider calls, no START, no FINALIZE", async () => {
+    mocks.attestExaminerExecutionCommand.mockImplementation(
+      async (executionId: string, command: { operation: string }) => {
+        if (command.operation !== "AUTHORIZE") {
+          throw new Error("should not reach " + command.operation);
+        }
+        return {
+          snapshot: baseSnapshot({
+            executionId,
+            state: "ESCALATED",
+            reasonCode: "HUMAN_REVIEW_REQUIRED",
+            reviewPath: "ACADEMIC_REVIEW",
+            terminalAt: "2026-01-01T00:00:01Z",
+          }),
+          transitioned: true,
+        };
+      },
+    );
+    const result = await gradeControlledAssessmentAttempt({ attemptId });
+    expect(result).toEqual({ status: "ESCALATED" });
+    expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+    expect(mocks.attestExaminerExecutionCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveAdapterForProfile).not.toHaveBeenCalled();
+  });
+
+  it("replaying an already-ESCALATED target returns the same terminal claim, never re-escalating or calling the provider", async () => {
+    mocks.attestExaminerExecutionCommand.mockImplementation(async () => ({
+      snapshot: baseSnapshot({
+        executionId: "existing-escalated-exec",
+        state: "ESCALATED",
+        reasonCode: "HUMAN_REVIEW_REQUIRED",
+        reviewPath: "ACADEMIC_REVIEW",
+        terminalAt: "2026-01-01T00:00:01Z",
+      }),
+      transitioned: false,
+    }));
+    const result = await gradeControlledAssessmentAttempt({ attemptId });
+    expect(result).toEqual({ status: "ESCALATED" });
+    expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+    expect(mocks.attestExaminerExecutionCommand).toHaveBeenCalledTimes(1);
   });
 });
 

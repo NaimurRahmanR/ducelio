@@ -22,11 +22,15 @@ export type AgentRole = z.infer<typeof agentRoleSchema>;
 // vocabulary a package's proposed configuration or a stored agent
 // configuration may ever select from. PROFESSOR reuses the exact nine-name
 // capability catalogue already enforced by the server
-// (src/server/academic-capabilities) under PROFESSOR_READ_V2. TUTOR,
-// LAB_INSTRUCTOR, EXAMINER and COUNSELLOR have no independent server-
-// enforced execution capability today beyond the existing delivery-access/
+// (src/server/academic-capabilities) under PROFESSOR_READ_V2. EXAMINER's two
+// capabilities are its real, live grade_controlled_assessment/
+// grade_practical_lab execution authorities (PR16A,
+// src/server/commercial-v1-examiner-grading), governed by the database's own
+// AUTHORIZE admission (migration 036) -- not a placeholder. TUTOR,
+// LAB_INSTRUCTOR and COUNSELLOR still have no independent server-enforced
+// execution capability today beyond the existing delivery-access/
 // Counsellor-scope gating in src/domain/delivery.ts; their catalogues here
-// are a reviewed placeholder boundary for future capability work, not a
+// remain a reviewed placeholder boundary for future capability work, not a
 // live execution path. Listing a capability here is necessary but never
 // sufficient authorization: callers must independently confirm a stored
 // configuration also requested it (see isCapabilityAuthorized) and, for any
@@ -45,9 +49,15 @@ export const roleCapabilityCatalogue: Record<AgentRole, readonly string[]> =
       "get_lesson_context",
       "get_lesson_objectives",
     ]) as readonly string[],
+    // EXAMINER's real execution authorities (PR16A): the exact two grading
+    // capabilities commercial_v1_examiner_grading.ts's runtime invokes,
+    // replacing the earlier context-read placeholder that never matched a
+    // live execution path. Must stay byte-for-byte in step with SQL
+    // course_engineering_private.role_capability_allowlist('EXAMINER')
+    // (migration 036).
     EXAMINER: Object.freeze([
-      "get_current_learner_context",
-      "get_lesson_context",
+      "grade_controlled_assessment",
+      "grade_practical_lab",
     ]) as readonly string[],
     COUNSELLOR: Object.freeze([
       "get_current_learner_context",

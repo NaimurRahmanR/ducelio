@@ -3,6 +3,7 @@ import {
   agentRoleSchema,
   roleCapabilityCatalogue,
 } from "./academic-capability-policy";
+import { validateRoleModelProfileRef } from "./academic-runtime-profile";
 
 // Commercial V1 Course & Agent Engineering: versioned package/manifest contract.
 // Pure domain module: no node/server built-ins, no database access. A package
@@ -236,6 +237,28 @@ export const agentConfigurationSchema = z
           path: [role, "capabilities"],
           message: "Duplicate capability name.",
         });
+      // PR16A: the shared role/profile/null policy (src/domain/academic-
+      // runtime-profile.ts), applied identically to the stored
+      // agentConfigInputSchema boundary in academic-agent-config.ts -- a
+      // package can never author a cross-role modelProfileRef, or a null
+      // ref on an enabled PROFESSOR entry, regardless of what the database's
+      // own assert_full_package_valid recheck (migration 036) would
+      // separately catch.
+      const profileValidation = validateRoleModelProfileRef(
+        role,
+        value[role].modelProfileRef,
+        value[role].enabled,
+      );
+      if (!profileValidation.ok) {
+        ctx.addIssue({
+          code: "custom",
+          path: [role, "modelProfileRef"],
+          message:
+            profileValidation.issue === "CROSS_ROLE_REF"
+              ? `modelProfileRef must be null or the exact ${role} runtime profile ref.`
+              : `modelProfileRef is required while ${role} is enabled.`,
+        });
+      }
     }
   });
 export type AgentConfiguration = z.infer<typeof agentConfigurationSchema>;

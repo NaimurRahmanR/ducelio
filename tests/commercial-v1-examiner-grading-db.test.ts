@@ -14,10 +14,29 @@ const databases: PGlite[] = [];
 afterEach(async () => {
   for (const db of databases.splice(0)) await db.close();
 });
+// PR16A: this whole file exercises real Examiner grading via the governed
+// database RPC, which now requires an enabled programme-version EXAMINER
+// academic_agent_configs row (migration 036). Defaults EXAMINER to enabled
+// with both real grading capabilities so every existing "reaches AUTHORIZE/
+// START/FINALIZE" scenario below continues to admit; pass
+// `examinerAgentConfig: null` explicitly to instead exercise the new
+// POLICY_BLOCKED/UNKNOWN_MODEL_PROFILE/ESCALATED-at-AUTHORIZE paths this
+// checkpoint adds.
 async function fixture(
   opts: Parameters<typeof buildAssessmentPolicyFixture>[0],
 ) {
-  const f = await buildAssessmentPolicyFixture(opts);
+  const f = await buildAssessmentPolicyFixture({
+    ...opts,
+    examinerAgentConfig:
+      opts.examinerAgentConfig === undefined
+        ? {
+            capabilities: [
+              "grade_controlled_assessment",
+              "grade_practical_lab",
+            ],
+          }
+        : opts.examinerAgentConfig,
+  });
   if (!databases.includes(f.db)) databases.push(f.db);
   return f;
 }
@@ -705,6 +724,249 @@ describe("AUTHORIZE eligibility", () => {
       code?: string;
     };
     expect(result).toMatchObject({ ok: false, code: "TARGET_NOT_ELIGIBLE" });
+  });
+});
+
+// =============================================================================
+// PR16A (migration 036): AUTHORIZE is now the config-governed admission
+// boundary for normal learner-initiated Examiner grading. These exercise the
+// REAL govern_commercial_v1_examiner_execution RPC's new admission branches
+// directly -- never a mocked orchestrator -- proving the actual SQL, not
+// merely the TS-side denial-code plumbing (tests/commercial-v1-examiner-
+// grading-runtime.test.ts mocks the RPC transport and only proves that
+// boundary maps the codes correctly).
+// =============================================================================
+describe("PR16A: config-governed AUTHORIZE admission (migration 036)", () => {
+  async function usageRowCount(db: PGlite) {
+    await owner(db);
+    return value<string>(
+      db,
+      "select count(*)::text as v from public.commercial_v1_examiner_execution_usage",
+    );
+  }
+  async function executionRowCount(
+    f: AssessmentPolicyFixture,
+    attemptId: string,
+  ) {
+    await owner(f.db);
+    return value<string>(
+      f.db,
+      "select count(*)::text as v from public.commercial_v1_examiner_executions where attempt_id=$1",
+      [attemptId],
+    );
+  }
+  // Disables the historical-immutability guard trigger just long enough to
+  // remove the row entirely (the trigger otherwise refuses any DELETE
+  // unconditionally, "disable the role instead" -- set_agent_config itself
+  // has no way to produce a missing row, only a disabled one). Owner-role
+  // only; the table carries zero direct grants for any other role.
+  async function deleteExaminerConfigRow(f: AssessmentPolicyFixture) {
+    await owner(f.db);
+    await f.db.exec(
+      "alter table public.academic_agent_configs disable trigger guard_agent_config_history",
+    );
+    await f.db.query(
+      "delete from public.academic_agent_configs where programme_version_id=$1 and role='EXAMINER'",
+      [f.programmeVersionId],
+    );
+    await f.db.exec(
+      "alter table public.academic_agent_configs enable trigger guard_agent_config_history",
+    );
+  }
+
+  it("A. no EXAMINER config row at all => POLICY_BLOCKED, zero execution rows, zero usage rows", async () => {
+    const f = await fixture({ withLabs: false });
+    await publishResultPolicy(f);
+    const attemptId = await submitAssessmentAttempt(f, "QUIZ_1", {
+      answer: "My answer.",
+    });
+    await deleteExaminerConfigRow(f);
+    const key = await installKey(f);
+    const fields = authorizeFields(key, "grade_controlled_assessment", {
+      attemptId,
+    });
+    await asLearner(f.db);
+    const result = (await govern(f.db, fields)) as {
+      ok: boolean;
+      code?: string;
+    };
+    expect(result).toMatchObject({ ok: false, code: "POLICY_BLOCKED" });
+    expect(await executionRowCount(f, attemptId)).toBe("0");
+    expect(await usageRowCount(f.db)).toBe("0");
+  });
+
+  it("B. EXAMINER config row disabled => POLICY_BLOCKED, zero execution rows, zero usage rows", async () => {
+    const f = await fixture({ withLabs: false, examinerAgentConfig: null });
+    await publishResultPolicy(f);
+    const attemptId = await submitAssessmentAttempt(f, "QUIZ_1", {
+      answer: "My answer.",
+    });
+    const key = await installKey(f);
+    const fields = authorizeFields(key, "grade_controlled_assessment", {
+      attemptId,
+    });
+    await asLearner(f.db);
+    const result = (await govern(f.db, fields)) as {
+      ok: boolean;
+      code?: string;
+    };
+    expect(result).toMatchObject({ ok: false, code: "POLICY_BLOCKED" });
+    expect(await executionRowCount(f, attemptId)).toBe("0");
+    expect(await usageRowCount(f.db)).toBe("0");
+  });
+
+  it("C. enabled EXAMINER missing the invoked capability (assessment target, only grade_practical_lab configured) => POLICY_BLOCKED", async () => {
+    const f = await fixture({
+      withLabs: false,
+      examinerAgentConfig: { capabilities: ["grade_practical_lab"] },
+    });
+    await publishResultPolicy(f);
+    const attemptId = await submitAssessmentAttempt(f, "QUIZ_1", {
+      answer: "My answer.",
+    });
+    const key = await installKey(f);
+    const fields = authorizeFields(key, "grade_controlled_assessment", {
+      attemptId,
+    });
+    await asLearner(f.db);
+    const result = (await govern(f.db, fields)) as {
+      ok: boolean;
+      code?: string;
+    };
+    expect(result).toMatchObject({ ok: false, code: "POLICY_BLOCKED" });
+    expect(await executionRowCount(f, attemptId)).toBe("0");
+    expect(await usageRowCount(f.db)).toBe("0");
+  });
+
+  it("C (reciprocal). enabled EXAMINER missing the invoked capability (lab target, only grade_controlled_assessment configured) => POLICY_BLOCKED", async () => {
+    const f = await fixture({
+      withLabs: true,
+      examinerAgentConfig: { capabilities: ["grade_controlled_assessment"] },
+    });
+    const practicalId = await getOwnedPracticalId(f);
+    await setLabPolicy(f, practicalId);
+    await publishResultPolicy(f);
+    const submissionId = await submitLabWork(f, practicalId);
+    const key = await installKey(f);
+    const fields = authorizeFields(key, "grade_practical_lab", {
+      submissionId,
+    });
+    await asLearner(f.db);
+    const result = (await govern(f.db, fields)) as {
+      ok: boolean;
+      code?: string;
+    };
+    expect(result).toMatchObject({ ok: false, code: "POLICY_BLOCKED" });
+    await owner(f.db);
+    const executionCount = await value<string>(
+      f.db,
+      "select count(*)::text as v from public.commercial_v1_examiner_executions where submission_id=$1",
+      [submissionId],
+    );
+    expect(executionCount).toBe("0");
+    expect(await usageRowCount(f.db)).toBe("0");
+  });
+
+  it("D. an invalid/cross-role stored model_profile_ref => UNKNOWN_MODEL_PROFILE, zero execution rows, zero usage rows", async () => {
+    const f = await fixture({ withLabs: false });
+    await publishResultPolicy(f);
+    const attemptId = await submitAssessmentAttempt(f, "QUIZ_1", {
+      answer: "My answer.",
+    });
+    // Seeded directly as the database owner: set_agent_config itself now
+    // correctly refuses this (migration 036's role_profile_ref_is_valid),
+    // so this adversarial state is unreachable through the normal RPC
+    // surface -- the table's own CHECK constraint only validates bounded-
+    // identifier shape, not role binding, so this UPDATE is otherwise a
+    // structurally valid row.
+    await owner(f.db);
+    await f.db.query(
+      "update public.academic_agent_configs set model_profile_ref='TUTOR_COMMERCIAL_V1' where programme_version_id=$1 and role='EXAMINER'",
+      [f.programmeVersionId],
+    );
+    const key = await installKey(f);
+    const fields = authorizeFields(key, "grade_controlled_assessment", {
+      attemptId,
+    });
+    await asLearner(f.db);
+    const result = (await govern(f.db, fields)) as {
+      ok: boolean;
+      code?: string;
+    };
+    expect(result).toMatchObject({ ok: false, code: "UNKNOWN_MODEL_PROFILE" });
+    expect(await executionRowCount(f, attemptId)).toBe("0");
+    expect(await usageRowCount(f.db)).toBe("0");
+  });
+
+  it("E. escalationPolicy=ACADEMIC_REVIEW creates exactly one durable, terminal ESCALATED claim directly at AUTHORIZE", async () => {
+    const f = await fixture({
+      withLabs: false,
+      examinerAgentConfig: {
+        capabilities: ["grade_controlled_assessment", "grade_practical_lab"],
+        escalationPolicy: "ACADEMIC_REVIEW",
+      },
+    });
+    await publishResultPolicy(f);
+    const attemptId = await submitAssessmentAttempt(f, "QUIZ_1", {
+      answer: "My answer.",
+    });
+    const key = await installKey(f);
+    const authorized = await authorize(
+      f.db,
+      key,
+      "grade_controlled_assessment",
+      { attemptId },
+    );
+    expect(authorized.result).toMatchObject({
+      ok: true,
+      execution: {
+        state: "ESCALATED",
+        reasonCode: "HUMAN_REVIEW_REQUIRED",
+        reviewPath: "ACADEMIC_REVIEW",
+        runtimeProfileRef: "EXAMINER_COMMERCIAL_V1",
+        resultRevisionId: null,
+        gradeDigest: null,
+        usage: null,
+      },
+    });
+    expect(await executionRowCount(f, attemptId)).toBe("1");
+    expect(await usageRowCount(f.db)).toBe("0");
+
+    await owner(f.db);
+    const events = await f.db.query<{ after_state: Record<string, unknown> }>(
+      "select after_state from public.audit_events where target_type='commercial_v1_examiner_executions' and after_state->>'state'='ESCALATED'",
+    );
+    expect(events.rows).toHaveLength(1);
+    expect(events.rows[0].after_state).toMatchObject({
+      state: "ESCALATED",
+      reason_code: "HUMAN_REVIEW_REQUIRED",
+      review_path: "ACADEMIC_REVIEW",
+      runtime_profile_ref: "EXAMINER_COMMERCIAL_V1",
+      usage: null,
+    });
+    const auditText = JSON.stringify(events.rows.map((e) => e.after_state));
+    expect(auditText).not.toMatch(
+      /protected answer|My answer\.|expectedAnswer|markingGuidance/i,
+    );
+
+    // Exact-target replay returns the SAME terminal ESCALATED claim -- no
+    // re-escalation, no provider call, still exactly one execution row and
+    // zero usage rows.
+    const replay = await govern(
+      f.db,
+      authorizeFields(key, "grade_controlled_assessment", { attemptId }),
+    );
+    expect(replay).toMatchObject({
+      ok: true,
+      transitioned: false,
+      execution: {
+        executionId: authorized.result.execution!.executionId,
+        state: "ESCALATED",
+        reasonCode: "HUMAN_REVIEW_REQUIRED",
+      },
+    });
+    expect(await executionRowCount(f, attemptId)).toBe("1");
+    expect(await usageRowCount(f.db)).toBe("0");
   });
 });
 

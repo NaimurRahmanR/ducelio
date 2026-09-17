@@ -44,18 +44,15 @@ export const TUTOR_LAB_ALLOWED_REASONS: Readonly<
   LAB_INSTRUCTOR: Object.freeze(["PRACTICAL_HELP"] as const),
 });
 
-// Correction pass (independent review, Blocker 3): the ONLY code-owned
-// production profile a role may ever execute with. Stored
-// academic_agent_configs may reference this ref by name (or leave it null,
-// defaulting to it) but can never widen it to another role's -- or
-// Professor's -- profile: existence in the shared runtime-profile registry
-// is necessary but never sufficient authorization on its own.
-export const TUTOR_LAB_ROLE_PROFILE_REF: Readonly<
-  Record<TutorLabRole, string>
-> = Object.freeze({
-  TUTOR: "TUTOR_COMMERCIAL_V1",
-  LAB_INSTRUCTOR: "LAB_INSTRUCTOR_COMMERCIAL_V1",
-});
+// PR16A: the independently-owned TUTOR_LAB_ROLE_PROFILE_REF role->profile
+// map that used to live here has been removed. Tutor/Lab role-bound profile
+// resolution is now owned entirely by the shared, DOMAIN-level
+// ROLE_RUNTIME_PROFILE_POLICY (src/domain/academic-runtime-profile.ts),
+// consulted through src/server/academic-runtime/profile-registry.ts's
+// resolveRoleBoundRuntimeProfile -- the same mechanism PROFESSOR and
+// EXAMINER now use, so there is exactly one editable role->profile
+// authority for all provider-backed roles, never two independently
+// drifting copies.
 
 // Must stay byte-for-byte in step with migration 028's table CHECK
 // constraints on tutor_lab_provider_executions. Deliberately tighter than

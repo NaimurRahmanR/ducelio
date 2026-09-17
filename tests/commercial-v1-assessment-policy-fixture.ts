@@ -65,6 +65,20 @@ export async function buildAssessmentPolicyFixture(opts: {
   multiObjectiveQuestion?: boolean;
   additionalLab?: boolean;
   additionalQuizQuestion?: boolean;
+  // PR16A: normal learner-initiated Examiner grading is now programme-
+  // version config governed at AUTHORIZE (migration 036). By default this
+  // fixture still saves EXAMINER explicitly disabled (unchanged pre-PR16A
+  // behavior -- this fixture does not exercise agent-configuration
+  // semantics for most of its consumers). Pass this to instead save an
+  // ENABLED EXAMINER row (in both the package's own proposed
+  // agentConfiguration, so the governed prepublication test gate still
+  // PASSes, and the live academic_agent_configs row) for test files that
+  // need real Examiner grading to actually admit.
+  examinerAgentConfig?: {
+    modelProfileRef?: string | null;
+    capabilities: string[];
+    escalationPolicy?: "NONE" | "ACADEMIC_REVIEW";
+  } | null;
 }) {
   const db =
     opts.db ??
@@ -131,6 +145,15 @@ export async function buildAssessmentPolicyFixture(opts: {
   };
 
   const pkg = buildPackage();
+  if (opts.examinerAgentConfig) {
+    pkg.agentConfiguration.EXAMINER = {
+      enabled: true,
+      modelProfileRef: opts.examinerAgentConfig.modelProfileRef ?? null,
+      instructionalNotes: null,
+      capabilities: opts.examinerAgentConfig.capabilities,
+      escalationPolicy: opts.examinerAgentConfig.escalationPolicy ?? "NONE",
+    };
+  }
   if (opts.multiObjectiveQuestion) {
     pkg.modules[0].lessons[0].objectives.push({
       key: "obj-2",
@@ -236,6 +259,20 @@ export async function buildAssessmentPolicyFixture(opts: {
       "EXAMINER",
       "COUNSELLOR",
     ]) {
+      if (role === "EXAMINER" && opts.examinerAgentConfig) {
+        await db.query(
+          "select public.set_agent_config($1,$2,true,$3,null,$4::text[],$5,$6)",
+          [
+            programmeVersionId,
+            role,
+            opts.examinerAgentConfig.modelProfileRef ?? null,
+            opts.examinerAgentConfig.capabilities,
+            opts.examinerAgentConfig.escalationPolicy ?? "NONE",
+            "Policy fixture agent configuration",
+          ],
+        );
+        continue;
+      }
       await db.query(
         "select public.set_agent_config($1,$2,false,null,null,'{}',$3,$4)",
         [

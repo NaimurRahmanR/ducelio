@@ -10,7 +10,7 @@ function baseInput() {
     programmeVersionId: "20000000-0000-4000-8000-000000000002",
     role: "PROFESSOR" as const,
     enabled: true,
-    modelProfileRef: "professor-default",
+    modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
     instructionalNotes: null,
     capabilities: ["get_lesson_context"],
     escalationPolicy: "NONE" as const,
@@ -49,6 +49,92 @@ describe("agent configuration input", () => {
   it("rejects an unbounded reason", () => {
     const input = { ...baseInput(), reason: "no" };
     expect(agentConfigInputSchema.safeParse(input).success).toBe(false);
+  });
+});
+
+// PR16A: the shared role/profile/null policy (src/domain/academic-runtime-
+// profile.ts) applied at this storage boundary.
+describe("agent configuration input: role/profile/null policy (PR16A)", () => {
+  it("rejects a cross-role modelProfileRef even when enabled=false", () => {
+    const input = {
+      ...baseInput(),
+      enabled: false,
+      modelProfileRef: "TUTOR_COMMERCIAL_V1",
+    };
+    expect(agentConfigInputSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("rejects an enabled PROFESSOR with a null modelProfileRef", () => {
+    const input = { ...baseInput(), enabled: true, modelProfileRef: null };
+    expect(agentConfigInputSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("accepts a disabled PROFESSOR with a null modelProfileRef", () => {
+    const input = { ...baseInput(), enabled: false, modelProfileRef: null };
+    expect(agentConfigInputSchema.safeParse(input).success).toBe(true);
+  });
+
+  it("accepts TUTOR/LAB_INSTRUCTOR/EXAMINER with a null modelProfileRef (defaults to the role profile)", () => {
+    for (const role of ["TUTOR", "LAB_INSTRUCTOR", "EXAMINER"] as const) {
+      const input = {
+        ...baseInput(),
+        role,
+        modelProfileRef: null,
+        capabilities: [] as string[],
+      };
+      expect(agentConfigInputSchema.safeParse(input).success).toBe(true);
+    }
+  });
+
+  it.each([
+    ["TUTOR", "TUTOR_COMMERCIAL_V1"],
+    ["LAB_INSTRUCTOR", "LAB_INSTRUCTOR_COMMERCIAL_V1"],
+    ["EXAMINER", "EXAMINER_COMMERCIAL_V1"],
+  ] as const)("accepts %s with its own exact profile ref", (role, ref) => {
+    const input = {
+      ...baseInput(),
+      role,
+      modelProfileRef: ref,
+      capabilities: [] as string[],
+    };
+    expect(agentConfigInputSchema.safeParse(input).success).toBe(true);
+  });
+
+  it.each([
+    ["TUTOR", "PROFESSOR_COMMERCIAL_V1"],
+    ["LAB_INSTRUCTOR", "TUTOR_COMMERCIAL_V1"],
+    ["EXAMINER", "LAB_INSTRUCTOR_COMMERCIAL_V1"],
+  ] as const)(
+    "rejects %s naming another role's profile ref (%s)",
+    (role, ref) => {
+      const input = {
+        ...baseInput(),
+        role,
+        modelProfileRef: ref,
+        capabilities: [] as string[],
+      };
+      expect(agentConfigInputSchema.safeParse(input).success).toBe(false);
+    },
+  );
+
+  it("rejects COUNSELLOR with any non-null modelProfileRef", () => {
+    const input = {
+      ...baseInput(),
+      role: "COUNSELLOR" as const,
+      modelProfileRef: "EXAMINER_COMMERCIAL_V1",
+      capabilities: [] as string[],
+    };
+    expect(agentConfigInputSchema.safeParse(input).success).toBe(false);
+  });
+
+  it("accepts COUNSELLOR with a null modelProfileRef", () => {
+    const input = {
+      ...baseInput(),
+      role: "COUNSELLOR" as const,
+      modelProfileRef: null,
+      capabilities: [] as string[],
+    };
+    expect(agentConfigInputSchema.safeParse(input).success).toBe(true);
   });
 });
 

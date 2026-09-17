@@ -119,6 +119,11 @@ function validPackage(): CoursePackage {
       PROFESSOR: {
         ...disabledRole(),
         enabled: true,
+        // PR16A: an enabled PROFESSOR entry requires the exact role-bound
+        // profile ref (src/domain/academic-runtime-profile.ts's
+        // ROLE_RUNTIME_PROFILE_POLICY.PROFESSOR) -- null is rejected only
+        // while enabled.
+        modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
         capabilities: ["get_lesson_context", "get_lesson_objectives"],
       },
       TUTOR: disabledRole(),

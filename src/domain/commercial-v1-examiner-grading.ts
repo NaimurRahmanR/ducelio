@@ -301,6 +301,17 @@ export const examinerExecutionErrorSchema = z.enum([
   "OUT_OF_ENVELOPE",
   "EXECUTION_UNAVAILABLE",
   "EXECUTION_TIMEOUT",
+  // PR16A: bounded governance denials from AUTHORIZE's new programme-version
+  // EXAMINER academic_agent_configs admission (migration 036) -- no config
+  // row / disabled / missing the exact invoked grading capability
+  // (POLICY_BLOCKED), or an invalid/cross-role stored runtime profile
+  // (UNKNOWN_MODEL_PROFILE). Both write no execution row and make no
+  // provider call; both map to learner-facing UNAVAILABLE
+  // (mapDenialToResult's default fallback in
+  // src/server/commercial-v1-examiner-grading/index.ts), never exposing
+  // configuration detail to the browser.
+  "POLICY_BLOCKED",
+  "UNKNOWN_MODEL_PROFILE",
 ]);
 // SERVICE_UNAVAILABLE is a TS-transport-only code (RPC error, unparseable
 // response) -- never something the database itself returns as `code`, so it

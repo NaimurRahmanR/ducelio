@@ -1,6 +1,10 @@
 import "server-only";
 import type { ProviderAdapter } from "@/domain/academic-runtime";
-import type { RuntimeProfile } from "@/domain/academic-runtime-profile";
+import type { AgentRole } from "@/domain/academic-capability-policy";
+import {
+  ROLE_RUNTIME_PROFILE_POLICY,
+  type RuntimeProfile,
+} from "@/domain/academic-runtime-profile";
 import { resolveConfiguredProvider } from "./provider";
 
 // Server-owned, code-only registry of reviewed runtime/model profiles. This
@@ -91,11 +95,17 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
     // production profile for governed Examiner grading (PR11B1, migration
     // 202609160031, COMMERCIAL_V1_EXAMINER_V1). A structurally separate
     // surface from Professor/Tutor/Lab -- HTTP_JSON only, no vendor SDK.
-    // Unlike Tutor/Lab, this ref is never looked up from a stored
-    // academic_agent_configs.modelProfileRef: the Examiner grading
-    // orchestrator (src/server/commercial-v1-examiner-grading) always uses
-    // this exact entry directly, so there is no role->profile binding table
-    // to bypass in the first place.
+    // PR16A (migration 036): normal learner-initiated INITIAL Examiner
+    // grading now reads the programme-version EXAMINER academic_agent_configs
+    // row at the database's own AUTHORIZE boundary -- but EXAMINER's role
+    // policy (src/domain/academic-runtime-profile.ts,
+    // ROLE_RUNTIME_PROFILE_POLICY.EXAMINER) fixes allowedRef to exactly this
+    // ref with DEFAULT_TO_ROLE_PROFILE null behavior, so a stored config can
+    // only ever admit this exact entry (null defaults to it; any other
+    // non-null ref fails closed as UNKNOWN_MODEL_PROFILE) -- never a
+    // different role's profile. The regrade plane
+    // (src/server/commercial-v1-examiner-regrade) remains fixed-profile and
+    // out of PR16A's scope; it still always uses this exact entry directly.
     EXAMINER_COMMERCIAL_V1: Object.freeze({
       ref: "EXAMINER_COMMERCIAL_V1",
       adapterKind: "HTTP_JSON",
@@ -132,4 +142,38 @@ export function resolveAdapterForProfile(
 ): ProviderAdapter | null {
   if (profile.adapterKind === "HTTP_JSON") return resolveConfiguredProvider();
   return null;
+}
+
+// PR16A: the single reviewed role-bound resolution mechanism. Consults the
+// DOMAIN-owned ROLE_RUNTIME_PROFILE_POLICY (src/domain/academic-runtime-
+// profile.ts) to reject a cross-role ref and apply the role's own null
+// semantics BEFORE ever touching the registry, then resolves only the
+// role's permitted ref through it -- registry ownership of adapterKind/
+// budgetPolicy is unchanged; this function only decides WHICH ref (if any)
+// the registry may be asked to resolve for this role. Returns null for
+// COUNSELLOR unconditionally (providerBacked=false: no Counsellor provider
+// execution is ever added by this function). `resolveInRegistry` defaults
+// to the real code-owned registry lookup but stays overridable so the
+// existing DI seam (src/server/academic-runtime/index.ts's ProfileResolver)
+// keeps working unchanged: role-binding is decided here, purely, before the
+// injected/production registry lookup ever runs.
+export function resolveRoleBoundRuntimeProfile(
+  role: AgentRole,
+  ref: string | null,
+  resolveInRegistry: (ref: string) => RuntimeProfile | null = (r) =>
+    resolveRuntimeProfile(r),
+): RuntimeProfile | null {
+  const policy = ROLE_RUNTIME_PROFILE_POLICY[role];
+  if (!policy.providerBacked) return null;
+  let effectiveRef: string;
+  if (ref === null) {
+    if (policy.nullBehavior !== "DEFAULT_TO_ROLE_PROFILE" || !policy.allowedRef)
+      return null;
+    effectiveRef = policy.allowedRef;
+  } else if (ref === policy.allowedRef) {
+    effectiveRef = ref;
+  } else {
+    return null;
+  }
+  return resolveInRegistry(effectiveRef);
 }

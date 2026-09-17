@@ -637,7 +637,7 @@ describe("reusable academic-agent configuration", () => {
     await asAuth(adminAuth);
     const versionId = "20000000-0000-4000-8000-000000000002";
     await db.query(
-      "select public.set_agent_config($1,'PROFESSOR',true,'professor-default',null,array['get_lesson_context'],'NONE',$2)",
+      "select public.set_agent_config($1,'PROFESSOR',true,'PROFESSOR_COMMERCIAL_V1',null,array['get_lesson_context'],'NONE',$2)",
       [versionId, "Enable Professor for the seeded demo course"],
     );
     await resetRole();

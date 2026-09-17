@@ -83,7 +83,11 @@ describe("executeRoleCapabilityWithTestOverrides is fail-closed in production", 
     setNodeEnv("test");
     mocks.getAgentConfigForEnrolment.mockResolvedValue({
       enabled: true,
-      modelProfileRef: "test-profile",
+      // PR16A: Professor's role-bound resolution rejects any ref other than
+      // the exact code-owned "PROFESSOR_COMMERCIAL_V1" before resolveProfile
+      // is ever reached -- see src/server/academic-runtime/profile-
+      // registry.ts's resolveRoleBoundRuntimeProfile.
+      modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
       capabilities: ["get_lesson_context"],
       escalationPolicy: "NONE",
     });
@@ -92,7 +96,7 @@ describe("executeRoleCapabilityWithTestOverrides is fail-closed in production", 
       releaseFinalizationFailed: false,
     });
     const resolveProfile = vi.fn(() => ({
-      ref: "test-profile",
+      ref: "PROFESSOR_COMMERCIAL_V1",
       adapterKind: "TEST_DETERMINISTIC" as const,
       budgetPolicy: {
         maxProviderCalls: 1,
