@@ -36,7 +36,9 @@ export async function buildCommerceFixture(
 ) {
   const db =
     opts.db ??
-    (await testDatabase({ throughMigration: opts.throughMigration ?? 34 }));
+    // PR15 (migration 35) is now required: publish_course_package calls
+    // run_course_package_test as part of this fixture's own setup below.
+    (await testDatabase({ throughMigration: opts.throughMigration ?? 35 }));
   if (!opts.db) {
     await db.exec("alter table auth.users disable trigger academy_identity");
     for (const [n, id] of [
@@ -87,6 +89,37 @@ export async function buildCommerceFixture(
     "select public.apply_course_package($1,$2) as v",
     [importId, "Apply commerce fixture"],
   );
+  // PR15: publish_course_package now requires a current passing
+  // pre-publication test. This fixture does not exercise agent
+  // configuration semantics, so every role is saved explicitly disabled
+  // (the same default CourseAgentForm starts from) purely to satisfy the
+  // governed test gate.
+  for (const role of [
+    "PROFESSOR",
+    "TUTOR",
+    "LAB_INSTRUCTOR",
+    "EXAMINER",
+    "COUNSELLOR",
+  ]) {
+    await db.query(
+      "select public.set_agent_config($1,$2,false,null,null,'{}',$3,$4)",
+      [
+        programmeVersionId,
+        role,
+        "NONE",
+        "Commerce fixture agent configuration",
+      ],
+    );
+  }
+  const testRun = await value(
+    db,
+    "select outcome as v from public.run_course_package_test($1,$2)",
+    [importId, "Commerce fixture pre-publication test"],
+  );
+  if (testRun !== "PASS")
+    throw new Error(
+      `Commerce fixture pre-publication test did not pass: ${testRun}`,
+    );
   await db.query("select public.publish_course_package($1,$2)", [
     importId,
     "Publish commerce fixture",

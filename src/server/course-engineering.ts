@@ -6,6 +6,12 @@ import {
   validateCoursePackage,
   type CoursePackageValidationResult,
 } from "@/domain/course-package";
+import {
+  testRunResultSchema,
+  testStatusResultSchema,
+  type TestRunResult,
+  type TestStatusResult,
+} from "@/domain/course-engineering-admin";
 import { AccessDenied } from "@/domain/policy";
 import { requireActor } from "./identity";
 import { createSupabase } from "./supabase";
@@ -42,6 +48,14 @@ const KNOWN_ERRORS: Record<string, string> = {
   "Declared package revision does not match package content":
     "MALFORMED_PACKAGE",
   "Declared schema version does not match package content": "MALFORMED_PACKAGE",
+  "A course package must be applied before a pre-publication test can be run":
+    "INVALID_STATE",
+  "The bound programme version is no longer awaiting publication":
+    "INVALID_STATE",
+  "A current passing pre-publication test does not exist for this exact package, materialised institutional state and agent-configuration state":
+    "TEST_GATE_NOT_SATISFIED",
+  "This programme version is governed by a course package; publish it through the course-package publication authority":
+    "PACKAGE_GOVERNED_VERSION",
 };
 
 // The database's own course_engineering_private.assert_materializable check
@@ -197,6 +211,64 @@ export async function publishCoursePackage(
   });
   if (error) mapError(error);
   return z.uuid().parse(data);
+}
+
+// Deterministic governed integrity/readiness check only: independently
+// re-validates the immutable stored package, independently re-verifies the
+// current materialised institutional state (programme/version identity and
+// content) still corresponds exactly to that package, and compares the five
+// saved academic_agent_configs rows against the package's own reviewed
+// proposal. It never calls an external model/provider, never evaluates model output,
+// and is not hosted/production acceptance -- see docs/18 and docs/29 for
+// those separate Commercial V1 release gates. The database itself derives
+// PASS/FAIL and the fingerprint; this layer only forwards importId/reason
+// and returns the safe, already-persisted result.
+export async function runCoursePackageTest(
+  importId: string,
+  reason: string,
+): Promise<TestRunResult> {
+  await requireCourseEngineeringAdmin();
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("run_course_package_test", {
+    p_import_id: z.uuid().parse(importId),
+    p_reason: reason,
+  });
+  if (error) mapError(error);
+  const row = Array.isArray(data) ? data[0] : data;
+  return testRunResultSchema.parse({
+    id: row.id,
+    outcome: row.outcome,
+    failureCode: row.failure_code,
+    failedRoles: row.failed_roles ?? [],
+    fingerprint: row.fingerprint,
+    runSequence: row.run_sequence,
+    runAt: row.run_at,
+  });
+}
+
+// Read-only, display-only projection of the current test readiness state.
+// The database recomputes the current fingerprint fresh on every call;
+// publication enforcement never depends on this function -- publish_
+// course_package re-derives and re-checks everything itself.
+export async function getCoursePackageTestStatus(
+  importId: string,
+): Promise<TestStatusResult> {
+  await requireCourseEngineeringAdmin();
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("get_course_package_test_status", {
+    p_import_id: z.uuid().parse(importId),
+  });
+  if (error) mapError(error);
+  const row = Array.isArray(data) ? data[0] : data;
+  return testStatusResultSchema.parse({
+    status: row.status,
+    outcome: row.outcome,
+    failureCode: row.failure_code,
+    failedRoles: row.failed_roles ?? [],
+    fingerprint: row.fingerprint,
+    runSequence: row.run_sequence,
+    runAt: row.run_at,
+  });
 }
 
 export async function rejectCoursePackage(

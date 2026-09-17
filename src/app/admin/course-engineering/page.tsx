@@ -4,6 +4,7 @@ import { requireAnyRole } from "@/server/identity";
 import {
   listCoursePackages,
   getCoursePackagePreview,
+  getCoursePackageTestStatus,
 } from "@/server/course-engineering";
 import { listAgentConfigs } from "@/server/academic-agent-config";
 import {
@@ -11,9 +12,9 @@ import {
   type AgentConfigRecord,
 } from "@/domain/academic-agent-config";
 import {
-  agentConfigsMatchProposal,
   operatorPreviewSchema,
   type OperatorPreview,
+  type TestStatusResult,
 } from "@/domain/course-engineering-admin";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { Card } from "@/components/ui";
@@ -21,6 +22,7 @@ import {
   CoursePackageImportForm,
   CoursePackageLifecycleForm,
   CourseAgentForm,
+  CourseTestForm,
 } from "@/components/course-engineering-forms";
 
 export const dynamic = "force-dynamic";
@@ -61,11 +63,28 @@ export default async function Page({
       configFailed = true;
     }
   }
-  const publicationReady = Boolean(
-    preview &&
-    !configFailed &&
-    agentConfigsMatchProposal(preview.agentConfiguration, configs),
-  );
+  // Server/database-derived only: the browser never calculates publication
+  // authority. publish_course_package independently re-derives and
+  // re-checks the current fingerprint itself regardless of what this page
+  // shows; this status is display-only. Pre-publication readiness only
+  // applies while the package is APPLIED, and only gates APPLIED -> Publish
+  // below. The publication fingerprint binds programme_versions.status, so
+  // a pre-publication PASS (recorded while status is DRAFT) necessarily
+  // stops matching the current fingerprint the moment publication succeeds
+  // and status becomes PUBLISHED -- recomputing readiness after publication
+  // would therefore always show it as stale, even though publication
+  // already succeeded. Once course_package_imports.status is PUBLISHED,
+  // that status itself is the proof that publish_course_package's own
+  // database test gate already passed; readiness is never re-checked.
+  let testStatus: TestStatusResult | null = null;
+  if (selected?.programme_version_id && selected.status === "APPLIED") {
+    try {
+      testStatus = await getCoursePackageTestStatus(selected.id);
+    } catch {
+      testStatus = null;
+    }
+  }
+  const publicationReady = testStatus?.status === "PASSED_CURRENT";
   return (
     <StaffShell
       kind="admin"
@@ -76,8 +95,8 @@ export default async function Page({
       <Card>
         <h2>Course &amp; Agent Engineering</h2>
         <p>
-          Import → validate → preview → apply → configure agents → publish →
-          activate → commercial offer.
+          Import → validate → preview → apply → configure agents → run
+          pre-publication test → publish → activate → commercial offer.
         </p>
         <p>
           Course content is uploaded data. No course-specific code, migration or
@@ -254,9 +273,25 @@ export default async function Page({
               ))
             )}
           </Card>
+          {selected.programme_version_id && selected.status === "APPLIED" && (
+            <Card>
+              <h2>Pre-publication test</h2>
+              {testStatus ? (
+                <CourseTestForm
+                  importId={selected.id}
+                  testStatus={testStatus}
+                />
+              ) : (
+                <p role="alert">
+                  Test readiness is unavailable. Refresh before running the
+                  test.
+                </p>
+              )}
+            </Card>
+          )}
           <Card>
             <h2>Continue delivery setup</h2>
-            {selected.status === "PUBLISHED" && publicationReady ? (
+            {selected.status === "PUBLISHED" ? (
               <Link
                 className="button"
                 href={`/admin/activation?importId=${encodeURIComponent(selected.id)}`}

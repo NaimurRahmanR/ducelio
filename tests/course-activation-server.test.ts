@@ -275,6 +275,33 @@ beforeAll(async () => {
       [importId, "Apply package fixture"],
     )
   ).rows[0].id;
+  // PR15: publish_course_package now requires a current passing
+  // pre-publication test. This fixture does not exercise agent
+  // configuration semantics, so every role is saved explicitly disabled
+  // (the same default CourseAgentForm starts from) purely to satisfy the
+  // governed test gate.
+  for (const role of [
+    "PROFESSOR",
+    "TUTOR",
+    "LAB_INSTRUCTOR",
+    "EXAMINER",
+    "COUNSELLOR",
+  ]) {
+    await f.db.query(
+      "select public.set_agent_config($1,$2,false,null,null,'{}',$3,$4)",
+      [v, role, "NONE", "Server fixture agent configuration"],
+    );
+  }
+  const testRun = (
+    await f.db.query<{ outcome: string }>(
+      "select outcome from public.run_course_package_test($1,$2)",
+      [importId, "Server fixture pre-publication test"],
+    )
+  ).rows[0].outcome;
+  if (testRun !== "PASS")
+    throw new Error(
+      `Server fixture pre-publication test did not pass: ${testRun}`,
+    );
   await f.db.query("select public.publish_course_package($1,$2)", [
     importId,
     "Publish package fixture",

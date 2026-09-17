@@ -5,10 +5,13 @@ import {
   importPackageAction,
   packageLifecycleAction,
   saveCourseAgentAction,
+  runCourseTestAction,
 } from "@/app/admin/course-engineering/actions";
 import {
   packageActions,
+  describeTestStatus,
   type CourseEngineeringState,
+  type TestStatusResult,
 } from "@/domain/course-engineering-admin";
 import {
   roleCapabilityCatalogue,
@@ -87,7 +90,8 @@ export function CoursePackageLifecycleForm({
     return status === "APPLIED" && !publicationReady ? (
       <p role="status">
         Save all five role configurations exactly as reviewed in the package
-        proposal before publishing.
+        proposal, then run a pre-publication test that passes for the exact
+        current state, before publishing.
       </p>
     ) : null;
   const labels = {
@@ -114,6 +118,41 @@ export function CoursePackageLifecycleForm({
             </button>
           ))}
         </div>
+      </fieldset>
+      <Result state={state} />
+    </form>
+  );
+}
+export function CourseTestForm({
+  importId,
+  testStatus,
+}: {
+  importId: string;
+  testStatus: TestStatusResult;
+}) {
+  const [state, action, pending] = useActionState(runCourseTestAction, {});
+  return (
+    <form action={action} className="form-grid">
+      <input type="hidden" name="importId" value={importId} />
+      <fieldset disabled={pending}>
+        <legend>Pre-publication test</legend>
+        <p>
+          Status: <strong>{testStatus.status}</strong> —{" "}
+          {describeTestStatus(testStatus.status)}
+        </p>
+        <p>
+          This is a deterministic governed integrity/readiness check: it
+          independently re-validates the stored package, independently
+          re-verifies that the applied programme/version identity and
+          materialised course content still match that package exactly, and
+          compares the five saved role configurations against the reviewed
+          package proposal. It never calls an external model/provider, evaluates
+          model output quality or substitutes for hosted/production acceptance.
+        </p>
+        <Reason />
+        <button className="button">
+          {pending ? "Testing…" : "Run pre-publication test"}
+        </button>
       </fieldset>
       <Result state={state} />
     </form>

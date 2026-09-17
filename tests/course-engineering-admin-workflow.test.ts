@@ -19,6 +19,7 @@ import {
   importPackageAction,
   packageLifecycleAction,
   saveCourseAgentAction,
+  runCourseTestAction,
 } from "@/app/admin/course-engineering/actions";
 import {
   listCoursePackages,
@@ -48,6 +49,15 @@ beforeAll(async () => {
     "publish_course_package",
     "set_agent_config",
     "list_agent_configs",
+    "run_course_package_test",
+    "get_course_package_test_status",
+  ]);
+  // Functions returning a multi-column `table(...)` (not a single scalar
+  // aliased to the function's own name) hand back the whole row, exactly
+  // like list_/get_course_package_preview already do below.
+  const multiColumn = new Set([
+    "run_course_package_test",
+    "get_course_package_test_status",
   ]);
   mocks.client.mockResolvedValue({
     rpc: async (name: string, args: Record<string, unknown> = {}) => {
@@ -65,7 +75,9 @@ beforeAll(async () => {
         const rows = JSON.parse(JSON.stringify(result.rows));
         return {
           data:
-            name.startsWith("list_") || name === "get_course_package_preview"
+            name.startsWith("list_") ||
+            name === "get_course_package_preview" ||
+            multiColumn.has(name)
               ? rows
               : rows[0][name],
           error: null,
@@ -140,6 +152,16 @@ describe("real Course Engineering admin journey", () => {
     expect(await listAgentConfigs(applied.programme_version_id!)).toHaveLength(
       5,
     );
+    // Publish still fails closed -- no pre-publication test has run yet.
+    expect(
+      await packageLifecycleAction({}, form(id, { operation: "publish" })),
+    ).toHaveProperty("error");
+    expect((await getCoursePackagePreview(id)).status).toBe("APPLIED");
+    const testResult = await runCourseTestAction({}, form(id, {}));
+    expect(testResult).toEqual({
+      message:
+        "Pre-publication test passed for the exact current package, materialised institutional state and agent-configuration state.",
+    });
     expect(
       await packageLifecycleAction({}, form(id, { operation: "publish" })),
     ).toHaveProperty("message");

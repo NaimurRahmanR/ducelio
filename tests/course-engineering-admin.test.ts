@@ -12,6 +12,8 @@ import {
   operatorPreviewSchema,
   safeValidationIssues,
   packageActions,
+  describeTestFailure,
+  testRunResultSchema,
 } from "@/domain/course-engineering-admin";
 const mocks = vi.hoisted(() => ({
   actor: vi.fn(),
@@ -26,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   configs: vi.fn(),
   save: vi.fn(),
   refresh: vi.fn(),
+  testStatus: vi.fn(),
+  runTest: vi.fn(),
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
@@ -39,6 +43,8 @@ vi.mock("@/server/course-engineering", () => ({
   applyCoursePackage: mocks.apply,
   publishCoursePackage: mocks.publish,
   rejectCoursePackage: mocks.reject,
+  getCoursePackageTestStatus: mocks.testStatus,
+  runCoursePackageTest: mocks.runTest,
 }));
 vi.mock("@/server/academic-agent-config", () => ({
   listAgentConfigs: mocks.configs,
@@ -51,6 +57,7 @@ import {
   importPackageAction,
   packageLifecycleAction,
   saveCourseAgentAction,
+  runCourseTestAction,
 } from "@/app/admin/course-engineering/actions";
 const id = "10000000-0000-4000-8000-000000000091",
   version = "10000000-0000-4000-8000-000000000092";
@@ -112,6 +119,15 @@ beforeEach(() => {
   mocks.preview.mockResolvedValue({ ...metadata, preview: buildPackage() });
   mocks.import.mockResolvedValue(id);
   mocks.configs.mockResolvedValue([]);
+  mocks.testStatus.mockResolvedValue({
+    status: "NOT_TESTED",
+    outcome: null,
+    failureCode: null,
+    failedRoles: [],
+    fingerprint: null,
+    runSequence: null,
+    runAt: null,
+  });
 });
 describe("Course Engineering operator actions", () => {
   it.each(["STUDENT", "REGISTRAR", "INSTRUCTOR", "COUNSELLOR"])(
@@ -179,35 +195,78 @@ describe("Course Engineering operator actions", () => {
       expect(mocks.save).not.toHaveBeenCalled();
     },
   );
-  it("publish fails closed until all five saved configs match the proposal", async () => {
+  it("publish fails closed until the database reports a current passing pre-publication test", async () => {
+    appliedPackage();
+
+    // Never tested: a forged direct Server Action call still fails closed.
+    mocks.testStatus.mockResolvedValue({
+      status: "NOT_TESTED",
+      outcome: null,
+      failureCode: null,
+      failedRoles: [],
+      fingerprint: null,
+      runSequence: null,
+      runAt: null,
+    });
+    expect(
+      await packageLifecycleAction({}, form({ operation: "publish" })),
+    ).toHaveProperty("error");
+    expect(mocks.publish).not.toHaveBeenCalled();
+
+    // A failed latest test for the current state still blocks publication.
+    mocks.testStatus.mockResolvedValue({
+      status: "FAILED",
+      outcome: "FAIL",
+      failureCode: "CONFIGURATION_MISMATCH",
+      failedRoles: ["PROFESSOR"],
+      fingerprint: "a".repeat(64),
+      runSequence: 2,
+      runAt: "2026-09-17T10:00:00Z",
+    });
+    expect(
+      await packageLifecycleAction({}, form({ operation: "publish" })),
+    ).toHaveProperty("error");
+    expect(mocks.publish).not.toHaveBeenCalled();
+
+    // A stale PASS (state changed since the last passing test) still blocks.
+    mocks.testStatus.mockResolvedValue({
+      status: "PASSED_STALE",
+      outcome: null,
+      failureCode: null,
+      failedRoles: [],
+      fingerprint: null,
+      runSequence: null,
+      runAt: null,
+    });
+    expect(
+      await packageLifecycleAction({}, form({ operation: "publish" })),
+    ).toHaveProperty("error");
+    expect(mocks.publish).not.toHaveBeenCalled();
+
+    // Only a current PASS allows the Server Action to delegate to the
+    // database publication authority, which is the real gate.
+    mocks.testStatus.mockResolvedValue({
+      status: "PASSED_CURRENT",
+      outcome: "PASS",
+      failureCode: null,
+      failedRoles: [],
+      fingerprint: "b".repeat(64),
+      runSequence: 3,
+      runAt: "2026-09-17T10:05:00Z",
+    });
+    expect(
+      await packageLifecycleAction({}, form({ operation: "publish" })),
+    ).toHaveProperty("message");
+    expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.publish).toHaveBeenCalledWith(id, "Explicit test review");
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+  it("agentConfigsMatchProposal preserves migration 027's exact comparison semantics", () => {
+    // Migration 027 compares capabilities canonically and treats trimmed
+    // empty instructional notes as NULL; this operator-workflow helper
+    // (still used for the informational proposal display) must match those
+    // semantics exactly, even though it no longer gates publication.
     const base = buildPackage();
-    appliedPackage(base);
-
-    // Zero saved rows: a forged direct Server Action call still fails closed.
-    mocks.configs.mockResolvedValue([]);
-    expect(
-      await packageLifecycleAction({}, form({ operation: "publish" })),
-    ).toHaveProperty("error");
-    expect(mocks.publish).not.toHaveBeenCalled();
-
-    // Four of five rows is still incomplete.
-    mocks.configs.mockResolvedValue(matchingConfigs(base).slice(0, 4));
-    expect(
-      await packageLifecycleAction({}, form({ operation: "publish" })),
-    ).toHaveProperty("error");
-    expect(mocks.publish).not.toHaveBeenCalled();
-
-    // One semantic mismatch must block publication.
-    const mismatch = matchingConfigs(base);
-    mismatch[0] = { ...mismatch[0], enabled: !mismatch[0].enabled };
-    mocks.configs.mockResolvedValue(mismatch);
-    expect(
-      await packageLifecycleAction({}, form({ operation: "publish" })),
-    ).toHaveProperty("error");
-    expect(mocks.publish).not.toHaveBeenCalled();
-
-    // Migration 027 compares capabilities canonically and treats trimmed empty
-    // instructional notes as NULL. The operator guard must match those semantics.
     const capabilities = roleCapabilityCatalogue.PROFESSOR.slice(0, 2);
     expect(capabilities).toHaveLength(2);
     const normalized = buildPackage({
@@ -220,7 +279,6 @@ describe("Course Engineering operator actions", () => {
         },
       },
     });
-    appliedPackage(normalized);
     const equivalent = matchingConfigs(normalized);
     const professor = equivalent.find((c) => c.role === "PROFESSOR")!;
     professor.instructionalNotes = null;
@@ -228,13 +286,100 @@ describe("Course Engineering operator actions", () => {
     expect(
       agentConfigsMatchProposal(normalized.agentConfiguration, equivalent),
     ).toBe(true);
-    mocks.configs.mockResolvedValue(equivalent);
+    const mismatch = matchingConfigs(base);
+    mismatch[0] = { ...mismatch[0], enabled: !mismatch[0].enabled };
+    expect(agentConfigsMatchProposal(base.agentConfiguration, mismatch)).toBe(
+      false,
+    );
     expect(
-      await packageLifecycleAction({}, form({ operation: "publish" })),
-    ).toHaveProperty("message");
-    expect(mocks.publish).toHaveBeenCalledTimes(1);
-    expect(mocks.publish).toHaveBeenCalledWith(id, "Explicit test review");
-    expect(mocks.save).not.toHaveBeenCalled();
+      agentConfigsMatchProposal(
+        base.agentConfiguration,
+        matchingConfigs(base).slice(0, 4),
+      ),
+    ).toBe(false);
+  });
+  it("runCourseTestAction relays the database's PASS/FAIL verdict without calculating it locally", async () => {
+    appliedPackage();
+    mocks.runTest.mockResolvedValue({
+      id: "20000000-0000-4000-8000-000000000001",
+      outcome: "PASS",
+      failureCode: null,
+      failedRoles: [],
+      fingerprint: "c".repeat(64),
+      runSequence: 1,
+      runAt: "2026-09-17T10:00:00Z",
+    });
+    expect(await runCourseTestAction({}, form({}))).toEqual({
+      message:
+        "Pre-publication test passed for the exact current package, materialised institutional state and agent-configuration state.",
+    });
+    expect(mocks.runTest).toHaveBeenCalledWith(id, "Explicit test review");
+
+    mocks.runTest.mockResolvedValue({
+      id: "20000000-0000-4000-8000-000000000002",
+      outcome: "FAIL",
+      failureCode: "CONFIGURATION_INCOMPLETE",
+      failedRoles: ["TUTOR", "COUNSELLOR"],
+      fingerprint: "d".repeat(64),
+      runSequence: 2,
+      runAt: "2026-09-17T10:01:00Z",
+    });
+    const failed = await runCourseTestAction({}, form({}));
+    expect(failed.error).toContain("Tutor");
+    expect(failed.error).toContain("Counsellor");
+    expect(failed).not.toHaveProperty("message");
+  });
+  it("describeTestFailure gives MATERIALIZED_STATE_MISMATCH a bounded, specific message, never the generic default", () => {
+    const message = describeTestFailure("MATERIALIZED_STATE_MISMATCH", []);
+    expect(message).not.toBe("The pre-publication test did not pass.");
+    expect(message.length).toBeLessThanOrEqual(400);
+  });
+  it("a real MATERIALIZED_STATE_MISMATCH database result parses and produces its bounded operator message, never the generic catch path", async () => {
+    // testRunResultSchema is exactly what src/server/course-engineering.ts
+    // parses the run_course_package_test RPC row into. This proves the
+    // schema accepts the DB's real failure code -- migration
+    // 202609170035_commercial_v1_course_prepublication_test.sql's
+    // course_package_test_runs.failure_code CHECK constraint includes
+    // 'MATERIALIZED_STATE_MISMATCH' -- rather than rejecting it.
+    const row = {
+      id: "20000000-0000-4000-8000-000000000003",
+      outcome: "FAIL",
+      failureCode: "MATERIALIZED_STATE_MISMATCH",
+      failedRoles: [],
+      fingerprint: "e".repeat(64),
+      runSequence: 3,
+      runAt: "2026-09-17T10:02:00Z",
+    };
+    expect(() => testRunResultSchema.parse(row)).not.toThrow();
+
+    appliedPackage();
+    mocks.runTest.mockResolvedValue(row);
+    const result = await runCourseTestAction({}, form({}));
+    expect(result).not.toHaveProperty("message");
+    // A bounded, specific operator message -- not describeTestFailure's
+    // generic default ("The pre-publication test did not pass."), and never
+    // raw SQL/exception content.
+    expect(result.error).not.toBe("The pre-publication test did not pass.");
+    expect(result.error).toContain("no longer matches");
+    expect(result.error).not.toMatch(
+      /SQLSTATE|PostgREST|relation ".*" does not exist/,
+    );
+  });
+  it.each(["STUDENT", "REGISTRAR", "INSTRUCTOR", "COUNSELLOR"])(
+    "%s cannot run the pre-publication test",
+    async (role) => {
+      mocks.actor.mockResolvedValue({ roles: [role] });
+      expect(await runCourseTestAction({}, form({}))).toHaveProperty("error");
+      expect(mocks.runTest).not.toHaveBeenCalled();
+    },
+  );
+  it("test errors never reveal backend content", async () => {
+    mocks.runTest.mockRejectedValue(
+      new Error("PostgREST secret PROTECTED ANSWER"),
+    );
+    expect(JSON.stringify(await runCourseTestAction({}, form({})))).not.toMatch(
+      /PostgREST|secret|PROTECTED/,
+    );
   });
   it("validation discards the success package containing protected content", async () => {
     mocks.validate.mockResolvedValue({
@@ -392,7 +537,16 @@ describe("operator page and safe projections", () => {
     expect(html).toContain("Validate staged package");
     expect(html).not.toContain("SECRET");
   });
-  it("published package with explicitly saved roles gets safe activation and commerce links", async () => {
+  it("a successfully published package exposes activation without recomputing pre-publication readiness -- PUBLISHED status is itself the proof the database gate already passed", async () => {
+    // Realistic post-publication state: publish_course_package's own
+    // fingerprint binds programme_versions.status, so a pre-publication PASS
+    // (necessarily recorded while status was DRAFT) can never still match
+    // the current fingerprint once status is PUBLISHED. get_course_package_
+    // test_status is therefore never even called for a PUBLISHED package --
+    // it would report PASSED_STALE, and the page must not gate activation on
+    // it. Leaving mocks.testStatus at its impossible-for-PUBLISHED
+    // beforeEach default (NOT_TESTED) here is deliberate: it proves
+    // activation exposure does not depend on that mock at all.
     const p = {
       ...metadata,
       status: "PUBLISHED",
@@ -407,32 +561,27 @@ describe("operator page and safe projections", () => {
     expect(html).toContain(`/admin/activation?importId=${id}`);
     expect(html).toContain("/admin/commerce");
     expect(mocks.configs).toHaveBeenCalledWith(version);
+    expect(mocks.testStatus).not.toHaveBeenCalled();
     expect(mocks.save).not.toHaveBeenCalled();
   });
-  it("unconfigured roles do not produce activation handoff", async () => {
+  it("an APPLIED package never exposes activation handoff, regardless of test status -- only Publish itself gates on readiness", async () => {
     mocks.list.mockResolvedValue([
-      { ...metadata, status: "PUBLISHED", programme_version_id: version },
+      { ...metadata, status: "APPLIED", programme_version_id: version },
     ]);
+    mocks.testStatus.mockResolvedValue({
+      status: "PASSED_CURRENT",
+      outcome: "PASS",
+      failureCode: null,
+      failedRoles: [],
+      fingerprint: "e".repeat(64),
+      runSequence: 1,
+      runAt: "2026-09-17T10:00:00Z",
+    });
     const html = renderToStaticMarkup(
       await Page({ searchParams: Promise.resolve({ importId: id }) }),
     );
     expect(html).not.toContain(`/admin/activation?importId=${id}`);
     expect(html).toContain("not configured");
-
-    const pkg = buildPackage();
-    const mismatch = matchingConfigs(pkg);
-    mismatch[0] = { ...mismatch[0], enabled: !mismatch[0].enabled };
-    mocks.configs.mockResolvedValue(mismatch);
-    mocks.preview.mockResolvedValue({
-      ...metadata,
-      status: "PUBLISHED",
-      programme_version_id: version,
-      preview: pkg,
-    });
-    const mismatchedHtml = renderToStaticMarkup(
-      await Page({ searchParams: Promise.resolve({ importId: id }) }),
-    );
-    expect(mismatchedHtml).not.toContain(`/admin/activation?importId=${id}`);
   });
   it("listing failure is not reported as empty success", async () => {
     mocks.list.mockRejectedValue(new Error("DB SECRET"));
