@@ -35,6 +35,7 @@ import {
 } from "../academic-provider-execution/authority";
 import {
   resolveAdapterForProfile,
+  resolveRoleBoundRuntimeProfile,
   resolveRuntimeProfile,
 } from "./profile-registry";
 import { runGovernedProviderExecution } from "./runtime";
@@ -178,11 +179,21 @@ async function executeRoleCapabilityCore(
     return { outcome: "ESCALATED", usage, reviewPath: "ACADEMIC_REVIEW" };
   }
 
-  // A missing, null or unknown model profile fails closed before any
-  // provider call. A course/agent configuration can only reference a
-  // profile by name; it cannot itself define a provider endpoint,
-  // credential or budget (src/domain/academic-runtime-profile.ts).
-  const profile = deps.resolveProfile(config.modelProfileRef);
+  // PR16A: role-bound resolution. A missing, null or unknown model profile
+  // fails closed before any provider call, and -- the defect this
+  // checkpoint closes -- a config naming another role's (or any unknown)
+  // profile ref fails closed identically: existence in the flat production
+  // registry was never sufficient authorization on its own. Domain policy
+  // (src/domain/academic-runtime-profile.ts's ROLE_RUNTIME_PROFILE_POLICY)
+  // rejects a cross-role ref and applies PROFESSOR's REJECT null semantics
+  // BEFORE the registry lookup ever runs; deps.resolveProfile (the existing,
+  // unchanged single-arg DI seam) only ever resolves the role's own already-
+  // validated ref.
+  const profile = resolveRoleBoundRuntimeProfile(
+    payload.role,
+    config.modelProfileRef,
+    (ref) => deps.resolveProfile(ref),
+  );
   if (!profile) {
     return { outcome: "ABSTAINED", usage, reason: "UNKNOWN_MODEL_PROFILE" };
   }

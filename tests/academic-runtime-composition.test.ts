@@ -47,14 +47,20 @@ const enrolmentId = "00000000-0000-4000-8000-000000000001";
 const lessonId = "00000000-0000-4000-8000-000000000002";
 const fakeRelease = { release_id: "release-1" };
 
+// PR16A: Professor's role-bound resolution (src/server/academic-runtime/
+// profile-registry.ts's resolveRoleBoundRuntimeProfile) requires the exact
+// code-owned ref before this test-injected resolveProfile callback is ever
+// reached at all, so every success fixture below is keyed under that exact
+// literal.
 const testProfile: RuntimeProfile = {
-  ref: "test-profile",
+  ref: "PROFESSOR_COMMERCIAL_V1",
   adapterKind: "TEST_DETERMINISTIC",
   budgetPolicy: DEFAULT_RUNTIME_BUDGET_POLICY,
 };
 // A test supplies its OWN registry lookup (never the production module's
-// registry) so that resolving "test-profile" is possible only here.
-const testRegistry = { "test-profile": testProfile };
+// registry) so that resolving "PROFESSOR_COMMERCIAL_V1" here never touches
+// the real production profile it happens to share a name with.
+const testRegistry = { PROFESSOR_COMMERCIAL_V1: testProfile };
 function resolveTestProfile(ref: string | null) {
   return ref ? (testRegistry[ref as keyof typeof testRegistry] ?? null) : null;
 }
@@ -72,7 +78,7 @@ function availableAccess() {
 function enabledConfig(overrides: Record<string, unknown> = {}) {
   return {
     enabled: true,
-    modelProfileRef: "test-profile",
+    modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
     capabilities: ["get_lesson_context"],
     escalationPolicy: "NONE",
     ...overrides,

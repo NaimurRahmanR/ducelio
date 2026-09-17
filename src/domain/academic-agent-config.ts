@@ -6,6 +6,7 @@ import {
   roleCapabilityCatalogue,
   type AgentRole,
 } from "./academic-capability-policy";
+import { validateRoleModelProfileRef } from "./academic-runtime-profile";
 
 // Role vocabulary and the capability allowlist now live in
 // academic-capability-policy.ts (the single source of truth shared with
@@ -50,6 +51,26 @@ export const agentConfigInputSchema = z
         path: ["capabilities"],
         message: "Duplicate capability name.",
       });
+    // PR16A: the shared role/profile/null policy (src/domain/academic-
+    // runtime-profile.ts) applies at this storage boundary too -- a cross-
+    // role modelProfileRef, or a null ref on an enabled PROFESSOR row, can
+    // never be saved regardless of what set_agent_config's own SQL-side
+    // recheck (migration 036) would separately catch.
+    const profileValidation = validateRoleModelProfileRef(
+      value.role,
+      value.modelProfileRef,
+      value.enabled,
+    );
+    if (!profileValidation.ok) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["modelProfileRef"],
+        message:
+          profileValidation.issue === "CROSS_ROLE_REF"
+            ? `modelProfileRef must be null or the exact ${value.role} runtime profile ref.`
+            : `modelProfileRef is required while ${value.role} is enabled.`,
+      });
+    }
   });
 export type AgentConfigInput = z.infer<typeof agentConfigInputSchema>;
 

@@ -44,12 +44,19 @@ const fakeRelease = {
   invocation_id: "invocation-1",
 };
 
+// PR16A: Professor's role-bound resolution now requires the exact code-owned
+// ref (domain ROLE_RUNTIME_PROFILE_POLICY.PROFESSOR.allowedRef) before this
+// test-injected resolveProfile callback is ever reached at all -- see
+// src/server/academic-runtime/profile-registry.ts's
+// resolveRoleBoundRuntimeProfile. Every profile/config fixture below is
+// therefore keyed under this exact literal; the fixture's own budgetPolicy
+// (not its ref string) is what each test actually varies.
 const testProfile: RuntimeProfile = {
-  ref: "test-profile",
+  ref: "PROFESSOR_COMMERCIAL_V1",
   adapterKind: "TEST_DETERMINISTIC",
   budgetPolicy: DEFAULT_RUNTIME_BUDGET_POLICY,
 };
-const testRegistry = { "test-profile": testProfile };
+const testRegistry = { PROFESSOR_COMMERCIAL_V1: testProfile };
 function resolveTestProfile(ref: string | null) {
   return ref ? (testRegistry[ref as keyof typeof testRegistry] ?? null) : null;
 }
@@ -67,7 +74,7 @@ function availableAccess() {
 function enabledConfig(overrides: Record<string, unknown> = {}) {
   return {
     enabled: true,
-    modelProfileRef: "test-profile",
+    modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
     capabilities: ["get_lesson_context"],
     escalationPolicy: "NONE",
     ...overrides,
@@ -242,14 +249,14 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
       }),
     );
     const zeroCallsRegistry = {
-      "zero-profile": {
+      PROFESSOR_COMMERCIAL_V1: {
         ...testProfile,
-        ref: "zero-profile",
+        ref: "PROFESSOR_COMMERCIAL_V1",
         budgetPolicy: { ...DEFAULT_RUNTIME_BUDGET_POLICY, maxProviderCalls: 0 },
       },
     };
     mocks.getAgentConfigForEnrolment.mockResolvedValue(
-      enabledConfig({ modelProfileRef: "zero-profile" }),
+      enabledConfig({ modelProfileRef: "PROFESSOR_COMMERCIAL_V1" }),
     );
 
     const result = await executeRoleCapabilityWithTestOverrides(request(), {
@@ -270,10 +277,10 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
   it("clamps a profile's proposed budget to the DB-owned hard ceiling rather than ever proposing more", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(
-      enabledConfig({ modelProfileRef: "generous-profile" }),
+      enabledConfig({ modelProfileRef: "PROFESSOR_COMMERCIAL_V1" }),
     );
     const generousProfile: RuntimeProfile = {
-      ref: "generous-profile",
+      ref: "PROFESSOR_COMMERCIAL_V1",
       adapterKind: "TEST_DETERMINISTIC",
       budgetPolicy: {
         ...DEFAULT_RUNTIME_BUDGET_POLICY,
@@ -310,7 +317,7 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
     await executeRoleCapabilityWithTestOverrides(request(), {
       resolveProfile: (ref) =>
-        ref === "generous-profile" ? generousProfile : null,
+        ref === "PROFESSOR_COMMERCIAL_V1" ? generousProfile : null,
       resolveAdapter: () => successAdapter(),
     });
 
@@ -324,10 +331,10 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
   it("BLOCKER 1: the provider adapter itself is asked for the DB-capped output-token ceiling, never a generous profile's own larger value", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(
-      enabledConfig({ modelProfileRef: "generous-profile" }),
+      enabledConfig({ modelProfileRef: "PROFESSOR_COMMERCIAL_V1" }),
     );
     const generousProfile: RuntimeProfile = {
-      ref: "generous-profile",
+      ref: "PROFESSOR_COMMERCIAL_V1",
       adapterKind: "TEST_DETERMINISTIC",
       budgetPolicy: {
         ...DEFAULT_RUNTIME_BUDGET_POLICY,
@@ -361,7 +368,7 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
     await executeRoleCapabilityWithTestOverrides(request(), {
       resolveProfile: (ref) =>
-        ref === "generous-profile" ? generousProfile : null,
+        ref === "PROFESSOR_COMMERCIAL_V1" ? generousProfile : null,
       resolveAdapter: () => adapter,
     });
 
@@ -379,10 +386,10 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
   it("BLOCKER 1: a post-call cost within a generous profile's own ceiling but above the admitted V2 ceiling is BUDGET_BLOCKED/POST_CALL with truthful usage, never a nominal SUCCEEDED", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(
-      enabledConfig({ modelProfileRef: "generous-profile" }),
+      enabledConfig({ modelProfileRef: "PROFESSOR_COMMERCIAL_V1" }),
     );
     const generousProfile: RuntimeProfile = {
-      ref: "generous-profile",
+      ref: "PROFESSOR_COMMERCIAL_V1",
       adapterKind: "TEST_DETERMINISTIC",
       budgetPolicy: {
         ...DEFAULT_RUNTIME_BUDGET_POLICY,
@@ -433,7 +440,7 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
     const result = await executeRoleCapabilityWithTestOverrides(request(), {
       resolveProfile: (ref) =>
-        ref === "generous-profile" ? generousProfile : null,
+        ref === "PROFESSOR_COMMERCIAL_V1" ? generousProfile : null,
       resolveAdapter: () => overBudgetAdapter,
     });
 
@@ -691,10 +698,10 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
   it("BLOCKER 2: a genuine RuntimeResult TIMEOUT (not the DB's lazy-expiry sweep) is truthfully FINALIZEd as FAILED/EXECUTION_TIMEOUT rather than leaving the execution stuck RUNNING", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(
-      enabledConfig({ modelProfileRef: "fast-deadline-profile" }),
+      enabledConfig({ modelProfileRef: "PROFESSOR_COMMERCIAL_V1" }),
     );
     const fastDeadlineProfile: RuntimeProfile = {
-      ref: "fast-deadline-profile",
+      ref: "PROFESSOR_COMMERCIAL_V1",
       adapterKind: "TEST_DETERMINISTIC",
       // The schema's own minimum (runtimeBudgetPolicySchema requires
       // totalDeadlineMs >= 1000): short enough to genuinely elapse in this
@@ -738,7 +745,7 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
 
     const result = await executeRoleCapabilityWithTestOverrides(request(), {
       resolveProfile: (ref) =>
-        ref === "fast-deadline-profile" ? fastDeadlineProfile : null,
+        ref === "PROFESSOR_COMMERCIAL_V1" ? fastDeadlineProfile : null,
       resolveAdapter: () => hangingAdapter,
     });
 

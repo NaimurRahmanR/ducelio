@@ -357,7 +357,10 @@ describe("FAIL ledger transaction semantics", () => {
     const versionId = await applyImport(importId);
     await setAllDisabled(versionId);
     // The proposal has PROFESSOR disabled; save it enabled instead.
-    await setConfig(versionId, "PROFESSOR", { enabled: true });
+    await setConfig(versionId, "PROFESSOR", {
+      enabled: true,
+      modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
+    });
     const result = await runTest(importId);
     expect(result.outcome).toBe("FAIL");
     expect(result.failure_code).toBe("CONFIGURATION_MISMATCH");
@@ -566,7 +569,10 @@ describe("latest-current-result rule", () => {
 
     // Mutate PROFESSOR to a mismatching state -- fingerprint changes, and
     // the current state now fails.
-    await setConfig(versionId, "PROFESSOR", { enabled: true });
+    await setConfig(versionId, "PROFESSOR", {
+      enabled: true,
+      modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
+    });
     const mismatched = await runTest(importId);
     expect(mismatched.outcome).toBe("FAIL");
     expect(mismatched.fingerprint).not.toBe(originalFingerprint);

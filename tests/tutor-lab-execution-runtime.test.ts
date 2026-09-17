@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   buildTutorContext: vi.fn(),
   buildLabContext: vi.fn(),
   getAgentConfigForEnrolment: vi.fn(),
-  resolveRuntimeProfile: vi.fn(),
   resolveAdapterForProfile: vi.fn(),
   runGovernedProviderExecution: vi.fn(),
 }));
@@ -37,10 +36,22 @@ vi.mock("@/server/tutor-lab-execution/context", () => ({
 vi.mock("@/server/academic-agent-config", () => ({
   getAgentConfigForEnrolment: mocks.getAgentConfigForEnrolment,
 }));
-vi.mock("@/server/academic-runtime/profile-registry", () => ({
-  resolveRuntimeProfile: mocks.resolveRuntimeProfile,
-  resolveAdapterForProfile: mocks.resolveAdapterForProfile,
-}));
+// PR16A: role-bound profile resolution (resolveRoleBoundRuntimeProfile) now
+// lives entirely in this module, consulting the real, shared domain
+// ROLE_RUNTIME_PROFILE_POLICY -- so it (and the real resolveRuntimeProfile
+// registry lookup it defaults to) are kept REAL here via importActual,
+// exercising the actual production role/profile policy end-to-end. Only
+// resolveAdapterForProfile is mocked, since the real one requires live
+// provider environment configuration this test never sets up.
+vi.mock("@/server/academic-runtime/profile-registry", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/server/academic-runtime/profile-registry")
+  >("@/server/academic-runtime/profile-registry");
+  return {
+    ...actual,
+    resolveAdapterForProfile: mocks.resolveAdapterForProfile,
+  };
+});
 vi.mock("@/server/academic-runtime/runtime", () => ({
   runGovernedProviderExecution: mocks.runGovernedProviderExecution,
 }));
@@ -114,23 +125,10 @@ beforeEach(() => {
     capabilities: ["get_lesson_context", "get_lesson_objectives"],
     escalationPolicy: "NONE",
   });
-  mocks.resolveRuntimeProfile.mockReturnValue({
-    ref: "TUTOR_COMMERCIAL_V1",
-    adapterKind: "HTTP_JSON",
-    budgetPolicy: {
-      maxProviderCalls: 1,
-      // Truth-sync (independent review): the shared runtime harness makes a
-      // second attempt unreachable once maxProviderCalls=1 (it checks
-      // providerCalls>=maxProviderCalls before every attempt), so the
-      // production Tutor/Lab profiles truthfully declare maxAttempts=1 --
-      // this default mock must match, never the stale maxAttempts=2.
-      maxAttempts: 1,
-      maxInputContextBytes: 12_000,
-      maxOutputTokens: 700,
-      totalDeadlineMs: 15_000,
-      maxEstimatedCostMicrousd: 30_000,
-    },
-  });
+  // PR16A: modelProfileRef "TUTOR_COMMERCIAL_V1" (the default agent config
+  // above) now resolves through the REAL resolveRoleBoundRuntimeProfile /
+  // resolveRuntimeProfile / production registry (see the importActual mock
+  // above) -- no fixture profile is injected here any more.
   mocks.resolveAdapterForProfile.mockReturnValue({ generate: vi.fn() });
   mocks.attestTutorLabExecutionCommand.mockImplementation(
     async (
@@ -243,18 +241,6 @@ describe("executeTutorLabSupport: context construction per role", () => {
       capabilities: ["get_lesson_context", "get_lesson_objectives"],
       escalationPolicy: "NONE",
     });
-    mocks.resolveRuntimeProfile.mockReturnValue({
-      ref: "LAB_INSTRUCTOR_COMMERCIAL_V1",
-      adapterKind: "HTTP_JSON",
-      budgetPolicy: {
-        maxProviderCalls: 1,
-        maxAttempts: 1,
-        maxInputContextBytes: 12_000,
-        maxOutputTokens: 700,
-        totalDeadlineMs: 15_000,
-        maxEstimatedCostMicrousd: 30_000,
-      },
-    });
     await executeTutorLabSupport(request());
     expect(mocks.buildLabContext).toHaveBeenCalledOnce();
     expect(mocks.buildTutorContext).not.toHaveBeenCalled();
@@ -289,18 +275,6 @@ describe("executeTutorLabSupport: authoritative reason code reaches the provider
       capabilities: ["get_lesson_context", "get_lesson_objectives"],
       escalationPolicy: "NONE",
     });
-    mocks.resolveRuntimeProfile.mockReturnValue({
-      ref: "LAB_INSTRUCTOR_COMMERCIAL_V1",
-      adapterKind: "HTTP_JSON",
-      budgetPolicy: {
-        maxProviderCalls: 1,
-        maxAttempts: 1,
-        maxInputContextBytes: 12_000,
-        maxOutputTokens: 700,
-        totalDeadlineMs: 15_000,
-        maxEstimatedCostMicrousd: 30_000,
-      },
-    });
     await executeTutorLabSupport(request());
     const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
     expect(requestArg.context.reasonCode).toBe("PRACTICAL_HELP");
@@ -322,66 +296,15 @@ describe("executeTutorLabSupport: authoritative reason code reaches the provider
   });
 });
 
+// PR16A: role binding is now decided entirely by the REAL, shared
+// resolveRoleBoundRuntimeProfile / domain ROLE_RUNTIME_PROFILE_POLICY (see
+// the importActual mock above) -- not by any fixture registry this test
+// file constructs. These cases exercise the actual production policy
+// end-to-end: a config naming another role's (or Professor's, or an
+// unknown) profile ref must fail closed with zero provider calls, never
+// merely "exists in the shared registry".
 describe("executeTutorLabSupport: role-owned profile binding (Blocker 3 regression)", () => {
-  function professorProfile() {
-    return {
-      ref: "PROFESSOR_COMMERCIAL_V1",
-      adapterKind: "HTTP_JSON" as const,
-      budgetPolicy: {
-        maxProviderCalls: 1,
-        maxAttempts: 2,
-        maxInputContextBytes: 16_000,
-        maxOutputTokens: 900,
-        totalDeadlineMs: 15_000,
-        maxEstimatedCostMicrousd: 40_000,
-      },
-    };
-  }
-  function labProfile() {
-    return {
-      ref: "LAB_INSTRUCTOR_COMMERCIAL_V1",
-      adapterKind: "HTTP_JSON" as const,
-      budgetPolicy: {
-        maxProviderCalls: 1,
-        maxAttempts: 1,
-        maxInputContextBytes: 12_000,
-        maxOutputTokens: 700,
-        totalDeadlineMs: 15_000,
-        maxEstimatedCostMicrousd: 30_000,
-      },
-    };
-  }
-  function tutorProfile() {
-    return {
-      ref: "TUTOR_COMMERCIAL_V1",
-      adapterKind: "HTTP_JSON" as const,
-      budgetPolicy: {
-        maxProviderCalls: 1,
-        maxAttempts: 1,
-        maxInputContextBytes: 12_000,
-        maxOutputTokens: 700,
-        totalDeadlineMs: 15_000,
-        maxEstimatedCostMicrousd: 30_000,
-      },
-    };
-  }
-  // resolveRuntimeProfile is mocked at module level as a plain lookup (as
-  // the real shared registry would behave): it happily resolves ANY of the
-  // three refs regardless of who asks. The code-owned role binding this
-  // blocker adds must reject a mismatched ref BEFORE that lookup is ever
-  // trusted, never relying on "exists in registry" as authorization.
-  function registryLookup(): Record<string, ReturnType<typeof tutorProfile>> {
-    return {
-      PROFESSOR_COMMERCIAL_V1: professorProfile(),
-      TUTOR_COMMERCIAL_V1: tutorProfile(),
-      LAB_INSTRUCTOR_COMMERCIAL_V1: labProfile(),
-    };
-  }
   it("TUTOR + TUTOR_COMMERCIAL_V1 (explicit or defaulted via null) is eligible", async () => {
-    const registry = registryLookup();
-    mocks.resolveRuntimeProfile.mockImplementation(
-      (ref: string) => registry[ref] ?? null,
-    );
     mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
     mocks.getAgentConfigForEnrolment.mockResolvedValue({
       enabled: true,
@@ -394,10 +317,6 @@ describe("executeTutorLabSupport: role-owned profile binding (Blocker 3 regressi
     expect(mocks.runGovernedProviderExecution).toHaveBeenCalledOnce();
   });
   it("LAB_INSTRUCTOR + LAB_INSTRUCTOR_COMMERCIAL_V1 is eligible", async () => {
-    const registry = registryLookup();
-    mocks.resolveRuntimeProfile.mockImplementation(
-      (ref: string) => registry[ref] ?? null,
-    );
     mocks.beginTutorLabContentRelease.mockResolvedValue(labRelease());
     mocks.getAgentConfigForEnrolment.mockResolvedValue({
       enabled: true,
@@ -417,10 +336,6 @@ describe("executeTutorLabSupport: role-owned profile binding (Blocker 3 regressi
   ] as const)(
     "%s stored config naming %s fails closed with zero provider calls (cross-role/Professor profile rejection)",
     async (_role, releaseFactory, storedRef) => {
-      const registry = registryLookup();
-      mocks.resolveRuntimeProfile.mockImplementation(
-        (ref: string) => registry[ref] ?? null,
-      );
       mocks.beginTutorLabContentRelease.mockResolvedValue(releaseFactory());
       mocks.getAgentConfigForEnrolment.mockResolvedValue({
         enabled: true,
@@ -435,7 +350,6 @@ describe("executeTutorLabSupport: role-owned profile binding (Blocker 3 regressi
     },
   );
   it("an unknown/unresolvable stored profile ref fails closed with zero provider calls", async () => {
-    mocks.resolveRuntimeProfile.mockReturnValue(null);
     mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
     mocks.getAgentConfigForEnrolment.mockResolvedValue({
       enabled: true,
@@ -478,7 +392,12 @@ describe("executeTutorLabSupport: role/config enforcement", () => {
   });
   it("an unresolved model profile abstains before any provider call", async () => {
     mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
-    mocks.resolveRuntimeProfile.mockReturnValue(null);
+    mocks.getAgentConfigForEnrolment.mockResolvedValue({
+      enabled: true,
+      modelProfileRef: "SOME_UNKNOWN_PROFILE",
+      capabilities: ["get_lesson_context", "get_lesson_objectives"],
+      escalationPolicy: "NONE",
+    });
     const result = await executeTutorLabSupport(request());
     expect(result).toEqual({ status: "UNAVAILABLE" });
     expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();

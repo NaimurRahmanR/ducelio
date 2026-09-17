@@ -2,7 +2,6 @@ import "server-only";
 import { randomUUID, createHash } from "node:crypto";
 import {
   TUTOR_LAB_EXECUTION_DB_CEILING,
-  TUTOR_LAB_ROLE_PROFILE_REF,
   mapRuntimeResultToTutorLabFinalizeCommand,
   mapRuntimeResultToTutorLabOutcome,
   tutorLabReservationRpcResultSchema,
@@ -23,7 +22,7 @@ import { attestTutorLabExecutionCommand } from "./authority";
 import { buildTutorContext, buildLabContext } from "./context";
 import {
   resolveAdapterForProfile,
-  resolveRuntimeProfile,
+  resolveRoleBoundRuntimeProfile,
 } from "../academic-runtime/profile-registry";
 import { runGovernedProviderExecution } from "../academic-runtime/runtime";
 import { getAgentConfigForEnrolment } from "../academic-agent-config";
@@ -161,22 +160,23 @@ export async function executeTutorLabSupport(
         reason: "POLICY_BLOCKED",
       };
     } else {
-      // Correction pass (independent review, Blocker 3): existence in the
-      // shared runtime-profile registry is NEVER sufficient authorization on
-      // its own -- the registry also holds PROFESSOR_COMMERCIAL_V1 and both
-      // Tutor/Lab profiles, so a stored config naming any resolvable ref
-      // would otherwise let Tutor execute with Lab's (or Professor's)
-      // profile and vice versa. The ONLY ref this role may ever execute
-      // with is the exact code-owned TUTOR_LAB_ROLE_PROFILE_REF entry for
-      // THIS role; a null stored ref defaults to it, but a non-null stored
-      // ref that names anything else fails closed here, before AUTHORIZE
-      // and before any provider call -- never merely "exists in registry".
-      const allowedRef = TUTOR_LAB_ROLE_PROFILE_REF[release.role];
-      const requestedRef = config.modelProfileRef ?? allowedRef;
-      const profile =
-        requestedRef === allowedRef
-          ? resolveRuntimeProfile(requestedRef)
-          : null;
+      // PR16A: role-bound resolution through the single shared mechanism
+      // (src/server/academic-runtime/profile-registry.ts's
+      // resolveRoleBoundRuntimeProfile, backed by domain
+      // ROLE_RUNTIME_PROFILE_POLICY) replaces this role's own independently-
+      // owned TUTOR_LAB_ROLE_PROFILE_REF map -- existence in the shared
+      // runtime-profile registry is NEVER sufficient authorization on its
+      // own -- the registry also holds PROFESSOR_COMMERCIAL_V1 and every
+      // other role's profile, so a stored config naming any resolvable ref
+      // would otherwise let Tutor execute with Lab's (or Professor's, or
+      // Examiner's) profile and vice versa. The ONLY ref this role may ever
+      // execute with is its own exact allowed ref; a null stored ref
+      // defaults to it, but a non-null stored ref that names anything else
+      // fails closed here, before AUTHORIZE and before any provider call.
+      const profile = resolveRoleBoundRuntimeProfile(
+        release.role,
+        config.modelProfileRef,
+      );
       if (!profile) {
         providerResult = {
           outcome: "ABSTAINED",

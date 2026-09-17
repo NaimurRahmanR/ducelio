@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   EXAMINER_CAPABILITY_TARGET_KIND,
   EXAMINER_EXECUTION_DB_CEILING,
-  EXAMINER_RUNTIME_PROFILE_REF,
   ExaminerExecutionDenied,
   gradeControlledAssessmentInputSchema,
   gradePracticalLabInputSchema,
@@ -19,7 +18,7 @@ import { attestExaminerExecutionCommand } from "./authority";
 import { getExaminerAssessmentContext, getExaminerLabContext } from "./context";
 import {
   resolveAdapterForProfile,
-  resolveRuntimeProfile,
+  resolveRoleBoundRuntimeProfile,
 } from "../academic-runtime/profile-registry";
 import { runGovernedProviderExecution } from "../academic-runtime/runtime";
 
@@ -90,8 +89,18 @@ async function gradeExaminerTarget(
 ): Promise<ExaminerGradingResult> {
   await requireStudentPrincipal();
   const targetKind = EXAMINER_CAPABILITY_TARGET_KIND[capability];
-  const profile = resolveRuntimeProfile(EXAMINER_RUNTIME_PROFILE_REF);
-  if (!profile) return { status: "UNAVAILABLE" };
+  // PR16A: this pre-AUTHORIZE resolution exists ONLY to propose a bounded
+  // budget envelope -- EXAMINER's frozen role policy (src/domain/academic-
+  // runtime-profile.ts's ROLE_RUNTIME_PROFILE_POLICY.EXAMINER,
+  // DEFAULT_TO_ROLE_PROFILE) means a null ref always resolves to this exact
+  // same profile, so proposing against it here can never itself widen what
+  // AUTHORIZE actually admits. It is NOT what the provider call executes
+  // with -- see the re-resolution from snapshot.runtimeProfileRef below,
+  // which is the actual DB-admitted authority (frozen chain: current DB
+  // config -> DB AUTHORIZE -> immutable execution.runtime_profile_ref ->
+  // snapshot.runtimeProfileRef -> role-bound server profile resolution).
+  const proposalProfile = resolveRoleBoundRuntimeProfile("EXAMINER", null);
+  if (!proposalProfile) return { status: "UNAVAILABLE" };
 
   const proposedExecutionId = randomUUID();
   let authorizeResult;
@@ -107,11 +116,11 @@ async function gradeExaminerTarget(
         budget: {
           maxProviderCalls: EXAMINER_EXECUTION_DB_CEILING.maxProviderCalls,
           maxOutputTokens: Math.min(
-            profile.budgetPolicy.maxOutputTokens,
+            proposalProfile.budgetPolicy.maxOutputTokens,
             EXAMINER_EXECUTION_DB_CEILING.maxOutputTokens,
           ),
           maxEstimatedCostMicrousd: Math.min(
-            profile.budgetPolicy.maxEstimatedCostMicrousd,
+            proposalProfile.budgetPolicy.maxEstimatedCostMicrousd,
             EXAMINER_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
           ),
         },
@@ -129,6 +138,22 @@ async function gradeExaminerTarget(
   if (snapshot.executionId !== proposedExecutionId) {
     return mapSnapshotToResult(snapshot, false);
   }
+  // PR16A: AUTHORIZE itself may now durably create a terminal ESCALATED
+  // claim (programme-version EXAMINER config escalationPolicy=
+  // ACADEMIC_REVIEW) -- a direct escalation returns here, before any
+  // profile resolution, START or provider call. No usage row is ever
+  // written for it (migration 036).
+  if (snapshot.state === "ESCALATED") {
+    return mapSnapshotToResult(snapshot, true);
+  }
+  // The actual execution authority: re-resolve strictly from the DB-
+  // admitted snapshot's own immutable runtimeProfileRef, never re-defaulted
+  // from null and never the pre-AUTHORIZE proposalProfile above.
+  const profile = resolveRoleBoundRuntimeProfile(
+    "EXAMINER",
+    snapshot.runtimeProfileRef,
+  );
+  if (!profile) return { status: "UNAVAILABLE" };
 
   const identity = {
     capability,

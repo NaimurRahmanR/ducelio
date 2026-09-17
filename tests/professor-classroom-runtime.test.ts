@@ -42,13 +42,17 @@ const fakeRelease = {
   invocation_id: "invocation-1",
 };
 
+// PR16A: Professor's role-bound resolution (src/server/academic-runtime/
+// profile-registry.ts's resolveRoleBoundRuntimeProfile) requires the exact
+// code-owned ref before this test-injected resolveProfile callback is ever
+// reached at all.
 const testProfile: RuntimeProfile = {
-  ref: "test-profile",
+  ref: "PROFESSOR_COMMERCIAL_V1",
   adapterKind: "TEST_DETERMINISTIC",
   budgetPolicy: DEFAULT_RUNTIME_BUDGET_POLICY,
 };
 const resolveTestProfile = (ref: string | null) =>
-  ref === "test-profile" ? testProfile : null;
+  ref === "PROFESSOR_COMMERCIAL_V1" ? testProfile : null;
 
 function availableAccess() {
   return {
@@ -63,7 +67,7 @@ function availableAccess() {
 function enabledConfig(overrides: Record<string, unknown> = {}) {
   return {
     enabled: true,
-    modelProfileRef: "test-profile",
+    modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
     capabilities: ["get_lesson_context"],
     escalationPolicy: "NONE",
     ...overrides,
