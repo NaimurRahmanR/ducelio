@@ -1,0 +1,210 @@
+{
+  "schemaVersion": "OBJECTIVE_COVERAGE_V1",
+  "packageKey": "security-plus-sy0-701",
+  "packageRevision": 1,
+  "source": {
+    "publisher": "CompTIA",
+    "examCode": "SY0-701",
+    "documentVersion": "5.0"
+  },
+  "totalDomains": 5,
+  "totalOfficialObjectives": 28,
+  "totalWeightPercent": 100,
+  "domains": [
+    {
+      "domainId": "1",
+      "weightPercent": 12,
+      "ducelioModuleRef": "module-1"
+    },
+    {
+      "domainId": "2",
+      "weightPercent": 22,
+      "ducelioModuleRef": "module-2"
+    },
+    {
+      "domainId": "3",
+      "weightPercent": 18,
+      "ducelioModuleRef": "module-3"
+    },
+    {
+      "domainId": "4",
+      "weightPercent": 28,
+      "ducelioModuleRef": "module-4"
+    },
+    {
+      "domainId": "5",
+      "weightPercent": 20,
+      "ducelioModuleRef": "module-5"
+    }
+  ],
+  "objectives": [
+    {
+      "officialObjectiveId": "1.1",
+      "domainId": "1",
+      "ducelioModuleRef": "module-1",
+      "ducelioLessonRef": "lesson-1-1"
+    },
+    {
+      "officialObjectiveId": "1.2",
+      "domainId": "1",
+      "ducelioModuleRef": "module-1",
+      "ducelioLessonRef": "lesson-1-2"
+    },
+    {
+      "officialObjectiveId": "1.3",
+      "domainId": "1",
+      "ducelioModuleRef": "module-1",
+      "ducelioLessonRef": "lesson-1-3"
+    },
+    {
+      "officialObjectiveId": "1.4",
+      "domainId": "1",
+      "ducelioModuleRef": "module-1",
+      "ducelioLessonRef": "lesson-1-4"
+    },
+    {
+      "officialObjectiveId": "2.1",
+      "domainId": "2",
+      "ducelioModuleRef": "module-2",
+      "ducelioLessonRef": "lesson-2-1"
+    },
+    {
+      "officialObjectiveId": "2.2",
+      "domainId": "2",
+      "ducelioModuleRef": "module-2",
+      "ducelioLessonRef": "lesson-2-2"
+    },
+    {
+      "officialObjectiveId": "2.3",
+      "domainId": "2",
+      "ducelioModuleRef": "module-2",
+      "ducelioLessonRef": "lesson-2-3"
+    },
+    {
+      "officialObjectiveId": "2.4",
+      "domainId": "2",
+      "ducelioModuleRef": "module-2",
+      "ducelioLessonRef": "lesson-2-4"
+    },
+    {
+      "officialObjectiveId": "2.5",
+      "domainId": "2",
+      "ducelioModuleRef": "module-2",
+      "ducelioLessonRef": "lesson-2-5"
+    },
+    {
+      "officialObjectiveId": "3.1",
+      "domainId": "3",
+      "ducelioModuleRef": "module-3",
+      "ducelioLessonRef": "lesson-3-1"
+    },
+    {
+      "officialObjectiveId": "3.2",
+      "domainId": "3",
+      "ducelioModuleRef": "module-3",
+      "ducelioLessonRef": "lesson-3-2"
+    },
+    {
+      "officialObjectiveId": "3.3",
+      "domainId": "3",
+      "ducelioModuleRef": "module-3",
+      "ducelioLessonRef": "lesson-3-3"
+    },
+    {
+      "officialObjectiveId": "3.4",
+      "domainId": "3",
+      "ducelioModuleRef": "module-3",
+      "ducelioLessonRef": "lesson-3-4"
+    },
+    {
+      "officialObjectiveId": "4.1",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-1"
+    },
+    {
+      "officialObjectiveId": "4.2",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-2"
+    },
+    {
+      "officialObjectiveId": "4.3",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-3"
+    },
+    {
+      "officialObjectiveId": "4.4",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-4"
+    },
+    {
+      "officialObjectiveId": "4.5",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-5"
+    },
+    {
+      "officialObjectiveId": "4.6",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-6"
+    },
+    {
+      "officialObjectiveId": "4.7",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-7"
+    },
+    {
+      "officialObjectiveId": "4.8",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-8"
+    },
+    {
+      "officialObjectiveId": "4.9",
+      "domainId": "4",
+      "ducelioModuleRef": "module-4",
+      "ducelioLessonRef": "lesson-4-9"
+    },
+    {
+      "officialObjectiveId": "5.1",
+      "domainId": "5",
+      "ducelioModuleRef": "module-5",
+      "ducelioLessonRef": "lesson-5-1"
+    },
+    {
+      "officialObjectiveId": "5.2",
+      "domainId": "5",
+      "ducelioModuleRef": "module-5",
+      "ducelioLessonRef": "lesson-5-2"
+    },
+    {
+      "officialObjectiveId": "5.3",
+      "domainId": "5",
+      "ducelioModuleRef": "module-5",
+      "ducelioLessonRef": "lesson-5-3"
+    },
+    {
+      "officialObjectiveId": "5.4",
+      "domainId": "5",
+      "ducelioModuleRef": "module-5",
+      "ducelioLessonRef": "lesson-5-4"
+    },
+    {
+      "officialObjectiveId": "5.5",
+      "domainId": "5",
+      "ducelioModuleRef": "module-5",
+      "ducelioLessonRef": "lesson-5-5"
+    },
+    {
+      "officialObjectiveId": "5.6",
+      "domainId": "5",
+      "ducelioModuleRef": "module-5",
+      "ducelioLessonRef": "lesson-5-6"
+    }
+  ]
+}
