@@ -2083,3 +2083,38 @@ label {
     position: static;
   }
 }
+.engineering-table {
+  overflow-x: auto;
+}
+.engineering-table td {
+  overflow-wrap: anywhere;
+  min-width: 10rem;
+  vertical-align: top;
+}
+.engineering-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.engineering-role {
+  margin-block: 1rem;
+}
+.engineering-json {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 1rem;
+  background: var(--canvas);
+}
+.engineering-prose {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.engineering-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.engineering-checkbox input {
+  width: auto;
+}

@@ -3,6 +3,7 @@ import { getCourseActivationOptions } from "@/server/course-activation";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { CourseActivationForm } from "@/components/course-activation-form";
 import { Card } from "@/components/ui";
+import Link from "next/link";
 export default async function Page({
   searchParams,
 }: {
@@ -22,6 +23,15 @@ export default async function Page({
     >
       <Card>
         <h2>Activate course delivery</h2>
+        <p>
+          <Link className="text-link" href="/admin/course-engineering">
+            Course &amp; Agent Engineering
+          </Link>{" "}
+          → Activation →{" "}
+          <Link className="text-link" href="/admin/commerce">
+            Commercial offers
+          </Link>
+        </p>
         <p>
           Choose a published package and its target cohort. This creates
           practicals, assignments and controlled assessments.
