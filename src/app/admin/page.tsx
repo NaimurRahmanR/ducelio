@@ -94,6 +94,11 @@ export default async function Page({
       {section === "Programmes" && (
         <>
           {canPublish && (
+            <Link className="button secondary" href="/admin/course-engineering">
+              Course &amp; Agent Engineering
+            </Link>
+          )}
+          {canPublish && (
             <Link className="button secondary" href="/admin/activation">
               Activate course delivery
             </Link>

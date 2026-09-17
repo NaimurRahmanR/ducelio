@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { ActivationOptions } from "@/domain/course-activation";
 import { activateCourseAction } from "@/app/admin/activation/actions";
+import Link from "next/link";
 export function CourseActivationForm({
   options,
   importId,
@@ -11,6 +12,7 @@ export function CourseActivationForm({
 }) {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
+  const [activated, setActivated] = useState(false);
   return (
     <form
       className="form-grid"
@@ -18,6 +20,7 @@ export function CourseActivationForm({
         e.preventDefault();
         setPending(true);
         setMessage("");
+        setActivated(false);
         const f = new FormData(e.currentTarget);
         const timestamp = (name: string) => {
           const v = String(f.get(name) ?? "");
@@ -47,6 +50,7 @@ export function CourseActivationForm({
                   result.code +
                   "). Review the package, configuration and schedule.",
           );
+          setActivated(result.ok);
         } catch {
           setMessage(
             "Activation status could not be verified. Retrying the same schedule is safe.",
@@ -147,6 +151,11 @@ export function CourseActivationForm({
         {pending ? "Activating…" : "Activate cohort delivery"}
       </button>
       <p role="status">{message}</p>
+      {activated && (
+        <Link className="button secondary" href="/admin/commerce">
+          Continue to commercial offers
+        </Link>
+      )}
     </form>
   );
 }
