@@ -351,7 +351,7 @@ grant execute on function public.redeem_commercial_v1_campaign(text,text) to aut
 
 -- Minimal admin read for operating campaign codes without direct table access.
 create function public.list_commercial_v1_campaigns() returns jsonb
-language plpgsql security definer stable set search_path='' as $$
+language plpgsql security definer set search_path='' as $
 begin
   perform course_activation_private.require_admin();
   return (
