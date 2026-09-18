@@ -73,6 +73,10 @@ describe("production native routing registry", () => {
     const lab = resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1")!;
     const examiner = resolveRuntimeProfile("EXAMINER_COMMERCIAL_V1")!;
 
+    for (const profile of [professor, tutor, lab, examiner]) {
+      expect(profile.budgetPolicy.maxAttempts).toBe(1);
+    }
+
     expect(professor.budgetPolicy.maxProviderCalls).toBeLessThanOrEqual(
       PROVIDER_EXECUTION_DB_CEILING.maxProviderCalls,
     );
