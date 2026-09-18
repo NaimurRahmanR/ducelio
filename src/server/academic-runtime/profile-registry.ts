@@ -32,7 +32,7 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
       }),
       budgetPolicy: Object.freeze({
         maxProviderCalls: 1,
-        maxAttempts: 2,
+        maxAttempts: 1,
         maxInputContextBytes: 16_000,
         maxOutputTokens: 900,
         totalDeadlineMs: 15_000,
