@@ -2,6 +2,10 @@ import "server-only";
 import type { ProviderAdapter } from "@/domain/academic-runtime";
 import type { AgentRole } from "@/domain/academic-capability-policy";
 import {
+  PLATFORM_ROLE_PROFILE_REF,
+  type PlatformAgentRole,
+} from "@/domain/platform-ai-policy";
+import {
   ROLE_RUNTIME_PROFILE_POLICY,
   type RuntimeProfile,
 } from "@/domain/academic-runtime-profile";
@@ -80,6 +84,48 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
         maxEstimatedCostMicrousd: 40_000,
       }),
     }),
+    COUNSELLOR_PLATFORM_V1: Object.freeze({
+      ref: "COUNSELLOR_PLATFORM_V1",
+      adapterKind: "OPENAI_RESPONSES",
+      providerConfig: Object.freeze({
+        model: "gpt-5.6-luna",
+        reasoningEffort: "low",
+        tariff: Object.freeze({
+          inputMicrousdPerMillionTokens: 200_000,
+          outputMicrousdPerMillionTokens: 1_200_000,
+          reviewedAt: "2026-09-18",
+        }),
+      }),
+      budgetPolicy: Object.freeze({
+        maxProviderCalls: 1,
+        maxAttempts: 1,
+        maxInputContextBytes: 12_000,
+        maxOutputTokens: 500,
+        totalDeadlineMs: 15_000,
+        maxEstimatedCostMicrousd: 10_000,
+      }),
+    }),
+    OPERATIONS_ENGINEER_PLATFORM_V1: Object.freeze({
+      ref: "OPERATIONS_ENGINEER_PLATFORM_V1",
+      adapterKind: "OPENAI_RESPONSES",
+      providerConfig: Object.freeze({
+        model: "gpt-5.6-terra",
+        reasoningEffort: "high",
+        tariff: Object.freeze({
+          inputMicrousdPerMillionTokens: 2_000_000,
+          outputMicrousdPerMillionTokens: 12_000_000,
+          reviewedAt: "2026-09-18",
+        }),
+      }),
+      budgetPolicy: Object.freeze({
+        maxProviderCalls: 1,
+        maxAttempts: 1,
+        maxInputContextBytes: 64_000,
+        maxOutputTokens: 1200,
+        totalDeadlineMs: 20_000,
+        maxEstimatedCostMicrousd: 100_000,
+      }),
+    }),
     EXAMINER_COMMERCIAL_V1: Object.freeze({
       ref: "EXAMINER_COMMERCIAL_V1",
       adapterKind: "OPENAI_RESPONSES",
@@ -150,4 +196,13 @@ export function resolveRoleBoundRuntimeProfile(
     return null;
   }
   return resolveInRegistry(effectiveRef);
+}
+
+
+export function resolvePlatformRuntimeProfile(
+  role: PlatformAgentRole,
+  resolveInRegistry: (ref: string) => RuntimeProfile | null = (ref) =>
+    resolveRuntimeProfile(ref),
+): RuntimeProfile | null {
+  return resolveInRegistry(PLATFORM_ROLE_PROFILE_REF[role]);
 }

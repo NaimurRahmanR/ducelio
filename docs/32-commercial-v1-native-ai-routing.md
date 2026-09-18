@@ -18,6 +18,8 @@ The fixed routing is:
 | TUTOR | OpenAI Responses | `gpt-5.6-luna` |
 | LAB_INSTRUCTOR | Anthropic Messages | `claude-sonnet-5` |
 | EXAMINER | OpenAI Responses | `gpt-5.6-luna` |
+| COUNSELLOR | OpenAI Responses | `gpt-5.6-luna` |
+| OPERATIONS_ENGINEER | OpenAI Responses | `gpt-5.6-terra` |
 
 No browser, learner, course package or stored agent configuration can select a
 vendor, model, endpoint, API key or tariff. They can only reference the same
@@ -72,13 +74,46 @@ the authority on whether marks are valid and publishable.
 
 ## Counsellor boundary
 
-PR22 deliberately does **not** provider-enable the existing academic
-`COUNSELLOR` role. That role is the privacy-sensitive assigned learner
-support plane and remains `providerBacked:false`.
+PR22 defines **one continuing institutional Counsellor role**, not separate
+prospect/support bots. Its execution context is segmented into three reviewed
+modes: `PROSPECT`, `ACTIVE_COURSE`, and `POST_COURSE`.
 
-A future free public/prospect admissions counsellor must be a separately
-bounded public-catalogue surface rather than silently reusing the academic
-support role or its private learner context.
+- PROSPECT may use public catalogue/pricing/prerequisite context, help a user
+  choose a course, and capture optional prospect preferences.
+- ACTIVE_COURSE may use only learner-owned logistics/support context and may
+  create structured academic handoffs. It does not receive Professor/Tutor/
+  Examiner authority and must not freely share private support conversations.
+- POST_COURSE may use learner-owned completion/progression context and explain
+  next-course/re-enrolment options.
+
+The historical academic-agent `COUNSELLOR` entry remains
+`providerBacked:false` because it is tied to the privacy-sensitive assigned
+support data plane and migration 036. PR22 does not silently open that plane.
+Instead, `COUNSELLOR_PLATFORM_V1` defines the native routing profile for the
+same institutional persona. A later execution slice must bind each mode to its
+own deterministic context gate before live calls are allowed.
+
+Counsellor is permanently prohibited from teaching course content, solving
+labs, answering controlled assessments, grading, changing institutional
+records, acting as a general chatbot, or acting as a therapist/diagnostic
+agent.
+
+## Operations Engineer boundary
+
+PR22 also defines `OPERATIONS_ENGINEER_PLATFORM_V1` as an **internal,
+admin-facing** AI role. It is routed to OpenAI Terra for bounded systems
+reasoning. Its capability catalogue is observation/proposal only: system
+health, provider failures, usage/cost, jobs/CI, migration status, error
+summaries, proposed fixes, proposed PRs, and draft release notes.
+
+It has no raw database or shell access, no service-role credentials, no secret
+access, no autonomous GitHub mutation, no merge authority and no production
+deploy authority. The intended path remains:
+
+`Admin -> Operations Engineer -> permissioned deterministic tools/services -> systems`
+
+PR22 defines routing and policy only; it does not create a production
+Operations Engineer tool-execution plane.
 
 ## Evidence and non-claims
 
