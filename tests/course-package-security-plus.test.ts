@@ -307,7 +307,7 @@ describe("SEC701-C official-objective breadth audit", () => {
 describe("SEC701-C customer-grade teaching depth", () => {
   const pkg = JSON.parse(rawPackageText) as CoursePackage;
   const wordCount = (value: string) =>
-    value.trim().split(/\\s+/).filter(Boolean).length;
+    value.trim().split(/\s+/).filter(Boolean).length;
 
   it("every principal lesson has at least one substantial embedded lecture note", () => {
     for (const courseModule of pkg.modules) {
