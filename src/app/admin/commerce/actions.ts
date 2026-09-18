@@ -82,16 +82,27 @@ export async function createCampaignAction(
 
   try {
     if (kind === "PERCENT_OFF") {
+      const percentOff = numberField(data.get("percentOff"));
+      if (percentOff === undefined || percentOff < 1 || percentOff > 99)
+        return { error: "Promotional percentage discounts must be 1-99%." };
       await createCommercialV1Campaign({
         ...base,
         kind,
-        percentOff: numberField(data.get("percentOff")),
+        percentOff,
       });
     } else if (kind === "FIXED_PRICE") {
+      const fixedPriceAmountMinor = numberField(
+        data.get("fixedPriceAmountMinor"),
+      );
+      if (fixedPriceAmountMinor === undefined || fixedPriceAmountMinor < 1)
+        return {
+          error:
+            "Promotional fixed prices must remain above zero. Use reviewer complimentary for free reviewer access.",
+        };
       await createCommercialV1Campaign({
         ...base,
         kind,
-        fixedPriceAmountMinor: numberField(data.get("fixedPriceAmountMinor")),
+        fixedPriceAmountMinor,
       });
     } else if (kind === "REVIEWER_COMPLIMENTARY") {
       await createCommercialV1Campaign({
