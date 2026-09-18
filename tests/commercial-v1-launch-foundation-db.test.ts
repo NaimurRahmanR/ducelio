@@ -238,6 +238,77 @@ describe("PR21 delivery-plan and campaign authority", () => {
     ).rejects.toThrow();
   });
 
+  it("binds campaign provenance to the same learner, offer and entitlement source", async () => {
+    const f = await fixture();
+    const offerId = await publishOffer(f);
+    const campaignId = await createReviewerCampaign(f);
+
+    await owner(f.db);
+    const foreignLearnerId = "00000000-0000-4000-8000-000000000099";
+    await f.db.query(
+      "insert into public.app_users(id,display_name,is_demo) values($1,'Foreign campaign learner',false)",
+      [foreignLearnerId],
+    );
+    await f.db.query(
+      "insert into public.student_profiles(user_id,student_number) values($1,'CMP-099')",
+      [foreignLearnerId],
+    );
+    await f.db.query(
+      "insert into public.role_grants(user_id,role) values($1,'STUDENT')",
+      [foreignLearnerId],
+    );
+    const foreignEnrolmentId = await value<string>(
+      f.db,
+      `insert into public.enrolments(student_id,cohort_id,programme_version_id,status)
+       values($1,$2,$3,'ACTIVE') returning id as v`,
+      [foreignLearnerId, f.cohortId, f.programmeVersionId],
+    );
+    const learnerRedemptionId = await value<string>(
+      f.db,
+      `insert into public.commercial_v1_campaign_redemptions(
+         campaign_id,offer_id,learner_id,entitlement_source,effective_price_amount_minor
+       ) values($1,$2,$3,'REVIEWER',0) returning id as v`,
+      [campaignId, offerId, learner],
+    );
+
+    await expect(
+      f.db.query(
+        `insert into public.commercial_v1_entitlements(
+           learner_id,offer_id,activation_id,order_id,enrolment_id,source,campaign_redemption_id
+         ) values($1,$2,$3,null,$4,'REVIEWER',$5)`,
+        [
+          foreignLearnerId,
+          offerId,
+          f.activationId,
+          foreignEnrolmentId,
+          learnerRedemptionId,
+        ],
+      ),
+    ).rejects.toThrow();
+
+    const foreignRedemptionId = await value<string>(
+      f.db,
+      `insert into public.commercial_v1_campaign_redemptions(
+         campaign_id,offer_id,learner_id,entitlement_source,effective_price_amount_minor
+       ) values($1,$2,$3,'PROMOTIONAL',0) returning id as v`,
+      [campaignId, offerId, foreignLearnerId],
+    );
+    await expect(
+      f.db.query(
+        `insert into public.commercial_v1_entitlements(
+           learner_id,offer_id,activation_id,order_id,enrolment_id,source,campaign_redemption_id
+         ) values($1,$2,$3,null,$4,'REVIEWER',$5)`,
+        [
+          foreignLearnerId,
+          offerId,
+          f.activationId,
+          foreignEnrolmentId,
+          foreignRedemptionId,
+        ],
+      ),
+    ).rejects.toThrow();
+  });
+
   it("campaign archival is one-way and preserves immutable pricing terms", async () => {
     const f = await fixture();
     await publishOffer(f);
