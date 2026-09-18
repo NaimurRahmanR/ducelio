@@ -43,8 +43,8 @@ describe("PR24 launch UX static boundaries", () => {
     expect(buyForm).toContain("required={!paymentAvailable}");
     expect(buyForm).toContain("Apply complimentary code");
     expect(buyForm).toContain("Continue to secure checkout");
-    expect(coursePage).toContain(
-      "Only a valid complimentary reviewer code can grant access",
+    expect(coursePage).toMatch(
+      /Only a valid\s+complimentary reviewer code can grant access/,
     );
   });
 
