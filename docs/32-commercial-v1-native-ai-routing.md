@@ -37,7 +37,10 @@ understate it because of a cheaper cache rate.
 
 The existing database ceilings remain untouched. PR22 does not add a
 migration. Professor and Lab profile cost ceilings are narrowed/adjusted only
-inside limits their existing database contracts already admit.
+inside limits their existing database contracts already admit. All four
+production profiles now state `maxAttempts:1`, matching their one-call
+admission envelope; Professor's historical `maxAttempts:2` could never make
+a second provider call while `maxProviderCalls` was already 1.
 
 ## Native API boundary
 
