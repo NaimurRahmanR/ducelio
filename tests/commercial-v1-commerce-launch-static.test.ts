@@ -43,6 +43,9 @@ describe("PR24 launch UX static boundaries", () => {
     expect(buyForm).toContain("required={!paymentAvailable}");
     expect(buyForm).toContain("Apply complimentary code");
     expect(buyForm).toContain("Continue to secure checkout");
+    expect(coursePage).toContain(
+      "Only a valid complimentary reviewer code can grant access",
+    );
   });
 
   it("never rewrites an existing order amount during campaign redemption", () => {
@@ -52,12 +55,12 @@ describe("PR24 launch UX static boundaries", () => {
     expect(migration).toMatch(/amount_minor,currency,campaign_redemption_id/);
   });
 
-  it("keeps zero-price access explicitly orderless", () => {
+  it("keeps reviewer complimentary access explicitly orderless", () => {
     expect(migration).toContain(
-      "Complimentary/promo-zero access creates academic enrolment and",
+      "Reviewer complimentary access creates enrolment + entitlement directly.",
     );
-    expect(migration).toContain(
-      "values(actor,o.id,o.activation_id,null,enrolment_id,source_kind,redemption_id)",
+    expect(migration).toMatch(
+      /insert into public\.commercial_v1_entitlements\([\s\S]*?values\([\s\S]*?actor,o\.id,o\.activation_id,null,enrolment_id,'REVIEWER',redemption_id[\s\S]*?\)/,
     );
   });
 });
