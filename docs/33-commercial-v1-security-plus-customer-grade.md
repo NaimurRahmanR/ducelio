@@ -32,6 +32,12 @@ The guides use a consistent learning structure:
 External references remain supplementary. No lesson depends on a third-party
 link as its only teaching material.
 
+PR23 also adds `objective-breadth-audit.json`: all 28 official objective IDs
+are bound to representative v5.0 subtopic terms, and tests require every term
+to appear in the corresponding learner guide. This is an audit aid rather
+than copied objective prose or exam content; its purpose is to catch a lesson
+that becomes longer while still omitting material parts of the blueprint.
+
 The content is original preparation material. It does not reproduce protected
 exam questions and does not claim CompTIA endorsement.
 
