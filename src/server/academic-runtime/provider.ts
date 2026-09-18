@@ -206,8 +206,8 @@ const openAIResponseSchema = z.object({
     }),
   ),
   usage: z.object({
-    input_tokens: z.number().int().min(0),
-    output_tokens: z.number().int().min(0),
+    input_tokens: z.number().int().min(0).max(1_000_000),
+    output_tokens: z.number().int().min(0).max(1_000_000),
   }),
 });
 
@@ -303,10 +303,22 @@ const anthropicResponseSchema = z.object({
     }),
   ),
   usage: z.object({
-    input_tokens: z.number().int().min(0),
-    output_tokens: z.number().int().min(0),
-    cache_creation_input_tokens: z.number().int().min(0).nullable().optional(),
-    cache_read_input_tokens: z.number().int().min(0).nullable().optional(),
+    input_tokens: z.number().int().min(0).max(1_000_000),
+    output_tokens: z.number().int().min(0).max(1_000_000),
+    cache_creation_input_tokens: z
+      .number()
+      .int()
+      .min(0)
+      .max(1_000_000)
+      .nullable()
+      .optional(),
+    cache_read_input_tokens: z
+      .number()
+      .int()
+      .min(0)
+      .max(1_000_000)
+      .nullable()
+      .optional(),
   }),
 });
 
