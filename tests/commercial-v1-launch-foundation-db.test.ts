@@ -4,6 +4,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import {
   buildCommerceFixture,
   learner,
+  foreignLearner,
   asPolicyUser,
   type CommerceFixture,
 } from "./commercial-v1-commerce-fixture";
@@ -244,24 +245,11 @@ describe("PR21 delivery-plan and campaign authority", () => {
     const campaignId = await createReviewerCampaign(f);
 
     await owner(f.db);
-    const foreignLearnerId = "00000000-0000-4000-8000-000000000099";
-    await f.db.query(
-      "insert into public.app_users(id,display_name,is_demo) values($1,'Foreign campaign learner',false)",
-      [foreignLearnerId],
-    );
-    await f.db.query(
-      "insert into public.student_profiles(user_id,student_number) values($1,'CMP-099')",
-      [foreignLearnerId],
-    );
-    await f.db.query(
-      "insert into public.role_grants(user_id,role) values($1,'STUDENT')",
-      [foreignLearnerId],
-    );
     const foreignEnrolmentId = await value<string>(
       f.db,
       `insert into public.enrolments(student_id,cohort_id,programme_version_id,status)
        values($1,$2,$3,'ACTIVE') returning id as v`,
-      [foreignLearnerId, f.cohortId, f.programmeVersionId],
+      [foreignLearner, f.cohortId, f.programmeVersionId],
     );
     const learnerRedemptionId = await value<string>(
       f.db,
@@ -277,7 +265,7 @@ describe("PR21 delivery-plan and campaign authority", () => {
            learner_id,offer_id,activation_id,order_id,enrolment_id,source,campaign_redemption_id
          ) values($1,$2,$3,null,$4,'REVIEWER',$5)`,
         [
-          foreignLearnerId,
+          foreignLearner,
           offerId,
           f.activationId,
           foreignEnrolmentId,
@@ -291,7 +279,7 @@ describe("PR21 delivery-plan and campaign authority", () => {
       `insert into public.commercial_v1_campaign_redemptions(
          campaign_id,offer_id,learner_id,entitlement_source,effective_price_amount_minor
        ) values($1,$2,$3,'PROMOTIONAL',0) returning id as v`,
-      [campaignId, offerId, foreignLearnerId],
+      [campaignId, offerId, foreignLearner],
     );
     await expect(
       f.db.query(
@@ -299,7 +287,7 @@ describe("PR21 delivery-plan and campaign authority", () => {
            learner_id,offer_id,activation_id,order_id,enrolment_id,source,campaign_redemption_id
          ) values($1,$2,$3,null,$4,'REVIEWER',$5)`,
         [
-          foreignLearnerId,
+          foreignLearner,
           offerId,
           f.activationId,
           foreignEnrolmentId,
