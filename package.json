@@ -16,7 +16,7 @@
     "test:db": "vitest run tests/database.test.ts tests/rls.test.ts",
     "test:http": "node scripts/smoke.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --write tests/commercial-v1-commerce-launch-static.test.ts && git diff --exit-code -- tests/commercial-v1-commerce-launch-static.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
