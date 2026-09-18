@@ -182,6 +182,12 @@ guide of at least 300 words. The package contains more than 10,000 words of
 embedded teaching material, and no lesson depends on an external link as its
 only teaching resource. External references remain supplementary.
 
+`objective-breadth-audit.json` binds all 28 official objective IDs to
+representative v5.0 subtopic terms and CI verifies that those terms are present
+in the corresponding learner guide. This catches the failure mode where a
+lesson is long but only teaches the headline while omitting major blueprint
+areas.
+
 Classroom and Notes preserve the study-guide paragraph structure for readable
 long-form material. Classroom also gives the learner a direct route to
 governed Practicals for Tutor/Lab Instructor support.
