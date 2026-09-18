@@ -396,6 +396,12 @@ class AnthropicMessagesProviderAdapter implements ProviderAdapter {
       (parsed.data.usage.cache_creation_input_tokens ?? 0) +
       (parsed.data.usage.cache_read_input_tokens ?? 0);
     const outputTokens = parsed.data.usage.output_tokens;
+    if (inputTokens > 1_000_000) {
+      throw new ProviderFailure(
+        "PROVIDER_INVALID_RESPONSE",
+        "Anthropic returned usage outside the reviewed accounting envelope.",
+      );
+    }
 
     return {
       outputText,
