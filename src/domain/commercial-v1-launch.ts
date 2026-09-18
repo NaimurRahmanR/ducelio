@@ -1,7 +1,6 @@
 import { z } from "zod";
 
-export const COMMERCIAL_V1_LAUNCH_POLICY =
-  "COMMERCIAL_V1_LAUNCH_V1" as const;
+export const COMMERCIAL_V1_LAUNCH_POLICY = "COMMERCIAL_V1_LAUNCH_V1" as const;
 
 export const deliveryPlanSchema = z.enum([
   "ACCELERATED_2_WEEK",
