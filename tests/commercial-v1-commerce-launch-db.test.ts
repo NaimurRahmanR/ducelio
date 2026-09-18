@@ -441,7 +441,6 @@ describe("PR24 campaign redemption authority", () => {
   });
 });
 
-
 describe("PR24 campaign access-control boundary", () => {
   it("learner can preview/redeem but cannot use the admin campaign listing", async () => {
     const f = await fixture();
@@ -477,9 +476,7 @@ describe("PR24 campaign access-control boundary", () => {
       ),
     ).rejects.toThrow();
     await expect(
-      f.db.query(
-        "select * from public.commercial_v1_campaign_redemptions",
-      ),
+      f.db.query("select * from public.commercial_v1_campaign_redemptions"),
     ).rejects.toThrow();
   });
 });
