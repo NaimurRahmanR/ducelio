@@ -36,7 +36,7 @@ export const providerTariffSchema = z.strictObject({
     .int()
     .positive()
     .max(100_000_000),
-  reviewedAt: z.iso.date(),
+  reviewedAt: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
 });
 export type ProviderTariff = z.infer<typeof providerTariffSchema>;
 
