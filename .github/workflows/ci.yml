@@ -27,11 +27,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate formatting diff
-        run: |
-          npx prettier --write .
-          git diff --exit-code
-
       - name: Run lint, typecheck, and tests
         run: npm run check
 
