@@ -198,6 +198,39 @@ describe("resolveAdapterForProfile", () => {
     expect(resolveAdapterForProfile(profile)).toBeNull();
   });
 
+  it("resolves each production profile to the intended native adapter when only server keys are present", () => {
+    const oldOpenAI = process.env.OPENAI_API_KEY;
+    const oldAnthropic = process.env.ANTHROPIC_API_KEY;
+    process.env.OPENAI_API_KEY = "openai-routing-test";
+    process.env.ANTHROPIC_API_KEY = "anthropic-routing-test";
+    try {
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1")!,
+        )?.name,
+      ).toBe("openai-responses");
+      expect(
+        resolveAdapterForProfile(resolveRuntimeProfile("TUTOR_COMMERCIAL_V1")!)
+          ?.name,
+      ).toBe("openai-responses");
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1")!,
+        )?.name,
+      ).toBe("anthropic-messages");
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("EXAMINER_COMMERCIAL_V1")!,
+        )?.name,
+      ).toBe("openai-responses");
+    } finally {
+      if (oldOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = oldOpenAI;
+      if (oldAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = oldAnthropic;
+    }
+  });
+
   it("fails closed when the role's native provider key is absent", () => {
     const oldOpenAI = process.env.OPENAI_API_KEY;
     const oldAnthropic = process.env.ANTHROPIC_API_KEY;
