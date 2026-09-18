@@ -12,11 +12,7 @@ import type {
   CommercialV1OfferActivation,
 } from "@/domain/commercial-v1-commerce";
 
-function CampaignState({
-  state,
-}: {
-  state: CommerceAdminState;
-}) {
+function CampaignState({ state }: { state: CommerceAdminState }) {
   return (
     <>
       {state.error && (
@@ -205,9 +201,7 @@ export function CreateCampaignForm({
         <select id="campaign-kind" name="kind" required>
           <option value="PERCENT_OFF">Percent off</option>
           <option value="FIXED_PRICE">Fixed price</option>
-          <option value="REVIEWER_COMPLIMENTARY">
-            Reviewer complimentary
-          </option>
+          <option value="REVIEWER_COMPLIMENTARY">Reviewer complimentary</option>
         </select>
       </div>
       <div className="field">
