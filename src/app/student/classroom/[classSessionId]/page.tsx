@@ -113,7 +113,9 @@ export default async function ClassroomPage({
                       {resource.kind.replace("_", " ")}
                     </Badge>
                     <h3>{resource.title}</h3>
-                    {resource.body && <p>{resource.body}</p>}
+                    {resource.body && (
+                      <div className="lesson-resource-body">{resource.body}</div>
+                    )}
                     {resource.url && (
                       <a
                         className="text-link"
