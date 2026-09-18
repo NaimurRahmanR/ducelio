@@ -285,7 +285,10 @@ describe("SEC701-C official-objective breadth audit", () => {
       ),
     );
     for (const objective of audit.objectives) {
-      expect(objective.terms.length, objective.officialObjectiveId).toBeGreaterThanOrEqual(8);
+      expect(
+        objective.terms.length,
+        objective.officialObjectiveId,
+      ).toBeGreaterThanOrEqual(8);
       const lesson = lessonByKey.get(objective.ducelioLessonRef);
       expect(lesson, objective.ducelioLessonRef).toBeDefined();
       const body = lesson!.resources
