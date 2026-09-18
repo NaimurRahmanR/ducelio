@@ -17,7 +17,9 @@ export function BuyCourseForm({
     <form action={action}>
       <input type="hidden" name="slug" value={slug} />
       <div className="field">
-        <label htmlFor="campaignCode">Promo or reviewer code</label>
+        <label htmlFor="campaignCode">
+          {paymentAvailable ? "Promo or reviewer code" : "Reviewer code"}
+        </label>
         <input
           id="campaignCode"
           name="campaignCode"
@@ -25,7 +27,7 @@ export function BuyCourseForm({
           minLength={4}
           maxLength={32}
           pattern="[A-Za-z0-9]+(-[A-Za-z0-9]+)*"
-          placeholder="Optional"
+          placeholder={paymentAvailable ? "Optional" : "Required"}
           required={!paymentAvailable}
         />
         <small className="muted">
