@@ -257,6 +257,10 @@ export async function createCommercialV1Checkout(
     order = created;
   }
 
+  if (!order) {
+    return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
+  }
+
   const env = config();
   const successUrl =
     env.appUrl +
