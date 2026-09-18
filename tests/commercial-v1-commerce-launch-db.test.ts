@@ -274,41 +274,33 @@ describe("PR24 campaign redemption authority", () => {
     ).rejects.toThrow(/immutable/i);
   });
 
-  it("100% promotional pricing grants PROMOTIONAL access without fabricating an order", async () => {
+  it("reserves zero-price access for reviewer campaigns only", async () => {
     const f = await fixture();
     await publishOffer(f);
-    await createCampaign(f, {
-      code: "PROMO-100",
-      kind: "PERCENT_OFF",
-      percentOff: 100,
-    });
 
-    await asLearner(f.db);
-    const redeemed = await value<Record<string, unknown>>(
-      f.db,
-      "select public.redeem_commercial_v1_campaign($1,$2) as v",
-      ["security-plus-sy0-701", "PROMO-100"],
-    );
-    expect(redeemed).toMatchObject({
-      ok: true,
-      path: "ACCESS_GRANTED",
-      effectivePriceAmountMinor: 0,
-    });
+    await expect(
+      createCampaign(f, {
+        code: "PROMO-100",
+        kind: "PERCENT_OFF",
+        percentOff: 100,
+      }),
+    ).rejects.toThrow(/ZERO_PRICE_RESERVED_FOR_REVIEWERS/);
+
+    await expect(
+      createCampaign(f, {
+        code: "FIXED-ZERO",
+        kind: "FIXED_PRICE",
+        fixedPriceAmountMinor: 0,
+      }),
+    ).rejects.toThrow(/ZERO_PRICE_RESERVED_FOR_REVIEWERS/);
 
     await owner(f.db);
     expect(
       await value<number>(
         f.db,
-        "select count(*)::int as v from public.commercial_v1_orders",
+        "select count(*)::int as v from public.commercial_v1_campaigns",
       ),
     ).toBe(0);
-    expect(
-      await value<string>(
-        f.db,
-        "select source as v from public.commercial_v1_entitlements where learner_id=$1",
-        [learner],
-      ),
-    ).toBe("PROMOTIONAL");
   });
 
   it("enforces the campaign cap under two different learners", async () => {
