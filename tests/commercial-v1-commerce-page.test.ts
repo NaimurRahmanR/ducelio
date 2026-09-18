@@ -214,9 +214,7 @@ describe("page: /courses/[slug]", () => {
     });
     const text = flatten(el);
     expect(text).toMatch(/card checkout is temporarily unavailable/i);
-    expect(text).toContain(
-      "BUY_FORM_MARKER:cybersecurity-foundations:false",
-    );
+    expect(text).toContain("BUY_FORM_MARKER:cybersecurity-foundations:false");
   });
 
   it("shows the buy/code form for an authenticated, unenrolled, unentitled viewer when commerce is configured", async () => {
@@ -228,9 +226,7 @@ describe("page: /courses/[slug]", () => {
       params: Promise.resolve({ slug: "cybersecurity-foundations" }),
     });
     const text = flatten(el);
-    expect(text).toContain(
-      "BUY_FORM_MARKER:cybersecurity-foundations:true",
-    );
+    expect(text).toContain("BUY_FORM_MARKER:cybersecurity-foundations:true");
   });
 
   it("V2 correction (item 12): the scheduling caption never claims immediate access -- only that it opens once verified/confirmed", async () => {
