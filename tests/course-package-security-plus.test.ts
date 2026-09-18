@@ -35,6 +35,10 @@ const rawSourcesText = readFileSync(
   resolve(PACKAGE_DIR, "sources.json"),
   "utf8",
 );
+const rawBreadthAuditText = readFileSync(
+  resolve(PACKAGE_DIR, "objective-breadth-audit.json"),
+  "utf8",
+);
 
 type ObjectiveCoverage = {
   schemaVersion: string;
@@ -242,6 +246,58 @@ describe("Security+ SY0-701 package: five-role configuration", () => {
     expect([...pkg.agentConfiguration.EXAMINER.capabilities].sort()).toEqual(
       ["grade_controlled_assessment", "grade_practical_lab"].sort(),
     );
+  });
+});
+
+describe("SEC701-C official-objective breadth audit", () => {
+  const pkg = JSON.parse(rawPackageText) as CoursePackage;
+  const audit = JSON.parse(rawBreadthAuditText) as {
+    schemaVersion: string;
+    packageKey: string;
+    packageRevision: number;
+    source: { publisher: string; examCode: string; documentVersion: string };
+    objectives: {
+      officialObjectiveId: string;
+      ducelioLessonRef: string;
+      terms: string[];
+    }[];
+  };
+
+  it("binds all 28 official objective ids exactly once to the current package revision", () => {
+    expect(audit.schemaVersion).toBe("SECURITY_PLUS_BREADTH_AUDIT_V1");
+    expect(audit.packageKey).toBe(pkg.packageKey);
+    expect(audit.packageRevision).toBe(pkg.packageRevision);
+    expect(audit.source).toEqual({
+      publisher: "CompTIA",
+      examCode: "SY0-701",
+      documentVersion: "5.0",
+    });
+    expect(audit.objectives).toHaveLength(28);
+    expect(new Set(audit.objectives.map((o) => o.officialObjectiveId))).toEqual(
+      expectedOfficialObjectiveIds(),
+    );
+  });
+
+  it("requires representative v5.0 breadth terms to be present in each learner study guide", () => {
+    const lessonByKey = new Map(
+      pkg.modules.flatMap((module) =>
+        module.lessons.map((lesson) => [lesson.key, lesson] as const),
+      ),
+    );
+    for (const objective of audit.objectives) {
+      expect(objective.terms.length, objective.officialObjectiveId).toBeGreaterThanOrEqual(8);
+      const lesson = lessonByKey.get(objective.ducelioLessonRef);
+      expect(lesson, objective.ducelioLessonRef).toBeDefined();
+      const body = lesson!.resources
+        .filter((resource) => resource.kind === "LECTURE_NOTE" && resource.body)
+        .map((resource) => resource.body)
+        .join("\n")
+        .toLowerCase();
+      for (const term of objective.terms)
+        expect(body, `${objective.officialObjectiveId}: ${term}`).toContain(
+          term.toLowerCase(),
+        );
+    }
   });
 });
 
