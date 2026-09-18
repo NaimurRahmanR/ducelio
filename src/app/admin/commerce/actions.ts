@@ -1,4 +1,5 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import {
   archiveCommercialV1Campaign,
   archiveCommercialV1Offer,
@@ -29,6 +30,8 @@ export async function publishOfferAction(
       deliveryPlan: data.get("deliveryPlan") || undefined,
       reason: data.get("reason"),
     });
+    revalidatePath("/admin/commerce");
+    revalidatePath("/courses");
     return {
       message:
         "Offer published. It is now visible on the public course catalogue.",
@@ -50,6 +53,8 @@ export async function archiveOfferAction(
       slug: data.get("slug"),
       reason: data.get("reason"),
     });
+    revalidatePath("/admin/commerce");
+    revalidatePath("/courses");
     return {
       message:
         "Offer archived. It no longer appears on the public catalogue; existing orders/entitlements are unaffected.",
@@ -96,6 +101,7 @@ export async function createCampaignAction(
     } else {
       return { error: "Choose a valid campaign kind." };
     }
+    revalidatePath("/admin/commerce");
     return {
       message:
         "Campaign created. The code can now be redeemed within its configured window and limit.",
@@ -117,6 +123,7 @@ export async function archiveCampaignAction(
       code: data.get("code"),
       reason: data.get("reason"),
     });
+    revalidatePath("/admin/commerce");
     return {
       message:
         "Campaign archived. Existing redemptions keep their immutable provenance.",
