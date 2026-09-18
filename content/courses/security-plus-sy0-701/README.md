@@ -170,7 +170,6 @@ across nine files; the strengthened lifecycle/upgrade DB suite separately passed
 Build, formatting and diff whitespace checks passed. Migrations 001-036 remain
 byte-identical to the canonical SEC701-A commit; 037 is the only new migration.
 
-
 ## SEC701-C customer-grade teaching depth
 
 Package revision 3 preserves the verified SY0-701 v5.0 objective map,
