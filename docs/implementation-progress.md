@@ -2,12 +2,12 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: SEC701-B is CLOSED GREEN via PR #20, merged at `90699d88067b0790ce38d5b205a838c757407503` on 2026-09-17. PR-head Ducelio CI #61 / run `35287645089` SUCCESS and post-main Ducelio CI #62 / run `35288774641` SUCCESS are the canonical closure evidence.
-CURRENT PARTIAL CHECKPOINT: PR21 launch foundation on `commercial-v1-launch-foundation`. This branch starts exactly from the SEC701-B merge and is not yet approved, merged or post-main proven.
-COMPLETED ITEMS: SEC701-B added backwards-compatible cumulative multi-lesson assessment provenance, Security+ revision 2 with a ten-question cumulative final across all five modules, and preserved the protected assessment firewall. Final local validation recorded 56/56 focused tests and a full check with 1,848 tests across 82 files; PR-head and post-main CI both passed.
-INCOMPLETE ITEMS: PR21 must independently validate delivery-plan identity, deterministic campaign pricing/provenance and reviewer/promotional entitlement foundations. Hosted PostgreSQL concurrency, Supabase/JWT, live provider/payment, browser/mobile/accessibility and production acceptance remain unproven.
-KNOWN FAILURES: None in the CLOSED GREEN SEC701-B checkpoint. PR21 validation evidence must not be claimed until its own CI completes.
-NEXT EXACT ACTION: Implement and independently review PR21 launch-foundation migration/domain/tests before merge.
+LAST COMPLETED CHECKPOINT: PR21 launch foundation is CLOSED GREEN via PR #21, merged at `cf3f0b5cd4b9759c2e8108e832ee24d6b6b78759` on 2026-09-18. PR-head Ducelio CI #67 / run `35346808574` SUCCESS and post-main Ducelio CI #68 / run `35348910862` SUCCESS are the canonical closure evidence.
+CURRENT PARTIAL CHECKPOINT: PR22 native AI routing on `commercial-v1-native-ai-routing`, branched exactly from the PR21 merge. It is not yet reviewed, PR-head CI-proven, merged or post-main proven.
+COMPLETED ITEMS: PR21 added immutable 2/4/6-week delivery-plan identity, deterministic campaign pricing authority, and paid/promotional/reviewer entitlement provenance without adding learner redemption. Its final PR-head and post-main CI both passed.
+INCOMPLETE ITEMS: PR22 must independently prove native OpenAI/Anthropic adapter request/response handling, exact server-owned role/model routing, conservative tariff accounting, secret hygiene and missing-provider fail-closed behaviour. No live provider call is in scope before the post-PR24 paid acceptance phase.
+KNOWN FAILURES: None in the CLOSED GREEN PR21 checkpoint. PR22 validation evidence must not be claimed until its own current-head CI completes.
+NEXT EXACT ACTION: Implement, independently review and CI-prove PR22 native AI routing without changing the existing database authority or spending on live provider calls.
 
 ## Phase 1 — complete
 

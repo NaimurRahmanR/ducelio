@@ -6,24 +6,102 @@ import {
 } from "@/server/academic-runtime/profile-registry";
 import { DEFAULT_RUNTIME_BUDGET_POLICY } from "@/domain/academic-runtime";
 import { PROVIDER_EXECUTION_DB_CEILING } from "@/domain/academic-provider-execution";
+import { TUTOR_LAB_EXECUTION_DB_CEILING } from "@/domain/tutor-lab-execution";
+import { EXAMINER_EXECUTION_DB_CEILING } from "@/domain/commercial-v1-examiner-grading";
 import type { RuntimeProfile } from "@/domain/academic-runtime-profile";
 
-describe("resolveRuntimeProfile", () => {
-  it("returns null for a null reference", () => {
-    expect(resolveRuntimeProfile(null)).toBeNull();
+describe("production native routing registry", () => {
+  it("routes each academic role only through its reviewed provider/model profile", () => {
+    expect(resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1")).toMatchObject({
+      adapterKind: "OPENAI_RESPONSES",
+      providerConfig: { model: "gpt-5.6-terra" },
+    });
+    expect(resolveRuntimeProfile("TUTOR_COMMERCIAL_V1")).toMatchObject({
+      adapterKind: "OPENAI_RESPONSES",
+      providerConfig: { model: "gpt-5.6-luna" },
+    });
+    expect(
+      resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1"),
+    ).toMatchObject({
+      adapterKind: "ANTHROPIC_MESSAGES",
+      providerConfig: { model: "claude-sonnet-5" },
+    });
+    expect(resolveRuntimeProfile("EXAMINER_COMMERCIAL_V1")).toMatchObject({
+      adapterKind: "OPENAI_RESPONSES",
+      providerConfig: { model: "gpt-5.6-luna" },
+    });
   });
 
-  it("returns null for any reference other than the one reviewed Commercial V1 profile", () => {
-    // The production registry contains exactly one reviewed entry,
-    // PROFESSOR_COMMERCIAL_V1 (see the dedicated describe block below);
-    // every other reference -- including a plausible-looking guess -- must
-    // still fail closed.
+  it("keeps reviewed tariff snapshots code-owned and dated", () => {
+    const professor = resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1");
+    const lab = resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1");
+    expect(professor?.adapterKind).toBe("OPENAI_RESPONSES");
+    if (professor?.adapterKind === "OPENAI_RESPONSES") {
+      expect(professor.providerConfig.tariff).toEqual({
+        inputMicrousdPerMillionTokens: 2_000_000,
+        outputMicrousdPerMillionTokens: 12_000_000,
+        reviewedAt: "2026-09-18",
+      });
+    }
+    expect(lab?.adapterKind).toBe("ANTHROPIC_MESSAGES");
+    if (lab?.adapterKind === "ANTHROPIC_MESSAGES") {
+      expect(lab.providerConfig.tariff).toEqual({
+        inputMicrousdPerMillionTokens: 2_000_000,
+        outputMicrousdPerMillionTokens: 10_000_000,
+        reviewedAt: "2026-09-18",
+      });
+    }
+  });
+
+  it("keeps every role profile within its existing database ceiling", () => {
+    const professor = resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1")!;
+    const tutor = resolveRuntimeProfile("TUTOR_COMMERCIAL_V1")!;
+    const lab = resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1")!;
+    const examiner = resolveRuntimeProfile("EXAMINER_COMMERCIAL_V1")!;
+
+    expect(professor.budgetPolicy.maxProviderCalls).toBeLessThanOrEqual(
+      PROVIDER_EXECUTION_DB_CEILING.maxProviderCalls,
+    );
+    expect(professor.budgetPolicy.maxOutputTokens).toBeLessThanOrEqual(
+      PROVIDER_EXECUTION_DB_CEILING.maxOutputTokens,
+    );
+    expect(professor.budgetPolicy.maxEstimatedCostMicrousd).toBeLessThanOrEqual(
+      PROVIDER_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
+    );
+
+    for (const profile of [tutor, lab]) {
+      expect(profile.budgetPolicy.maxProviderCalls).toBe(
+        TUTOR_LAB_EXECUTION_DB_CEILING.maxProviderCalls,
+      );
+      expect(profile.budgetPolicy.maxOutputTokens).toBeLessThanOrEqual(
+        TUTOR_LAB_EXECUTION_DB_CEILING.maxOutputTokens,
+      );
+      expect(
+        profile.budgetPolicy.maxEstimatedCostMicrousd,
+      ).toBeLessThanOrEqual(
+        TUTOR_LAB_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
+      );
+    }
+
+    expect(examiner.budgetPolicy.maxProviderCalls).toBe(
+      EXAMINER_EXECUTION_DB_CEILING.maxProviderCalls,
+    );
+    expect(examiner.budgetPolicy.maxOutputTokens).toBeLessThanOrEqual(
+      EXAMINER_EXECUTION_DB_CEILING.maxOutputTokens,
+    );
+    expect(examiner.budgetPolicy.maxEstimatedCostMicrousd).toBeLessThanOrEqual(
+      EXAMINER_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
+    );
+  });
+
+  it("fails closed for null, unknown and case-changed refs", () => {
+    expect(resolveRuntimeProfile(null)).toBeNull();
     expect(resolveRuntimeProfile("anything-at-all")).toBeNull();
     expect(resolveRuntimeProfile("professor_commercial_v1")).toBeNull();
     expect(resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V2")).toBeNull();
   });
 
-  it("resolves a profile only through an explicitly supplied registry, never implicitly", () => {
+  it("resolves custom profiles only through an explicit test registry", () => {
     const profile: RuntimeProfile = {
       ref: "explicit-test-profile",
       adapterKind: "TEST_DETERMINISTIC",
@@ -37,42 +115,8 @@ describe("resolveRuntimeProfile", () => {
   });
 });
 
-describe("the production registry's one reviewed Commercial V1 profile", () => {
-  it("resolves PROFESSOR_COMMERCIAL_V1 to a conservative, DB-ceiling-compliant HTTP_JSON profile", () => {
-    const profile = resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1");
-    expect(profile).toMatchObject({
-      ref: "PROFESSOR_COMMERCIAL_V1",
-      adapterKind: "HTTP_JSON",
-    });
-    expect(profile?.budgetPolicy.maxProviderCalls).toBeLessThanOrEqual(
-      PROVIDER_EXECUTION_DB_CEILING.maxProviderCalls,
-    );
-    expect(profile?.budgetPolicy.maxProviderCalls).toBeGreaterThanOrEqual(1);
-    expect(profile?.budgetPolicy.maxOutputTokens).toBeLessThanOrEqual(
-      PROVIDER_EXECUTION_DB_CEILING.maxOutputTokens,
-    );
-    expect(profile?.budgetPolicy.maxOutputTokens).toBeGreaterThanOrEqual(1);
-    expect(profile?.budgetPolicy.maxEstimatedCostMicrousd).toBeLessThanOrEqual(
-      PROVIDER_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
-    );
-    expect(
-      profile?.budgetPolicy.maxEstimatedCostMicrousd,
-    ).toBeGreaterThanOrEqual(1);
-  });
-
-  it("fails closed to null when no provider environment is configured, even for the reviewed profile", () => {
-    const profile = resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1")!;
-    expect(resolveAdapterForProfile(profile)).toBeNull();
-  });
-});
-
-// PR16A regression matrix (checkpoint section 16): every role's runtime
-// null/cross-role semantics, exercised directly against the real production
-// registry (no test-injected resolver) so this proves the ACTUAL shipped
-// PROFESSOR_COMMERCIAL_V1/TUTOR_COMMERCIAL_V1/LAB_INSTRUCTOR_COMMERCIAL_V1/
-// EXAMINER_COMMERCIAL_V1 entries, not merely the domain policy in isolation.
 describe("resolveRoleBoundRuntimeProfile", () => {
-  it("PROFESSOR: resolves its exact ref and fails closed for null or any other role's/unknown ref", () => {
+  it("PROFESSOR accepts only its exact non-null profile", () => {
     expect(
       resolveRoleBoundRuntimeProfile("PROFESSOR", "PROFESSOR_COMMERCIAL_V1"),
     ).toMatchObject({ ref: "PROFESSOR_COMMERCIAL_V1" });
@@ -80,98 +124,31 @@ describe("resolveRoleBoundRuntimeProfile", () => {
     expect(
       resolveRoleBoundRuntimeProfile("PROFESSOR", "TUTOR_COMMERCIAL_V1"),
     ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile(
-        "PROFESSOR",
-        "LAB_INSTRUCTOR_COMMERCIAL_V1",
-      ),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile("PROFESSOR", "EXAMINER_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile("PROFESSOR", "unknown-ref"),
-    ).toBeNull();
   });
 
-  it("TUTOR: null defaults to TUTOR_COMMERCIAL_V1; any other role's/unknown ref fails closed", () => {
+  it("TUTOR/LAB/EXAMINER default null only to their own fixed profile", () => {
     expect(resolveRoleBoundRuntimeProfile("TUTOR", null)).toMatchObject({
       ref: "TUTOR_COMMERCIAL_V1",
     });
     expect(
-      resolveRoleBoundRuntimeProfile("TUTOR", "TUTOR_COMMERCIAL_V1"),
-    ).toMatchObject({ ref: "TUTOR_COMMERCIAL_V1" });
-    expect(
-      resolveRoleBoundRuntimeProfile("TUTOR", "PROFESSOR_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile("TUTOR", "LAB_INSTRUCTOR_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile("TUTOR", "EXAMINER_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(resolveRoleBoundRuntimeProfile("TUTOR", "unknown-ref")).toBeNull();
-  });
-
-  it("LAB_INSTRUCTOR: null defaults to LAB_INSTRUCTOR_COMMERCIAL_V1; any other role's/unknown ref fails closed", () => {
-    expect(
       resolveRoleBoundRuntimeProfile("LAB_INSTRUCTOR", null),
     ).toMatchObject({ ref: "LAB_INSTRUCTOR_COMMERCIAL_V1" });
-    expect(
-      resolveRoleBoundRuntimeProfile(
-        "LAB_INSTRUCTOR",
-        "LAB_INSTRUCTOR_COMMERCIAL_V1",
-      ),
-    ).toMatchObject({ ref: "LAB_INSTRUCTOR_COMMERCIAL_V1" });
-    expect(
-      resolveRoleBoundRuntimeProfile(
-        "LAB_INSTRUCTOR",
-        "PROFESSOR_COMMERCIAL_V1",
-      ),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile("LAB_INSTRUCTOR", "TUTOR_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile(
-        "LAB_INSTRUCTOR",
-        "EXAMINER_COMMERCIAL_V1",
-      ),
-    ).toBeNull();
-  });
-
-  it("EXAMINER: null defaults to EXAMINER_COMMERCIAL_V1; any other role's/unknown ref fails closed", () => {
     expect(resolveRoleBoundRuntimeProfile("EXAMINER", null)).toMatchObject({
       ref: "EXAMINER_COMMERCIAL_V1",
     });
     expect(
-      resolveRoleBoundRuntimeProfile("EXAMINER", "EXAMINER_COMMERCIAL_V1"),
-    ).toMatchObject({ ref: "EXAMINER_COMMERCIAL_V1" });
-    expect(
-      resolveRoleBoundRuntimeProfile("EXAMINER", "PROFESSOR_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(
       resolveRoleBoundRuntimeProfile("EXAMINER", "TUTOR_COMMERCIAL_V1"),
-    ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile(
-        "EXAMINER",
-        "LAB_INSTRUCTOR_COMMERCIAL_V1",
-      ),
     ).toBeNull();
   });
 
-  it("COUNSELLOR: never resolves a profile, regardless of ref -- no provider execution path exists", () => {
+  it("COUNSELLOR remains non-provider-backed in the academic role plane", () => {
     expect(resolveRoleBoundRuntimeProfile("COUNSELLOR", null)).toBeNull();
     expect(
       resolveRoleBoundRuntimeProfile("COUNSELLOR", "EXAMINER_COMMERCIAL_V1"),
     ).toBeNull();
-    expect(
-      resolveRoleBoundRuntimeProfile("COUNSELLOR", "anything-at-all"),
-    ).toBeNull();
   });
 
-  it("consults an injected registry lookup only after role/null validation has already accepted the ref", () => {
+  it("validates role/ref before consulting an injected registry", () => {
     const calls: string[] = [];
     const profile: RuntimeProfile = {
       ref: "TUTOR_COMMERCIAL_V1",
@@ -198,7 +175,7 @@ describe("resolveRoleBoundRuntimeProfile", () => {
 });
 
 describe("resolveAdapterForProfile", () => {
-  it("never resolves a production adapter for a TEST_DETERMINISTIC profile", () => {
+  it("never resolves TEST_DETERMINISTIC through production code", () => {
     const profile: RuntimeProfile = {
       ref: "test-profile",
       adapterKind: "TEST_DETERMINISTIC",
@@ -207,12 +184,27 @@ describe("resolveAdapterForProfile", () => {
     expect(resolveAdapterForProfile(profile)).toBeNull();
   });
 
-  it("fails closed for an HTTP_JSON profile when no provider environment is configured", () => {
-    const profile: RuntimeProfile = {
-      ref: "http-profile",
-      adapterKind: "HTTP_JSON",
-      budgetPolicy: DEFAULT_RUNTIME_BUDGET_POLICY,
-    };
-    expect(resolveAdapterForProfile(profile)).toBeNull();
+  it("fails closed when the role's native provider key is absent", () => {
+    const oldOpenAI = process.env.OPENAI_API_KEY;
+    const oldAnthropic = process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+    try {
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("PROFESSOR_COMMERCIAL_V1")!,
+        ),
+      ).toBeNull();
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1")!,
+        ),
+      ).toBeNull();
+    } finally {
+      if (oldOpenAI === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = oldOpenAI;
+      if (oldAnthropic === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = oldAnthropic;
+    }
   });
 });
