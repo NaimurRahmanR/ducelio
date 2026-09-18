@@ -39,7 +39,8 @@ export async function startCheckout(
       };
     if (result.code === "OFFER_ALREADY_REDEEMED")
       return {
-        error: "A different campaign code has already been applied to this course.",
+        error:
+          "A different campaign code has already been applied to this course.",
       };
     if (result.code === "CHECKOUT_ALREADY_STARTED")
       return {
