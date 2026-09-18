@@ -34,7 +34,13 @@ vi.mock("next/navigation", () => ({
 // text marker so its presence/absence in the page tree is directly
 // observable.
 vi.mock("@/components/buy-course-form", () => ({
-  BuyCourseForm: ({ slug }: { slug: string }) => "BUY_FORM_MARKER:" + slug,
+  BuyCourseForm: ({
+    slug,
+    paymentAvailable,
+  }: {
+    slug: string;
+    paymentAvailable: boolean;
+  }) => `BUY_FORM_MARKER:${slug}:${paymentAvailable}`,
 }));
 
 import CoursesPage from "@/app/courses/page";
@@ -78,6 +84,7 @@ const baseOffer = {
   currency: "GBP",
   summary: "A hands-on introduction.",
   cohortStartsOn: "2026-09-01",
+  deliveryPlan: "STANDARD_6_WEEK" as const,
   viewerAuthenticated: false,
   viewerEntitled: false,
   viewerEnrolmentId: null,
@@ -135,7 +142,7 @@ describe("page: /courses/[slug]", () => {
       params: Promise.resolve({ slug: "cybersecurity-foundations" }),
     });
     const text = flatten(el);
-    expect(text).toMatch(/sign in to buy/i);
+    expect(text).toMatch(/sign in to continue/i);
     expect(text).toContain("Create an account");
   });
 
@@ -196,7 +203,7 @@ describe("page: /courses/[slug]", () => {
     expect(text).not.toContain("BUY_FORM_MARKER:");
   });
 
-  it("shows a truthful unavailable notice (never a buy button) when commerce is not configured", async () => {
+  it("when card checkout is unavailable, still exposes the code form for complimentary access", async () => {
     mocks.commerceConfig.mockReturnValue({ configured: false });
     mocks.getCommercialV1Offer.mockResolvedValue({
       ...baseOffer,
@@ -206,11 +213,13 @@ describe("page: /courses/[slug]", () => {
       params: Promise.resolve({ slug: "cybersecurity-foundations" }),
     });
     const text = flatten(el);
-    expect(text).toMatch(/unavailable/i);
-    expect(text).not.toContain("BUY_FORM_MARKER:");
+    expect(text).toMatch(/card checkout is temporarily unavailable/i);
+    expect(text).toContain(
+      "BUY_FORM_MARKER:cybersecurity-foundations:false",
+    );
   });
 
-  it("shows the buy form for an authenticated, unenrolled, unentitled viewer when commerce is configured", async () => {
+  it("shows the buy/code form for an authenticated, unenrolled, unentitled viewer when commerce is configured", async () => {
     mocks.getCommercialV1Offer.mockResolvedValue({
       ...baseOffer,
       viewerAuthenticated: true,
@@ -219,7 +228,9 @@ describe("page: /courses/[slug]", () => {
       params: Promise.resolve({ slug: "cybersecurity-foundations" }),
     });
     const text = flatten(el);
-    expect(text).toContain("BUY_FORM_MARKER:cybersecurity-foundations");
+    expect(text).toContain(
+      "BUY_FORM_MARKER:cybersecurity-foundations:true",
+    );
   });
 
   it("V2 correction (item 12): the scheduling caption never claims immediate access -- only that it opens once verified/confirmed", async () => {
@@ -239,6 +250,7 @@ describe("action: startCheckout", () => {
   it("redirects to the real Stripe-hosted URL on success", async () => {
     mocks.createCommercialV1Checkout.mockResolvedValue({
       ok: true,
+      kind: "CHECKOUT",
       url: "https://checkout.stripe.test/cs_test_1",
       orderId: "order-1",
     });
@@ -246,6 +258,26 @@ describe("action: startCheckout", () => {
     form.set("slug", "cybersecurity-foundations");
     await expect(startCheckout({}, form)).rejects.toThrow(
       "REDIRECT:https://checkout.stripe.test/cs_test_1",
+    );
+  });
+
+  it("passes an optional campaign code and redirects direct access into the learner programme", async () => {
+    mocks.createCommercialV1Checkout.mockResolvedValue({
+      ok: true,
+      kind: "ACCESS_GRANTED",
+      entitlementId: "entitlement-1",
+      enrolmentId: "enrolment-1",
+      offerSlug: "cybersecurity-foundations",
+    });
+    const form = new FormData();
+    form.set("slug", "cybersecurity-foundations");
+    form.set("campaignCode", "reviewer-50");
+    await expect(startCheckout({}, form)).rejects.toThrow(
+      "REDIRECT:/student/programme?access=granted",
+    );
+    expect(mocks.createCommercialV1Checkout).toHaveBeenCalledWith(
+      "cybersecurity-foundations",
+      "reviewer-50",
     );
   });
 
