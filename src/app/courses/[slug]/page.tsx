@@ -104,9 +104,9 @@ export default async function Page({
             <>
               {!checkoutAvailable && (
                 <p className="notice" role="status">
-                  Card checkout is temporarily unavailable. A valid
-                  complimentary reviewer or promotional code can still grant
-                  access.
+                  Card checkout is temporarily unavailable. Only a valid
+                  complimentary reviewer code can grant access without card
+                  payment.
                 </p>
               )}
               <BuyCourseForm
