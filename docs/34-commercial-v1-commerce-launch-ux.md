@@ -70,8 +70,10 @@ as a completed paid sale.
 
 ## Zero-price path
 
-A reviewer complimentary campaign, or another valid campaign whose deterministic
-effective price is zero, never creates a commercial order or payment event.
+Only a `REVIEWER_COMPLIMENTARY` campaign may have a zero effective price.
+Percentage and fixed-price promotional campaigns are rejected if they would
+make the course free. Reviewer complimentary access never creates a commercial
+order or payment event.
 
 The transaction instead creates/reuses the exact ACTIVE academic enrolment,
 writes the campaign redemption, and creates a promotional/reviewer entitlement
@@ -110,10 +112,10 @@ bounded redemption limits.
 
 An eligible authenticated learner sees one purchase/access form:
 
-- with configured card commerce, a code is optional and paid paths continue to
-  hosted Stripe Checkout;
+- with configured card commerce, a code is optional and paid promotional
+  discounts continue to hosted Stripe Checkout;
 - without configured card commerce, the form requires a code and only a valid
-  zero-price campaign can proceed;
+  reviewer-complimentary campaign can proceed;
 - direct complimentary access redirects into the learner programme;
 - existing entitlement/enrolment states continue to suppress duplicate
   purchasing.
