@@ -310,8 +310,8 @@ describe("SEC701-C customer-grade teaching depth", () => {
     value.trim().split(/\\s+/).filter(Boolean).length;
 
   it("every principal lesson has at least one substantial embedded lecture note", () => {
-    for (const module of pkg.modules) {
-      for (const lesson of module.lessons) {
+    for (const courseModule of pkg.modules) {
+      for (const lesson of courseModule.lessons) {
         const bodies = lesson.resources
           .filter((resource) => resource.kind === "LECTURE_NOTE")
           .map((resource) => resource.body ?? "")
@@ -335,8 +335,8 @@ describe("SEC701-C customer-grade teaching depth", () => {
   });
 
   it("no lesson depends on an external reference as its only teaching material", () => {
-    for (const module of pkg.modules)
-      for (const lesson of module.lessons)
+    for (const courseModule of pkg.modules)
+      for (const lesson of courseModule.lessons)
         expect(
           lesson.resources.some(
             (resource) => resource.kind === "LECTURE_NOTE" && resource.body,
