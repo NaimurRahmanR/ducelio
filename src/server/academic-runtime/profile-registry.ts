@@ -184,10 +184,7 @@ export function resolveRoleBoundRuntimeProfile(
   if (!policy.providerBacked) return null;
   let effectiveRef: string;
   if (ref === null) {
-    if (
-      policy.nullBehavior !== "DEFAULT_TO_ROLE_PROFILE" ||
-      !policy.allowedRef
-    )
+    if (policy.nullBehavior !== "DEFAULT_TO_ROLE_PROFILE" || !policy.allowedRef)
       return null;
     effectiveRef = policy.allowedRef;
   } else if (ref === policy.allowedRef) {
@@ -197,7 +194,6 @@ export function resolveRoleBoundRuntimeProfile(
   }
   return resolveInRegistry(effectiveRef);
 }
-
 
 export function resolvePlatformRuntimeProfile(
   role: PlatformAgentRole,

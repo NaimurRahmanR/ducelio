@@ -167,7 +167,8 @@ class HttpJsonProviderAdapter implements ProviderAdapter {
       signal,
       "The configured provider",
     );
-    if (!res.ok) throw safeProviderFailure(res.status, "The configured provider");
+    if (!res.ok)
+      throw safeProviderFailure(res.status, "The configured provider");
 
     let json: unknown;
     try {

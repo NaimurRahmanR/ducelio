@@ -26,16 +26,8 @@ const runtimeModelIdSchema = z
   .regex(/^[A-Za-z0-9_.:-]+$/);
 
 export const providerTariffSchema = z.strictObject({
-  inputMicrousdPerMillionTokens: z
-    .number()
-    .int()
-    .positive()
-    .max(100_000_000),
-  outputMicrousdPerMillionTokens: z
-    .number()
-    .int()
-    .positive()
-    .max(100_000_000),
+  inputMicrousdPerMillionTokens: z.number().int().positive().max(100_000_000),
+  outputMicrousdPerMillionTokens: z.number().int().positive().max(100_000_000),
   reviewedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type ProviderTariff = z.infer<typeof providerTariffSchema>;
@@ -54,9 +46,7 @@ export const openAIResponsesConfigSchema = z.strictObject({
   reasoningEffort: openAIReasoningEffortSchema,
   tariff: providerTariffSchema,
 });
-export type OpenAIResponsesConfig = z.infer<
-  typeof openAIResponsesConfigSchema
->;
+export type OpenAIResponsesConfig = z.infer<typeof openAIResponsesConfigSchema>;
 
 export const anthropicMessagesConfigSchema = z.strictObject({
   model: runtimeModelIdSchema,

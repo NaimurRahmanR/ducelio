@@ -23,12 +23,12 @@ describe("production native routing registry", () => {
       adapterKind: "OPENAI_RESPONSES",
       providerConfig: { model: "gpt-5.6-luna" },
     });
-    expect(
-      resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1"),
-    ).toMatchObject({
-      adapterKind: "ANTHROPIC_MESSAGES",
-      providerConfig: { model: "claude-sonnet-5" },
-    });
+    expect(resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1")).toMatchObject(
+      {
+        adapterKind: "ANTHROPIC_MESSAGES",
+        providerConfig: { model: "claude-sonnet-5" },
+      },
+    );
     expect(resolveRuntimeProfile("EXAMINER_COMMERCIAL_V1")).toMatchObject({
       adapterKind: "OPENAI_RESPONSES",
       providerConfig: { model: "gpt-5.6-luna" },
@@ -42,7 +42,9 @@ describe("production native routing registry", () => {
       "LAB_INSTRUCTOR_COMMERCIAL_V1",
       "EXAMINER_COMMERCIAL_V1",
     ]) {
-      expect(() => runtimeProfileSchema.parse(resolveRuntimeProfile(ref))).not.toThrow();
+      expect(() =>
+        runtimeProfileSchema.parse(resolveRuntimeProfile(ref)),
+      ).not.toThrow();
     }
   });
 
@@ -94,9 +96,7 @@ describe("production native routing registry", () => {
       expect(profile.budgetPolicy.maxOutputTokens).toBeLessThanOrEqual(
         TUTOR_LAB_EXECUTION_DB_CEILING.maxOutputTokens,
       );
-      expect(
-        profile.budgetPolicy.maxEstimatedCostMicrousd,
-      ).toBeLessThanOrEqual(
+      expect(profile.budgetPolicy.maxEstimatedCostMicrousd).toBeLessThanOrEqual(
         TUTOR_LAB_EXECUTION_DB_CEILING.maxEstimatedCostMicrousd,
       );
     }

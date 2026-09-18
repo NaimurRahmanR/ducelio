@@ -12,14 +12,14 @@ authority unchanged.
 
 The fixed routing is:
 
-| Academic role | Provider adapter | Reviewed model |
-| --- | --- | --- |
-| PROFESSOR | OpenAI Responses | `gpt-5.6-terra` |
-| TUTOR | OpenAI Responses | `gpt-5.6-luna` |
-| LAB_INSTRUCTOR | Anthropic Messages | `claude-sonnet-5` |
-| EXAMINER | OpenAI Responses | `gpt-5.6-luna` |
-| COUNSELLOR | OpenAI Responses | `gpt-5.6-luna` |
-| OPERATIONS_ENGINEER | OpenAI Responses | `gpt-5.6-terra` |
+| Academic role       | Provider adapter   | Reviewed model    |
+| ------------------- | ------------------ | ----------------- |
+| PROFESSOR           | OpenAI Responses   | `gpt-5.6-terra`   |
+| TUTOR               | OpenAI Responses   | `gpt-5.6-luna`    |
+| LAB_INSTRUCTOR      | Anthropic Messages | `claude-sonnet-5` |
+| EXAMINER            | OpenAI Responses   | `gpt-5.6-luna`    |
+| COUNSELLOR          | OpenAI Responses   | `gpt-5.6-luna`    |
+| OPERATIONS_ENGINEER | OpenAI Responses   | `gpt-5.6-terra`   |
 
 No browser, learner, course package or stored agent configuration can select a
 vendor, model, endpoint, API key or tariff. They can only reference the same

@@ -147,20 +147,21 @@ describe("OpenAI Responses native adapter", () => {
     process.env.OPENAI_API_KEY = "openai-test-secret";
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            status: "completed",
-            output: [
-              {
-                type: "message",
-                content: [{ type: "refusal", refusal: "Cannot comply" }],
-              },
-            ],
-            usage: { input_tokens: 1, output_tokens: 1 },
-          }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              status: "completed",
+              output: [
+                {
+                  type: "message",
+                  content: [{ type: "refusal", refusal: "Cannot comply" }],
+                },
+              ],
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+            { status: 200 },
+          ),
       ),
     );
     await expect(
@@ -175,15 +176,16 @@ describe("OpenAI Responses native adapter", () => {
     process.env.OPENAI_API_KEY = "openai-test-secret";
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            status: "incomplete",
-            output: [],
-            usage: { input_tokens: 1, output_tokens: 1 },
-          }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              status: "incomplete",
+              output: [],
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+            { status: 200 },
+          ),
       ),
     );
     await expect(
@@ -253,16 +255,17 @@ describe("Anthropic Messages native adapter", () => {
     process.env.ANTHROPIC_API_KEY = "anthropic-test-secret";
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        new Response(
-          JSON.stringify({
-            type: "message",
-            stop_reason: "refusal",
-            content: [{ type: "text", text: "Declined" }],
-            usage: { input_tokens: 1, output_tokens: 1 },
-          }),
-          { status: 200 },
-        ),
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              type: "message",
+              stop_reason: "refusal",
+              content: [{ type: "text", text: "Declined" }],
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+            { status: 200 },
+          ),
       ),
     );
     await expect(
