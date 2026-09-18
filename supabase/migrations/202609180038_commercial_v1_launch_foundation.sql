@@ -167,7 +167,11 @@ create table public.commercial_v1_campaign_redemptions (
   effective_price_amount_minor integer not null check(effective_price_amount_minor between 0 and 100000000),
   redeemed_at timestamptz not null default clock_timestamp(),
   foreign key(campaign_id,offer_id) references public.commercial_v1_campaigns(id,offer_id),
-  unique(campaign_id,learner_id)
+  unique(campaign_id,learner_id),
+  -- Supports the entitlement provenance FK below. This makes the redemption
+  -- identity relationally inseparable from its learner, offer and access
+  -- source instead of trusting a future caller to compare those fields.
+  unique(id,learner_id,offer_id,entitlement_source)
 );
 create index commercial_v1_campaign_redemptions_learner
   on public.commercial_v1_campaign_redemptions(learner_id,redeemed_at desc);
@@ -196,7 +200,10 @@ alter table public.commercial_v1_entitlements
     (source='PAID_ORDER' and order_id is not null and campaign_redemption_id is null)
     or
     (source in ('PROMOTIONAL','REVIEWER') and order_id is null and campaign_redemption_id is not null)
-  );
+  ),
+  add constraint commercial_v1_entitlements_campaign_provenance
+  foreign key(campaign_redemption_id,learner_id,offer_id,source)
+    references public.commercial_v1_campaign_redemptions(id,learner_id,offer_id,entitlement_source);
 
 revoke all on public.commercial_v1_entitlements from public,anon,authenticated,service_role;
 
