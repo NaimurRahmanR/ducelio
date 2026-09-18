@@ -48,8 +48,9 @@ amount, so the effective price never receives more than the stated percentage
 discount. A fixed-price campaign may lower a list price to zero but may never
 increase it. Reviewer complimentary pricing is exactly zero.
 
-The campaign row records a bounded active window, a hard configured redemption
-limit, immutable pricing terms and creator/archive provenance. Archival is
+The campaign row records a bounded active window, a configured redemption cap,
+immutable pricing terms and creator/archive provenance. PR24 is responsible for
+transactionally enforcing that cap when redemption becomes reachable. Archival is
 one-way.
 
 Only the existing Academy/Platform admin authority can call
@@ -68,6 +69,10 @@ The existing entitlement table gains explicit `source` provenance:
 - `PAID_ORDER` requires a real `order_id` and forbids campaign provenance;
 - `PROMOTIONAL` requires a campaign redemption and forbids a fake order;
 - `REVIEWER` requires a campaign redemption and forbids a fake order.
+
+A composite foreign key also requires promotional/reviewer entitlements to
+match the exact redemption learner, offer and entitlement source. A valid
+redemption id from another learner, offer or source cannot be attached.
 
 Historical entitlements remain `PAID_ORDER`. Existing Stripe fulfillment
 continues to create paid-order entitlements through the existing function and
