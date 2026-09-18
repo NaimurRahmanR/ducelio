@@ -13,24 +13,30 @@ const migration = readFileSync(
 );
 
 describe("PR24 launch UX static boundaries", () => {
-  it("makes £29.99 GBP a transparent admin launch default, not a fabricated markdown", () => {
-    expect(adminForms).toContain("defaultValue={2999}");
-    expect(adminForms).toContain('defaultValue="GBP"');
-    expect(adminForms).toContain("Security+ founding launch default");
-    expect(coursePage).not.toMatch(/£249|was £|save \d+%|limited places/i);
-  });
+  it(
+    "makes £29.99 GBP a transparent admin launch default, not a fabricated markdown",
+    () => {
+      expect(adminForms).toContain("defaultValue={2999}");
+      expect(adminForms).toContain('defaultValue="GBP"');
+      expect(adminForms).toContain("Security+ founding launch default");
+      expect(coursePage).not.toMatch(/£249|was £|save \d+%|limited places/i);
+    },
+  );
 
-  it("exposes all three immutable delivery plans in administration and renders the database plan on the course page", () => {
-    for (const plan of [
-      "ACCELERATED_2_WEEK",
-      "INTENSIVE_4_WEEK",
-      "STANDARD_6_WEEK",
-    ])
-      expect(adminForms).toContain(plan);
-    expect(coursePage).toContain(
-      "DELIVERY_PLAN_DEFINITIONS[offer.deliveryPlan]",
-    );
-  });
+  it(
+    "exposes all three immutable delivery plans in administration and renders the database plan on the course page",
+    () => {
+      for (const plan of [
+        "ACCELERATED_2_WEEK",
+        "INTENSIVE_4_WEEK",
+        "STANDARD_6_WEEK",
+      ])
+        expect(adminForms).toContain(plan);
+      expect(coursePage).toContain(
+        "DELIVERY_PLAN_DEFINITIONS[offer.deliveryPlan]",
+      );
+    },
+  );
 
   it("reserves free campaign creation for the explicit reviewer kind", () => {
     expect(adminForms).toContain('max={99}');
@@ -39,21 +45,27 @@ describe("PR24 launch UX static boundaries", () => {
     expect(adminForms).toContain("Reviewer complimentary");
   });
 
-  it("requires a code when card commerce is unavailable but keeps it optional otherwise", () => {
-    expect(buyForm).toContain("required={!paymentAvailable}");
-    expect(buyForm).toContain("Apply complimentary code");
-    expect(buyForm).toContain("Continue to secure checkout");
-    expect(coursePage.replace(/\s+/g, " ")).toContain(
-      "Only a valid complimentary reviewer code can grant access",
-    );
-  });
+  it(
+    "requires a code when card commerce is unavailable but keeps it optional otherwise",
+    () => {
+      expect(buyForm).toContain("required={!paymentAvailable}");
+      expect(buyForm).toContain("Apply complimentary code");
+      expect(buyForm).toContain("Continue to secure checkout");
+      expect(coursePage.replace(/\s+/g, " ")).toContain(
+        "Only a valid complimentary reviewer code can grant access",
+      );
+    },
+  );
 
-  it("never rewrites an existing order amount during campaign redemption", () => {
-    expect(migration).not.toMatch(
-      /update\s+public\.commercial_v1_orders\s+set\s+amount_minor/i,
-    );
-    expect(migration).toMatch(/amount_minor,currency,campaign_redemption_id/);
-  });
+  it(
+    "never rewrites an existing order amount during campaign redemption",
+    () => {
+      expect(migration).not.toMatch(
+        /update\s+public\.commercial_v1_orders\s+set\s+amount_minor/i,
+      );
+      expect(migration).toMatch(/amount_minor,currency,campaign_redemption_id/);
+    },
+  );
 
   it("keeps reviewer complimentary access explicitly orderless", () => {
     expect(migration).toContain(
