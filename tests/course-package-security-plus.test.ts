@@ -35,6 +35,10 @@ const rawSourcesText = readFileSync(
   resolve(PACKAGE_DIR, "sources.json"),
   "utf8",
 );
+const rawBreadthAuditText = readFileSync(
+  resolve(PACKAGE_DIR, "objective-breadth-audit.json"),
+  "utf8",
+);
 
 type ObjectiveCoverage = {
   schemaVersion: string;
@@ -245,6 +249,103 @@ describe("Security+ SY0-701 package: five-role configuration", () => {
   });
 });
 
+describe("SEC701-C official-objective breadth audit", () => {
+  const pkg = JSON.parse(rawPackageText) as CoursePackage;
+  const audit = JSON.parse(rawBreadthAuditText) as {
+    schemaVersion: string;
+    packageKey: string;
+    packageRevision: number;
+    source: { publisher: string; examCode: string; documentVersion: string };
+    objectives: {
+      officialObjectiveId: string;
+      ducelioLessonRef: string;
+      terms: string[];
+    }[];
+  };
+
+  it("binds all 28 official objective ids exactly once to the current package revision", () => {
+    expect(audit.schemaVersion).toBe("SECURITY_PLUS_BREADTH_AUDIT_V1");
+    expect(audit.packageKey).toBe(pkg.packageKey);
+    expect(audit.packageRevision).toBe(pkg.packageRevision);
+    expect(audit.source).toEqual({
+      publisher: "CompTIA",
+      examCode: "SY0-701",
+      documentVersion: "5.0",
+    });
+    expect(audit.objectives).toHaveLength(28);
+    expect(new Set(audit.objectives.map((o) => o.officialObjectiveId))).toEqual(
+      expectedOfficialObjectiveIds(),
+    );
+  });
+
+  it("requires representative v5.0 breadth terms to be present in each learner study guide", () => {
+    const lessonByKey = new Map(
+      pkg.modules.flatMap((module) =>
+        module.lessons.map((lesson) => [lesson.key, lesson] as const),
+      ),
+    );
+    for (const objective of audit.objectives) {
+      expect(
+        objective.terms.length,
+        objective.officialObjectiveId,
+      ).toBeGreaterThanOrEqual(8);
+      const lesson = lessonByKey.get(objective.ducelioLessonRef);
+      expect(lesson, objective.ducelioLessonRef).toBeDefined();
+      const body = lesson!.resources
+        .filter((resource) => resource.kind === "LECTURE_NOTE" && resource.body)
+        .map((resource) => resource.body)
+        .join("\n")
+        .toLowerCase();
+      for (const term of objective.terms)
+        expect(body, `${objective.officialObjectiveId}: ${term}`).toContain(
+          term.toLowerCase(),
+        );
+    }
+  });
+});
+
+describe("SEC701-C customer-grade teaching depth", () => {
+  const pkg = JSON.parse(rawPackageText) as CoursePackage;
+  const wordCount = (value: string) =>
+    value.trim().split(/\s+/).filter(Boolean).length;
+
+  it("every principal lesson has at least one substantial embedded lecture note", () => {
+    for (const courseModule of pkg.modules) {
+      for (const lesson of courseModule.lessons) {
+        const bodies = lesson.resources
+          .filter((resource) => resource.kind === "LECTURE_NOTE")
+          .map((resource) => resource.body ?? "")
+          .filter(Boolean);
+        expect(bodies.length, lesson.key).toBeGreaterThan(0);
+        expect(
+          bodies.reduce((sum, body) => sum + wordCount(body), 0),
+          lesson.key,
+        ).toBeGreaterThanOrEqual(300);
+      }
+    }
+  });
+
+  it("ships at least ten thousand words of embedded learner-facing teaching material", () => {
+    const total = pkg.modules
+      .flatMap((module) => module.lessons)
+      .flatMap((lesson) => lesson.resources)
+      .filter((resource) => resource.kind === "LECTURE_NOTE" && resource.body)
+      .reduce((sum, resource) => sum + wordCount(resource.body!), 0);
+    expect(total).toBeGreaterThanOrEqual(10_000);
+  });
+
+  it("no lesson depends on an external reference as its only teaching material", () => {
+    for (const courseModule of pkg.modules)
+      for (const lesson of courseModule.lessons)
+        expect(
+          lesson.resources.some(
+            (resource) => resource.kind === "LECTURE_NOTE" && resource.body,
+          ),
+          lesson.key,
+        ).toBe(true);
+  });
+});
+
 describe("Security+ SY0-701 package: practical/lab and assessment content", () => {
   const pkg = JSON.parse(rawPackageText) as CoursePackage;
   const allActivities = pkg.modules.flatMap((m) =>
@@ -395,11 +496,11 @@ describe("Security+ SY0-701 package: institutional design constraints", () => {
   });
 });
 
-describe("SEC701-B revision 2 cumulative final", () => {
+describe("SEC701-C revision 3 cumulative final", () => {
   const pkg = coursePackageSchema.parse(JSON.parse(rawPackageText));
   const final = pkg.assessmentTemplates.find((t) => t.key === "final")!;
-  it("is revision 2 with a comprehensive ten-question final and end-of-course anchor", () => {
-    expect(pkg.packageRevision).toBe(2);
+  it("is revision 3 with a comprehensive ten-question final and end-of-course anchor", () => {
+    expect(pkg.packageRevision).toBe(3);
     expect(final.title).toBe(
       "Final Assessment: Comprehensive Security+ Preparation Checkpoint",
     );

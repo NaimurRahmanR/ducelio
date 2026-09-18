@@ -293,7 +293,9 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                     {resource.lessons.title} ·{" "}
                     {resource.programme_versions.label}
                   </p>
-                  {resource.body && <p>{resource.body}</p>}
+                  {resource.body && (
+                    <div className="lesson-resource-body">{resource.body}</div>
+                  )}
                   {resource.url && (
                     <a
                       className="text-link"

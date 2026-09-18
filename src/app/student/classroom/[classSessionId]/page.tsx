@@ -113,7 +113,11 @@ export default async function ClassroomPage({
                       {resource.kind.replace("_", " ")}
                     </Badge>
                     <h3>{resource.title}</h3>
-                    {resource.body && <p>{resource.body}</p>}
+                    {resource.body && (
+                      <div className="lesson-resource-body">
+                        {resource.body}
+                      </div>
+                    )}
                     {resource.url && (
                       <a
                         className="text-link"
@@ -131,6 +135,20 @@ export default async function ClassroomPage({
                   No approved resources are published for this lesson yet.
                 </p>
               )}
+            </Card>
+            <Card>
+              <div className="section-heading">
+                <h2>Continue learning</h2>
+                <Badge tone="muted">PRACTICE</Badge>
+              </div>
+              <p>
+                Apply this lesson with the governed exercises and labs in
+                Practicals. Tutor and Lab Instructor support stay scoped to your
+                enrolled course and the selected activity.
+              </p>
+              <ButtonLink href="/student/practicals" secondary>
+                Open practicals →
+              </ButtonLink>
             </Card>
             <Card>
               <div className="section-heading">

@@ -1265,6 +1265,17 @@ label {
   color: var(--muted);
   margin: 0 0 0.5rem;
 }
+.lesson-resource-body {
+  white-space: pre-wrap;
+  font-size: 0.94rem;
+  line-height: 1.75;
+  color: var(--ink);
+  max-width: 78ch;
+  margin: 0.75rem 0 1rem;
+}
+.support-record .lesson-resource-body {
+  color: var(--ink);
+}
 .profile-list {
   margin: 1.5rem 0;
 }
