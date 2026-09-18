@@ -211,7 +211,7 @@ export function CreateCampaignForm({
           name="percentOff"
           type="number"
           min={1}
-          max={100}
+          max={99}
           step={1}
         />
       </div>
@@ -223,7 +223,7 @@ export function CreateCampaignForm({
           id="fixedPriceAmountMinor"
           name="fixedPriceAmountMinor"
           type="number"
-          min={0}
+          min={1}
           max={100_000_000}
           step={1}
         />
