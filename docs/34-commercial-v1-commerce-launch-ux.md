@@ -9,7 +9,7 @@ The slice closes the launch-commerce gap left deliberately by PR21:
 
 - customer campaign-code redemption;
 - paid discounted checkout without mutating an existing order;
-- zero-price reviewer/promotional access without fabricating payment;
+- zero-price reviewer-complimentary access without fabricating payment;
 - delivery-plan publication and customer display;
 - operator campaign create/list/archive controls;
 - founding-launch offer UX, with £29.99 / GBP as an admin-form default rather
