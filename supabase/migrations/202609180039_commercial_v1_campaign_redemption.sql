@@ -153,7 +153,7 @@ grant execute on function public.publish_commercial_v1_offer(uuid,text,integer,t
 -- configuration is required before consuming a redemption. The redeem RPC
 -- repeats every authority/window/cap check under locks and is authoritative.
 create function public.preview_commercial_v1_campaign(p_offer_slug text,p_code text) returns jsonb
-language plpgsql security definer set search_path='' as $
+language plpgsql security definer set search_path='' as $$
 declare
   actor uuid; o public.commercial_v1_offers%rowtype; c public.commercial_v1_campaigns%rowtype;
   r public.commercial_v1_campaign_redemptions%rowtype; normalized text; effective integer; used_count bigint;
