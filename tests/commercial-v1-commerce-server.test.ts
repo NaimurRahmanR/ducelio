@@ -134,6 +134,7 @@ describe("server: createCommercialV1Checkout", () => {
     );
     expect(result).toEqual({
       ok: true,
+      kind: "CHECKOUT",
       url: "https://checkout.stripe.test/cs_test_fresh",
       orderId,
     });
@@ -214,6 +215,7 @@ describe("server: createCommercialV1Checkout", () => {
     );
     expect(result).toEqual({
       ok: true,
+      kind: "CHECKOUT",
       url: "https://checkout.stripe.test/cs_test_ALREADY_BOUND",
       orderId,
     });
@@ -512,5 +514,194 @@ describe("server: reconcileCommercialV1Order", () => {
       replay: false,
       orderId,
     });
+  });
+});
+
+describe("server: PR24 campaign checkout branching", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.requireActor.mockResolvedValue({ id: "learner-1" });
+    mocks.config.mockReturnValue({
+      url: "",
+      key: "",
+      configured: true,
+      appUrl: "http://127.0.0.1:3000",
+      google: false,
+      linkedin: false,
+    });
+    mocks.commerceConfig.mockReturnValue(configuredCommerce());
+  });
+
+  it("grants a zero-price reviewer redemption without requiring or calling Stripe", async () => {
+    mocks.commerceConfig.mockReturnValue({
+      ...configuredCommerce(),
+      configured: false,
+      stripeConfigured: false,
+    });
+    const entitlementId = "40000000-0000-4000-8000-000000000001";
+    const enrolmentId = "50000000-0000-4000-8000-000000000001";
+    const rpc = vi.fn(async (name: string) => {
+      if (name === "preview_commercial_v1_campaign")
+        return {
+          data: {
+            ok: true,
+            effectivePriceAmountMinor: 0,
+            currency: "GBP",
+            kind: "REVIEWER_COMPLIMENTARY",
+            reused: false,
+          },
+          error: null,
+        };
+      if (name === "redeem_commercial_v1_campaign")
+        return {
+          data: {
+            ok: true,
+            path: "ACCESS_GRANTED",
+            reused: false,
+            offerSlug: "cybersecurity-foundations",
+            activationId,
+            effectivePriceAmountMinor: 0,
+            currency: "GBP",
+            entitlementId,
+            enrolmentId,
+          },
+          error: null,
+        };
+      throw new Error("unexpected rpc " + name);
+    });
+    mocks.client.mockResolvedValue({ rpc });
+
+    const result = await createCommercialV1Checkout(
+      "cybersecurity-foundations",
+      "reviewer-50",
+    );
+    expect(result).toEqual({
+      ok: true,
+      kind: "ACCESS_GRANTED",
+      entitlementId,
+      enrolmentId,
+      offerSlug: "cybersecurity-foundations",
+    });
+    expect(mocks.getCommerceProvider).not.toHaveBeenCalled();
+  });
+
+  it("does not consume a paid campaign when commerce is unavailable", async () => {
+    mocks.commerceConfig.mockReturnValue({
+      ...configuredCommerce(),
+      configured: false,
+    });
+    const rpc = vi.fn(async (name: string) => {
+      if (name === "preview_commercial_v1_campaign")
+        return {
+          data: {
+            ok: true,
+            effectivePriceAmountMinor: 2400,
+            currency: "GBP",
+            kind: "PERCENT_OFF",
+            reused: false,
+          },
+          error: null,
+        };
+      throw new Error("unexpected rpc " + name);
+    });
+    mocks.client.mockResolvedValue({ rpc });
+
+    const result = await createCommercialV1Checkout(
+      "cybersecurity-foundations",
+      "FOUNDING-20",
+    );
+    expect(result).toEqual({ ok: false, code: "CHECKOUT_UNAVAILABLE" });
+    expect(
+      rpc.mock.calls.some(([name]) => name === "redeem_commercial_v1_campaign"),
+    ).toBe(false);
+    expect(mocks.getCommerceProvider).not.toHaveBeenCalled();
+  });
+
+  it("uses the database-redemption price for paid campaign checkout", async () => {
+    const rpc = vi.fn(async (name: string) => {
+      if (name === "preview_commercial_v1_campaign")
+        return {
+          data: {
+            ok: true,
+            effectivePriceAmountMinor: 2400,
+            currency: "GBP",
+            kind: "PERCENT_OFF",
+            reused: false,
+          },
+          error: null,
+        };
+      if (name === "redeem_commercial_v1_campaign")
+        return {
+          data: {
+            ok: true,
+            path: "PAID_CHECKOUT",
+            reused: false,
+            orderId,
+            offerSlug: "cybersecurity-foundations",
+            activationId,
+            effectivePriceAmountMinor: 2400,
+            currency: "GBP",
+          },
+          error: null,
+        };
+      if (name === "get_commercial_v1_offer")
+        return {
+          data: {
+            ok: true,
+            slug: "cybersecurity-foundations",
+            title: "Cybersecurity Foundations",
+            examinationBody: "CompTIA",
+            qualificationName: "Security+ SY0-701",
+            priceAmountMinor: 2999,
+            currency: "GBP",
+            summary: null,
+            cohortStartsOn: "2026-10-01",
+            viewerAuthenticated: true,
+            viewerEntitled: false,
+            viewerEnrolmentId: null,
+            viewerEnrolmentStatus: "NONE",
+          },
+          error: null,
+        };
+      if (name === "attach_commercial_v1_checkout_session")
+        return { data: { ok: true, orderId }, error: null };
+      throw new Error("unexpected rpc " + name);
+    });
+    mocks.client.mockResolvedValue({ rpc });
+    const createCheckoutSession = vi.fn().mockResolvedValue({
+      sessionId: "cs_test_discounted",
+      url: "https://checkout.stripe.test/cs_test_discounted",
+    });
+    mocks.getCommerceProvider.mockResolvedValue({ createCheckoutSession });
+
+    const result = await createCommercialV1Checkout(
+      "cybersecurity-foundations",
+      "FOUNDING-20",
+    );
+    expect(createCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId,
+        amountMinor: 2400,
+        currency: "GBP",
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      kind: "CHECKOUT",
+      url: "https://checkout.stripe.test/cs_test_discounted",
+      orderId,
+    });
+  });
+
+  it("rejects malformed campaign codes before preview/redemption", async () => {
+    const rpc = vi.fn();
+    mocks.client.mockResolvedValue({ rpc });
+    const result = await createCommercialV1Checkout(
+      "cybersecurity-foundations",
+      "bad code!",
+    );
+    expect(result).toEqual({ ok: false, code: "CODE_UNAVAILABLE" });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(mocks.getCommerceProvider).not.toHaveBeenCalled();
   });
 });

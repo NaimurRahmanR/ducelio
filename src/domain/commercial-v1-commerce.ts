@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  campaignCodeSchema,
+  campaignKindSchema,
+  deliveryPlanSchema,
+} from "./commercial-v1-launch";
 
 // Commercial V1 PR13: commerce, payment, entitlement and customer
 // onboarding. Migration 202609160034_commercial_v1_commerce_onboarding.sql.
@@ -49,6 +54,7 @@ export const commercialV1OfferSchema = z.strictObject({
   currency: currencyCodeSchema,
   summary: z.string().nullable(),
   cohortStartsOn: z.string(),
+  deliveryPlan: deliveryPlanSchema.default("STANDARD_6_WEEK"),
   viewerAuthenticated: z.boolean(),
   viewerEntitled: z.boolean(),
   viewerEnrolmentId: z.uuid().nullable(),
@@ -70,6 +76,7 @@ export const commercialV1OfferSummarySchema = z.strictObject({
   currency: currencyCodeSchema,
   summary: z.string().nullable(),
   cohortStartsOn: z.string(),
+  deliveryPlan: deliveryPlanSchema.default("STANDARD_6_WEEK"),
 });
 export const commercialV1OfferListSchema = z.array(
   commercialV1OfferSummarySchema,
@@ -84,6 +91,7 @@ export const publishCommercialV1OfferInputSchema = z.strictObject({
   priceAmountMinor: z.number().int().min(1).max(100_000_000),
   currency: currencyCodeSchema,
   summary: z.string().trim().min(1).max(500).nullable().optional(),
+  deliveryPlan: deliveryPlanSchema.default("STANDARD_6_WEEK"),
   reason: z.string().trim().min(5).max(300),
 });
 export type PublishCommercialV1OfferInput = z.infer<
@@ -135,6 +143,87 @@ export const createCommercialV1OrderResultSchema = z.union([
 ]);
 export type CreateCommercialV1OrderResult = z.infer<
   typeof createCommercialV1OrderResultSchema
+>;
+
+export const campaignPurchaseDenialCodeSchema = z.enum([
+  "FORBIDDEN",
+  "NOT_FOUND_OR_FORBIDDEN",
+  "CODE_UNAVAILABLE",
+  "OFFER_ALREADY_REDEEMED",
+  "CHECKOUT_ALREADY_STARTED",
+  "ALREADY_ENTITLED",
+  "ALREADY_ENROLLED",
+  "ENROLMENT_REQUIRES_SUPPORT",
+]);
+export type CampaignPurchaseDenialCode = z.infer<
+  typeof campaignPurchaseDenialCodeSchema
+>;
+
+export const commercialV1CampaignPreviewSchema = z.union([
+  z.strictObject({
+    ok: z.literal(true),
+    effectivePriceAmountMinor: z.number().int().min(0).max(100_000_000),
+    currency: currencyCodeSchema,
+    kind: campaignKindSchema,
+    reused: z.boolean(),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    code: campaignPurchaseDenialCodeSchema,
+  }),
+]);
+export type CommercialV1CampaignPreview = z.infer<
+  typeof commercialV1CampaignPreviewSchema
+>;
+
+export const commercialV1CampaignRedemptionSchema = z.union([
+  z.strictObject({
+    ok: z.literal(true),
+    path: z.literal("PAID_CHECKOUT"),
+    reused: z.boolean(),
+    orderId: z.uuid(),
+    offerSlug: offerSlugSchema,
+    activationId: z.uuid(),
+    effectivePriceAmountMinor: z.number().int().min(1).max(100_000_000),
+    currency: currencyCodeSchema,
+  }),
+  z.strictObject({
+    ok: z.literal(true),
+    path: z.literal("ACCESS_GRANTED"),
+    reused: z.boolean(),
+    offerSlug: offerSlugSchema,
+    activationId: z.uuid(),
+    effectivePriceAmountMinor: z.literal(0),
+    currency: currencyCodeSchema,
+    entitlementId: z.uuid(),
+    enrolmentId: z.uuid(),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    code: campaignPurchaseDenialCodeSchema,
+  }),
+]);
+export type CommercialV1CampaignRedemption = z.infer<
+  typeof commercialV1CampaignRedemptionSchema
+>;
+
+export const commercialV1CampaignAdminSchema = z.strictObject({
+  code: campaignCodeSchema,
+  offerSlug: offerSlugSchema,
+  kind: campaignKindSchema,
+  effectivePriceAmountMinor: z.number().int().min(0).max(100_000_000),
+  currency: currencyCodeSchema,
+  maxRedemptions: z.number().int().min(1),
+  redemptionCount: z.number().int().min(0),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  state: z.enum(["ACTIVE", "ARCHIVED"]),
+});
+export const commercialV1CampaignAdminListSchema = z.array(
+  commercialV1CampaignAdminSchema,
+);
+export type CommercialV1CampaignAdmin = z.infer<
+  typeof commercialV1CampaignAdminSchema
 >;
 
 export const commercialV1OrderStateSchema = z.enum(["PENDING", "FULFILLED"]);

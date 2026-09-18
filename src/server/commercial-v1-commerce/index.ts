@@ -12,7 +12,15 @@ import {
   reconcileCommercialV1OrderResultSchema,
   offerSlugSchema,
   currencyCodeSchema,
+  commercialV1CampaignPreviewSchema,
+  commercialV1CampaignRedemptionSchema,
+  commercialV1CampaignAdminListSchema,
 } from "@/domain/commercial-v1-commerce";
+import {
+  archiveCommercialV1CampaignInputSchema,
+  campaignCodeSchema,
+  createCommercialV1CampaignInputSchema,
+} from "@/domain/commercial-v1-launch";
 import { requireActor } from "../identity";
 import { createSupabase } from "../supabase";
 import { config, commerceConfig } from "@/lib/env";
@@ -49,6 +57,7 @@ export async function publishCommercialV1Offer(input: unknown) {
     p_price_amount_minor: payload.priceAmountMinor,
     p_currency: payload.currency,
     p_summary: payload.summary ?? null,
+    p_delivery_plan: payload.deliveryPlan,
     p_reason: payload.reason,
   });
   if (error) throw new Error("The course offer could not be published.");
@@ -79,6 +88,52 @@ export async function listCommercialV1OfferActivations() {
   return commercialV1OfferActivationListSchema.parse(data);
 }
 
+export async function listCommercialV1Campaigns() {
+  await requireActor("admin");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("list_commercial_v1_campaigns");
+  if (error) throw new Error("Campaigns could not be loaded.");
+  return commercialV1CampaignAdminListSchema.parse(data);
+}
+
+export async function createCommercialV1Campaign(input: unknown) {
+  const payload = createCommercialV1CampaignInputSchema.parse(input);
+  await requireActor("admin");
+  const client = await createSupabase();
+  const percentOff = payload.kind === "PERCENT_OFF" ? payload.percentOff : null;
+  const fixedPriceAmountMinor =
+    payload.kind === "FIXED_PRICE"
+      ? payload.fixedPriceAmountMinor
+      : payload.kind === "REVIEWER_COMPLIMENTARY"
+        ? 0
+        : null;
+  const { data, error } = await client.rpc("create_commercial_v1_campaign", {
+    p_offer_slug: payload.offerSlug,
+    p_code: payload.code,
+    p_kind: payload.kind,
+    p_percent_off: percentOff,
+    p_fixed_price_amount_minor: fixedPriceAmountMinor,
+    p_max_redemptions: payload.maxRedemptions,
+    p_starts_at: payload.startsAt,
+    p_ends_at: payload.endsAt,
+    p_reason: payload.reason,
+  });
+  if (error) throw new Error("The campaign could not be created.");
+  return z.uuid().parse(data);
+}
+
+export async function archiveCommercialV1Campaign(input: unknown) {
+  const payload = archiveCommercialV1CampaignInputSchema.parse(input);
+  await requireActor("admin");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("archive_commercial_v1_campaign", {
+    p_code: payload.code,
+    p_reason: payload.reason,
+  });
+  if (error) throw new Error("The campaign could not be archived.");
+  return z.uuid().parse(data);
+}
+
 export async function getCommercialV1OrderStatus(orderId: unknown) {
   const id = z.uuid().parse(orderId);
   await requireActor();
@@ -91,7 +146,14 @@ export async function getCommercialV1OrderStatus(orderId: unknown) {
 }
 
 export type CommercialV1CheckoutResult =
-  | { ok: true; url: string; orderId: string }
+  | { ok: true; kind: "CHECKOUT"; url: string; orderId: string }
+  | {
+      ok: true;
+      kind: "ACCESS_GRANTED";
+      entitlementId: string;
+      enrolmentId: string;
+      offerSlug: string;
+    }
   | {
       ok: false;
       code:
@@ -100,6 +162,9 @@ export type CommercialV1CheckoutResult =
         | "ALREADY_ENTITLED"
         | "ALREADY_ENROLLED"
         | "ENROLMENT_REQUIRES_SUPPORT"
+        | "CODE_UNAVAILABLE"
+        | "OFFER_ALREADY_REDEEMED"
+        | "CHECKOUT_ALREADY_STARTED"
         | "CHECKOUT_UNAVAILABLE";
     };
 
@@ -112,38 +177,88 @@ const attachResultSchema = z.union([
   }),
 ]);
 
-// Full checkout-creation flow (section 5): authenticated STUDENT -> DB
-// order (created or idempotently reused) -> real Stripe checkout session,
-// price/currency read from the AUTHORITATIVE persisted order, never from
-// request input -> session bound back onto the order -> only the hosted
-// redirect URL is ever returned to the browser.
-//
-// V2 correction (finding 1): ONE Ducelio order must never lead the
-// customer to multiple independent payable Stripe sessions. Stripe's own
-// idempotency key (derived only from the order id) makes a retried
-// createCheckoutSession call return the SAME session; the DB-bound
-// session id is additionally treated as authoritative here -- if it ever
-// differs from what was just created/retrieved, the newly created
-// session's URL is NEVER returned.
-export async function createCommercialV1Checkout(offerSlug: unknown) {
+export async function createCommercialV1Checkout(
+  offerSlug: unknown,
+  campaignCode?: unknown,
+): Promise<CommercialV1CheckoutResult> {
   const slug = offerSlugSchema.parse(offerSlug);
   await requireActor("student");
+  const client = await createSupabase();
 
-  // V2 correction (finding 2): full commerce readiness (Stripe AND the
-  // commerce controller) is enforced HERE, server-side, before an order is
-  // even created or Stripe is ever contacted -- never merely by the page
-  // hiding the buy button.
-  if (!commerceConfig().configured) {
-    return { ok: false as const, code: "CHECKOUT_UNAVAILABLE" as const };
+  let order:
+    | {
+        orderId: string;
+        amountMinor: number;
+        currency: string;
+        offerSlug: string;
+        activationId: string;
+        reused: boolean;
+      }
+    | undefined;
+
+  const rawCode = typeof campaignCode === "string" ? campaignCode.trim() : "";
+  if (rawCode) {
+    const parsedCode = campaignCodeSchema.safeParse(rawCode);
+    if (!parsedCode.success) {
+      return { ok: false, code: "CODE_UNAVAILABLE" };
+    }
+
+    const { data: previewData, error: previewError } = await client.rpc(
+      "preview_commercial_v1_campaign",
+      { p_offer_slug: slug, p_code: parsedCode.data },
+    );
+    if (previewError) throw new Error("Campaign could not be checked.");
+    const preview = commercialV1CampaignPreviewSchema.parse(previewData);
+    if (!preview.ok) return preview;
+
+    // A zero-price reviewer-complimentary path never depends on Stripe. Any path
+    // that will charge money fails before consuming its redemption when the
+    // payment/controller integration is unavailable.
+    if (preview.effectivePriceAmountMinor > 0 && !commerceConfig().configured) {
+      return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
+    }
+
+    const { data: redemptionData, error: redemptionError } = await client.rpc(
+      "redeem_commercial_v1_campaign",
+      { p_offer_slug: slug, p_code: parsedCode.data },
+    );
+    if (redemptionError) throw new Error("Campaign could not be redeemed.");
+    const redemption =
+      commercialV1CampaignRedemptionSchema.parse(redemptionData);
+    if (!redemption.ok) return redemption;
+    if (redemption.path === "ACCESS_GRANTED") {
+      return {
+        ok: true,
+        kind: "ACCESS_GRANTED",
+        entitlementId: redemption.entitlementId,
+        enrolmentId: redemption.enrolmentId,
+        offerSlug: redemption.offerSlug,
+      };
+    }
+    order = {
+      orderId: redemption.orderId,
+      amountMinor: redemption.effectivePriceAmountMinor,
+      currency: redemption.currency,
+      offerSlug: redemption.offerSlug,
+      activationId: redemption.activationId,
+      reused: redemption.reused,
+    };
+  } else {
+    if (!commerceConfig().configured) {
+      return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
+    }
+    const { data, error } = await client.rpc("create_commercial_v1_order", {
+      p_offer_slug: slug,
+    });
+    if (error) throw new Error("Checkout could not be started.");
+    const created = createCommercialV1OrderResultSchema.parse(data);
+    if (!created.ok) return created;
+    order = created;
   }
 
-  const client = await createSupabase();
-  const { data, error } = await client.rpc("create_commercial_v1_order", {
-    p_offer_slug: slug,
-  });
-  if (error) throw new Error("Checkout could not be started.");
-  const order = createCommercialV1OrderResultSchema.parse(data);
-  if (!order.ok) return order;
+  if (!order) {
+    return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
+  }
 
   const env = config();
   const successUrl =
@@ -168,7 +283,7 @@ export async function createCommercialV1Checkout(offerSlug: unknown) {
       idempotencyKey: "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId,
     });
   } catch {
-    return { ok: false as const, code: "CHECKOUT_UNAVAILABLE" as const };
+    return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
   }
 
   const { data: attachData, error: attachError } = await client.rpc(
@@ -178,34 +293,42 @@ export async function createCommercialV1Checkout(offerSlug: unknown) {
   if (attachError) throw new Error("Checkout could not be bound to the order.");
   const attachResult = attachResultSchema.parse(attachData);
   if (attachResult.ok) {
-    return { ok: true as const, url: checkout.url, orderId: order.orderId };
+    return {
+      ok: true,
+      kind: "CHECKOUT",
+      url: checkout.url,
+      orderId: order.orderId,
+    };
   }
   if (
     attachResult.code === "SESSION_ALREADY_BOUND" &&
     attachResult.existingSessionId
   ) {
     if (attachResult.existingSessionId === checkout.sessionId) {
-      // The DB already recorded exactly this session (a genuine replay
-      // racing with itself) -- safe.
-      return { ok: true as const, url: checkout.url, orderId: order.orderId };
+      return {
+        ok: true,
+        kind: "CHECKOUT",
+        url: checkout.url,
+        orderId: order.orderId,
+      };
     }
-    // The DB is bound to a DIFFERENT session than the one just
-    // created/retrieved. Never return the just-created session's URL --
-    // only the DB-bound session is what fulfillment will ever accept.
-    // Attempt to recover the bound session's own live URL; otherwise fail
-    // closed rather than exposing an unbound charge path.
     try {
       const bound = await provider.retrieveCheckoutSession(
         attachResult.existingSessionId,
       );
       if (bound.url) {
-        return { ok: true as const, url: bound.url, orderId: order.orderId };
+        return {
+          ok: true,
+          kind: "CHECKOUT",
+          url: bound.url,
+          orderId: order.orderId,
+        };
       }
     } catch {
-      /* fall through to CHECKOUT_UNAVAILABLE */
+      /* fail closed below */
     }
   }
-  return { ok: false as const, code: "CHECKOUT_UNAVAILABLE" as const };
+  return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
 }
 
 // Authenticated success-page reconciliation fallback (section 6). NEVER

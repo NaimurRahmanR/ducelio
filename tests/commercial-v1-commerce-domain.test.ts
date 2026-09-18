@@ -6,6 +6,9 @@ import {
   offerSlugSchema,
   commercialV1OfferSchema,
   commercialV1OfferResultSchema,
+  commercialV1CampaignPreviewSchema,
+  commercialV1CampaignRedemptionSchema,
+  commercialV1CampaignAdminSchema,
   publishCommercialV1OfferInputSchema,
   archiveCommercialV1OfferInputSchema,
   createCommercialV1OrderResultSchema,
@@ -60,8 +63,9 @@ describe("Public offer projection contract", () => {
     viewerEnrolmentId: null,
     viewerEnrolmentStatus: "NONE" as const,
   };
-  it("accepts the bounded public-safe shape", () => {
-    expect(commercialV1OfferSchema.safeParse(base).success).toBe(true);
+  it("accepts the bounded public-safe shape and defaults historical projections to the 6-week plan", () => {
+    const parsed = commercialV1OfferSchema.parse(base);
+    expect(parsed.deliveryPlan).toBe("STANDARD_6_WEEK");
   });
   it("V2 correction (item 4): viewerEnrolmentStatus only accepts the four real academic statuses plus NONE", () => {
     expect(viewerEnrolmentStatusSchema.options).toEqual([
@@ -127,6 +131,31 @@ describe("Publish/archive offer input contracts", () => {
       ).toBe(false);
     }
   });
+  it("accepts only one of the three reviewed immutable delivery plans", () => {
+    const base = {
+      activationId,
+      slug: "security-plus-sy0-701",
+      priceAmountMinor: 2999,
+      currency: "GBP",
+      reason: "Publish founding cohort",
+    };
+    expect(publishCommercialV1OfferInputSchema.parse(base).deliveryPlan).toBe(
+      "STANDARD_6_WEEK",
+    );
+    expect(
+      publishCommercialV1OfferInputSchema.safeParse({
+        ...base,
+        deliveryPlan: "INTENSIVE_4_WEEK",
+      }).success,
+    ).toBe(true);
+    expect(
+      publishCommercialV1OfferInputSchema.safeParse({
+        ...base,
+        deliveryPlan: "UNBOUNDED",
+      }).success,
+    ).toBe(false);
+  });
+
   it("archive is SLUG-based (V2 correction, item 10) -- not an internal offer id", () => {
     expect(
       archiveCommercialV1OfferInputSchema.safeParse({
@@ -140,6 +169,80 @@ describe("Publish/archive offer input contracts", () => {
         reason: "Re-pricing for the next cohort",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("PR24 campaign purchase contracts", () => {
+  it("accepts bounded preview, paid-checkout and direct-access shapes", () => {
+    expect(
+      commercialV1CampaignPreviewSchema.safeParse({
+        ok: true,
+        effectivePriceAmountMinor: 2400,
+        currency: "gbp",
+        kind: "PERCENT_OFF",
+        reused: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      commercialV1CampaignRedemptionSchema.safeParse({
+        ok: true,
+        path: "PAID_CHECKOUT",
+        reused: false,
+        orderId,
+        offerSlug: "security-plus-sy0-701",
+        activationId,
+        effectivePriceAmountMinor: 2400,
+        currency: "GBP",
+      }).success,
+    ).toBe(true);
+    expect(
+      commercialV1CampaignRedemptionSchema.safeParse({
+        ok: true,
+        path: "ACCESS_GRANTED",
+        reused: false,
+        offerSlug: "security-plus-sy0-701",
+        activationId,
+        effectivePriceAmountMinor: 0,
+        currency: "GBP",
+        entitlementId,
+        enrolmentId,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects invented campaign denial codes and negative prices", () => {
+    expect(
+      commercialV1CampaignPreviewSchema.safeParse({
+        ok: false,
+        code: "FREE_FOR_EVERYONE",
+      }).success,
+    ).toBe(false);
+    expect(
+      commercialV1CampaignPreviewSchema.safeParse({
+        ok: true,
+        effectivePriceAmountMinor: -1,
+        currency: "GBP",
+        kind: "FIXED_PRICE",
+        reused: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("parses the bounded admin campaign summary only", () => {
+    expect(
+      commercialV1CampaignAdminSchema.safeParse({
+        code: "FOUNDING-20",
+        offerSlug: "security-plus-sy0-701",
+        kind: "PERCENT_OFF",
+        effectivePriceAmountMinor: 2400,
+        currency: "GBP",
+        maxRedemptions: 50,
+        redemptionCount: 4,
+        startsAt: "2026-09-20T00:00:00Z",
+        endsAt: "2026-10-20T00:00:00Z",
+        state: "ACTIVE",
+      }).success,
+    ).toBe(true);
   });
 });
 

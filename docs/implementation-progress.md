@@ -2,12 +2,12 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: PR22 native AI routing is CLOSED GREEN via PR #22, merged at `388dc04436ff55f89b0bcad4ef1147ce5c8abb9e` on 2026-09-18. PR-head Ducelio CI #77 / run `35355779707` SUCCESS and post-main Ducelio CI #78 / run `35357643491` SUCCESS are the canonical closure evidence.
-CURRENT PARTIAL CHECKPOINT: PR23 customer-grade Security+ on `commercial-v1-security-plus-customer-grade`, branched exactly from the PR22 merge. It is not yet independently reviewed, PR-head CI-proven, merged or post-main proven.
-COMPLETED ITEMS: PR22 added server-owned native OpenAI/Anthropic routing for the reviewed academic and platform AI profiles while preserving deterministic institutional authority and making no live provider call.
-INCOMPLETE ITEMS: PR23 must prove Security+ package revision 3 teaching depth, exact v5.0 objective/source preservation, assessment-firewall regression safety, long-form learner rendering, practical navigation and production build. No live provider or payment spend is in scope.
-KNOWN FAILURES: None in the CLOSED GREEN PR22 checkpoint. PR23 validation evidence must not be claimed until its own current-head CI completes.
-NEXT EXACT ACTION: Independently review and CI-prove PR23 without changing the verified SY0-701 blueprint, assessment authority or payment system.
+LAST COMPLETED CHECKPOINT: PR23 customer-grade Security+ is CLOSED GREEN via PR #23, merged at `c526157e3d8a6b024856a0a6ce8f8e2f3f53dde8` on 2026-09-18. PR-head Ducelio CI #85 / run `35362525941` SUCCESS and post-main Ducelio CI #86 / run `35364397514` SUCCESS are the canonical closure evidence; post-main passed 88/88 test files and 1,885/1,885 tests plus formatting and production build.
+CURRENT PARTIAL CHECKPOINT: PR24 commerce & launch UX on `commercial-v1-commerce-launch-ux`, branched exactly from the PR23 merge. It is not yet independently CI-proven, merged or post-main proven.
+COMPLETED ITEMS: PR23 upgraded Security+ to revision 3 with 15,247 embedded teaching words across all 28 principal lessons, 28/28 official-objective breadth auditing, and long-form Classroom/Notes presentation while preserving assessment and authority boundaries.
+INCOMPLETE ITEMS: PR24 must prove migration 039 campaign redemption authority, discounted-order provenance, zero-price reviewer-complimentary access without fake payment orders, delivery-plan publication/projection, admin campaign operations, customer checkout/code UX, Stripe-provider regression safety, formatting and production build. No live Stripe charge, hosted database acceptance or production customer acceptance is in scope.
+KNOWN FAILURES: None in the CLOSED GREEN PR23 checkpoint. PR24 validation evidence must not be claimed until its own current-head CI completes.
+NEXT EXACT ACTION: Independently review and CI-prove PR24 without weakening immutable order pricing, academic enrolment authority or verified payment fulfillment.
 
 ## Phase 1 — complete
 

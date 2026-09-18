@@ -1,25 +1,25 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import {
-  publishCommercialV1Offer,
+  archiveCommercialV1Campaign,
   archiveCommercialV1Offer,
+  createCommercialV1Campaign,
+  publishCommercialV1Offer,
 } from "@/server/commercial-v1-commerce";
 
 export type CommerceAdminState = { error?: string; message?: string };
 
-// V2 correction (finding 10): the smallest operational admin path to
-// configure/publish and archive a sellable Commercial V1 offer. No new
-// role, no duplicated course-authority logic -- both server functions
-// reuse course_activation_private.require_admin() exactly like every
-// other Commercial V1 publish surface.
+function numberField(value: FormDataEntryValue | null) {
+  return typeof value === "string" && value.trim() !== ""
+    ? Number(value)
+    : undefined;
+}
+
 export async function publishOfferAction(
   _state: CommerceAdminState,
   data: FormData,
 ): Promise<CommerceAdminState> {
-  const priceInput = data.get("priceAmountMinor");
-  const priceAmountMinor =
-    typeof priceInput === "string" && priceInput.trim() !== ""
-      ? Number(priceInput)
-      : NaN;
+  const priceAmountMinor = numberField(data.get("priceAmountMinor"));
   try {
     await publishCommercialV1Offer({
       activationId: data.get("activationId"),
@@ -27,8 +27,11 @@ export async function publishOfferAction(
       priceAmountMinor,
       currency: data.get("currency"),
       summary: (data.get("summary") as string | null) || null,
+      deliveryPlan: data.get("deliveryPlan") || undefined,
       reason: data.get("reason"),
     });
+    revalidatePath("/admin/commerce");
+    revalidatePath("/courses");
     return {
       message:
         "Offer published. It is now visible on the public course catalogue.",
@@ -36,7 +39,7 @@ export async function publishOfferAction(
   } catch {
     return {
       error:
-        "The offer could not be published. Check the activation, slug, price, currency and reason, then try again.",
+        "The offer could not be published. Check the activation, slug, price, currency, delivery plan and reason, then try again.",
     };
   }
 }
@@ -50,6 +53,8 @@ export async function archiveOfferAction(
       slug: data.get("slug"),
       reason: data.get("reason"),
     });
+    revalidatePath("/admin/commerce");
+    revalidatePath("/courses");
     return {
       message:
         "Offer archived. It no longer appears on the public catalogue; existing orders/entitlements are unaffected.",
@@ -57,6 +62,86 @@ export async function archiveOfferAction(
   } catch {
     return {
       error: "The offer could not be archived. Check the slug and reason.",
+    };
+  }
+}
+
+export async function createCampaignAction(
+  _state: CommerceAdminState,
+  data: FormData,
+): Promise<CommerceAdminState> {
+  const kind = data.get("kind");
+  const base = {
+    offerSlug: data.get("offerSlug"),
+    code: data.get("code"),
+    maxRedemptions: numberField(data.get("maxRedemptions")),
+    startsAt: data.get("startsAt"),
+    endsAt: data.get("endsAt"),
+    reason: data.get("reason"),
+  };
+
+  try {
+    if (kind === "PERCENT_OFF") {
+      const percentOff = numberField(data.get("percentOff"));
+      if (percentOff === undefined || percentOff < 1 || percentOff > 99)
+        return { error: "Promotional percentage discounts must be 1-99%." };
+      await createCommercialV1Campaign({
+        ...base,
+        kind,
+        percentOff,
+      });
+    } else if (kind === "FIXED_PRICE") {
+      const fixedPriceAmountMinor = numberField(
+        data.get("fixedPriceAmountMinor"),
+      );
+      if (fixedPriceAmountMinor === undefined || fixedPriceAmountMinor < 1)
+        return {
+          error:
+            "Promotional fixed prices must remain above zero. Use reviewer complimentary for free reviewer access.",
+        };
+      await createCommercialV1Campaign({
+        ...base,
+        kind,
+        fixedPriceAmountMinor,
+      });
+    } else if (kind === "REVIEWER_COMPLIMENTARY") {
+      await createCommercialV1Campaign({
+        ...base,
+        kind,
+      });
+    } else {
+      return { error: "Choose a valid campaign kind." };
+    }
+    revalidatePath("/admin/commerce");
+    return {
+      message:
+        "Campaign created. The code can now be redeemed within its configured window and limit.",
+    };
+  } catch {
+    return {
+      error:
+        "The campaign could not be created. Check the offer, code, pricing, limit, UTC timestamps and reason.",
+    };
+  }
+}
+
+export async function archiveCampaignAction(
+  _state: CommerceAdminState,
+  data: FormData,
+): Promise<CommerceAdminState> {
+  try {
+    await archiveCommercialV1Campaign({
+      code: data.get("code"),
+      reason: data.get("reason"),
+    });
+    revalidatePath("/admin/commerce");
+    return {
+      message:
+        "Campaign archived. Existing redemptions keep their immutable provenance.",
+    };
+  } catch {
+    return {
+      error: "The campaign could not be archived. Check the code and reason.",
     };
   }
 }
