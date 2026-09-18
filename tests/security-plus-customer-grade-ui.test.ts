@@ -11,12 +11,16 @@ const css = readFileSync("src/app/globals.css", "utf8");
 describe("SEC701-C learner reading experience", () => {
   it("renders long-form lecture bodies with preserved paragraph structure in Classroom", () => {
     expect(classroom).toContain('className="lesson-resource-body"');
-    expect(classroom).not.toContain("{resource.body && <p>{resource.body}</p>}");
+    expect(classroom).not.toContain(
+      "{resource.body && <p>{resource.body}</p>}",
+    );
   });
 
   it("renders the same long-form resource treatment in Notes", () => {
     expect(liveStudent).toContain('className="lesson-resource-body"');
-    expect(liveStudent).not.toContain("{resource.body && <p>{resource.body}</p>}");
+    expect(liveStudent).not.toContain(
+      "{resource.body && <p>{resource.body}</p>}",
+    );
   });
 
   it("gives Classroom a governed route to applied practical work", () => {
