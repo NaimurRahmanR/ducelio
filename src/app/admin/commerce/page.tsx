@@ -18,8 +18,8 @@ export const dynamic = "force-dynamic";
 export default async function Page() {
   const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const [activations, campaigns] = await Promise.all([
-    listCommercialV1OfferActivations().catch(() => []),
-    listCommercialV1Campaigns().catch(() => []),
+    listCommercialV1OfferActivations(),
+    listCommercialV1Campaigns(),
   ]);
   const publishedOfferSlugs = activations
     .map((activation) => activation.publishedOfferSlug)
