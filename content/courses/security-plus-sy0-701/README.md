@@ -169,3 +169,23 @@ across nine files; the strengthened lifecycle/upgrade DB suite separately passed
 12/12. The full check passed lint, typecheck and 1,847 tests across 82 files.
 Build, formatting and diff whitespace checks passed. Migrations 001-036 remain
 byte-identical to the canonical SEC701-A commit; 037 is the only new migration.
+
+
+## SEC701-C customer-grade teaching depth
+
+Package revision 3 preserves the verified SY0-701 v5.0 objective map,
+assessment firewall, practical catalogue and agent-authority boundaries while
+substantially deepening the learner-facing course material.
+
+Every one of the 28 principal lessons now includes an embedded Ducelio study
+guide of at least 300 words. The package contains more than 10,000 words of
+embedded teaching material, and no lesson depends on an external link as its
+only teaching resource. External references remain supplementary.
+
+Classroom and Notes preserve the study-guide paragraph structure for readable
+long-form material. Classroom also gives the learner a direct route to
+governed Practicals for Tutor/Lab Instructor support.
+
+This checkpoint does not claim CompTIA endorsement, access to live exam
+questions, live-provider quality, hosted Supabase acceptance or production
+readiness. The course remains exam preparation for an external qualification.

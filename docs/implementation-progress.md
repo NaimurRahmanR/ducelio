@@ -2,12 +2,12 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: PR21 launch foundation is CLOSED GREEN via PR #21, merged at `cf3f0b5cd4b9759c2e8108e832ee24d6b6b78759` on 2026-09-18. PR-head Ducelio CI #67 / run `35346808574` SUCCESS and post-main Ducelio CI #68 / run `35348910862` SUCCESS are the canonical closure evidence.
-CURRENT PARTIAL CHECKPOINT: PR22 native AI routing on `commercial-v1-native-ai-routing`, branched exactly from the PR21 merge. It is not yet reviewed, PR-head CI-proven, merged or post-main proven.
-COMPLETED ITEMS: PR21 added immutable 2/4/6-week delivery-plan identity, deterministic campaign pricing authority, and paid/promotional/reviewer entitlement provenance without adding learner redemption. Its final PR-head and post-main CI both passed.
-INCOMPLETE ITEMS: PR22 must independently prove native OpenAI/Anthropic adapter request/response handling, exact server-owned academic plus platform role/model routing, Counsellor lifecycle-mode policy, Operations Engineer permission boundaries, conservative tariff accounting, secret hygiene and missing-provider fail-closed behaviour. No live provider call or platform-agent tool execution is in scope before the post-PR24 paid acceptance phase.
-KNOWN FAILURES: None in the CLOSED GREEN PR21 checkpoint. PR22 validation evidence must not be claimed until its own current-head CI completes.
-NEXT EXACT ACTION: Implement, independently review and CI-prove PR22 native AI routing without changing the existing database authority or spending on live provider calls.
+LAST COMPLETED CHECKPOINT: PR22 native AI routing is CLOSED GREEN via PR #22, merged at `388dc04436ff55f89b0bcad4ef1147ce5c8abb9e` on 2026-09-18. PR-head Ducelio CI #77 / run `35355779707` SUCCESS and post-main Ducelio CI #78 / run `35357643491` SUCCESS are the canonical closure evidence.
+CURRENT PARTIAL CHECKPOINT: PR23 customer-grade Security+ on `commercial-v1-security-plus-customer-grade`, branched exactly from the PR22 merge. It is not yet independently reviewed, PR-head CI-proven, merged or post-main proven.
+COMPLETED ITEMS: PR22 added server-owned native OpenAI/Anthropic routing for the reviewed academic and platform AI profiles while preserving deterministic institutional authority and making no live provider call.
+INCOMPLETE ITEMS: PR23 must prove Security+ package revision 3 teaching depth, exact v5.0 objective/source preservation, assessment-firewall regression safety, long-form learner rendering, practical navigation and production build. No live provider or payment spend is in scope.
+KNOWN FAILURES: None in the CLOSED GREEN PR22 checkpoint. PR23 validation evidence must not be claimed until its own current-head CI completes.
+NEXT EXACT ACTION: Independently review and CI-prove PR23 without changing the verified SY0-701 blueprint, assessment authority or payment system.
 
 ## Phase 1 — complete
 

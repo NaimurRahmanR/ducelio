@@ -136,6 +136,20 @@ export default async function ClassroomPage({
             </Card>
             <Card>
               <div className="section-heading">
+                <h2>Continue learning</h2>
+                <Badge tone="muted">PRACTICE</Badge>
+              </div>
+              <p>
+                Apply this lesson with the governed exercises and labs in
+                Practicals. Tutor and Lab Instructor support stay scoped to
+                your enrolled course and the selected activity.
+              </p>
+              <ButtonLink href="/student/practicals" secondary>
+                Open practicals →
+              </ButtonLink>
+            </Card>
+            <Card>
+              <div className="section-heading">
                 <h2>Your mastery</h2>
                 <Badge tone="blue">MASTERY_V1</Badge>
               </div>

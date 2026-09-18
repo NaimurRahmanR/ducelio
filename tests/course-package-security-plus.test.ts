@@ -440,7 +440,7 @@ describe("Security+ SY0-701 package: institutional design constraints", () => {
 describe("SEC701-C revision 3 cumulative final", () => {
   const pkg = coursePackageSchema.parse(JSON.parse(rawPackageText));
   const final = pkg.assessmentTemplates.find((t) => t.key === "final")!;
-  it("is revision 2 with a comprehensive ten-question final and end-of-course anchor", () => {
+  it("is revision 3 with a comprehensive ten-question final and end-of-course anchor", () => {
     expect(pkg.packageRevision).toBe(3);
     expect(final.title).toBe(
       "Final Assessment: Comprehensive Security+ Preparation Checkpoint",
