@@ -196,8 +196,7 @@ export async function createCommercialV1Checkout(
       }
     | undefined;
 
-  const rawCode =
-    typeof campaignCode === "string" ? campaignCode.trim() : "";
+  const rawCode = typeof campaignCode === "string" ? campaignCode.trim() : "";
   if (rawCode) {
     const parsedCode = campaignCodeSchema.safeParse(rawCode);
     if (!parsedCode.success) {
