@@ -211,7 +211,7 @@ export async function createCommercialV1Checkout(
     const preview = commercialV1CampaignPreviewSchema.parse(previewData);
     if (!preview.ok) return preview;
 
-    // A zero-price reviewer/promo path never depends on Stripe. Any path
+    // A zero-price reviewer-complimentary path never depends on Stripe. Any path
     // that will charge money fails before consuming its redemption when the
     // payment/controller integration is unavailable.
     if (preview.effectivePriceAmountMinor > 0 && !commerceConfig().configured) {
