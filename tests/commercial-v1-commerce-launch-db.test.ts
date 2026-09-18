@@ -440,3 +440,46 @@ describe("PR24 campaign redemption authority", () => {
     });
   });
 });
+
+
+describe("PR24 campaign access-control boundary", () => {
+  it("learner can preview/redeem but cannot use the admin campaign listing", async () => {
+    const f = await fixture();
+    await publishOffer(f);
+    await createCampaign(f, {
+      code: "BOUNDARY-10",
+      kind: "PERCENT_OFF",
+      percentOff: 10,
+    });
+
+    await asLearner(f.db);
+    expect(
+      await value<Record<string, unknown>>(
+        f.db,
+        "select public.preview_commercial_v1_campaign($1,$2) as v",
+        ["security-plus-sy0-701", "BOUNDARY-10"],
+      ),
+    ).toMatchObject({ ok: true, effectivePriceAmountMinor: 2700 });
+
+    await expect(
+      f.db.query("select public.list_commercial_v1_campaigns()"),
+    ).rejects.toThrow();
+  });
+
+  it("new provenance columns/tables remain inaccessible through direct learner table access", async () => {
+    const f = await fixture();
+    await publishOffer(f);
+    await asLearner(f.db);
+
+    await expect(
+      f.db.query(
+        "select campaign_redemption_id from public.commercial_v1_orders",
+      ),
+    ).rejects.toThrow();
+    await expect(
+      f.db.query(
+        "select * from public.commercial_v1_campaign_redemptions",
+      ),
+    ).rejects.toThrow();
+  });
+});
