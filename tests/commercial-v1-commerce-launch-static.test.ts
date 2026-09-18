@@ -32,6 +32,13 @@ describe("PR24 launch UX static boundaries", () => {
     );
   });
 
+  it("reserves free campaign creation for the explicit reviewer kind", () => {
+    expect(adminForms).toContain('max={99}');
+    expect(adminForms).toContain('name="fixedPriceAmountMinor"');
+    expect(adminForms).toContain('min={1}');
+    expect(adminForms).toContain("Reviewer complimentary");
+  });
+
   it("requires a code when card commerce is unavailable but keeps it optional otherwise", () => {
     expect(buyForm).toContain("required={!paymentAvailable}");
     expect(buyForm).toContain("Apply complimentary code");
