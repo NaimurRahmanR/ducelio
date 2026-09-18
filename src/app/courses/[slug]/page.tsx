@@ -59,64 +59,62 @@ export default async function Page({
             {formatPrice(offer.priceAmountMinor, offer.currency)}
           </p>
           <p className="muted">One-time course fee</p>
-          {
-            offer.viewerEntitled || offer.viewerEnrolmentStatus === "ACTIVE" ? (
-              <>
-                <p role="status">You already have access to this course.</p>
-                <ButtonLink href="/student/study-plan">
-                  Continue learning <span aria-hidden="true">→</span>
-                </ButtonLink>
-              </>
-            ) : offer.viewerEnrolmentStatus === "COMPLETED" ? (
-              <p role="status">
-                You have already completed this course. Visit your results for a
-                full record.
+          {offer.viewerEntitled || offer.viewerEnrolmentStatus === "ACTIVE" ? (
+            <>
+              <p role="status">You already have access to this course.</p>
+              <ButtonLink href="/student/study-plan">
+                Continue learning <span aria-hidden="true">→</span>
+              </ButtonLink>
+            </>
+          ) : offer.viewerEnrolmentStatus === "COMPLETED" ? (
+            <p role="status">
+              You have already completed this course. Visit your results for a
+              full record.
+            </p>
+          ) : offer.viewerEnrolmentStatus === "PAUSED" ? (
+            <p role="status">
+              Your enrolment in this course is currently paused. Contact support
+              to resume it -- no new purchase is needed.
+            </p>
+          ) : offer.viewerEnrolmentStatus === "WITHDRAWN" ? (
+            <p role="status">
+              You have a previous enrolment in this course. Contact support to
+              review it -- a new purchase cannot reactivate it automatically.
+            </p>
+          ) : !offer.viewerAuthenticated ? (
+            <>
+              <p className="muted">
+                Sign in or create a free account to purchase this course or use
+                a reviewer code.
               </p>
-            ) : offer.viewerEnrolmentStatus === "PAUSED" ? (
-              <p role="status">
-                Your enrolment in this course is currently paused. Contact
-                support to resume it -- no new purchase is needed.
-              </p>
-            ) : offer.viewerEnrolmentStatus === "WITHDRAWN" ? (
-              <p role="status">
-                You have a previous enrolment in this course. Contact support to
-                review it -- a new purchase cannot reactivate it automatically.
-              </p>
-            ) : !offer.viewerAuthenticated ? (
-              <>
-                <p className="muted">
-                  Sign in or create a free account to purchase this course or
-                  use a reviewer code.
+              <Link
+                href={`/login?next=${encodeURIComponent(next)}`}
+                className="button full"
+              >
+                Sign in to continue <span aria-hidden="true">→</span>
+              </Link>
+              <Link
+                href={`/signup?next=${encodeURIComponent(next)}`}
+                className="button secondary full"
+              >
+                Create an account
+              </Link>
+            </>
+          ) : (
+            <>
+              {!checkoutAvailable && (
+                <p className="notice" role="status">
+                  Card checkout is temporarily unavailable. A valid
+                  complimentary reviewer or promotional code can still grant
+                  access.
                 </p>
-                <Link
-                  href={`/login?next=${encodeURIComponent(next)}`}
-                  className="button full"
-                >
-                  Sign in to continue <span aria-hidden="true">→</span>
-                </Link>
-                <Link
-                  href={`/signup?next=${encodeURIComponent(next)}`}
-                  className="button secondary full"
-                >
-                  Create an account
-                </Link>
-              </>
-            ) : (
-              <>
-                {!checkoutAvailable && (
-                  <p className="notice" role="status">
-                    Card checkout is temporarily unavailable. A valid
-                    complimentary reviewer or promotional code can still grant
-                    access.
-                  </p>
-                )}
-                <BuyCourseForm
-                  slug={offer.slug}
-                  paymentAvailable={checkoutAvailable}
-                />
-              </>
-            )
-          }
+              )}
+              <BuyCourseForm
+                slug={offer.slug}
+                paymentAvailable={checkoutAvailable}
+              />
+            </>
+          )}
           <p className="config-caption">
             Scheduling opens after payment is verified or complimentary access
             is granted and your enrolment is confirmed.
