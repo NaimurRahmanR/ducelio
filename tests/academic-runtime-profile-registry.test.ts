@@ -8,7 +8,10 @@ import { DEFAULT_RUNTIME_BUDGET_POLICY } from "@/domain/academic-runtime";
 import { PROVIDER_EXECUTION_DB_CEILING } from "@/domain/academic-provider-execution";
 import { TUTOR_LAB_EXECUTION_DB_CEILING } from "@/domain/tutor-lab-execution";
 import { EXAMINER_EXECUTION_DB_CEILING } from "@/domain/commercial-v1-examiner-grading";
-import type { RuntimeProfile } from "@/domain/academic-runtime-profile";
+import {
+  runtimeProfileSchema,
+  type RuntimeProfile,
+} from "@/domain/academic-runtime-profile";
 
 describe("production native routing registry", () => {
   it("routes each academic role only through its reviewed provider/model profile", () => {
@@ -30,6 +33,17 @@ describe("production native routing registry", () => {
       adapterKind: "OPENAI_RESPONSES",
       providerConfig: { model: "gpt-5.6-luna" },
     });
+  });
+
+  it("every production registry entry satisfies the full runtime-profile schema", () => {
+    for (const ref of [
+      "PROFESSOR_COMMERCIAL_V1",
+      "TUTOR_COMMERCIAL_V1",
+      "LAB_INSTRUCTOR_COMMERCIAL_V1",
+      "EXAMINER_COMMERCIAL_V1",
+    ]) {
+      expect(() => runtimeProfileSchema.parse(resolveRuntimeProfile(ref))).not.toThrow();
+    }
   });
 
   it("keeps reviewed tariff snapshots code-owned and dated", () => {
