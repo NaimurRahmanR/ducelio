@@ -27,7 +27,9 @@ describe("PR24 launch UX static boundaries", () => {
       "STANDARD_6_WEEK",
     ])
       expect(adminForms).toContain(plan);
-    expect(coursePage).toContain("DELIVERY_PLAN_DEFINITIONS[offer.deliveryPlan]");
+    expect(coursePage).toContain(
+      "DELIVERY_PLAN_DEFINITIONS[offer.deliveryPlan]",
+    );
   });
 
   it("requires a code when card commerce is unavailable but keeps it optional otherwise", () => {
@@ -40,9 +42,7 @@ describe("PR24 launch UX static boundaries", () => {
     expect(migration).not.toMatch(
       /update\s+public\.commercial_v1_orders\s+set\s+amount_minor/i,
     );
-    expect(migration).toMatch(
-      /amount_minor,currency,campaign_redemption_id/,
-    );
+    expect(migration).toMatch(/amount_minor,currency,campaign_redemption_id/);
   });
 
   it("keeps zero-price access explicitly orderless", () => {
