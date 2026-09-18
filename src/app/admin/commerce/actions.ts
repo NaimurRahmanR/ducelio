@@ -26,7 +26,7 @@ export async function publishOfferAction(
       priceAmountMinor,
       currency: data.get("currency"),
       summary: (data.get("summary") as string | null) || null,
-      deliveryPlan: data.get("deliveryPlan"),
+      deliveryPlan: data.get("deliveryPlan") || undefined,
       reason: data.get("reason"),
     });
     return {
@@ -88,11 +88,13 @@ export async function createCampaignAction(
         kind,
         fixedPriceAmountMinor: numberField(data.get("fixedPriceAmountMinor")),
       });
-    } else {
+    } else if (kind === "REVIEWER_COMPLIMENTARY") {
       await createCommercialV1Campaign({
         ...base,
-        kind: "REVIEWER_COMPLIMENTARY",
+        kind,
       });
+    } else {
+      return { error: "Choose a valid campaign kind." };
     }
     return {
       message:
