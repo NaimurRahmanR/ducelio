@@ -139,9 +139,9 @@ describe("Publish/archive offer input contracts", () => {
       currency: "GBP",
       reason: "Publish founding cohort",
     };
-    expect(
-      publishCommercialV1OfferInputSchema.parse(base).deliveryPlan,
-    ).toBe("STANDARD_6_WEEK");
+    expect(publishCommercialV1OfferInputSchema.parse(base).deliveryPlan).toBe(
+      "STANDARD_6_WEEK",
+    );
     expect(
       publishCommercialV1OfferInputSchema.safeParse({
         ...base,
