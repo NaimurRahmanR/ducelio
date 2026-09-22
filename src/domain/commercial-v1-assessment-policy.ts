@@ -150,12 +150,20 @@ export const recordCommercialV1ResponseResultSchema = z.union([
     submittedAt: z.iso.datetime({ offset: true }),
     submissionProvenance: z.literal("AUTO_TIMEOUT"),
   }),
+  // The database's "this attempt is not Commercial V1-governed" answer. It is
+  // its own union member (rather than one more enum value) so the server's
+  // response composition can remove exactly this internal routing signal from
+  // the type it hands to callers -- see AssessmentResponseOutcome in
+  // src/server/assessments.ts. The accepted wire shapes are unchanged.
+  z.strictObject({
+    ok: z.literal(false),
+    code: z.literal("NOT_COMMERCIAL_V1_GOVERNED"),
+  }),
   z.strictObject({
     ok: z.literal(false),
     code: z.enum([
       "INVALID_INPUT",
       "NOT_FOUND_OR_FORBIDDEN",
-      "NOT_COMMERCIAL_V1_GOVERNED",
       "ATTEMPT_NOT_ACTIVE",
       "RESPONSE_WINDOW_CLOSED",
       "IDEMPOTENCY_CONFLICT",

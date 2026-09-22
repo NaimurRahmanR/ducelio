@@ -66,12 +66,23 @@ const rpcKeys: Record<string, string[]> = {
   my_coursework_scope: [],
   start_assessment_attempt: ["p_assessment_id"],
   get_active_assessment_questions: ["p_assessment_id"],
+  // recordAssessmentResponse now probes the Commercial V1 governed writer
+  // first (a non-governed activation like this fixture's answers
+  // NOT_COMMERCIAL_V1_GOVERNED) and only then uses the legacy writer; the
+  // learner read also runs the governed lazy finalizer first.
+  record_commercial_v1_assessment_response: [
+    "p_attempt_id",
+    "p_question_id",
+    "p_body",
+    "p_idempotency_key",
+  ],
   record_assessment_response: [
     "p_attempt_id",
     "p_question_id",
     "p_body",
     "p_idempotency_key",
   ],
+  finalize_expired_commercial_v1_attempts: [],
   submit_assessment_attempt: ["p_attempt_id"],
   submit_assignment: ["p_assignment_id", "p_body", "p_idempotency_key"],
 };

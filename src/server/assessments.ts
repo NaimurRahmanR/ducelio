@@ -1,6 +1,8 @@
 import { getMyCourseworkScope } from "./course-activation";
 import "server-only";
 import { z } from "zod";
+import type { RecordCommercialV1ResponseResult } from "@/domain/commercial-v1-assessment-policy";
+import { recordCommercialV1AssessmentResponse } from "./commercial-v1-assessment-policy";
 import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
@@ -253,6 +255,18 @@ export async function getStudentAssessments() {
       activeQuestions: [],
     };
   const client = await createSupabase();
+  // A Commercial V1-governed attempt whose deadline has elapsed (or whose
+  // assessment was administratively closed) stays state=ACTIVE in
+  // assessment_attempts until something finalises it -- there is no scheduler.
+  // Finalise it, through the existing database authority, BEFORE reading so
+  // this projection can never present an expired governed attempt as active.
+  // The RPC is self-scoped to this STUDENT, restricted to explicitly bound
+  // assessments under a published policy, anchors submitted_at to the
+  // attempt's own expires_at, and is idempotent. Time is decided by the
+  // database clock only. Fail closed: if finalisation cannot be established,
+  // do not render a possibly stale lifecycle.
+  const finalized = await client.rpc("finalize_expired_commercial_v1_attempts");
+  if (finalized.error) throw new Error("Your assessments could not be loaded.");
   const [assessments, attempts, responses, activity] = await Promise.all([
     client
       .from("assessments")
@@ -338,8 +352,14 @@ export async function startAssessmentAttempt(assessmentId: unknown) {
   return z.uuid().parse(data);
 }
 
-export async function recordAssessmentResponse(input: unknown) {
-  const payload = assessmentResponseSchema.parse(input);
+// The legacy (pre-Commercial V1) response writer. Deliberately NOT exported:
+// migration 029 makes record_assessment_response refuse every Commercial
+// V1-governed attempt, so this must only ever be reached through
+// recordAssessmentResponse below, and only after the governed surface has
+// itself said the attempt is not governed.
+async function recordLegacyAssessmentResponse(
+  payload: z.infer<typeof assessmentResponseSchema>,
+) {
   await requireActor("student");
   const client = await createSupabase();
   const { data, error } = await client.rpc("record_assessment_response", {
@@ -350,6 +370,49 @@ export async function recordAssessmentResponse(input: unknown) {
   });
   if (error) throw new Error("Assessment response could not be saved.");
   return z.uuid().parse(data);
+}
+
+// What a caller of the response composition can ever see. It is the governed
+// surface's own structured result minus its internal routing signal: a caller
+// is never told, and can never choose, which writer handled its request.
+export type AssessmentResponseOutcome = Exclude<
+  RecordCommercialV1ResponseResult,
+  { ok: false; code: "NOT_COMMERCIAL_V1_GOVERNED" }
+>;
+
+// THE single server-owned boundary for saving a controlled-assessment
+// response. Which writer handles a request is decided here from
+// authoritative database state -- never from anything the browser supplies
+// (the only inputs are the four bounded fields below).
+//
+// Routing: the Commercial V1 governed writer is always tried FIRST. Only its
+// explicit NOT_COMMERCIAL_V1_GOVERNED answer routes to the legacy writer;
+// every other outcome -- success, EXPIRED, RESPONSE_WINDOW_CLOSED,
+// ATTEMPT_NOT_ACTIVE, NOT_FOUND_OR_FORBIDDEN, IDEMPOTENCY_CONFLICT,
+// INVALID_INPUT -- is final and is returned as-is. A transport error or an
+// unrecognised result throws and likewise never falls back.
+//
+// Why probing governed-first is side-effect safe (migration 029): for an
+// attempt that is not governed, record_commercial_v1_assessment_response
+// returns NOT_COMMERCIAL_V1_GOVERNED after proving ownership and before any
+// finalisation, insert or audit write; ownership is checked first, so a
+// non-owner only ever sees NOT_FOUND_OR_FORBIDDEN and learns nothing about
+// governance. And an attempt's governed status cannot change once it exists:
+// publishing a grading policy is refused while any attempt history exists on
+// a bound assessment, and published policies/bindings are immutable. So the
+// answer cannot flip between the probe and the fallback -- and if it somehow
+// did, the legacy RPC refuses a governed attempt, failing closed.
+export async function recordAssessmentResponse(
+  input: unknown,
+): Promise<AssessmentResponseOutcome> {
+  const payload = assessmentResponseSchema.parse(input);
+  const governed = await recordCommercialV1AssessmentResponse(payload);
+  if (governed.ok || governed.code !== "NOT_COMMERCIAL_V1_GOVERNED")
+    return governed;
+  return {
+    ok: true,
+    responseId: await recordLegacyAssessmentResponse(payload),
+  };
 }
 
 export async function submitAssessmentAttempt(attemptId: unknown) {
