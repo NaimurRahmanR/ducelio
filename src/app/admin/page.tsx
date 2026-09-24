@@ -104,6 +104,19 @@ export default async function Page({
             </Link>
           )}
           {canPublish && (
+            <Link className="button secondary" href="/admin/activation/policy">
+              Commercial V1 policy setup
+            </Link>
+          )}
+          {canPublish && (
+            <Link
+              className="button secondary"
+              href="/admin/activation/recovery"
+            >
+              Examiner grade recovery
+            </Link>
+          )}
+          {canPublish && (
             <Link className="button secondary" href="/admin/commerce">
               Manage commercial offers
             </Link>

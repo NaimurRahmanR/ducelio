@@ -3,6 +3,8 @@ import { useActionState, useState } from "react";
 import {
   requestPracticalSupportAction,
   requestTutorLabSupportAction,
+  submitPracticalLabWorkAction,
+  type LabWorkSubmissionActionState,
   type TutorLabSupportActionState,
 } from "@/app/student/practicals/actions";
 
@@ -74,6 +76,72 @@ function TutorLabSupportPanel({
             : state.status
               ? STATUS_MESSAGE[state.status]
               : ""}
+      </p>
+    </form>
+  );
+}
+
+const GRADING_STATUS_MESSAGE: Partial<
+  Record<NonNullable<LabWorkSubmissionActionState["grading"]>, string>
+> = {
+  ESCALATED: " This has been sent for academic review.",
+  GRADING_PENDING: " Grading is in progress; check back shortly.",
+  GRADING_UNAVAILABLE:
+    " Grading is not currently available for this submission.",
+};
+
+// THE final, governed lab submission -- distinct from PracticalSupport's
+// conversational Tutor/Lab Instructor assistance below, which never records
+// institutional work. The idempotency key is derived deterministically from
+// (enrolmentId, practicalId) -- not randomly regenerated per render -- so a
+// resubmission after an interrupted request (a refresh, a lost response)
+// safely replays to the same governed submission rather than being treated
+// as a new one.
+export function LabWorkSubmission({
+  enrolmentId,
+  practicalId,
+}: {
+  enrolmentId: string;
+  practicalId: string;
+}) {
+  const [state, formAction, pending] = useActionState(
+    submitPracticalLabWorkAction,
+    {},
+  );
+  const idempotencyKey = `lab:${enrolmentId}:${practicalId}`;
+  const submitted = state.status === "SUBMITTED";
+  return (
+    <form action={formAction} style={{ marginTop: "0.75rem" }}>
+      <input type="hidden" name="enrolmentId" value={enrolmentId} />
+      <input type="hidden" name="practicalId" value={practicalId} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
+      <label>
+        Final lab submission
+        <textarea
+          name="body"
+          maxLength={20000}
+          minLength={1}
+          required
+          rows={6}
+          disabled={pending || submitted}
+        />
+      </label>
+      <button className="button" disabled={pending || submitted}>
+        {pending
+          ? "Submitting…"
+          : submitted
+            ? "Submitted"
+            : "Submit final lab work"}
+      </button>
+      <p role="status">
+        {state.error
+          ? state.error
+          : submitted
+            ? "Lab work submitted." +
+              (state.grading && state.grading !== "GRADED"
+                ? GRADING_STATUS_MESSAGE[state.grading]
+                : "")
+            : ""}
       </p>
     </form>
   );
