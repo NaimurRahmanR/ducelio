@@ -7,7 +7,10 @@ import {
 } from "@/server/course-activation";
 import { AcademyShell } from "@/components/academy-shell";
 import { Card } from "@/components/ui";
-import { PracticalSupport } from "@/components/practical-support";
+import {
+  PracticalSupport,
+  LabWorkSubmission,
+} from "@/components/practical-support";
 export default async function Page({
   searchParams,
 }: {
@@ -71,12 +74,20 @@ export default async function Page({
               <p>{p.kind === "PRACTICAL_LAB" ? "Practical lab" : "Exercise"}</p>
               <p style={{ whiteSpace: "pre-wrap" }}>{p.instructions}</p>
               {selected?.status === "ACTIVE" && (
-                <PracticalSupport
-                  enrolmentId={selected.id}
-                  practicalId={p.id}
-                  requestId={randomUUID()}
-                  lab={p.kind === "PRACTICAL_LAB"}
-                />
+                <>
+                  <PracticalSupport
+                    enrolmentId={selected.id}
+                    practicalId={p.id}
+                    requestId={randomUUID()}
+                    lab={p.kind === "PRACTICAL_LAB"}
+                  />
+                  {p.kind === "PRACTICAL_LAB" && (
+                    <LabWorkSubmission
+                      enrolmentId={selected.id}
+                      practicalId={p.id}
+                    />
+                  )}
+                </>
               )}
             </Card>
           ))

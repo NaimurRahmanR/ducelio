@@ -5,8 +5,8 @@ import { submitAssignment } from "@/server/assignments";
 import {
   recordAssessmentResponse,
   startAssessmentAttempt,
-  submitAssessmentAttempt,
 } from "@/server/assessments";
+import { submitControlledAssessmentAndGrade } from "@/server/commercial-v1-submission-grading";
 
 export type AssignmentSubmissionActionState = {
   error?: string;
@@ -100,17 +100,43 @@ export async function saveControlledAssessmentResponse(
   };
 }
 
+// One calm message per safe grading outcome. None names Examiner/provider/
+// recovery internals -- a learner never sees "recovery", a reason code, a
+// provider error or an admin-facing distinction between "not configured"
+// and "terminally failed": both look identical from here on purpose.
+const GRADING_MESSAGES: Record<
+  Exclude<
+    Awaited<ReturnType<typeof submitControlledAssessmentAndGrade>>["grading"],
+    "GRADED"
+  >,
+  string
+> = {
+  ESCALATED: " This assessment has been sent for academic review.",
+  GRADING_PENDING: " Grading is in progress; check back shortly.",
+  GRADING_UNAVAILABLE: " Grading is not currently available for this attempt.",
+};
+
 export async function finishControlledAssessment(
   _state: AssessmentActionState,
   form: FormData,
 ): Promise<AssessmentActionState> {
+  let result;
   try {
-    await submitAssessmentAttempt(form.get("attemptId"));
+    // Submission (the durable institutional truth) and Examiner grading
+    // admission are two separate authority boundaries composed here --
+    // never one pseudo-transaction. A grading failure of any kind can never
+    // unwind or hide a successful submission; only submitAssessmentAttempt
+    // itself throwing is reported as a submission failure.
+    result = await submitControlledAssessmentAndGrade(form.get("attemptId"));
   } catch {
     return {
       error: "Unable to submit this assessment attempt.",
     };
   }
   revalidatePath("/student/assessments");
-  return { message: "Assessment submitted." };
+  return {
+    message:
+      "Assessment submitted." +
+      (result.grading === "GRADED" ? "" : GRADING_MESSAGES[result.grading]),
+  };
 }
