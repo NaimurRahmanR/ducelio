@@ -52,6 +52,35 @@ export const activationOptions = z.strictObject({
   assessments: z.array(template).max(250),
 });
 export type ActivationOptions = z.infer<typeof activationOptions>;
+
+// Bounded admin activation-discovery read (list_commercial_v1_activations,
+// migration 202609250042): closes the operational gap where an admin had to
+// already know a real activation's UUID to reach policy setup or otherwise
+// identify it. Display fields only -- programme/package/cohort identity and
+// policy-publication status, never protected assessment/lab content or any
+// learner-identifying field.
+export const commercialV1ActivationSummarySchema = z.strictObject({
+  activationId: z.uuid(),
+  programmeTitle: z.string(),
+  versionLabel: z.string(),
+  packageKey: z.string(),
+  packageRevision: z.number().int().positive(),
+  cohortTitle: z.string(),
+  cohortStartsOn: z.string(),
+  activationState: z.literal("ACTIVATED"),
+  createdAt: z.string(),
+  gradingPolicyPublished: z.boolean(),
+  resultPolicyPublished: z.boolean(),
+  labPracticalsTotal: z.number().int().min(0),
+  labPracticalsConfigured: z.number().int().min(0),
+});
+export type CommercialV1ActivationSummary = z.infer<
+  typeof commercialV1ActivationSummarySchema
+>;
+export const commercialV1ActivationListSchema = z.strictObject({
+  activations: z.array(commercialV1ActivationSummarySchema).max(200),
+});
+
 export const practicalInput = z.strictObject({
   enrolmentId: z.uuid(),
   cursor: z.number().int().min(0).max(62500).optional(),

@@ -19,6 +19,7 @@ import {
   GraduationCap,
   ShieldCheck,
   Trophy,
+  Award,
 } from "lucide-react";
 import { Brand } from "./ui";
 import { logout } from "@/app/auth/actions";
@@ -33,6 +34,7 @@ const links = [
   ["Practicals", "practicals", ClipboardList],
   ["Leaderboard", "leaderboard", Trophy],
   ["Assessments", "assessments", FileCheck2],
+  ["Course completion", "progress", Award],
   ["Notes", "notes", NotebookPen],
   ["Results", "results", ChartNoAxesCombined],
   ["Support", "support", HeartHandshake],
@@ -64,7 +66,10 @@ export function AcademyShell({
       {links
         .filter(
           ([, slug]) =>
-            !demo || (slug !== "practicals" && slug !== "leaderboard"),
+            !demo ||
+            (slug !== "practicals" &&
+              slug !== "leaderboard" &&
+              slug !== "progress"),
         )
         .map(([label, slug, Icon]) => {
           const href = slug ? base + "/" + slug : base;
