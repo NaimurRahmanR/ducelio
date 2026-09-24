@@ -1,0 +1,195 @@
+# Commercial V1 Checkpoint D — Hosted Acceptance Prerequisites
+
+## Current status
+
+Checkpoints A–C (`f407526`, `e1f6f0d`, `12fd7f5`, `8cc82fc` on `commercial-v1-grading-completion`) are locally implemented and tested. Checkpoint D is currently:
+
+**BLOCKED_BY_ENVIRONMENT**
+
+This is not an architectural blocker in the grading/recovery/completion chain — every authority Checkpoints A–C compose was already reviewed and locally proven. The current local environment does not provide hosted infrastructure credentials or tooling sufficient to truthfully prove production-like acceptance. No hosted or billable operation is claimed until the prerequisites below are satisfied.
+
+Verified directly in this environment (not assumed): `.env.local` holds only `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `APP_URL`, `AUTH_GOOGLE_ENABLED`, `AUTH_LINKEDIN_ENABLED`. No hosted PostgreSQL connection string, no Supabase service-role credential, no `ACADEMIC_PROVIDER_BASE_URL`/`ACADEMIC_PROVIDER_API_KEY`, no `ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, no `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`, no SMTP configuration. No `supabase` CLI on PATH. No linked project reference (`supabase/.temp/project-ref` absent).
+
+---
+
+## 1. Hosted Supabase / PostgreSQL
+
+**Blocker:** no hosted PostgreSQL connection string, no Supabase service-role credential, no Supabase CLI, no linked project. Cannot independently verify hosted migration application, real PostgreSQL behaviour, real hosted RPC execution, hosted RLS/ACL behaviour, hosted JWT/PostgREST behaviour, or true multi-connection concurrency.
+
+**Prerequisites:** a dedicated non-production acceptance Supabase project, with `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, hosted PostgreSQL connection information suitable for migration/concurrency testing, and — only where a reviewed administrative acceptance operation genuinely requires it — a service-role credential; note this repository's application code has no service-role credential anywhere in its runtime architecture today (deliberate RLS/RPC-only design), so any service-role use here is CLI/acceptance-tooling only, never application code. Supabase CLI and project reference if CLI-based migration/status verification is used. A PostgreSQL client capable of opening at least two genuinely independent connections. Secrets stay outside source control, are never logged, never embedded in test fixtures, never returned to browser code.
+
+**Acceptance required:** migrations 001–040 apply in order; no historical migration requires rewriting; all expected Commercial V1 RPCs/functions exist; RLS is enabled where expected; authenticated learner access is correctly scoped; foreign-learner reads/writes are denied; anon access is denied where required; service-role access does not bypass reviewed authority through public application surfaces; assessment writer behaviour matches local acceptance; Examiner initial grading, initial-grade recovery, and result/progress/completion all work under hosted PostgreSQL.
+
+Status until proven: **HOSTED DATABASE MIGRATIONS — BLOCKED**, **HOSTED RLS/ACL — BLOCKED**, **HOSTED JWT/POSTGREST — BLOCKED**.
+
+---
+
+## 2. True PostgreSQL concurrency
+
+**Blocker:** PGlite is single-connection for the relevant repository tests. Strong deterministic/sequential coverage, but cannot prove real PostgreSQL blocking/race behaviour across concurrent sessions. Status: **NOT RUN**.
+
+**Prerequisite:** a real PostgreSQL environment permitting multiple simultaneous connections — prefer the dedicated hosted acceptance database over production.
+
+**Required race tests** (independent connections/processes):
+
+- **Examiner initial grading:** two simultaneous initial AUTHORIZE attempts for the same target → exactly one durable initial claim, no duplicate provider authority, no duplicate result.
+- **Initial grading vs recovery:** race a late initial execution/finalization against institutional recovery admission → never two revision-1 results; one side deterministically loses according to database authority.
+- **Recovery vs recovery:** two simultaneous recovery admissions for the same source → exactly one recovery execution, one bounded replay/denial, no duplicate provider-call authority. This directly exercises `examiner_recovery_one_per_source` under real concurrent contention, not just PGlite's sequential unique-index proof.
+- **Grading finalization vs completion:** completion never sees an impossible partially-finalized result; either grading commits first and completion evaluates it, or completion refuses because authoritative grading remains incomplete.
+- **Regrade vs completion:** where the current authority permits the operation, current result revision and completion remain transactionally consistent; completion cannot silently use a superseded revision.
+- **Duplicate course completion:** two simultaneous completion attempts on the same enrolment → one durable completion result/receipt, deterministic idempotent replay, no duplicate institutional completion record. This directly exercises `attemptCommercialV1CourseCompletion`'s replay guarantee under real concurrent contention, not just PGlite's sequential proof from Checkpoint C's own tests.
+
+Successful acceptance permits: **TRUE POSTGRES CONCURRENCY — PASS**.
+
+---
+
+## 3. Hosted Auth / JWT / PostgREST
+
+**Blocker:** no hosted authenticated acceptance session has been exercised. Local tests emulate/verify the authority model but do not prove the complete Supabase Auth → JWT → PostgREST → RLS path.
+
+**Prerequisites:** a hosted acceptance project with Supabase Auth enabled, at least one isolated synthetic test learner, at least one authorized institutional admin, optionally a second learner for foreign-principal denial tests.
+
+**Acceptance required:** learner JWT resolves to the correct authenticated identity; learner cannot override actor/student IDs; learner sees only owned enrolment/work/results; learner cannot invoke admin recovery; `ACADEMIC_ADMIN`/`PLATFORM_ADMIN` can invoke recovery where policy permits; unrelated staff roles cannot; expired/invalid JWT fails closed; PostgREST/RPC calls enforce the same DB authority as local tests; no protected assessment data crosses the learner API boundary.
+
+Successful acceptance permits: **HOSTED JWT/POSTGREST — PASS**.
+
+---
+
+## 4. Examiner controller/HMAC provisioning
+
+**Blocker:** Checkpoint A reuses Ducelio's reviewed controller HMAC trust root, but production/hosted controller keys have not been provisioned or accepted.
+
+**Prerequisites:** provision matching server-side and database-side controller key material per the existing `academic_execution_private.controller_keys` design. Confirmed exact environment variable names already used by this repository's source (`src/server/academic-provider-execution/authority.ts`, `src/server/commercial-v1-examiner-{grading,regrade,recovery}/authority.ts`, `src/server/tutor-lab-execution/authority.ts`, `src/server/academic-execution/authority.ts`): `ACADEMIC_EXECUTION_KEY_ID`, `ACADEMIC_EXECUTION_HMAC_KEY_HEX`. This single key pair is shared across every governance surface (initial grading, regrade, recovery, tutor/lab, Professor execution); each surface's own distinct canonical-message protocol tag is what keeps one attestation from authorizing another surface's transition, not a separate key.
+
+**Operational requirements:** key material lives in a secret manager/environment, never source; rotation procedure documented; inactive/old keys behave per existing DB policy; logs never print MAC/key material; backups protect the private key tables; server and database provisioning agree exactly.
+
+**Acceptance required:** valid AUTHORIZE MAC accepted; tampered MAC rejected; expired MAC rejected; wrong operation rejected; wrong actor rejected; wrong execution/target rejected; recovery protocol cannot be authorized by an initial/regrade MAC; initial/regrade protocols cannot consume recovery attestations. (All of this is already proven locally per-surface via PGlite — this row proves the same holds against the real, hosted, provisioned key material, not the design.)
+
+---
+
+## 5. Live AI provider acceptance
+
+**Blocker:** no live provider credentials are configured. Confirmed exact environment variable names (`src/server/academic-runtime/provider.ts`): `ACADEMIC_PROVIDER_BASE_URL`, `ACADEMIC_PROVIDER_API_KEY`. Neither is set. Live provider acceptance would also incur external usage and therefore requires explicit authorization before execution.
+
+Current status: **LIVE_PROVIDER_ACCEPTANCE_PENDING_AUTHORIZATION**.
+
+**Prerequisites:** provision the existing server-only provider configuration (never exposed to the browser — `resolveAdapterForProfile` fails closed to `NO_PROVIDER_CONFIGURED` without it). Explicitly authorize a bounded paid smoke test before performing one.
+
+**Minimum acceptance test:** smallest safe fixture that contains no real learner PII; uses a bounded synthetic grading context; invokes exactly the reviewed Examiner profile; makes at most the configured provider-call limit; validates strict returned JSON; records real observed token/usage accounting; checks real elapsed time against the current deadline; proves provider transport failure remains non-authoritative; proves provider output cannot bypass result validation.
+
+A successful smoke test establishes **LIVE PROVIDER — SMOKE-TESTED**, never **PRODUCTION-PROVEN**, and never a claim about general model quality.
+
+---
+
+## 6. Stripe test-mode acceptance
+
+**Blocker:** no Stripe configuration exists in this environment. Confirmed exact environment variable names (`src/lib/env.ts`'s `readCommerceConfig`): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, plus this repository's separate `COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX` (a distinct controller trust root from `ACADEMIC_EXECUTION_*` above — commerce and academic execution are deliberately separate authorities). None are set; `commerceConfig().configured` is false, so checkout fails closed truthfully today rather than simulating success.
+
+Current status: **BLOCKED**.
+
+**Prerequisites:** Stripe test-mode credentials only — server secret key, publishable key where required client-side, webhook signing secret, a configured test webhook endpoint.
+
+**Acceptance required:** checkout session uses server-owned amount/currency; browser cannot override amount/currency; success redirect does not itself grant entitlement; a signed webhook/reconciliation grants paid access; a duplicate webhook is idempotent; replay cannot create duplicate fulfilment; promotional/campaign pricing remains server-owned; `REVIEWER_COMPLIMENTARY` creates access without a fake payment/order; a paid promo cannot accidentally produce unauthorized zero-price access. No real card charge is required.
+
+Successful acceptance: **STRIPE TEST MODE — PASS** — never described as live-payment production acceptance.
+
+---
+
+## 7. SMTP / transactional email
+
+**Blocker:** this repository has no application-level SMTP/mail-provider environment variable anywhere in `src` today — confirmed by direct search, not assumed. Signup/verification/reset email currently rides entirely on Supabase Auth's own hosted email delivery (configured, if at all, in the Supabase project dashboard, not as a Ducelio app secret). If launch requires custom transactional email (e.g. non-auth notifications), that is itself unbuilt application scope, not merely an unconfigured credential — document which is actually true before writing acceptance criteria against it.
+
+**If using Supabase Auth's built-in email:** verify, per hosted project, that the signup/verification and password-reset emails are actually deliverable from the project's configured sender, with a non-production recipient/domain where possible, and that failure behaviour (undeliverable, rate-limited) fails closed rather than silently.
+
+**If a custom SMTP integration is later built:** apply the same acceptance discipline as every other surface here — a dedicated environment variable set, secrets server-only, a real send/failure acceptance test, no secret in logs — before ever calling it PASS.
+
+Successful acceptance: **SMTP — PASS**, scoped to whichever of the two paths above is actually true for the launch plan.
+
+---
+
+## 8. Monitoring and operational visibility
+
+**Blocker:** no hosted target exists from which to prove production monitoring.
+
+**Prerequisites:** application error monitoring; hosted database health visibility; provider failure/error-rate visibility; Examiner execution failure/timeout visibility; payment/webhook failure visibility; background/operational job visibility where applicable; usage/cost observation; a named alert destination/owner.
+
+**Never log:** learner assessment response bodies, answer keys, provider secrets, HMAC values, raw authentication tokens — consistent with every governance surface's own reviewed audit-privacy design (metadata-only audit rows throughout this codebase already enforce this at the database layer; monitoring must not reintroduce a leak the database layer deliberately closed).
+
+**Acceptance:** trigger controlled non-sensitive failures and verify they are visible/actionable. Successful acceptance: **MONITORING — PASS**.
+
+---
+
+## 9. Backup and restore
+
+**Blocker:** no hosted database target exists in the present environment.
+
+**Prerequisites:** for the intended production Supabase/PostgreSQL environment — backup policy, retention, restore procedure, a responsible operator, secret/private-schema protection.
+
+**Acceptance:** a backup feature being merely enabled is not sufficient proof. Before production acceptance, perform or obtain credible evidence of restoration into an isolated environment and verify critical Ducelio records survive coherently: enrolments, programme/course versions, assessment attempts/responses, lab submissions, Examiner execution/result history, recovery/regrade history, current result revisions, completion receipts, commerce entitlement/payment provenance.
+
+Successful evidence: **BACKUP/RESTORE — PASS**.
+
+---
+
+## 10. Required hosted acceptance environment
+
+A dedicated Ducelio staging/acceptance environment, never production learner records, with: a separate hosted Supabase project/database; synthetic users; current migrations 001–040; dedicated controller/HMAC keys (`ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, `COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`); a test provider credential or explicit provider smoke-test permission (`ACADEMIC_PROVIDER_BASE_URL`/`ACADEMIC_PROVIDER_API_KEY`); Stripe test-mode credentials (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`); a confirmed email-delivery path (Supabase Auth's own, or a built custom SMTP integration); monitoring enabled.
+
+---
+
+## 11. Recommended execution order
+
+1. Provision hosted Supabase/PostgreSQL.
+2. Apply/verify migrations 001–040.
+3. Verify RLS/ACL and JWT/PostgREST.
+4. Provision controller/HMAC trust (`ACADEMIC_EXECUTION_*`).
+5. Run real multi-connection PostgreSQL concurrency tests (Section 2).
+6. Run hosted grading/recovery/result/completion acceptance using mocked/no-provider execution first.
+7. Perform one explicitly authorized bounded live-provider smoke test.
+8. Run Stripe test-mode acceptance.
+9. Confirm the email-delivery path.
+10. Verify monitoring.
+11. Verify backup/restore procedure.
+12. Run the complete staged customer journey (Section 12).
+
+Do not skip deterministic/database acceptance merely because a provider smoke test succeeds.
+
+---
+
+## 12. Final hosted customer-journey acceptance
+
+Before Commercial V1 is described as production-ready, prove one isolated end-to-end staged learner journey: public course → account/authentication → test-mode payment or reviewer entitlement → enrolment → delivery plan → classroom → Tutor/Lab activity → controlled assessment → durable assessment submission → Examiner grading → explicit recovery where intentionally injected/tested → final lab submission → authoritative result → progress/diagnostics → course completion → completion receipt. The journey must require no manual SQL repair.
+
+Negative-path acceptance must also include at least: provider unavailable; terminal initial grade requiring institutional recovery; duplicate submission/replay; foreign learner attempt; payment/webhook replay; incomplete result set; below published pass requirement; completion replay.
+
+---
+
+## Evidence classification
+
+Used strictly throughout this and every prior checkpoint document:
+
+- **IMPLEMENTED** — exists in repository source.
+- **LOCAL-TESTED** — passed local deterministic/PGlite/unit/integration gates.
+- **HOSTED-TESTED** — actually exercised against the configured hosted environment.
+- **LIVE-PROVIDER-TESTED** — actually made an authorized live provider request.
+- **PRODUCTION-PROVEN** — production environment and operational acceptance have independently satisfied the required launch criteria.
+
+Never infer a stronger status from a weaker one.
+
+## Current Checkpoint D matrix
+
+| Surface                     | Current status                                                                          | Requirement to unblock                                                          |
+| --------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Hosted DB migrations        | BLOCKED                                                                                 | Hosted DB + migration access                                                    |
+| Hosted RLS/ACL              | BLOCKED                                                                                 | Hosted Supabase/PostgreSQL                                                      |
+| Hosted JWT/PostgREST        | BLOCKED                                                                                 | Hosted Auth + synthetic identities                                              |
+| True PostgreSQL concurrency | NOT RUN                                                                                 | Multiple real DB connections                                                    |
+| Hosted grading/recovery     | BLOCKED                                                                                 | DB + controller key provisioning                                                |
+| Hosted result/completion    | BLOCKED                                                                                 | Hosted DB/auth acceptance                                                       |
+| Live provider               | PENDING AUTHORIZATION                                                                   | `ACADEMIC_PROVIDER_*` + explicit spend authorization                            |
+| Stripe                      | BLOCKED                                                                                 | `STRIPE_*`/`COMMERCE_CONTROLLER_*` test-mode keys/webhook                       |
+| SMTP / email delivery       | BLOCKED (or N/A if Supabase Auth's built-in email is the accepted path — confirm which) | Mail provider configuration, or acceptance test of Supabase Auth's own delivery |
+| Monitoring                  | BLOCKED                                                                                 | Hosted deployment + monitoring                                                  |
+| Backup/restore              | BLOCKED                                                                                 | Hosted DB + backup/restore procedure                                            |
+
+Checkpoint D becomes complete only when the required rows are supported by actual acceptance evidence, never configuration assumptions.

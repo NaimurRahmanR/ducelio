@@ -7,7 +7,7 @@ CURRENT PARTIAL CHECKPOINT: Commercial V1 grading/recovery/completion chain on `
 COMPLETED ITEMS: Checkpoint A — the governed initial-grade recovery authority (migration 202609240040, `src/server/commercial-v1-examiner-recovery/*`); Checkpoint B — safe submission → initial Examiner orchestration composition (`src/server/commercial-v1-submission-grading.ts`, no new migration); Checkpoint C — result → progress → diagnostics/remediation → deterministic course completion composition (no new migration) — see their dedicated sections below.
 INCOMPLETE ITEMS: Checkpoint D (hosted acceptance) has not started.
 KNOWN FAILURES: none in Checkpoint A/B/C's local gates. A genuine test-fixture-only defect in Checkpoint A's own already-committed recovery fixture (a `clock_timestamp()` double-evaluation under heavy load) was found while building Checkpoint C and fixed in a dedicated forward commit `e1f6f0d`; see the Checkpoint B section for detail.
-NEXT EXACT ACTION: assess Checkpoint D hosted-acceptance environment availability (hosted Supabase credentials, live provider credentials, Stripe test mode, SMTP); document exact prerequisites if absent rather than faking hosted acceptance.
+NEXT EXACT ACTION: Checkpoint D remains BLOCKED_BY_ENVIRONMENT (no hosted Supabase/PostgreSQL credentials, no `ACADEMIC_PROVIDER_*`/`ACADEMIC_EXECUTION_*`/`STRIPE_*`/`COMMERCE_CONTROLLER_*` credentials, no Supabase CLI, no linked project, verified directly against this environment). Exact prerequisites, acceptance criteria and execution order are documented in `docs/38-commercial-v1-checkpoint-d-hosted-acceptance-prerequisites.md`; hosted acceptance is not faked in its absence.
 
 ## Phase 1 — complete
 
