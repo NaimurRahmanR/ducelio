@@ -18,18 +18,21 @@ import {
 import type { PGlite } from "@electric-sql/pglite";
 
 // ============================================================================
-// Checkpoint C -- the end-to-end deterministic backend course lifecycle:
-// activation -> governed policy publication -> graded work -> progress ->
-// diagnostics -> deterministic completion, exercised through the REAL
-// server-level functions (never raw SQL for the flow under test) against a
-// real PGlite database. How a component's result was PRODUCED is not this
-// test's job -- Checkpoints A/B already prove the Examiner atomic-finalizer
-// and the submission->grading composition exhaustively -- so results are
-// seeded here the same test-owner way commercial-v1-examiner-regrade-
-// fixture.ts's own seedResult already does (no live provider exists in this
-// test environment to produce one through the full Examiner path). This
-// test's job is proving progress/diagnostics/completion compose correctly
-// over real, validly-produced results.
+// Checkpoint C -- result/progress/diagnostics/completion integration over
+// valid, authoritative result state: governed policy publication -> graded
+// work already present -> progress -> diagnostics -> deterministic
+// completion, exercised through the REAL server-level functions (never raw
+// SQL for the flow under test) against a real PGlite database. How a
+// component's result was PRODUCED is not this test's job -- Checkpoints A/B
+// already prove the Examiner atomic-finalizer and the submission->grading
+// composition exhaustively, each in its own dedicated test suite -- so
+// results are seeded here the same test-owner way commercial-v1-examiner-
+// regrade-fixture.ts's own seedResult already does (no live provider exists
+// in this test environment to produce one through the full Examiner path).
+// This is deliberately NOT a single integrated A->B->C traversal (submit ->
+// Examiner grade -> progress -> completion in one test) -- no such test
+// exists in this codebase. This test's job is proving progress/diagnostics/
+// completion compose correctly over real, validly-produced results.
 // ============================================================================
 
 const mocks = vi.hoisted(() => ({ client: vi.fn() }));

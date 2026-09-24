@@ -6,6 +6,8 @@ import {
   commercialV1ActiveAttemptSchema,
   recordCommercialV1ResponseInputSchema,
   recordCommercialV1ResponseResultSchema,
+  policySetupOptionsSchema,
+  type PolicySetupOptions,
 } from "@/domain/commercial-v1-assessment-policy";
 import { requireActor, requireStudentPrincipal } from "./identity";
 import { createSupabase } from "./supabase";
@@ -31,6 +33,24 @@ export async function bindCommercialV1AssessmentComponent(input: unknown) {
   );
   if (error) throw new Error("Commercial V1 component could not be bound.");
   return z.uuid().parse(data);
+}
+
+// Independent-review Finding 2: bounded admin read of one activation's real
+// assessments/practicals/current policy state, so bindComponentAction/
+// setLabPolicyAction can be driven from real selectable options rather than
+// a blind-typed internal UUID. Read-only; adds no writing authority.
+export async function getCommercialV1PolicySetupOptions(
+  activationId: unknown,
+): Promise<PolicySetupOptions> {
+  const id = z.uuid().parse(activationId);
+  await requireActor("admin");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc(
+    "get_commercial_v1_policy_setup_options",
+    { p_activation_id: id },
+  );
+  if (error) throw new Error("Policy setup options could not be loaded.");
+  return policySetupOptionsSchema.parse(data);
 }
 
 export async function publishCommercialV1GradingPolicy(input: unknown) {

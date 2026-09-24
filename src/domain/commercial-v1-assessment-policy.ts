@@ -204,3 +204,42 @@ export const commercialV1ActiveAttemptSchema = z
 export type CommercialV1ActiveAttempt = z.infer<
   typeof commercialV1ActiveAttemptSchema
 >;
+
+// ============================================================================
+// Independent-review Finding 2: the bounded admin read that lets the four
+// existing policy Server Actions (bindComponentAction,
+// publishGradingPolicyAction, setLabPolicyAction, publishResultPolicyAction)
+// be driven from a real activation's own materialised assessments/practicals
+// instead of a blind-typed internal UUID. Adds no writing authority; reads
+// alongside the same, already-reviewed governed RPCs those four actions
+// already call.
+// ============================================================================
+export const policySetupOptionsSchema = z.strictObject({
+  activationId: z.uuid(),
+  assessments: z.array(
+    z.strictObject({
+      assessmentId: z.uuid(),
+      title: z.string(),
+      boundComponent: commercialV1ComponentSchema.nullable(),
+    }),
+  ),
+  practicals: z.array(
+    z.strictObject({
+      practicalId: z.uuid(),
+      title: z.string(),
+      hasLabPolicy: z.boolean(),
+      maxMarks: z.number().int().nullable(),
+      contributionBp: z.number().int().nullable(),
+    }),
+  ),
+  componentBindings: z.array(
+    z.strictObject({
+      component: commercialV1ComponentSchema,
+      assessmentId: z.uuid(),
+      assessmentTitle: z.string(),
+    }),
+  ),
+  gradingPolicyPublished: z.boolean(),
+  resultPolicyPublished: z.boolean(),
+});
+export type PolicySetupOptions = z.infer<typeof policySetupOptionsSchema>;

@@ -1,7 +1,10 @@
 import { z } from "zod";
+import { academicTimestampSchema } from "./academic-reads";
 import {
   examinerExecutionErrorSchema,
   examinerExecutionSnapshotSchema,
+  examinerCapabilitySchema,
+  examinerTargetKindSchema,
   type ExaminerCapability,
 } from "./commercial-v1-examiner-grading";
 
@@ -102,3 +105,87 @@ export type RecoveryResult =
       status:
         "ESCALATED" | "UNAVAILABLE" | "RETRY_LATER" | "TARGET_NOT_ELIGIBLE";
     };
+
+// ============================================================================
+// Review-correction checkpoint: bounded admin recovery-operations surface
+// (migration 202609240041). Closes the operational-reachability gap -- an
+// ACADEMIC_ADMIN/PLATFORM_ADMIN can now discover a real stranded target and
+// trigger its one governed recovery attempt without database access.
+// ============================================================================
+
+// The same four terminal states migration 040's own eligibility policy
+// treats as RECOVERABLE (see that migration's header comment) -- never a
+// separately maintained copy of the list that could silently drift.
+const recoverableOriginalStateSchema = z.enum([
+  "FAILED",
+  "TIMEOUT",
+  "BUDGET_BLOCKED",
+  "CANCELLED",
+]);
+
+// The FULL execution-state vocabulary (mirrors examinerStateSchema in
+// commercial-v1-examiner-grading.ts, not re-exported from there): a recovery
+// claim, once it exists, can itself reach any of these terminal states.
+const recoveryClaimStateSchema = z.enum([
+  "AUTHORIZED",
+  "RUNNING",
+  "SUCCEEDED",
+  "FAILED",
+  "ESCALATED",
+  "BUDGET_BLOCKED",
+  "TIMEOUT",
+  "CANCELLED",
+]);
+
+// ELIGIBLE: no recovery claim has ever been made for this source -- the one
+// governed recovery attempt is still available. RECOVERY_IN_PROGRESS: a
+// claim exists and is still AUTHORIZED/RUNNING. RECOVERED: the claim
+// SUCCEEDED (a result now exists). RECOVERY_ESCALATED: the claim itself
+// resolved to human review. RECOVERY_EXHAUSTED: the one claim terminated
+// (FAILED/BUDGET_BLOCKED/TIMEOUT/CANCELLED) without a result -- the ceiling
+// is used and no further automatic recovery is possible for this source.
+export const recoveryTargetStatusSchema = z.enum([
+  "ELIGIBLE",
+  "RECOVERY_IN_PROGRESS",
+  "RECOVERED",
+  "RECOVERY_ESCALATED",
+  "RECOVERY_EXHAUSTED",
+]);
+export type RecoveryTargetStatus = z.infer<typeof recoveryTargetStatusSchema>;
+
+// Bounded operational metadata only -- see migration 202609240041's own
+// header comment for the exact privacy-minimisation rationale. Deliberately
+// excludes: learner response bodies, answer keys, marking guidance, provider
+// output, the recovery claim's own stored recovery_reason text, MACs,
+// secrets and the generic audit_events JSON -- none of these columns exist
+// anywhere in the underlying SQL projection this schema parses.
+export const recoveryTargetSchema = z.strictObject({
+  sourceExecutionId: z.uuid(),
+  targetKind: examinerTargetKindSchema,
+  capability: examinerCapabilitySchema,
+  studentId: z.uuid(),
+  enrolmentId: z.uuid(),
+  activationId: z.uuid(),
+  component: z.string().nullable(),
+  practicalId: z.uuid().nullable(),
+  originalState: recoverableOriginalStateSchema,
+  originalReasonCode: z.string(),
+  terminalAt: academicTimestampSchema,
+  recoveryExecutionId: z.uuid().nullable(),
+  recoveryState: recoveryClaimStateSchema.nullable(),
+  recoveryStatus: recoveryTargetStatusSchema,
+});
+export type RecoveryTarget = z.infer<typeof recoveryTargetSchema>;
+
+export const recoveryTargetListSchema = z.strictObject({
+  targets: z.array(recoveryTargetSchema),
+});
+
+// The ONE institutional recovery composition's outcome vocabulary. Adds
+// exactly one caller-safe state to RecoveryResult's own: TARGET_NOT_FOUND,
+// for when the authoritative server-side target lookup itself finds nothing
+// (a stale/foreign/already-fully-handled sourceExecutionId) -- distinct from
+// TARGET_NOT_ELIGIBLE, which means the target WAS found but the underlying
+// governed RPC's own eligibility policy refused it.
+export type AdminRecoveryActionResult =
+  RecoveryResult | { status: "TARGET_NOT_FOUND" };

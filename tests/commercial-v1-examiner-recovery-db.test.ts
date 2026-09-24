@@ -523,7 +523,14 @@ describe("Examiner initial-grade recovery: replay and the recovery ceiling", () 
     expect(await resultCount("QUIZ_1")).toBe(1);
   });
 
-  it("a genuinely concurrent AUTHORIZE for the same source never creates two rows (unique constraint)", async () => {
+  // PGlite is a single-connection embedded database -- this test proves the
+  // unique index's own rejection behaviour with two SEQUENTIAL inserts, not
+  // true concurrent PostgreSQL contention across independent connections.
+  // True concurrency (two genuinely simultaneous AUTHORIZE attempts racing
+  // against the same unique index) remains an explicit Checkpoint D hosted-
+  // acceptance requirement (docs/38-commercial-v1-checkpoint-d-hosted-
+  // acceptance-prerequisites.md, section 2) -- not claimed here.
+  it("the unique source-claim index rejects a second recovery row for the same source", async () => {
     await owner(f.db);
     const id1 = randomUUID(),
       id2 = randomUUID();
