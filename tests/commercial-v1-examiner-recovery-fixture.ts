@@ -123,17 +123,27 @@ export async function seedOriginalExecution(
           ],
     );
   }
+  // clock_timestamp() is captured ONCE (a CTE, exactly like production SQL
+  // functions capture `stamp := clock_timestamp()` a single time) and every
+  // column derives from that one value as a fixed offset -- migration 031's
+  // `check(authorized_at is null or authorized_at=created_at)` requires
+  // EXACT equality, which two SEPARATE clock_timestamp() calls in the same
+  // VALUES list are not guaranteed to satisfy (they normally round to the
+  // same microsecond under fast execution, but can genuinely differ under
+  // heavy system load -- found via a real, load-triggered CHECK-constraint
+  // failure in this exact insert).
   await f.db.query(
-    `insert into commercial_v1_examiner_executions(
+    `with stamp as (select clock_timestamp() as t)
+    insert into commercial_v1_examiner_executions(
       id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,submission_id,component,practical_id,
       runtime_profile_ref,state,reason_code,budget_stage,created_at,authorized_at,started_at,terminal_at,expires_at,
       max_provider_calls,max_output_tokens,max_estimated_cost_microusd,review_path,grade_digest,result_revision_id
-    ) values (
+    ) select
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
       'EXAMINER_COMMERCIAL_V1',$11,$12,$13,
-      clock_timestamp()-interval '1 minute',clock_timestamp()-interval '1 minute',clock_timestamp()-interval '50 seconds',clock_timestamp()-interval '40 seconds',
-      clock_timestamp()-interval '40 seconds',1,1200,50000,$14,$15,$16
-    )`,
+      stamp.t-interval '1 minute',stamp.t-interval '1 minute',stamp.t-interval '50 seconds',stamp.t-interval '40 seconds',
+      stamp.t-interval '40 seconds',1,1200,50000,$14,$15,$16
+    from stamp`,
     [
       id,
       learner,
@@ -178,16 +188,19 @@ export async function seedActiveOriginalExecution(
     ],
   );
   const id = randomUUID();
+  // Same single-capture fix as seedOriginalExecution above: created_at and
+  // authorized_at must be exactly equal.
   await f.db.query(
-    `insert into commercial_v1_examiner_executions(
+    `with stamp as (select clock_timestamp() as t)
+    insert into commercial_v1_examiner_executions(
       id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,component,
       runtime_profile_ref,state,created_at,authorized_at,started_at,expires_at,
       max_provider_calls,max_output_tokens,max_estimated_cost_microusd
-    ) values (
+    ) select
       $1,$2,$3,$4,'grade_controlled_assessment','ASSESSMENT_ATTEMPT',$5,$6,
-      'EXAMINER_COMMERCIAL_V1','RUNNING',clock_timestamp(),clock_timestamp(),clock_timestamp(),clock_timestamp()+interval '20 seconds',
+      'EXAMINER_COMMERCIAL_V1','RUNNING',stamp.t,stamp.t,stamp.t,stamp.t+interval '20 seconds',
       1,1200,50000
-    )`,
+    from stamp`,
     [id, learner, f.learnerEnrolmentId, f.activationId, attemptId, component],
   );
   return id;
