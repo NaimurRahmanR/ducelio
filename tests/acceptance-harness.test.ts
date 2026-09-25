@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 // env.mjs is plain, untyped JS (see tests/mjs-modules.d.ts); this local
 // shape lets the callbacks below avoid implicit-any without adding a
@@ -388,6 +388,191 @@ describe("acceptance harness: direct-database write-safety gate (independent-rev
   });
 });
 
+describe("acceptance harness: every cleanup write connection is gated (independent-review finding 1, this pass)", () => {
+  it("concurrency.mjs's cleanup() call site and both scenarioRecoveryVsRecovery post-race DELETEs use withAcceptanceWriteConnection, never bare withConnection", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/concurrency.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(text).not.toContain("withConnection((c) => cleanup(c, chain))");
+    expect(text).toContain(
+      "withAcceptanceWriteConnection((c) => cleanup(c, chain))",
+    );
+    expect(text).toContain(
+      "delete from commercial_v1_examiner_recovery_executions where source_execution_id=$1",
+    );
+    expect(text).toContain(
+      "delete from commercial_v1_examiner_executions where id=$1",
+    );
+  });
+
+  it("no bare withConnection( call site in concurrency.mjs or fixtures.mjs is followed by a DELETE/INSERT/UPDATE statement -- every mutation goes through withAcceptanceWriteConnection", async () => {
+    for (const file of ["concurrency.mjs", "fixtures.mjs"]) {
+      const text = await readFile(
+        new URL(`../scripts/acceptance/${file}`, import.meta.url),
+        "utf8",
+      );
+      // Every literal "withConnection(" NOT preceded by "Acceptance" (i.e.
+      // not part of "withAcceptanceWriteConnection(") is a bare, ungated
+      // connection -- legitimate ONLY for read-only introspection. Extract
+      // exactly that call's own (paren-balanced) argument list -- never a
+      // fixed window, which could bleed into an unrelated, later,
+      // correctly-gated statement -- and assert it never contains a
+      // mutating statement.
+      function extractBalancedCall(openParenIndex: number): string {
+        let depth = 0;
+        for (let i = openParenIndex; i < text.length; i++) {
+          if (text[i] === "(") depth++;
+          else if (text[i] === ")") {
+            depth--;
+            if (depth === 0) return text.slice(openParenIndex, i + 1);
+          }
+        }
+        return text.slice(openParenIndex);
+      }
+      const bareCallIndices: number[] = [];
+      const re = /withConnection\(/g;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(text))) {
+        const precedingText = text.slice(
+          Math.max(0, match.index - 10),
+          match.index,
+        );
+        if (!precedingText.endsWith("Acceptance"))
+          bareCallIndices.push(match.index);
+      }
+      expect(bareCallIndices.length).toBeGreaterThan(0);
+      for (const index of bareCallIndices) {
+        const openParenIndex = index + "withConnection".length;
+        const call = extractBalancedCall(openParenIndex).toLowerCase();
+        expect(call).not.toMatch(/\bdelete\s+from\b/);
+        expect(call).not.toMatch(/\binsert\s+into\b/);
+        expect(call).not.toMatch(/\bupdate\s+\w+\s+set\b/);
+      }
+    }
+  });
+
+  it("surfaces.mjs never imports assertAcceptanceDatabaseWriteAuthorized directly for a single-connection write -- withAcceptanceWriteConnection or the two-client gate are the only sanctioned shapes", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/concurrency.mjs", import.meta.url),
+      "utf8",
+    );
+    // The old per-function `assertAcceptanceDatabaseWriteAuthorized(client)`
+    // calls this pass removed must not have crept back in as a duplicate,
+    // now-redundant gate that could mask an ungated caller elsewhere.
+    expect(text).not.toContain(
+      "assertAcceptanceDatabaseWriteAuthorized(client)",
+    );
+    expect(text).not.toContain("assertAcceptanceDatabaseWriteAuthorized(c)");
+  });
+
+  describe("withAcceptanceWriteConnection behavioural proof (mocked pg, no real database)", () => {
+    afterEach(() => {
+      vi.doUnmock("pg");
+      vi.resetModules();
+    });
+
+    it("never invokes work, and still closes the connection, when the gate is not authorized", async () => {
+      clearAcceptanceVars();
+      process.env.ACCEPTANCE_DATABASE_URL =
+        "postgresql://acceptance:acceptance@localhost:5432/acceptance";
+      // ACCEPTANCE_WRITE_ENABLED deliberately left unset.
+      let ended = false;
+      const fakeClient = {
+        connect: async () => {},
+        end: async () => {
+          ended = true;
+        },
+        query: async () => ({ rows: [] }),
+      };
+      vi.doMock("pg", () => ({
+        default: {
+          Client: function FakeClient() {
+            return fakeClient;
+          },
+        },
+      }));
+      vi.resetModules();
+      const {
+        withAcceptanceWriteConnection,
+        AcceptanceWriteNotAuthorizedError,
+      } = await import("../scripts/acceptance/db.mjs");
+      const work = vi.fn();
+      await expect(withAcceptanceWriteConnection(work)).rejects.toThrow(
+        AcceptanceWriteNotAuthorizedError,
+      );
+      expect(work).not.toHaveBeenCalled();
+      expect(ended).toBe(true);
+    });
+
+    it("invokes work only after the gate passes, with the same client, and closes the connection on success", async () => {
+      clearAcceptanceVars();
+      process.env.ACCEPTANCE_DATABASE_URL =
+        "postgresql://acceptance:acceptance@localhost:5432/acceptance";
+      process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+      process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+      let ended = false;
+      const fakeClient = {
+        connect: async () => {},
+        end: async () => {
+          ended = true;
+        },
+        query: async () => ({ rows: [{ marker: "x" }] }),
+      };
+      vi.doMock("pg", () => ({
+        default: {
+          Client: function FakeClient() {
+            return fakeClient;
+          },
+        },
+      }));
+      vi.resetModules();
+      const { withAcceptanceWriteConnection } =
+        await import("../scripts/acceptance/db.mjs");
+      const work = vi.fn(async (c: unknown) => {
+        expect(c).toBe(fakeClient);
+        return "ok";
+      });
+      const result = await withAcceptanceWriteConnection(work);
+      expect(result).toBe("ok");
+      expect(work).toHaveBeenCalledTimes(1);
+      expect(ended).toBe(true);
+    });
+
+    it("still closes the connection when work itself throws", async () => {
+      clearAcceptanceVars();
+      process.env.ACCEPTANCE_DATABASE_URL =
+        "postgresql://acceptance:acceptance@localhost:5432/acceptance";
+      process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+      process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+      let ended = false;
+      const fakeClient = {
+        connect: async () => {},
+        end: async () => {
+          ended = true;
+        },
+        query: async () => ({ rows: [{ marker: "x" }] }),
+      };
+      vi.doMock("pg", () => ({
+        default: {
+          Client: function FakeClient() {
+            return fakeClient;
+          },
+        },
+      }));
+      vi.resetModules();
+      const { withAcceptanceWriteConnection } =
+        await import("../scripts/acceptance/db.mjs");
+      await expect(
+        withAcceptanceWriteConnection(async () => {
+          throw new Error("boom");
+        }),
+      ).rejects.toThrow("boom");
+      expect(ended).toBe(true);
+    });
+  });
+});
+
 describe("acceptance harness: Supabase/PostgREST same-environment gate (independent-review finding 1)", () => {
   it("fails closed when ACCEPTANCE_ENVIRONMENT_ID is missing", async () => {
     clearAcceptanceVars();
@@ -645,6 +830,143 @@ describe("acceptance harness: foreign-learner pair is a hard JWT_POSTGREST prere
       /if\s*\(\s*isConfigured\("ACCEPTANCE_FOREIGN_LEARNER_EMAIL"\)\s*\)\s*\{/,
     );
     expect(text).toContain("foreignLearnerIdentityConfigured()");
+  });
+});
+
+describe("acceptance harness: checkJwtPostgrest RPC-error handling and non-vacuous isolation (independent-review findings 2 and 3, this pass)", () => {
+  afterEach(() => {
+    vi.doUnmock("../scripts/acceptance/supabase.mjs");
+    vi.resetModules();
+  });
+
+  type RpcResult = { data: unknown; error: { message: string } | null };
+  function client(rpc: (name: string) => RpcResult | Promise<RpcResult>) {
+    return { rpc: async (name: string) => rpc(name) };
+  }
+  function ok(data: unknown): RpcResult {
+    return { data, error: null };
+  }
+  function denied(): RpcResult {
+    return { data: null, error: { message: "denied" } };
+  }
+
+  // A fully-passing baseline: anon denied; learner has one real, known
+  // owned enrolment; learner denied the admin RPC; admin permitted; the
+  // foreign learner's own list does not include the learner's enrolment.
+  function mockSupabase({
+    anonRpc = () => denied(),
+    learnerFirstRpc = () => ok([{ id: "e1" }]),
+    learnerAdminRpc = () => denied(),
+    adminRpc = () => ok([{ id: "a1" }]),
+    foreignRpc = () => ok([]),
+    learnerSecondRpc,
+  }: Partial<{
+    anonRpc: () => RpcResult;
+    learnerFirstRpc: () => RpcResult;
+    learnerAdminRpc: () => RpcResult;
+    adminRpc: () => RpcResult;
+    foreignRpc: () => RpcResult;
+    learnerSecondRpc: () => RpcResult;
+  }> = {}) {
+    let learnerCall = 0;
+    const learnerClient = client((name) => {
+      if (name === "list_commercial_v1_activations") return learnerAdminRpc();
+      learnerCall += 1;
+      if (learnerCall === 1) return learnerFirstRpc();
+      return (learnerSecondRpc ?? learnerFirstRpc)();
+    });
+    vi.doMock("../scripts/acceptance/supabase.mjs", () => ({
+      hostedSupabaseConfigured: () => true,
+      acceptanceIdentitiesConfigured: () => true,
+      foreignLearnerIdentityConfigured: () => true,
+      anonClient: () => client(anonRpc),
+      acceptanceIdentities: {
+        admin: async () => client(adminRpc),
+        learner: async () => learnerClient,
+        foreignLearner: async () => client(foreignRpc),
+      },
+    }));
+    vi.resetModules();
+  }
+
+  it("returns BLOCKED, never PASS, even when every core identity/role/isolation check succeeds", async () => {
+    clearAcceptanceVars();
+    mockSupabase();
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.status).not.toBe("PASS");
+    expect(result.reason).toContain(
+      "Core hosted identity/role/cross-learner-isolation sample passed",
+    );
+    expect(result.reason.toLowerCase()).toContain("expired/invalid jwt");
+  });
+
+  it("a foreign-learner enrolment-list RPC error is FAIL, never a silently-empty list that lets isolation appear to pass", async () => {
+    clearAcceptanceVars();
+    mockSupabase({ foreignRpc: () => denied() });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("a second (re-fetch) learner enrolment-list RPC error is FAIL, never a silently-empty list", async () => {
+    clearAcceptanceVars();
+    mockSupabase({ learnerSecondRpc: () => denied() });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("an empty primary-learner enrolment set is BLOCKED with a clear prerequisite, never a vacuous PASS", async () => {
+    clearAcceptanceVars();
+    mockSupabase({ learnerFirstRpc: () => ok([]) });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.status).not.toBe("PASS");
+    expect(result.reason.toLowerCase()).toContain("no owned enrolment");
+  });
+
+  it("a real cross-learner overlap is still FAIL, not masked by the new BLOCKED-on-success behaviour", async () => {
+    clearAcceptanceVars();
+    mockSupabase({ foreignRpc: () => ok([{ id: "e1" }]) });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("surfaces.mjs's source checks the error on both the foreign-learner and second-learner RPC calls, never destructuring only `data`", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(text).toContain("error: foreignListError");
+    expect(text).toContain("if (foreignListError)");
+    expect(text).toContain("error: learnerRecheckError");
+    expect(text).toContain("if (learnerRecheckError)");
+    expect(text).not.toContain(
+      "const { data: foreignEnrolments } = await foreign.rpc(",
+    );
+  });
+
+  it("checkJwtPostgrest never returns a PASS status at all -- the full documented contract is not yet implemented", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
+      "utf8",
+    );
+    const fnStart = text.indexOf("export async function checkJwtPostgrest()");
+    const fnEnd = text.indexOf(
+      "\n// ---",
+      fnStart + "export async function checkJwtPostgrest()".length,
+    );
+    const fnText = text.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
+    expect(fnText).not.toMatch(/return pass\(/);
   });
 });
 

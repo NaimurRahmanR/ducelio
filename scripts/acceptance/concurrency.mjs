@@ -23,19 +23,26 @@
 // acceptance run id and cleaned up in a `finally` block. Never touches a
 // real learner record; never TRUNCATEs, DROPs or issues an unscoped DELETE.
 //
-// Write safety: every function that writes calls db.mjs's
-// assertAcceptanceDatabaseWriteAuthorized as its first action, on EVERY
-// writing connection it uses (see assertAllAcceptanceDatabaseWriteAuthorized
-// for the two-connection scenarios) -- fails BLOCKED before the first
-// INSERT if ACCEPTANCE_WRITE_ENABLED, a valid ACCEPTANCE_ENVIRONMENT_ID
-// and the matching in-database acceptance-environment marker are not all
-// present (independent-review findings 1 and 2).
+// Write safety: every single-connection mutation in this file -- seeding,
+// every cleanup DELETE included -- opens its connection through db.mjs's
+// withAcceptanceWriteConnection(), which gates via
+// assertAcceptanceDatabaseWriteAuthorized() BEFORE `work` runs a single
+// statement, never through bare withConnection() (reserved for read-only
+// introspection). Every two-client race instead opens via connectMany()
+// and gates both with assertAllAcceptanceDatabaseWriteAuthorized() before
+// either side's INSERT. Either way: fails BLOCKED before the first write
+// if ACCEPTANCE_WRITE_ENABLED, a valid ACCEPTANCE_ENVIRONMENT_ID and the
+// matching in-database acceptance-environment marker are not all present
+// (independent-review findings 1 and 2; cleanup-write gating gap closed in
+// a later independent-review pass -- no ungated cleanup connection may
+// remain, including the two post-race DELETEs in
+// scenarioRecoveryVsRecovery and the final-chain cleanup() call).
 import { randomUUID } from "node:crypto";
 import {
   connectMany,
   withConnection,
+  withAcceptanceWriteConnection,
   acceptanceDbConfigured,
-  assertAcceptanceDatabaseWriteAuthorized,
   assertAllAcceptanceDatabaseWriteAuthorized,
   AcceptanceWriteNotAuthorizedError,
 } from "./db.mjs";
@@ -67,7 +74,8 @@ async function seedOwningChain(client) {
   const lessonId = randomUUID();
   const assessmentId = randomUUID();
   const attemptId = randomUUID();
-  await assertAcceptanceDatabaseWriteAuthorized(client);
+  // Gating happens at the call site, via withAcceptanceWriteConnection --
+  // by the time this function runs, the connection is already authorized.
   await client.query("begin");
   try {
     await client.query(
@@ -184,8 +192,10 @@ async function seedOwningChain(client) {
 
 async function cleanup(client, chain) {
   if (!chain) return;
-  // Delete in dependency order. Every statement is scoped to exactly this
-  // run's own ids -- never a broad WHERE clause.
+  // Gating happens at the call site, via withAcceptanceWriteConnection --
+  // this DELETE loop never runs on an unauthorized connection. Delete in
+  // dependency order. Every statement is scoped to exactly this run's own
+  // ids -- never a broad WHERE clause.
   const stmts = [
     [
       "delete from commercial_v1_completion_receipts where enrolment_id=$1",
@@ -283,8 +293,7 @@ async function scenarioRecoveryVsRecovery(chain) {
   // Requires a terminal FAILED original execution to recover -- seeded the
   // same test-owner way the local recovery fixtures already do.
   const originalId = randomUUID();
-  await withConnection(async (c) => {
-    await assertAcceptanceDatabaseWriteAuthorized(c);
+  await withAcceptanceWriteConnection(async (c) => {
     return c.query(
       `insert into commercial_v1_examiner_executions(
         id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,component,
@@ -336,13 +345,15 @@ async function scenarioRecoveryVsRecovery(chain) {
         [originalId],
       ),
     );
-    await withConnection((c) =>
+    // Cleanup DELETEs -- gated the same as every other write in this file,
+    // via withAcceptanceWriteConnection, never plain withConnection().
+    await withAcceptanceWriteConnection((c) =>
       c.query(
         "delete from commercial_v1_examiner_recovery_executions where source_execution_id=$1",
         [originalId],
       ),
     );
-    await withConnection((c) =>
+    await withAcceptanceWriteConnection((c) =>
       c.query("delete from commercial_v1_examiner_executions where id=$1", [
         originalId,
       ]),
@@ -404,8 +415,7 @@ async function scenarioNeverTwoRevisionOnes(chain) {
 }
 
 async function scenarioCompletionVsCompletion(chain) {
-  await withConnection(async (c) => {
-    await assertAcceptanceDatabaseWriteAuthorized(c);
+  await withAcceptanceWriteConnection(async (c) => {
     return c.query(
       `insert into commercial_v1_assessment_result_revisions(
         activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
@@ -510,7 +520,7 @@ async function main() {
   let chain;
   const results = [];
   try {
-    chain = await withConnection((c) => seedOwningChain(c));
+    chain = await withAcceptanceWriteConnection((c) => seedOwningChain(c));
     for (const scenario of [
       scenarioInitialVsInitial,
       scenarioRecoveryVsRecovery,
@@ -533,7 +543,7 @@ async function main() {
     const r =
       error instanceof AcceptanceWriteNotAuthorizedError
         ? blocked("POSTGRES_CONCURRENCY", error.message, [
-            "See scripts/acceptance/db.mjs's ACCEPTANCE_MARKER_PROVISIONING_SQL for how to designate a database as a disposable acceptance environment.",
+            "See scripts/acceptance/db.mjs's acceptanceMarkerProvisioningSql() for how to designate a database as a disposable acceptance environment.",
           ])
         : fail(
             "POSTGRES_CONCURRENCY",
@@ -543,7 +553,10 @@ async function main() {
     results.push(r);
     printResult(r);
   } finally {
-    if (chain) await withConnection((c) => cleanup(c, chain)).catch(() => {});
+    if (chain)
+      await withAcceptanceWriteConnection((c) => cleanup(c, chain)).catch(
+        () => {},
+      );
   }
 
   printSummary(results, "Commercial V1 true-PostgreSQL-concurrency acceptance");

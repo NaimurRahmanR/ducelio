@@ -41,10 +41,7 @@
 // environment. seedAcceptanceCourse therefore also calls supabase.mjs's
 // assertAcceptanceSupabaseWriteAuthorized, and only proceeds once BOTH
 // independently confirm the SAME ACCEPTANCE_ENVIRONMENT_ID.
-import {
-  withConnection,
-  assertAcceptanceDatabaseWriteAuthorized,
-} from "./db.mjs";
+import { withConnection, withAcceptanceWriteConnection } from "./db.mjs";
 import { assertAcceptanceSupabaseWriteAuthorized } from "./supabase.mjs";
 
 const COMPONENTS = ["QUIZ_1", "QUIZ_2", "MIDTERM", "QUIZ_3", "QUIZ_4", "FINAL"];
@@ -171,9 +168,11 @@ export function buildAcceptancePackage(runId) {
  */
 export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
   await assertAcceptanceSupabaseWriteAuthorized(admin);
-  await withConnection((client) =>
-    assertAcceptanceDatabaseWriteAuthorized(client),
-  );
+  // This connection issues no SQL of its own -- its sole purpose is the
+  // direct-database gate probe, via the same withAcceptanceWriteConnection
+  // every other direct-pg mutation in this harness uses, so there is one
+  // gating shape everywhere, not a bespoke variant here.
+  await withAcceptanceWriteConnection(() => {});
   const pkg = buildAcceptancePackage(runId);
   const call = async (name, args) => {
     const { data, error } = await admin.rpc(name, args);
@@ -316,8 +315,7 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
  * COMPLETION acceptance can exercise both COMPLETED and BELOW_PASS_MARK.
  */
 export async function seedAcceptanceResults(course, learnerUserId, allCorrect) {
-  await withConnection(async (client) => {
-    await assertAcceptanceDatabaseWriteAuthorized(client);
+  await withAcceptanceWriteConnection(async (client) => {
     for (const component of COMPONENTS) {
       const { rows } = await client.query(
         `select a.id as assessment_id from commercial_v1_component_bindings cb

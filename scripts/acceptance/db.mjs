@@ -169,6 +169,36 @@ export async function withConnection(work) {
   }
 }
 
+/**
+ * Independent-review finding (this pass): withConnection() alone does not
+ * gate anything -- it is also the right (and only) shape for read-only
+ * introspection, which must NEVER be gated. That made it possible for a
+ * mutating call site (a cleanup DELETE, in particular) to be added later
+ * via plain withConnection() and forget the gate entirely, with nothing
+ * static or behavioural to catch it.
+ *
+ * withAcceptanceWriteConnection() is the single sanctioned shape for a
+ * fresh, single-connection WRITE: it (1) opens the connection, (2) calls
+ * assertAcceptanceDatabaseWriteAuthorized(client) BEFORE `work` ever runs,
+ * so an unauthorized/misconfigured target throws
+ * AcceptanceWriteNotAuthorizedError and `work` never executes a single
+ * statement, and (3) always closes the connection, success or failure.
+ * Every direct-PostgreSQL INSERT/UPDATE/DELETE in the acceptance harness
+ * that does not participate in a multi-client race (which instead opens
+ * its clients via connectMany() and gates them all with
+ * assertAllAcceptanceDatabaseWriteAuthorized) must go through this
+ * function, never through bare withConnection().
+ */
+export async function withAcceptanceWriteConnection(work) {
+  const client = await connect();
+  try {
+    await assertAcceptanceDatabaseWriteAuthorized(client);
+    return await work(client);
+  } finally {
+    await client.end();
+  }
+}
+
 /** Opens N independent connections for genuine concurrency scenarios. */
 export async function connectMany(n) {
   const clients = await Promise.all(Array.from({ length: n }, () => connect()));

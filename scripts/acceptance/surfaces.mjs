@@ -272,6 +272,41 @@ export async function checkRlsAcl() {
 // (ACCEPTANCE_FOREIGN_LEARNER_EMAIL and _PASSWORD, both) is now a hard
 // prerequisite: missing, or only one of the two configured, BLOCKS this
 // surface rather than silently skipping the isolation assertion.
+//
+// Independent-review finding (this pass), two further gaps:
+//
+//   1. Both the foreign-learner and the second learner re-fetch used
+//      `const { data } = await client.rpc(...)` with no error check. A
+//      failed RPC resolves to `{ data: null, error: {...} }`; `data ?? []`
+//      silently becomes `[]`, and an empty-vs-empty (or empty-vs-anything)
+//      overlap check trivially reports "no overlap" -- a false PASS
+//      manufactured entirely out of an RPC failure, not real isolation
+//      evidence. Every RPC contributing to a PASS now has its `error`
+//      checked explicitly; any error here is a hosted-acceptance FAIL, not
+//      a silently-empty read.
+//   2. Even with errors checked, an isolation assertion between two EMPTY
+//      lists is vacuous: it proves nothing about whether the database
+//      would actually have let the foreign learner see a real row. The
+//      primary acceptance learner is therefore now required to have at
+//      least one real, known owned enrolment (created by
+//      docs/38-configured hosted seeding) before the cross-learner
+//      isolation check counts as proof; an empty primary-learner
+//      enrolment set BLOCKS with a clear prerequisite instead of PASSing
+//      on an empty sample.
+//
+// Design choice (documented, not silently narrowed): the full hosted
+// JWT/PostgREST acceptance contract in docs/38 section 3 additionally
+// requires: invalid/expired JWTs fail closed; actor/student identity
+// cannot be overridden by the caller; a learner cannot invoke
+// institutional recovery; ACADEMIC_ADMIN/PLATFORM_ADMIN can invoke the
+// relevant admin surface where policy permits; unrelated staff roles
+// cannot; and no protected assessment content crosses the learner API
+// boundary. None of those are implemented by this function. Rather than
+// either fabricate them or silently claim a full PASS off the narrower
+// sample below, this function returns BLOCKED -- never PASS -- even when
+// every check it does run succeeds, and says exactly which required
+// checks have not yet executed. FULL_CUSTOMER_JOURNEY, which depends on
+// JWT_POSTGREST, therefore correctly stays blocked too.
 // ---------------------------------------------------------------------------
 export async function checkJwtPostgrest() {
   if (!hostedSupabaseConfigured())
@@ -307,9 +342,8 @@ export async function checkJwtPostgrest() {
     evidence.push("anon denied list_practical_enrolments: OK");
 
     const learner = await acceptanceIdentities.learner();
-    const { error: learnerListError } = await learner.rpc(
-      "list_practical_enrolments",
-    );
+    const { data: learnerOwnEnrolments, error: learnerListError } =
+      await learner.rpc("list_practical_enrolments");
     if (learnerListError)
       return fail(
         "JWT_POSTGREST",
@@ -317,6 +351,14 @@ export async function checkJwtPostgrest() {
         [learnerListError.message],
       );
     evidence.push("learner can list own enrolments: OK");
+    if (!learnerOwnEnrolments || learnerOwnEnrolments.length === 0)
+      return blocked(
+        "JWT_POSTGREST",
+        "The primary acceptance learner has no owned enrolment, so cross-learner isolation cannot be proven -- a foreign-learner isolation check against an empty list would be vacuous, not evidence.",
+        [
+          "Seed at least one real enrolment for ACCEPTANCE_LEARNER_EMAIL (see fixtures.mjs's seedAcceptanceCourse) before running JWT_POSTGREST acceptance.",
+        ],
+      );
 
     const { error: learnerAdminError } = await learner.rpc(
       "list_commercial_v1_activations",
@@ -342,14 +384,27 @@ export async function checkJwtPostgrest() {
 
     // Unconditional: foreignLearnerIdentityConfigured() above already
     // guarantees a complete credential pair exists, so this assertion
-    // always executes on any path that can reach PASS.
+    // always executes on any path that can reach BLOCKED-with-core-
+    // evidence below. Both RPC calls' errors are checked explicitly --
+    // an RPC error must never silently become an empty list that then
+    // reads as "no overlap found" (independent-review finding, this pass).
     const foreign = await acceptanceIdentities.foreignLearner();
-    const { data: foreignEnrolments } = await foreign.rpc(
-      "list_practical_enrolments",
-    );
-    const { data: learnerEnrolments } = await learner.rpc(
-      "list_practical_enrolments",
-    );
+    const { data: foreignEnrolments, error: foreignListError } =
+      await foreign.rpc("list_practical_enrolments");
+    if (foreignListError)
+      return fail(
+        "JWT_POSTGREST",
+        "Foreign-learner enrolment-list RPC failed -- isolation cannot be evaluated from an error.",
+        [foreignListError.message],
+      );
+    const { data: learnerEnrolments, error: learnerRecheckError } =
+      await learner.rpc("list_practical_enrolments");
+    if (learnerRecheckError)
+      return fail(
+        "JWT_POSTGREST",
+        "Primary learner's second enrolment-list RPC failed -- isolation cannot be evaluated from an error.",
+        [learnerRecheckError.message],
+      );
     const learnerIds = new Set((learnerEnrolments ?? []).map((e) => e.id));
     const overlap = (foreignEnrolments ?? []).some((e) => learnerIds.has(e.id));
     if (overlap)
@@ -358,11 +413,18 @@ export async function checkJwtPostgrest() {
         "A foreign learner's own enrolment list included another learner's enrolment.",
       );
     evidence.push(
-      "foreign learner does not see the other learner's enrolments: OK",
+      "foreign learner does not see the other learner's known-owned enrolment: OK",
     );
-    return pass(
+    // Design choice (see comment above this function): this core
+    // identity/role/isolation sample all passed, but the FULL hosted
+    // JWT/PostgREST contract docs/38 requires (expired/invalid-JWT
+    // fail-closed, identity-override prevention, recovery-invocation
+    // authorization/denial, protected-content boundary) has not executed
+    // here. Returning BLOCKED, never PASS, keeps that honest -- and keeps
+    // FULL_CUSTOMER_JOURNEY correctly blocked on it too.
+    return blocked(
       "JWT_POSTGREST",
-      "JWT/RLS/RPC boundary matches local assumptions.",
+      "Core hosted identity/role/cross-learner-isolation sample passed (anon denied; learner reads own non-empty enrolment set; learner denied admin RPC; admin permitted; foreign learner does not see the primary learner's known-owned enrolment). The remaining required hosted checks from docs/38 section 3 -- expired/invalid JWT fails closed, actor/student identity cannot be overridden, learner cannot invoke institutional recovery, authorized admin recovery invocation where policy permits, unrelated staff denial, and no protected assessment content crossing the learner API boundary -- have not yet been executed. Full JWT_POSTGREST PASS is not claimed until they are.",
       evidence,
     );
   } catch (error) {
