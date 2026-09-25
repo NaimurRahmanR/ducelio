@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   activationInput,
   activationOptions,
+  commercialV1ActivationListSchema,
   practicalInput,
   practicalSchema,
   practicalSupportInput,
@@ -90,6 +91,19 @@ export async function getCourseActivationOptions(importId: unknown = null) {
     true,
   );
 }
+// Independent-review operational-closure checkpoint (E1): bounded admin
+// discovery read so an authorized admin can browse real Commercial V1
+// activations by programme/package/cohort instead of already knowing an
+// internal UUID. Admin-gated identically to every other read in this file.
+export async function listCommercialV1Activations() {
+  return rpc(
+    "list_commercial_v1_activations",
+    {},
+    commercialV1ActivationListSchema,
+    true,
+  );
+}
+
 export async function listPracticalEnrolments() {
   return rpc(
     "list_practical_enrolments",

@@ -1,4 +1,5 @@
 import { requireAnyRole } from "@/server/identity";
+import { listCommercialV1Activations } from "@/server/course-activation";
 import { getCommercialV1PolicySetupOptions } from "@/server/commercial-v1-assessment-policy";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { Card, Badge } from "@/components/ui";
@@ -9,16 +10,14 @@ import {
   PublishResultPolicyForm,
 } from "@/components/policy-setup-forms";
 
-// Independent-review Finding 2: the smallest usable admin surface driving
-// the four existing, already-governed policy Server Actions
-// (src/app/admin/activation/policy-actions.ts) from an activation's own
-// real, materialised assessments/practicals -- never a blind-typed internal
-// UUID for those. The activation itself is still identified by id here
-// (typed once, exactly like `importId` on /admin/activation already is);
-// building a full activation picker is a materially larger, unrelated
-// product surface (the existing activation flow does not itself surface a
-// new activation's id anywhere yet) and is out of this correction
-// checkpoint's scope -- see docs/implementation-progress.md.
+// Independent-review operational-closure checkpoint (E1): the activation
+// itself is now chosen from a real, server-owned <select> of Commercial V1
+// activations (listCommercialV1Activations, migration 202609250042) --
+// closing the one remaining manual-ID gap this checkpoint's own prior
+// commit (docs/implementation-progress.md) documented honestly. An admin
+// never types or pastes an activation UUID anywhere on this page; the
+// selected activation's real id is carried as an opaque value in the GET
+// query string, exactly like `importId` already works on /admin/activation.
 export default async function Page({
   searchParams,
 }: {
@@ -26,8 +25,12 @@ export default async function Page({
 }) {
   const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const { activationId } = await searchParams;
-  const options = activationId
-    ? await getCommercialV1PolicySetupOptions(activationId).catch(() => null)
+  const { activations } = await listCommercialV1Activations().catch(() => ({
+    activations: [],
+  }));
+  const selectedId = activationId ?? activations[0]?.activationId;
+  const options = selectedId
+    ? await getCommercialV1PolicySetupOptions(selectedId).catch(() => null)
     : null;
   return (
     <StaffShell
@@ -38,19 +41,33 @@ export default async function Page({
     >
       <Card>
         <h2>Commercial V1 policy setup</h2>
-        <form method="get">
-          <label>
-            Activation ID
-            <input
-              name="activationId"
-              defaultValue={activationId ?? ""}
-              required
-              pattern="[0-9a-fA-F-]{36}"
-            />
-          </label>
-          <button className="button secondary">Load</button>
-        </form>
-        {activationId && !options && (
+        {activations.length === 0 ? (
+          <p role="alert">
+            No activated Commercial V1 courses are available yet. Activate a
+            course first.
+          </p>
+        ) : (
+          <form method="get">
+            <label>
+              Activation
+              <select name="activationId" defaultValue={selectedId} required>
+                {activations.map((a) => (
+                  <option key={a.activationId} value={a.activationId}>
+                    {a.programmeTitle} · {a.packageKey} rev {a.packageRevision}{" "}
+                    · {a.cohortTitle}
+                    {a.resultPolicyPublished
+                      ? " (result policy published)"
+                      : a.gradingPolicyPublished
+                        ? " (grading policy published)"
+                        : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="button secondary">View policy setup</button>
+          </form>
+        )}
+        {selectedId && !options && (
           <p role="alert">
             Policy setup options are unavailable for this activation.
           </p>

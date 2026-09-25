@@ -16,7 +16,10 @@
     "test:db": "vitest run tests/database.test.ts tests/rls.test.ts",
     "test:http": "node scripts/smoke.mjs",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "acceptance:preflight": "node --env-file-if-exists=.env.local scripts/acceptance/preflight.mjs",
+    "acceptance:hosted": "node --env-file-if-exists=.env.local scripts/acceptance/hosted.mjs",
+    "acceptance:concurrency": "node --env-file-if-exists=.env.local scripts/acceptance/concurrency.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
@@ -33,10 +36,12 @@
     "@electric-sql/pglite": "0.5.8",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "26.5.0",
+    "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.4",
+    "pg": "8.23.0",
     "prettier": "3.9.6",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
