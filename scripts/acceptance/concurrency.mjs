@@ -24,15 +24,19 @@
 // real learner record; never TRUNCATEs, DROPs or issues an unscoped DELETE.
 //
 // Write safety: every function that writes calls db.mjs's
-// assertAcceptanceWriteAuthorized as its first action -- fails BLOCKED
-// before the first INSERT if ACCEPTANCE_WRITE_ENABLED and the in-database
-// acceptance-environment marker are not both present.
+// assertAcceptanceDatabaseWriteAuthorized as its first action, on EVERY
+// writing connection it uses (see assertAllAcceptanceDatabaseWriteAuthorized
+// for the two-connection scenarios) -- fails BLOCKED before the first
+// INSERT if ACCEPTANCE_WRITE_ENABLED, a valid ACCEPTANCE_ENVIRONMENT_ID
+// and the matching in-database acceptance-environment marker are not all
+// present (independent-review findings 1 and 2).
 import { randomUUID } from "node:crypto";
 import {
   connectMany,
   withConnection,
   acceptanceDbConfigured,
-  assertAcceptanceWriteAuthorized,
+  assertAcceptanceDatabaseWriteAuthorized,
+  assertAllAcceptanceDatabaseWriteAuthorized,
   AcceptanceWriteNotAuthorizedError,
 } from "./db.mjs";
 import {
@@ -63,7 +67,7 @@ async function seedOwningChain(client) {
   const lessonId = randomUUID();
   const assessmentId = randomUUID();
   const attemptId = randomUUID();
-  await assertAcceptanceWriteAuthorized(client);
+  await assertAcceptanceDatabaseWriteAuthorized(client);
   await client.query("begin");
   try {
     await client.query(
@@ -226,7 +230,7 @@ async function cleanup(client, chain) {
 async function scenarioInitialVsInitial(chain) {
   const { clients, closeAll } = await connectMany(2);
   try {
-    await assertAcceptanceWriteAuthorized(clients[0]);
+    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
     const insert = (id) => [
       `insert into commercial_v1_examiner_executions(
         id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,component,
@@ -280,7 +284,7 @@ async function scenarioRecoveryVsRecovery(chain) {
   // same test-owner way the local recovery fixtures already do.
   const originalId = randomUUID();
   await withConnection(async (c) => {
-    await assertAcceptanceWriteAuthorized(c);
+    await assertAcceptanceDatabaseWriteAuthorized(c);
     return c.query(
       `insert into commercial_v1_examiner_executions(
         id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,component,
@@ -301,6 +305,7 @@ async function scenarioRecoveryVsRecovery(chain) {
   });
   const { clients, closeAll } = await connectMany(2);
   try {
+    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
     const insert = (id, actorId) => [
       `insert into commercial_v1_examiner_recovery_executions(
         id,actor_id,source_execution_id,recovery_reason,student_id,enrolment_id,activation_id,capability,target_kind,
@@ -359,7 +364,7 @@ async function scenarioRecoveryVsRecovery(chain) {
 async function scenarioNeverTwoRevisionOnes(chain) {
   const { clients, closeAll } = await connectMany(2);
   try {
-    await assertAcceptanceWriteAuthorized(clients[0]);
+    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
     const insert = () => [
       `insert into commercial_v1_assessment_result_revisions(
         activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
@@ -400,7 +405,7 @@ async function scenarioNeverTwoRevisionOnes(chain) {
 
 async function scenarioCompletionVsCompletion(chain) {
   await withConnection(async (c) => {
-    await assertAcceptanceWriteAuthorized(c);
+    await assertAcceptanceDatabaseWriteAuthorized(c);
     return c.query(
       `insert into commercial_v1_assessment_result_revisions(
         activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
@@ -417,7 +422,7 @@ async function scenarioCompletionVsCompletion(chain) {
   });
   const { clients, closeAll } = await connectMany(2);
   try {
-    await assertAcceptanceWriteAuthorized(clients[0]);
+    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
     const insert = () => [
       `insert into commercial_v1_completion_receipts(
         enrolment_id,student_id,activation_id,cohort_id,programme_version_id,

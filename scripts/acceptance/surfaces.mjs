@@ -17,6 +17,7 @@ import {
   anonClient,
   acceptanceIdentities,
   acceptanceIdentitiesConfigured,
+  foreignLearnerIdentityConfigured,
 } from "./supabase.mjs";
 import {
   seedAcceptanceCourse,
@@ -72,11 +73,15 @@ export async function checkHostedDatabase() {
 // existence heuristic as if it were equivalent evidence.
 //
 // Separately, and only as supplementary, explicitly-labelled evidence
-// (never the sole basis for PASS), the three most recent, most critical
-// forward migrations (040, 041, 042 -- the Examiner recovery authority, the
-// independent-review correction checkpoint, and activation discovery) each
-// get a bounded, hand-verified check of every top-level object they define,
-// not just the first one.
+// (never the sole basis for PASS, and never a replacement for the ledger
+// comparison above, which remains the sole authoritative version
+// evidence), the three most recent, most critical forward migrations (040,
+// 041, 042 -- the Examiner recovery authority, the independent-review
+// correction checkpoint, and activation discovery) each get a bounded,
+// hand-verified existence check of a SELECTED set of critical/sentinel
+// public objects (independent-review finding 5: this is a curated
+// selection, not an exhaustive enumeration of literally every object each
+// migration file defines -- wording corrected to say exactly that).
 // ---------------------------------------------------------------------------
 const CRITICAL_MIGRATION_OBJECTS = {
   "202609240040_commercial_v1_examiner_initial_grade_recovery.sql": [
@@ -146,8 +151,8 @@ export async function checkMigrations() {
           "supabase_migrations.schema_migrations is not present (or not readable) on this target -- it was not provisioned via the Supabase CLI, or this connection lacks access. Authoritative migration-version verification is unavailable; object-existence alone is not sufficient evidence of PASS.",
           [
             criticalMissing.length
-              ? `Supplementary critical-migration object check (040/041/042): ${criticalMissing.length} missing -- ${criticalMissing.join("; ")}`
-              : "Supplementary critical-migration object check (040/041/042): all present (not authoritative on its own).",
+              ? `Supplementary selected critical/sentinel object check (040/041/042): ${criticalMissing.length} missing -- ${criticalMissing.join("; ")}`
+              : "Supplementary selected critical/sentinel object check (040/041/042): all present (a curated selection, not exhaustive; not authoritative on its own).",
           ],
         );
       }
@@ -175,7 +180,7 @@ export async function checkMigrations() {
           );
         if (criticalMissing.length)
           details.push(
-            `Critical migration object(s) missing despite ledger row: ${criticalMissing.join("; ")}`,
+            `Selected critical/sentinel migration object(s) missing despite ledger row: ${criticalMissing.join("; ")}`,
           );
         return fail(
           "MIGRATIONS",
@@ -186,7 +191,7 @@ export async function checkMigrations() {
 
       return pass(
         "MIGRATIONS",
-        `Hosted supabase_migrations.schema_migrations exactly matches the local repository's ${localVersions.size} migration versions (through ${localMigrationVersion(files[files.length - 1])}), and all bounded critical-migration objects (040/041/042) exist.`,
+        `Hosted supabase_migrations.schema_migrations (the authoritative version evidence) exactly matches the local repository's ${localVersions.size} migration versions (through ${localMigrationVersion(files[files.length - 1])}); a selected set of critical/sentinel objects for 040/041/042 (supplementary, non-exhaustive integrity evidence) also all exist.`,
       );
     });
   } catch (error) {
@@ -257,6 +262,16 @@ export async function checkRlsAcl() {
 // ---------------------------------------------------------------------------
 // JWT_POSTGREST -- exercises the plain JWT+role-gated RPC boundary (no HMAC
 // involved) with real synthetic hosted identities.
+//
+// Independent-review finding 3: a PASS here previously required only
+// admin+learner, executing the cross-learner (foreign-principal) isolation
+// assertion ONLY if a foreign-learner credential pair happened to be
+// configured -- so this surface could PASS without ever proving foreign-
+// learner isolation, which is too broad for what "JWT_POSTGREST
+// acceptance" implies. The complete foreign-learner pair
+// (ACCEPTANCE_FOREIGN_LEARNER_EMAIL and _PASSWORD, both) is now a hard
+// prerequisite: missing, or only one of the two configured, BLOCKS this
+// surface rather than silently skipping the isolation assertion.
 // ---------------------------------------------------------------------------
 export async function checkJwtPostgrest() {
   if (!hostedSupabaseConfigured())
@@ -270,6 +285,14 @@ export async function checkJwtPostgrest() {
       "Acceptance identities are not configured.",
       [
         "Set ACCEPTANCE_ADMIN_EMAIL/PASSWORD and ACCEPTANCE_LEARNER_EMAIL/PASSWORD (real hosted Supabase Auth users).",
+      ],
+    );
+  if (!foreignLearnerIdentityConfigured())
+    return blocked(
+      "JWT_POSTGREST",
+      "A complete foreign-learner acceptance identity is required to prove cross-learner isolation.",
+      [
+        "Set BOTH ACCEPTANCE_FOREIGN_LEARNER_EMAIL and ACCEPTANCE_FOREIGN_LEARNER_PASSWORD -- a partial pair (only one configured) blocks this surface rather than silently skipping the isolation assertion.",
       ],
     );
   const evidence = [];
@@ -317,27 +340,26 @@ export async function checkJwtPostgrest() {
       );
     evidence.push("admin can call admin-only RPC: OK");
 
-    if (isConfigured("ACCEPTANCE_FOREIGN_LEARNER_EMAIL")) {
-      const foreign = await acceptanceIdentities.foreignLearner();
-      const { data: foreignEnrolments } = await foreign.rpc(
-        "list_practical_enrolments",
+    // Unconditional: foreignLearnerIdentityConfigured() above already
+    // guarantees a complete credential pair exists, so this assertion
+    // always executes on any path that can reach PASS.
+    const foreign = await acceptanceIdentities.foreignLearner();
+    const { data: foreignEnrolments } = await foreign.rpc(
+      "list_practical_enrolments",
+    );
+    const { data: learnerEnrolments } = await learner.rpc(
+      "list_practical_enrolments",
+    );
+    const learnerIds = new Set((learnerEnrolments ?? []).map((e) => e.id));
+    const overlap = (foreignEnrolments ?? []).some((e) => learnerIds.has(e.id));
+    if (overlap)
+      return fail(
+        "JWT_POSTGREST",
+        "A foreign learner's own enrolment list included another learner's enrolment.",
       );
-      const { data: learnerEnrolments } = await learner.rpc(
-        "list_practical_enrolments",
-      );
-      const learnerIds = new Set((learnerEnrolments ?? []).map((e) => e.id));
-      const overlap = (foreignEnrolments ?? []).some((e) =>
-        learnerIds.has(e.id),
-      );
-      if (overlap)
-        return fail(
-          "JWT_POSTGREST",
-          "A foreign learner's own enrolment list included another learner's enrolment.",
-        );
-      evidence.push(
-        "foreign learner does not see the other learner's enrolments: OK",
-      );
-    }
+    evidence.push(
+      "foreign learner does not see the other learner's enrolments: OK",
+    );
     return pass(
       "JWT_POSTGREST",
       "JWT/RLS/RPC boundary matches local assumptions.",

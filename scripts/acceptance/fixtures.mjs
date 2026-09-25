@@ -26,13 +26,26 @@
 // this module) can scope precisely to that run and never touch anything
 // else.
 //
-// Independent-review finding 2: "never production" is not a safety
-// mechanism on its own. Both mutating functions below call
-// db.mjs's assertAcceptanceWriteAuthorized -- which fails closed unless
-// BOTH the local ACCEPTANCE_WRITE_ENABLED opt-in AND an in-database
-// acceptance-environment marker row are present -- as their first action,
-// before any write.
-import { withConnection, assertAcceptanceWriteAuthorized } from "./db.mjs";
+// Independent-review finding 2 (prior pass): "never production" is not a
+// safety mechanism on its own. Every mutating function below calls
+// db.mjs's assertAcceptanceDatabaseWriteAuthorized -- which fails closed
+// unless BOTH the local ACCEPTANCE_WRITE_ENABLED opt-in AND a matching
+// in-database acceptance-environment marker row are present -- as its
+// first action, before any write.
+//
+// Independent-review finding 1 (this pass): seedAcceptanceCourse's actual
+// writes travel through the authenticated Supabase client
+// (NEXT_PUBLIC_SUPABASE_URL), a completely different path from the direct
+// database gate above (ACCEPTANCE_DATABASE_URL). A direct-database marker
+// match alone never proves the Supabase side targets the same
+// environment. seedAcceptanceCourse therefore also calls supabase.mjs's
+// assertAcceptanceSupabaseWriteAuthorized, and only proceeds once BOTH
+// independently confirm the SAME ACCEPTANCE_ENVIRONMENT_ID.
+import {
+  withConnection,
+  assertAcceptanceDatabaseWriteAuthorized,
+} from "./db.mjs";
+import { assertAcceptanceSupabaseWriteAuthorized } from "./supabase.mjs";
 
 const COMPONENTS = ["QUIZ_1", "QUIZ_2", "MIDTERM", "QUIZ_3", "QUIZ_4", "FINAL"];
 
@@ -143,15 +156,24 @@ export function buildAcceptancePackage(runId) {
  * authenticated supabase-js client (ACCEPTANCE_ADMIN) and the acceptance
  * learner's app_users id respectively.
  *
- * Independent-review finding 2: writes here go through supabase-js/
- * PostgREST, not the direct pg connection -- so this function opens its
- * OWN short-lived privileged connection purely to check
- * assertAcceptanceWriteAuthorized before issuing a single supabase-js
- * write, and closes it again immediately. The gate must be satisfied even
- * though the writes themselves travel a different path.
+ * Independent-review finding 2 (prior pass): writes here go through
+ * supabase-js/PostgREST, not the direct pg connection -- so this function
+ * opens its OWN short-lived privileged connection purely to run the
+ * direct-database gate, and closes it again immediately.
+ *
+ * Independent-review finding 1 (this pass): the Supabase-side gate is
+ * checked FIRST (it needs only the already-injected `admin` client, no
+ * database connection, and so fails fast and is fully testable without
+ * hosted infrastructure) and the direct-database gate SECOND. Both must
+ * pass -- in either order -- before a single product write RPC is called;
+ * the ordering here is a testability/fail-fast convenience, not a
+ * security dependency between the two.
  */
 export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
-  await withConnection((client) => assertAcceptanceWriteAuthorized(client));
+  await assertAcceptanceSupabaseWriteAuthorized(admin);
+  await withConnection((client) =>
+    assertAcceptanceDatabaseWriteAuthorized(client),
+  );
   const pkg = buildAcceptancePackage(runId);
   const call = async (name, args) => {
     const { data, error } = await admin.rpc(name, args);
@@ -295,7 +317,7 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
  */
 export async function seedAcceptanceResults(course, learnerUserId, allCorrect) {
   await withConnection(async (client) => {
-    await assertAcceptanceWriteAuthorized(client);
+    await assertAcceptanceDatabaseWriteAuthorized(client);
     for (const component of COMPONENTS) {
       const { rows } = await client.query(
         `select a.id as assessment_id from commercial_v1_component_bindings cb

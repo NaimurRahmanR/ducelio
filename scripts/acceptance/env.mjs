@@ -7,8 +7,10 @@
 // is copied verbatim from real source, not guessed (see the comment above
 // each group for exactly where it is read in the repository).
 //
-// Three variables here are deliberately NOT application-runtime:
-//   ACCEPTANCE_DATABASE_URL, ACCEPTANCE_*_EMAIL, ACCEPTANCE_*_PASSWORD,
+// Every ACCEPTANCE_* variable here is deliberately NOT application-runtime:
+//   ACCEPTANCE_DATABASE_URL, ACCEPTANCE_WRITE_ENABLED,
+//   ACCEPTANCE_ENVIRONMENT_ID, ACCEPTANCE_DATABASE_INSECURE_TLS,
+//   ACCEPTANCE_*_EMAIL, ACCEPTANCE_*_PASSWORD,
 //   ACCEPTANCE_LIVE_PROVIDER_OPT_IN, ACCEPTANCE_STRIPE_LIVE_OPT_IN.
 // These exist ONLY for this acceptance harness and are never imported by
 // src/**. In particular there is intentionally no application-runtime
@@ -139,7 +141,19 @@ const KNOWN_VARS = [
     name: "ACCEPTANCE_WRITE_ENABLED",
     scope: "acceptance",
     validate: (v) => v === "true",
-    note: "Must be exactly 'true' to permit any mutating acceptance/concurrency fixture write, and only in combination with the acceptance-environment marker row this harness independently requires inside the target database itself (see db.mjs's assertAcceptanceWriteAuthorized). Neither alone is sufficient; a connection string existing is never itself authorization to write.",
+    note: "Must be exactly 'true' to permit any mutating acceptance/concurrency fixture write, and only in combination with the acceptance-environment marker row this harness independently requires inside the target database itself (see db.mjs's assertAcceptanceDatabaseWriteAuthorized). Neither alone is sufficient; a connection string existing is never itself authorization to write.",
+  },
+  {
+    name: "ACCEPTANCE_ENVIRONMENT_ID",
+    scope: "acceptance",
+    validate: (v) => UUID_LIKE.test(v),
+    note: "Independent-review finding 1: the single identifier binding ACCEPTANCE_DATABASE_URL and NEXT_PUBLIC_SUPABASE_URL to the SAME deliberately-provisioned acceptance environment. Both the direct-database marker row and a narrowly-scoped hosted Supabase RPC (public.get_ducelio_acceptance_environment_id, manually provisioned -- never a Ducelio migration) must independently return exactly this UUID before any mutating acceptance/concurrency fixture writes anything. A connection string alone never proves which environment it points at.",
+  },
+  {
+    name: "ACCEPTANCE_DATABASE_INSECURE_TLS",
+    scope: "acceptance",
+    validate: (v) => v === "true",
+    note: "INSECURE. Independent-review finding 4: disables TLS certificate verification for the direct ACCEPTANCE_DATABASE_URL connection. Only for an isolated development environment that genuinely cannot present a verifiable certificate; never for a real hosted target. Must be exactly 'true' to take effect -- omitted, the connection uses the connection string's own TLS configuration unmodified.",
   },
   {
     name: "ACCEPTANCE_ADMIN_EMAIL",

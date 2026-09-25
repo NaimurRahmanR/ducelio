@@ -169,37 +169,74 @@ describe("acceptance harness: ACCEPTANCE_DATABASE_URL validation (independent-re
   });
 });
 
-describe("acceptance harness: hard write-safety gate (independent-review finding 2)", () => {
-  it("fails closed when ACCEPTANCE_WRITE_ENABLED is not exactly 'true', even if a marker row would be found", async () => {
+const VALID_ENV_ID = "a0000000-0000-4000-8000-000000000001";
+const OTHER_ENV_ID = "b0000000-0000-4000-8000-000000000002";
+
+function setValidWriteEnv(id = VALID_ENV_ID) {
+  process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+  process.env.ACCEPTANCE_ENVIRONMENT_ID = id;
+}
+
+describe("acceptance harness: direct-database write-safety gate (independent-review finding 2, prior pass)", () => {
+  it("fails closed when ACCEPTANCE_WRITE_ENABLED is not exactly 'true', even if a matching marker row would be found", async () => {
     clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
     const {
-      assertAcceptanceWriteAuthorized,
+      assertAcceptanceDatabaseWriteAuthorized,
       AcceptanceWriteNotAuthorizedError,
     } = await import("../scripts/acceptance/db.mjs");
     const fakeClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
-    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
-      AcceptanceWriteNotAuthorizedError,
-    );
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
   });
 
   it("fails closed when ACCEPTANCE_WRITE_ENABLED is 'yes'/'1'/anything other than the literal string 'true'", async () => {
     clearAcceptanceVars();
     process.env.ACCEPTANCE_WRITE_ENABLED = "yes";
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
     const {
-      assertAcceptanceWriteAuthorized,
+      assertAcceptanceDatabaseWriteAuthorized,
       AcceptanceWriteNotAuthorizedError,
     } = await import("../scripts/acceptance/db.mjs");
     const fakeClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
-    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
-      AcceptanceWriteNotAuthorizedError,
-    );
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
   });
 
-  it("fails closed when the marker table does not exist on the target, even with the opt-in set", async () => {
+  it("fails closed when ACCEPTANCE_ENVIRONMENT_ID is missing, even with the write opt-in set", async () => {
     clearAcceptanceVars();
     process.env.ACCEPTANCE_WRITE_ENABLED = "true";
     const {
-      assertAcceptanceWriteAuthorized,
+      assertAcceptanceDatabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const fakeClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("fails closed when ACCEPTANCE_ENVIRONMENT_ID is not a valid UUID", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = "not-a-uuid";
+    const {
+      assertAcceptanceDatabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const fakeClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("fails closed when the marker table does not exist on the target, even with everything else set", async () => {
+    clearAcceptanceVars();
+    setValidWriteEnv();
+    const {
+      assertAcceptanceDatabaseWriteAuthorized,
       AcceptanceWriteNotAuthorizedError,
     } = await import("../scripts/acceptance/db.mjs");
     const fakeClient = {
@@ -207,29 +244,49 @@ describe("acceptance harness: hard write-safety gate (independent-review finding
         throw new Error('relation "_ducelio_acceptance_marker" does not exist');
       },
     };
-    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
-      AcceptanceWriteNotAuthorizedError,
-    );
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
   });
 
-  it("fails closed when the marker table exists but the marker row is missing, even with the opt-in set", async () => {
+  it("fails closed when the marker table exists but no row matches, even with everything else set", async () => {
     clearAcceptanceVars();
-    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    setValidWriteEnv();
     const {
-      assertAcceptanceWriteAuthorized,
+      assertAcceptanceDatabaseWriteAuthorized,
       AcceptanceWriteNotAuthorizedError,
     } = await import("../scripts/acceptance/db.mjs");
     const fakeClient = { query: async () => ({ rows: [] }) };
-    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
-      AcceptanceWriteNotAuthorizedError,
-    );
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
   });
 
-  it("succeeds only when BOTH the opt-in and the in-database marker row are present, and queries the documented marker table", async () => {
+  it("fails closed when the marker row's environment_id does not match ACCEPTANCE_ENVIRONMENT_ID (local mismatch)", async () => {
     clearAcceptanceVars();
-    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    setValidWriteEnv(VALID_ENV_ID);
     const {
-      assertAcceptanceWriteAuthorized,
+      assertAcceptanceDatabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    // The query itself filters on environment_id=$2::uuid -- a fake client
+    // simulating a real database returns no row when the id does not
+    // match, exactly as Postgres would.
+    const fakeClient = {
+      query: async (_sql: string, params: unknown[]) =>
+        params[1] === VALID_ENV_ID ? { rows: [{ marker: "x" }] } : { rows: [] },
+    };
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = OTHER_ENV_ID;
+    await expect(
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("succeeds only when the opt-in, a valid environment id, and a matching in-database marker row are ALL present, and queries by both marker and environment id", async () => {
+    clearAcceptanceVars();
+    setValidWriteEnv(VALID_ENV_ID);
+    const {
+      assertAcceptanceDatabaseWriteAuthorized,
       ACCEPTANCE_MARKER_TABLE,
       ACCEPTANCE_MARKER_VALUE,
     } = await import("../scripts/acceptance/db.mjs");
@@ -243,27 +300,76 @@ describe("acceptance harness: hard write-safety gate (independent-review finding
       },
     };
     await expect(
-      assertAcceptanceWriteAuthorized(fakeClient),
+      assertAcceptanceDatabaseWriteAuthorized(fakeClient),
     ).resolves.toBeUndefined();
     expect(queriedSql).toContain(ACCEPTANCE_MARKER_TABLE);
-    expect(queriedParams).toEqual([ACCEPTANCE_MARKER_VALUE]);
+    expect(queriedSql).toContain("environment_id");
+    expect(queriedParams).toEqual([ACCEPTANCE_MARKER_VALUE, VALID_ENV_ID]);
   });
 
-  it("the exported provisioning SQL creates exactly the marker table/row this gate checks -- never a broader grant", async () => {
+  it("assertAllAcceptanceDatabaseWriteAuthorized gates EVERY connection independently, not just the first", async () => {
+    clearAcceptanceVars();
+    setValidWriteEnv();
+    const { assertAllAcceptanceDatabaseWriteAuthorized } =
+      await import("../scripts/acceptance/db.mjs");
+    let calls = 0;
+    const goodClient = () => {
+      calls++;
+      return { query: async () => ({ rows: [{ marker: "x" }] }) };
+    };
+    const clients = [goodClient(), goodClient(), goodClient()];
+    await expect(
+      assertAllAcceptanceDatabaseWriteAuthorized(clients),
+    ).resolves.toBeUndefined();
+    expect(calls).toBe(3);
+  });
+
+  it("assertAllAcceptanceDatabaseWriteAuthorized rejects if ANY one of several connections fails its own gate", async () => {
+    clearAcceptanceVars();
+    setValidWriteEnv();
     const {
-      ACCEPTANCE_MARKER_PROVISIONING_SQL,
+      assertAllAcceptanceDatabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const okClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
+    const badClient = { query: async () => ({ rows: [] }) };
+    await expect(
+      assertAllAcceptanceDatabaseWriteAuthorized([okClient, badClient]),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("every writing scenario in concurrency.mjs gates every client it opens via connectMany, not only clients[0]", async () => {
+    // Independent-review finding 2: static proof that no scenario reverted
+    // to gating a single representative connection.
+    const text = await readFile(
+      new URL("../scripts/acceptance/concurrency.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(text).not.toContain(
+      "assertAcceptanceDatabaseWriteAuthorized(clients[0])",
+    );
+    const connectManyBlocks = text.split("await connectMany(2)").length - 1;
+    const allGatedCalls = (
+      text.match(/assertAllAcceptanceDatabaseWriteAuthorized\(clients\)/g) ?? []
+    ).length;
+    expect(connectManyBlocks).toBeGreaterThan(0);
+    expect(allGatedCalls).toBe(connectManyBlocks);
+  });
+
+  it("the exported provisioning SQL generator creates exactly the marker table/row this gate checks, embeds the given environment id, and never a broader grant", async () => {
+    const {
+      acceptanceMarkerProvisioningSql,
       ACCEPTANCE_MARKER_TABLE,
       ACCEPTANCE_MARKER_VALUE,
     } = await import("../scripts/acceptance/db.mjs");
-    expect(ACCEPTANCE_MARKER_PROVISIONING_SQL).toContain(
+    const sql = acceptanceMarkerProvisioningSql(VALID_ENV_ID);
+    expect(sql).toContain(
       `create table if not exists public.${ACCEPTANCE_MARKER_TABLE}`,
     );
-    expect(ACCEPTANCE_MARKER_PROVISIONING_SQL).toContain(
-      ACCEPTANCE_MARKER_VALUE,
-    );
-    expect(ACCEPTANCE_MARKER_PROVISIONING_SQL.toUpperCase()).not.toMatch(
-      /\bGRANT\b|\bTRUNCATE\b|\bDROP\b/,
-    );
+    expect(sql).toContain("environment_id uuid not null");
+    expect(sql).toContain(ACCEPTANCE_MARKER_VALUE);
+    expect(sql).toContain(VALID_ENV_ID);
+    expect(sql.toUpperCase()).not.toMatch(/\bGRANT\b|\bTRUNCATE\b|\bDROP\b/);
   });
 
   it("surfaces.mjs imports AcceptanceWriteNotAuthorizedError and maps it to BLOCKED, never FAIL, in checkResultProgressCompletion's catch block", async () => {
@@ -279,6 +385,266 @@ describe("acceptance harness: hard write-safety gate (independent-review finding
     expect(text).toMatch(
       /error instanceof AcceptanceWriteNotAuthorizedError\s*\)\s*\n?\s*return blocked\(/,
     );
+  });
+});
+
+describe("acceptance harness: Supabase/PostgREST same-environment gate (independent-review finding 1)", () => {
+  it("fails closed when ACCEPTANCE_ENVIRONMENT_ID is missing", async () => {
+    clearAcceptanceVars();
+    const {
+      assertAcceptanceSupabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({ data: VALID_ENV_ID, error: null }),
+    };
+    await expect(
+      assertAcceptanceSupabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("fails closed when the hosted marker RPC does not exist (or is denied)", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    const {
+      assertAcceptanceSupabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({
+        data: null,
+        error: { message: "function does not exist" },
+      }),
+    };
+    await expect(
+      assertAcceptanceSupabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("fails closed when the RPC call itself throws", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    const {
+      assertAcceptanceSupabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => {
+        throw new Error("network error");
+      },
+    };
+    await expect(
+      assertAcceptanceSupabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("THE DANGEROUS MISMATCH: local ACCEPTANCE_ENVIRONMENT_ID differs from the hosted Supabase marker's own id -- BLOCKED", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    const {
+      assertAcceptanceSupabaseWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({ data: OTHER_ENV_ID, error: null }),
+    };
+    await expect(
+      assertAcceptanceSupabaseWriteAuthorized(fakeClient),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+  });
+
+  it("succeeds only when the hosted marker id exactly matches ACCEPTANCE_ENVIRONMENT_ID", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    const { assertAcceptanceSupabaseWriteAuthorized } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({ data: VALID_ENV_ID, error: null }),
+    };
+    await expect(
+      assertAcceptanceSupabaseWriteAuthorized(fakeClient),
+    ).resolves.toBeUndefined();
+  });
+
+  it("comparison is case-insensitive (Postgres uuid canonical form vs an uppercase env value)", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID.toUpperCase();
+    const { assertAcceptanceSupabaseWriteAuthorized } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({ data: VALID_ENV_ID, error: null }),
+    };
+    await expect(
+      assertAcceptanceSupabaseWriteAuthorized(fakeClient),
+    ).resolves.toBeUndefined();
+  });
+
+  it("seedAcceptanceCourse: THE DANGEROUS MISMATCH end to end -- Supabase marker disagrees, zero product write RPCs are ever called", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    // seedAcceptanceCourse checks the Supabase gate FIRST (see fixtures.mjs's
+    // own comment on why), so this proves the mismatch is caught -- and no
+    // product RPC is ever reached -- without needing a real database
+    // connection for the direct-DB gate at all.
+    const { seedAcceptanceCourse } =
+      await import("../scripts/acceptance/fixtures.mjs");
+    const { AcceptanceWriteNotAuthorizedError } =
+      await import("../scripts/acceptance/db.mjs");
+    const calledRpcNames: string[] = [];
+    const fakeAdmin = {
+      rpc: async (name: string) => {
+        if (name === "get_ducelio_acceptance_environment_id")
+          return { data: OTHER_ENV_ID, error: null }; // the mismatch
+        calledRpcNames.push(name);
+        return { data: null, error: null };
+      },
+      from: () => {
+        throw new Error(
+          "seedAcceptanceCourse must never reach a table write after a gate mismatch",
+        );
+      },
+    };
+    await expect(
+      seedAcceptanceCourse(
+        fakeAdmin,
+        "test-run",
+        "10000000-0000-4000-8000-000000000009",
+      ),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+    expect(calledRpcNames).toEqual([]);
+  });
+
+  it("never includes the actual environment id, database url or a password in any thrown error message", async () => {
+    clearAcceptanceVars();
+    const secretEnvId = "c0000000-0000-4000-8000-0000deadbeef";
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = secretEnvId;
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:super-secret-password@db.internal.example.com:5432/acceptance_db";
+    const { assertAcceptanceSupabaseWriteAuthorized } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const { assertAcceptanceDatabaseWriteAuthorized } =
+      await import("../scripts/acceptance/db.mjs");
+    const mismatchedSupabase = {
+      rpc: async () => ({ data: OTHER_ENV_ID, error: null }),
+    };
+    let supabaseMessage = "";
+    try {
+      await assertAcceptanceSupabaseWriteAuthorized(mismatchedSupabase);
+    } catch (error) {
+      supabaseMessage = error instanceof Error ? error.message : String(error);
+    }
+    expect(supabaseMessage).not.toContain(secretEnvId);
+    expect(supabaseMessage).not.toContain("super-secret-password");
+    expect(supabaseMessage).not.toContain("db.internal.example.com");
+
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    const noRowClient = { query: async () => ({ rows: [] }) };
+    let dbMessage = "";
+    try {
+      await assertAcceptanceDatabaseWriteAuthorized(noRowClient);
+    } catch (error) {
+      dbMessage = error instanceof Error ? error.message : String(error);
+    }
+    expect(dbMessage).not.toContain(secretEnvId);
+    expect(dbMessage).not.toContain("super-secret-password");
+    expect(dbMessage).not.toContain("db.internal.example.com");
+  });
+});
+
+describe("acceptance harness: TLS is never unconditionally insecure (independent-review finding 4)", () => {
+  it("connect() does not pass ssl:{rejectUnauthorized:false} by default", async () => {
+    clearAcceptanceVars();
+    const text = await readFile(
+      new URL("../scripts/acceptance/db.mjs", import.meta.url),
+      "utf8",
+    );
+    // The insecure shape must appear only inside a conditional spread keyed
+    // to the explicit opt-in, never as an unconditional client option.
+    expect(text).not.toMatch(
+      /ssl:\s*\{\s*rejectUnauthorized:\s*false\s*\}\s*,?\s*\n\s*\}\);/,
+    );
+    expect(text).toContain("ACCEPTANCE_DATABASE_INSECURE_TLS");
+    expect(text).toContain(
+      "insecureTls ? { ssl: { rejectUnauthorized: false } } : {}",
+    );
+  });
+
+  it("ACCEPTANCE_DATABASE_INSECURE_TLS is a known acceptance-tooling-only preflight variable", async () => {
+    clearAcceptanceVars();
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_INSECURE_TLS")).toBe("missing");
+    process.env.ACCEPTANCE_DATABASE_INSECURE_TLS = "true";
+    expect(statusOf("ACCEPTANCE_DATABASE_INSECURE_TLS")).toBe("configured");
+    process.env.ACCEPTANCE_DATABASE_INSECURE_TLS = "yes";
+    expect(statusOf("ACCEPTANCE_DATABASE_INSECURE_TLS")).toBe("malformed");
+  });
+});
+
+describe("acceptance harness: foreign-learner pair is a hard JWT_POSTGREST prerequisite (independent-review finding 3)", () => {
+  it("BLOCKED when neither foreign credential is configured", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
+    process.env.ACCEPTANCE_ADMIN_PASSWORD = "password";
+    process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
+    process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
+    const surfaces = await import("../scripts/acceptance/surfaces.mjs");
+    const result = await surfaces.checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason.toLowerCase()).toContain("foreign-learner");
+  });
+
+  it("BLOCKED when only the foreign email is configured", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
+    process.env.ACCEPTANCE_ADMIN_PASSWORD = "password";
+    process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
+    process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
+    process.env.ACCEPTANCE_FOREIGN_LEARNER_EMAIL = "foreign@example.com";
+    const surfaces = await import("../scripts/acceptance/surfaces.mjs");
+    const result = await surfaces.checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+  });
+
+  it("BLOCKED when only the foreign password is configured", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
+    process.env.ACCEPTANCE_ADMIN_PASSWORD = "password";
+    process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
+    process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
+    process.env.ACCEPTANCE_FOREIGN_LEARNER_PASSWORD = "password";
+    const surfaces = await import("../scripts/acceptance/surfaces.mjs");
+    const result = await surfaces.checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+  });
+
+  it("foreignLearnerIdentityConfigured requires the complete pair", async () => {
+    clearAcceptanceVars();
+    const { foreignLearnerIdentityConfigured } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(foreignLearnerIdentityConfigured()).toBe(false);
+    process.env.ACCEPTANCE_FOREIGN_LEARNER_EMAIL = "foreign@example.com";
+    expect(foreignLearnerIdentityConfigured()).toBe(false);
+    process.env.ACCEPTANCE_FOREIGN_LEARNER_PASSWORD = "password";
+    expect(foreignLearnerIdentityConfigured()).toBe(true);
+  });
+
+  it("checkJwtPostgrest's source always executes the foreign-learner isolation assertion once past its guards -- never conditionally skipped", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
+      "utf8",
+    );
+    // The prior conditional wrapper (`if (isConfigured("ACCEPTANCE_FOREIGN_LEARNER_EMAIL"))`)
+    // around the isolation assertion must be gone.
+    expect(text).not.toMatch(
+      /if\s*\(\s*isConfigured\("ACCEPTANCE_FOREIGN_LEARNER_EMAIL"\)\s*\)\s*\{/,
+    );
+    expect(text).toContain("foreignLearnerIdentityConfigured()");
   });
 });
 

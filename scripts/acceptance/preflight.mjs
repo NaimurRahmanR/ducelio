@@ -5,7 +5,7 @@
 // of configured / missing / malformed -- never a value. This is read-only:
 // it makes no network call and touches no database. Run this first, always,
 // before `npm run acceptance:hosted` or `npm run acceptance:concurrency`.
-import { preflightReport, stripeLooksLive } from "./env.mjs";
+import { preflightReport, stripeLooksLive, isConfigured } from "./env.mjs";
 
 const report = preflightReport();
 const width = Math.max(...report.map((r) => r.name.length), 8);
@@ -32,6 +32,15 @@ if (stripeLooksLive()) {
       "Stripe acceptance will refuse to run against it (see docs/38 and " +
       "scripts/acceptance/surfaces.mjs) unless a separate, explicit later " +
       "production acceptance phase authorizes it.",
+  );
+  console.log("");
+}
+
+if (isConfigured("ACCEPTANCE_DATABASE_INSECURE_TLS")) {
+  console.log(
+    "WARNING: ACCEPTANCE_DATABASE_INSECURE_TLS is set -- TLS certificate " +
+      "verification is DISABLED for the direct ACCEPTANCE_DATABASE_URL " +
+      "connection. This must never be set against a real hosted target.",
   );
   console.log("");
 }
