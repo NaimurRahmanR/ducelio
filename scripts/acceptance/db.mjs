@@ -244,6 +244,60 @@ export async function triggerExists(client, name) {
 }
 
 /**
+ * Resolves the application public.app_users.id for a given Supabase Auth
+ * user id (auth.users.id) -- these are NEVER the same value. Migration
+ * 002's provision_academy_user() trigger creates app_users with a
+ * SEPARATELY generated id (default gen_random_uuid()) on every signup,
+ * linked back to auth.users only via the app_users.auth_user_id column.
+ * Every governed RPC that takes a "student id" (create_enrolment's
+ * p_student_id, in particular) means app_users.id, via
+ * student_profiles.user_id -- never the Supabase Auth session's own
+ * `sub`/auth.getUser().id. Passing the wrong one either matches no row
+ * (RPC fails loudly) or, worse, silently matches an unrelated app_users
+ * row if the two id spaces ever collided by chance. Read-only; never
+ * gated (see withAcceptanceWriteConnection for the write-side rule) --
+ * this performs no mutation. Returns null if no app_users row is linked
+ * to this auth user yet.
+ */
+export async function resolveAppUserId(client, authUserId) {
+  const { rows } = await client.query(
+    "select id from public.app_users where auth_user_id=$1",
+    [authUserId],
+  );
+  return rows[0]?.id ?? null;
+}
+
+/**
+ * True if this app_users row has been granted `role` (public.role_grants).
+ * Read-only; never gated. Used to verify the acceptance admin's own
+ * app_users row genuinely carries INSTRUCTOR (independent-review finding,
+ * schema-consistency audit follow-up) rather than relying on a PostgREST
+ * embedded-relationship select between staff_profiles and role_grants --
+ * there is no direct foreign key between those two tables (both reference
+ * app_users independently), so PostgREST cannot resolve that embed at all.
+ */
+export async function appUserHasRole(client, appUserId, role) {
+  const { rows } = await client.query(
+    "select 1 from public.role_grants where user_id=$1 and role=$2 limit 1",
+    [appUserId, role],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * True if this app_users row has a public.staff_profiles row. Read-only;
+ * never gated. See appUserHasRole above for why this is checked directly
+ * rather than through PostgREST.
+ */
+export async function appUserHasStaffProfile(client, appUserId) {
+  const { rows } = await client.query(
+    "select 1 from public.staff_profiles where user_id=$1 limit 1",
+    [appUserId],
+  );
+  return rows.length > 0;
+}
+
+/**
  * The set of migration filenames actually present on disk under
  * supabase/migrations -- used by migrations.mjs to know what "through 042"
  * means without hardcoding a duplicate list here.

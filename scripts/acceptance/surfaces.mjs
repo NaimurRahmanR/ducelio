@@ -499,7 +499,7 @@ export async function checkResultProgressCompletion() {
       runId,
       learnerUser.user.id,
     );
-    await seedAcceptanceResults(course, learnerUser.user.id, true);
+    await seedAcceptanceResults(course, true);
 
     const { data: progress, error: progressError } = await learner.rpc(
       "get_commercial_v1_course_progress",
@@ -545,7 +545,7 @@ export async function checkResultProgressCompletion() {
   } catch (error) {
     if (error instanceof AcceptanceWriteNotAuthorizedError)
       return blocked("RESULT_PROGRESS_COMPLETION", error.message, [
-        "See scripts/acceptance/db.mjs's ACCEPTANCE_MARKER_PROVISIONING_SQL for how to designate a database as a disposable acceptance environment.",
+        "See scripts/acceptance/db.mjs's acceptanceMarkerProvisioningSql() for how to designate a database as a disposable acceptance environment.",
       ]);
     return fail(
       "RESULT_PROGRESS_COMPLETION",
