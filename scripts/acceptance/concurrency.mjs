@@ -22,8 +22,19 @@
 // Isolation: every row this script creates is tagged with a unique
 // acceptance run id and cleaned up in a `finally` block. Never touches a
 // real learner record; never TRUNCATEs, DROPs or issues an unscoped DELETE.
+//
+// Write safety: every function that writes calls db.mjs's
+// assertAcceptanceWriteAuthorized as its first action -- fails BLOCKED
+// before the first INSERT if ACCEPTANCE_WRITE_ENABLED and the in-database
+// acceptance-environment marker are not both present.
 import { randomUUID } from "node:crypto";
-import { connectMany, withConnection, acceptanceDbConfigured } from "./db.mjs";
+import {
+  connectMany,
+  withConnection,
+  acceptanceDbConfigured,
+  assertAcceptanceWriteAuthorized,
+  AcceptanceWriteNotAuthorizedError,
+} from "./db.mjs";
 import {
   printResult,
   printSummary,
@@ -31,6 +42,7 @@ import {
   pass,
   fail,
   blocked,
+  notRun,
 } from "./report.mjs";
 
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -51,6 +63,7 @@ async function seedOwningChain(client) {
   const lessonId = randomUUID();
   const assessmentId = randomUUID();
   const attemptId = randomUUID();
+  await assertAcceptanceWriteAuthorized(client);
   await client.query("begin");
   try {
     await client.query(
@@ -213,6 +226,7 @@ async function cleanup(client, chain) {
 async function scenarioInitialVsInitial(chain) {
   const { clients, closeAll } = await connectMany(2);
   try {
+    await assertAcceptanceWriteAuthorized(clients[0]);
     const insert = (id) => [
       `insert into commercial_v1_examiner_executions(
         id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,component,
@@ -250,7 +264,7 @@ async function scenarioInitialVsInitial(chain) {
     if (fulfilled === 1 && rejected === 1 && rows[0].n === 1)
       return pass(
         "POSTGRES_CONCURRENCY:INITIAL_VS_INITIAL",
-        "Exactly one of two genuinely concurrent AUTHORIZE inserts was admitted; the other was rejected by the unique index.",
+        "Database-constraint acceptance test (raw insert against examiner_execution_one_per_attempt, not the governed HMAC-attested AUTHORIZE RPC): exactly one of two genuinely concurrent inserts was admitted; the other was rejected by the unique index.",
       );
     return fail(
       "POSTGRES_CONCURRENCY:INITIAL_VS_INITIAL",
@@ -265,8 +279,9 @@ async function scenarioRecoveryVsRecovery(chain) {
   // Requires a terminal FAILED original execution to recover -- seeded the
   // same test-owner way the local recovery fixtures already do.
   const originalId = randomUUID();
-  await withConnection((c) =>
-    c.query(
+  await withConnection(async (c) => {
+    await assertAcceptanceWriteAuthorized(c);
+    return c.query(
       `insert into commercial_v1_examiner_executions(
         id,student_id,enrolment_id,activation_id,capability,target_kind,attempt_id,component,
         runtime_profile_ref,state,reason_code,created_at,authorized_at,started_at,terminal_at,expires_at,
@@ -282,8 +297,8 @@ async function scenarioRecoveryVsRecovery(chain) {
         chain.activationId,
         chain.attemptId,
       ],
-    ),
-  );
+    );
+  });
   const { clients, closeAll } = await connectMany(2);
   try {
     const insert = (id, actorId) => [
@@ -330,7 +345,7 @@ async function scenarioRecoveryVsRecovery(chain) {
     if (fulfilled === 1 && rejected === 1 && rows[0].n === 1)
       return pass(
         "POSTGRES_CONCURRENCY:RECOVERY_VS_RECOVERY",
-        "Exactly one of two genuinely concurrent recovery-claim inserts was admitted for the same source; the other was rejected.",
+        "Database-constraint acceptance test (raw insert against examiner_recovery_one_per_source, not the governed HMAC-attested recovery AUTHORIZE RPC): exactly one of two genuinely concurrent recovery-claim inserts was admitted for the same source; the other was rejected.",
       );
     return fail(
       "POSTGRES_CONCURRENCY:RECOVERY_VS_RECOVERY",
@@ -344,6 +359,7 @@ async function scenarioRecoveryVsRecovery(chain) {
 async function scenarioNeverTwoRevisionOnes(chain) {
   const { clients, closeAll } = await connectMany(2);
   try {
+    await assertAcceptanceWriteAuthorized(clients[0]);
     const insert = () => [
       `insert into commercial_v1_assessment_result_revisions(
         activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
@@ -371,7 +387,7 @@ async function scenarioNeverTwoRevisionOnes(chain) {
     if (fulfilled === 1 && rows[0].n === 1)
       return pass(
         "POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES",
-        "Two genuinely concurrent revision-1 result inserts for the same (enrolment, component) never both succeeded -- no split-brain target.",
+        "Database-constraint acceptance test (raw insert against unique(enrolment_id,component,revision_number), the constraint every governed FINALIZE path -- initial, recovery and regrade -- ultimately relies on): two genuinely concurrent revision-1 result inserts for the same (enrolment, component) never both succeeded -- no split-brain target.",
       );
     return fail(
       "POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES",
@@ -383,8 +399,9 @@ async function scenarioNeverTwoRevisionOnes(chain) {
 }
 
 async function scenarioCompletionVsCompletion(chain) {
-  await withConnection((c) =>
-    c.query(
+  await withConnection(async (c) => {
+    await assertAcceptanceWriteAuthorized(c);
+    return c.query(
       `insert into commercial_v1_assessment_result_revisions(
         activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
         earned_marks_total,max_marks_total,component_weight_bp
@@ -396,10 +413,11 @@ async function scenarioCompletionVsCompletion(chain) {
         chain.attemptId,
         chain.assessmentId,
       ],
-    ),
-  );
+    );
+  });
   const { clients, closeAll } = await connectMany(2);
   try {
+    await assertAcceptanceWriteAuthorized(clients[0]);
     const insert = () => [
       `insert into commercial_v1_completion_receipts(
         enrolment_id,student_id,activation_id,cohort_id,programme_version_id,
@@ -427,7 +445,7 @@ async function scenarioCompletionVsCompletion(chain) {
     if (fulfilled === 1 && rows[0].n === 1)
       return pass(
         "POSTGRES_CONCURRENCY:COMPLETION_VS_COMPLETION",
-        "Exactly one of two genuinely concurrent completion-receipt inserts for the same enrolment was admitted.",
+        "Database-constraint acceptance test (raw insert against the unique(enrolment_id) constraint on commercial_v1_completion_receipts, not the governed attempt_commercial_v1_course_completion RPC): exactly one of two genuinely concurrent completion-receipt inserts for the same enrolment was admitted.",
       );
     return fail(
       "POSTGRES_CONCURRENCY:COMPLETION_VS_COMPLETION",
@@ -438,23 +456,28 @@ async function scenarioCompletionVsCompletion(chain) {
   }
 }
 
-// Late-initial-finalize-vs-recovery-authorize and regrade-vs-completion both
-// reduce, at the database level, to the SAME "never two revision-1s"
-// uniqueness guarantee NEVER_TWO_REVISION_ONES already proves directly
-// (both a late initial FINALIZE and a recovery/regrade FINALIZE write
-// through that identical insert). Rather than duplicate the same race with
-// cosmetic renaming, this is reported as covered by that scenario, honestly
-// labelled as such instead of claiming two independent proofs.
-function scenarioLateInitialVsRecoveryCovered() {
-  return pass(
+// Independent-review finding 4: these two scenarios previously returned a
+// synthetic PASS without ever executing the named race -- a Level-1
+// truthfulness violation (architecture/MVCC reasoning is not empirical
+// evidence). Neither is implemented as its own distinct race: both would
+// exercise the SAME unique(enrolment_id,component,revision_number) write
+// path NEVER_TWO_REVISION_ONES already drives under genuine two-connection
+// concurrency, so a second insert-race under a different name would not be
+// a second, independent proof -- it would be the identical statement
+// re-run with cosmetic renaming. Rather than fabricate that, or reuse
+// NEVER_TWO_REVISION_ONES's own outcome as a second PASS, both honestly
+// report NOT_RUN and name exactly which lower-level invariant was actually
+// proven, by which scenario, and what remains genuinely untested.
+function scenarioLateInitialVsRecoveryNotRun() {
+  return notRun(
     "POSTGRES_CONCURRENCY:LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE",
-    "Covered by NEVER_TWO_REVISION_ONES: both a late-initial FINALIZE and a recovery FINALIZE insert through the identical unique(enrolment_id,component,revision_number) constraint that scenario already proves under genuine concurrency.",
+    "COVERED_BY_INVARIANT, not independently executed: a late-initial FINALIZE and a recovery FINALIZE both write through the identical unique(enrolment_id,component,revision_number) insert that POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES already races under genuine two-connection concurrency in this same run. This scenario's own distinct race (an in-flight initial FINALIZE transaction against a concurrent recovery AUTHORIZE/FINALIZE sequence) has not been executed.",
   );
 }
-function scenarioRegradeVsCompletionCovered() {
-  return pass(
+function scenarioRegradeVsCompletionNotRun() {
+  return notRun(
     "POSTGRES_CONCURRENCY:REGRADE_VS_COMPLETION",
-    "A completion read against a concurrently-inserting regrade transaction is a standard Postgres MVCC snapshot-isolation guarantee (a reader never observes a partially-committed row); the write-side uniqueness this depends on is the same constraint NEVER_TWO_REVISION_ONES proves under genuine concurrency.",
+    "COVERED_BY_INVARIANT, not independently executed: the write-side uniqueness a regrade depends on is the same unique(enrolment_id,component,revision_number) constraint POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES already races under genuine concurrency. Whether a concurrent get_commercial_v1_course_progress/attempt_commercial_v1_course_completion read against an in-flight regrade transaction ever observes a torn/partial result is a real, distinct question this harness does not yet exercise -- it is not proven merely by MVCC snapshot-isolation reasoning, and is not claimed as PASS.",
   );
 }
 
@@ -487,24 +510,31 @@ async function main() {
       scenarioInitialVsInitial,
       scenarioRecoveryVsRecovery,
       scenarioNeverTwoRevisionOnes,
-      scenarioLateInitialVsRecoveryCovered,
-      scenarioRegradeVsCompletionCovered,
+      scenarioLateInitialVsRecoveryNotRun,
+      scenarioRegradeVsCompletionNotRun,
       scenarioCompletionVsCompletion,
     ]) {
       const r = await Promise.resolve(scenario(chain)).catch((error) =>
-        fail(scenario.name, "Scenario threw unexpectedly.", [
-          error instanceof Error ? error.message : String(error),
-        ]),
+        error instanceof AcceptanceWriteNotAuthorizedError
+          ? blocked(scenario.name, error.message)
+          : fail(scenario.name, "Scenario threw unexpectedly.", [
+              error instanceof Error ? error.message : String(error),
+            ]),
       );
       results.push(r);
       printResult(r);
     }
   } catch (error) {
-    const r = fail(
-      "POSTGRES_CONCURRENCY",
-      "Owning-chain fixture setup failed before any scenario could run.",
-      [error instanceof Error ? error.message : String(error)],
-    );
+    const r =
+      error instanceof AcceptanceWriteNotAuthorizedError
+        ? blocked("POSTGRES_CONCURRENCY", error.message, [
+            "See scripts/acceptance/db.mjs's ACCEPTANCE_MARKER_PROVISIONING_SQL for how to designate a database as a disposable acceptance environment.",
+          ])
+        : fail(
+            "POSTGRES_CONCURRENCY",
+            "Owning-chain fixture setup failed before any scenario could run.",
+            [error instanceof Error ? error.message : String(error)],
+          );
     results.push(r);
     printResult(r);
   } finally {

@@ -32,6 +32,31 @@ function isValidUrl(value, { requireHttps = false } = {}) {
   }
 }
 
+// A real `pg.Client({ connectionString })` value, never http/https --
+// independent-review finding 1: the prior isValidUrl(v) check silently
+// accepted only http:/https: schemes, so a genuine postgres://... value
+// would have been reported MALFORMED. Deliberately a SEPARATE validator
+// from isValidUrl (never weakens the Supabase/provider http(s) checks
+// above): accepts only postgres:/postgresql: (the two schemes libpq and
+// node-postgres both recognise), with a non-empty host, and a userinfo
+// section requiring both a username and password to be present when
+// either is (a bare "postgres://host/db" with no credentials at all is a
+// separate, legitimate shape -- e.g. peer/trust auth -- so it is not
+// rejected; a URL with a username but no password, or vice versa, is
+// malformed input, not a valid connection string).
+function isValidDatabaseUrl(value) {
+  let u;
+  try {
+    u = new URL(value);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "postgres:" && u.protocol !== "postgresql:") return false;
+  if (!u.hostname) return false;
+  if ((u.username && !u.password) || (!u.username && u.password)) return false;
+  return true;
+}
+
 /**
  * @typedef {"configured"|"missing"|"malformed"} VarStatus
  * @typedef {{ name: string, status: VarStatus, scope: "app"|"acceptance", note?: string }} VarReport
@@ -107,8 +132,14 @@ const KNOWN_VARS = [
   {
     name: "ACCEPTANCE_DATABASE_URL",
     scope: "acceptance",
-    validate: (v) => isValidUrl(v),
-    note: "Direct PostgreSQL connection string for a dedicated staging/acceptance database (migration verification, introspection, true-concurrency tests). Never production. Never the application runtime's own credential.",
+    validate: (v) => isValidDatabaseUrl(v),
+    note: "Direct PostgreSQL connection string (postgres:// or postgresql://) for a dedicated staging/acceptance database (migration verification, introspection, true-concurrency tests). Never production. Never the application runtime's own credential.",
+  },
+  {
+    name: "ACCEPTANCE_WRITE_ENABLED",
+    scope: "acceptance",
+    validate: (v) => v === "true",
+    note: "Must be exactly 'true' to permit any mutating acceptance/concurrency fixture write, and only in combination with the acceptance-environment marker row this harness independently requires inside the target database itself (see db.mjs's assertAcceptanceWriteAuthorized). Neither alone is sufficient; a connection string existing is never itself authorization to write.",
   },
   {
     name: "ACCEPTANCE_ADMIN_EMAIL",

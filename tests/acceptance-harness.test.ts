@@ -98,6 +98,190 @@ describe("acceptance harness: env.mjs preflight", () => {
   });
 });
 
+describe("acceptance harness: ACCEPTANCE_DATABASE_URL validation (independent-review finding 1)", () => {
+  it("accepts a valid postgres:// connection string", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_URL")).toBe("configured");
+  });
+
+  it("accepts a valid postgresql:// connection string", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgresql://acceptance:secret@db.example.com:5432/acceptance_db";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_URL")).toBe("configured");
+  });
+
+  it("accepts a valid postgres:// connection string with no credentials (peer/trust auth)", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://db.example.com:5432/acceptance_db";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_URL")).toBe("configured");
+  });
+
+  it("rejects an http(s) URL -- a database connection string is never http/https", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "https://db.example.com/acceptance_db";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_URL")).toBe("malformed");
+  });
+
+  it("rejects a malformed value", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL = "not a url at all";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_URL")).toBe("malformed");
+  });
+
+  it("rejects a username with no password (and vice versa) as malformed, not a valid connection string", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://onlyuser@db.example.com:5432/db";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_DATABASE_URL")).toBe("malformed");
+  });
+
+  it("never reports the raw URL/credentials -- the report carries no value field at all", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:top-secret-password@db.example.com:5432/acceptance_db";
+    const { preflightReport } = await import("../scripts/acceptance/env.mjs");
+    const report = (preflightReport() as VarReport[]).find(
+      (r) => r.name === "ACCEPTANCE_DATABASE_URL",
+    )!;
+    expect(Object.keys(report).sort()).toEqual(["name", "scope", "status"]);
+    expect(JSON.stringify(report)).not.toContain("top-secret-password");
+    expect(JSON.stringify(report)).not.toContain("db.example.com");
+  });
+
+  it("does not weaken the http/https validation used by NEXT_PUBLIC_SUPABASE_URL/ACADEMIC_PROVIDER_BASE_URL", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "postgres://not-a-supabase-url/db";
+    process.env.ACADEMIC_PROVIDER_BASE_URL = "postgres://not-an-http-url/db";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("NEXT_PUBLIC_SUPABASE_URL")).toBe("malformed");
+    expect(statusOf("ACADEMIC_PROVIDER_BASE_URL")).toBe("malformed");
+  });
+});
+
+describe("acceptance harness: hard write-safety gate (independent-review finding 2)", () => {
+  it("fails closed when ACCEPTANCE_WRITE_ENABLED is not exactly 'true', even if a marker row would be found", async () => {
+    clearAcceptanceVars();
+    const {
+      assertAcceptanceWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const fakeClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
+    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
+      AcceptanceWriteNotAuthorizedError,
+    );
+  });
+
+  it("fails closed when ACCEPTANCE_WRITE_ENABLED is 'yes'/'1'/anything other than the literal string 'true'", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_WRITE_ENABLED = "yes";
+    const {
+      assertAcceptanceWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const fakeClient = { query: async () => ({ rows: [{ marker: "x" }] }) };
+    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
+      AcceptanceWriteNotAuthorizedError,
+    );
+  });
+
+  it("fails closed when the marker table does not exist on the target, even with the opt-in set", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    const {
+      assertAcceptanceWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const fakeClient = {
+      query: async () => {
+        throw new Error('relation "_ducelio_acceptance_marker" does not exist');
+      },
+    };
+    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
+      AcceptanceWriteNotAuthorizedError,
+    );
+  });
+
+  it("fails closed when the marker table exists but the marker row is missing, even with the opt-in set", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    const {
+      assertAcceptanceWriteAuthorized,
+      AcceptanceWriteNotAuthorizedError,
+    } = await import("../scripts/acceptance/db.mjs");
+    const fakeClient = { query: async () => ({ rows: [] }) };
+    await expect(assertAcceptanceWriteAuthorized(fakeClient)).rejects.toThrow(
+      AcceptanceWriteNotAuthorizedError,
+    );
+  });
+
+  it("succeeds only when BOTH the opt-in and the in-database marker row are present, and queries the documented marker table", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    const {
+      assertAcceptanceWriteAuthorized,
+      ACCEPTANCE_MARKER_TABLE,
+      ACCEPTANCE_MARKER_VALUE,
+    } = await import("../scripts/acceptance/db.mjs");
+    let queriedSql = "";
+    let queriedParams: unknown[] = [];
+    const fakeClient = {
+      query: async (sql: string, params: unknown[]) => {
+        queriedSql = sql;
+        queriedParams = params;
+        return { rows: [{ marker: ACCEPTANCE_MARKER_VALUE }] };
+      },
+    };
+    await expect(
+      assertAcceptanceWriteAuthorized(fakeClient),
+    ).resolves.toBeUndefined();
+    expect(queriedSql).toContain(ACCEPTANCE_MARKER_TABLE);
+    expect(queriedParams).toEqual([ACCEPTANCE_MARKER_VALUE]);
+  });
+
+  it("the exported provisioning SQL creates exactly the marker table/row this gate checks -- never a broader grant", async () => {
+    const {
+      ACCEPTANCE_MARKER_PROVISIONING_SQL,
+      ACCEPTANCE_MARKER_TABLE,
+      ACCEPTANCE_MARKER_VALUE,
+    } = await import("../scripts/acceptance/db.mjs");
+    expect(ACCEPTANCE_MARKER_PROVISIONING_SQL).toContain(
+      `create table if not exists public.${ACCEPTANCE_MARKER_TABLE}`,
+    );
+    expect(ACCEPTANCE_MARKER_PROVISIONING_SQL).toContain(
+      ACCEPTANCE_MARKER_VALUE,
+    );
+    expect(ACCEPTANCE_MARKER_PROVISIONING_SQL.toUpperCase()).not.toMatch(
+      /\bGRANT\b|\bTRUNCATE\b|\bDROP\b/,
+    );
+  });
+
+  it("surfaces.mjs imports AcceptanceWriteNotAuthorizedError and maps it to BLOCKED, never FAIL, in checkResultProgressCompletion's catch block", async () => {
+    // Static/structural proof (no network calls, no hosted infra needed):
+    // the source itself must distinguish an authorization denial from a
+    // genuine product-behaviour failure, rather than the two being
+    // observationally indistinguishable at the call site.
+    const text = await readFile(
+      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(text).toContain("AcceptanceWriteNotAuthorizedError");
+    expect(text).toMatch(
+      /error instanceof AcceptanceWriteNotAuthorizedError\s*\)\s*\n?\s*return blocked\(/,
+    );
+  });
+});
+
 describe("acceptance harness: Stripe live-key detection", () => {
   it("flags an sk_live_ key as live, never sk_test_", async () => {
     clearAcceptanceVars();

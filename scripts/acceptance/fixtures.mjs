@@ -25,7 +25,14 @@
 // its package key / cohort title, so cleanup (see cleanupAcceptanceRun in
 // this module) can scope precisely to that run and never touch anything
 // else.
-import { withConnection } from "./db.mjs";
+//
+// Independent-review finding 2: "never production" is not a safety
+// mechanism on its own. Both mutating functions below call
+// db.mjs's assertAcceptanceWriteAuthorized -- which fails closed unless
+// BOTH the local ACCEPTANCE_WRITE_ENABLED opt-in AND an in-database
+// acceptance-environment marker row are present -- as their first action,
+// before any write.
+import { withConnection, assertAcceptanceWriteAuthorized } from "./db.mjs";
 
 const COMPONENTS = ["QUIZ_1", "QUIZ_2", "MIDTERM", "QUIZ_3", "QUIZ_4", "FINAL"];
 
@@ -135,8 +142,16 @@ export function buildAcceptancePackage(runId) {
  * policy -> publish result policy. `admin` and `learnerUserId` are an
  * authenticated supabase-js client (ACCEPTANCE_ADMIN) and the acceptance
  * learner's app_users id respectively.
+ *
+ * Independent-review finding 2: writes here go through supabase-js/
+ * PostgREST, not the direct pg connection -- so this function opens its
+ * OWN short-lived privileged connection purely to check
+ * assertAcceptanceWriteAuthorized before issuing a single supabase-js
+ * write, and closes it again immediately. The gate must be satisfied even
+ * though the writes themselves travel a different path.
  */
 export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
+  await withConnection((client) => assertAcceptanceWriteAuthorized(client));
   const pkg = buildAcceptancePackage(runId);
   const call = async (name, args) => {
     const { data, error } = await admin.rpc(name, args);
@@ -280,6 +295,7 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
  */
 export async function seedAcceptanceResults(course, learnerUserId, allCorrect) {
   await withConnection(async (client) => {
+    await assertAcceptanceWriteAuthorized(client);
     for (const component of COMPONENTS) {
       const { rows } = await client.query(
         `select a.id as assessment_id from commercial_v1_component_bindings cb

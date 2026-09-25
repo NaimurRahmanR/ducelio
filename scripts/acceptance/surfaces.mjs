@@ -10,6 +10,7 @@ import {
   functionExists,
   tableExists,
   listLocalMigrationFiles,
+  AcceptanceWriteNotAuthorizedError,
 } from "./db.mjs";
 import {
   hostedSupabaseConfigured,
@@ -53,68 +54,163 @@ export async function checkHostedDatabase() {
 }
 
 // ---------------------------------------------------------------------------
-// MIGRATIONS -- for every local migration file, extract its first
-// `create table public.X` / `create function public.X(` and verify that
-// object exists in the target database. Not a full replay, but a real,
-// mechanically-derived coherence check (never a hardcoded, driftable list).
+// MIGRATIONS
+//
+// Independent-review finding 3: the prior check only confirmed the FIRST
+// table/function each local migration file happens to create still exists
+// -- a partially-applied migration (e.g. one that failed midway through a
+// later statement) could still PASS. This is replaced with authoritative
+// verification against Supabase's own migration ledger
+// (supabase_migrations.schema_migrations, the table `supabase db push`/the
+// CLI itself writes one row to per applied migration version) wherever that
+// ledger is actually present on the target -- PASS now means the hosted
+// ledger's version set is EXACTLY the local repository's migration version
+// set, not merely "one object exists". If the ledger table itself is not
+// present (a target not provisioned via the Supabase CLI, or one this
+// connection cannot read `supabase_migrations`), that is reported honestly
+// as its own condition, never silently downgraded to the weaker object-
+// existence heuristic as if it were equivalent evidence.
+//
+// Separately, and only as supplementary, explicitly-labelled evidence
+// (never the sole basis for PASS), the three most recent, most critical
+// forward migrations (040, 041, 042 -- the Examiner recovery authority, the
+// independent-review correction checkpoint, and activation discovery) each
+// get a bounded, hand-verified check of every top-level object they define,
+// not just the first one.
 // ---------------------------------------------------------------------------
-async function firstCreatedObject(filename) {
-  const { readFile } = await import("node:fs/promises");
-  const text = await readFile(
-    new URL(`../../supabase/migrations/${filename}`, import.meta.url),
-    "utf8",
-  );
-  const tableMatch = text.match(/create table public\.([a-z0-9_]+)/i);
-  const functionMatch = text.match(
-    /create (?:or replace )?function public\.([a-z0-9_]+)/i,
-  );
-  const tableIdx = tableMatch ? text.indexOf(tableMatch[0]) : Infinity;
-  const functionIdx = functionMatch ? text.indexOf(functionMatch[0]) : Infinity;
-  if (tableIdx === Infinity && functionIdx === Infinity) return null;
-  return tableIdx < functionIdx
-    ? { kind: "table", name: tableMatch[1] }
-    : { kind: "function", name: functionMatch[1] };
+const CRITICAL_MIGRATION_OBJECTS = {
+  "202609240040_commercial_v1_examiner_initial_grade_recovery.sql": [
+    { kind: "table", name: "commercial_v1_examiner_recovery_executions" },
+    { kind: "table", name: "commercial_v1_examiner_recovery_usage" },
+    { kind: "function", name: "govern_commercial_v1_examiner_recovery" },
+  ],
+  "202609240041_commercial_v1_grading_chain_review_corrections.sql": [
+    { kind: "function", name: "list_commercial_v1_examiner_recovery_targets" },
+    { kind: "function", name: "get_commercial_v1_examiner_recovery_target" },
+    { kind: "function", name: "get_commercial_v1_policy_setup_options" },
+  ],
+  "202609250042_commercial_v1_activation_discovery.sql": [
+    { kind: "function", name: "list_commercial_v1_activations" },
+  ],
+};
+
+function localMigrationVersion(filename) {
+  // Every migration filename in this repository starts with a 12-digit
+  // timestamp (YYYYMMDDHHMM), matching the version format the Supabase CLI
+  // itself writes into supabase_migrations.schema_migrations.
+  return filename.slice(0, 12);
+}
+
+async function checkCriticalMigrationObjects(client) {
+  const missing = [];
+  for (const [file, objects] of Object.entries(CRITICAL_MIGRATION_OBJECTS)) {
+    for (const obj of objects) {
+      const exists =
+        obj.kind === "table"
+          ? await tableExists(client, obj.name)
+          : await functionExists(client, obj.name);
+      if (!exists) missing.push(`${file} -> ${obj.kind} ${obj.name}`);
+    }
+  }
+  return missing;
 }
 
 export async function checkMigrations() {
   if (!acceptanceDbConfigured())
     return blocked("MIGRATIONS", "ACCEPTANCE_DATABASE_URL is not configured.");
   const files = await listLocalMigrationFiles();
-  const missing = [];
+  const localVersions = new Set(files.map(localMigrationVersion));
+
   try {
-    await withConnection(async (client) => {
-      for (const file of files) {
-        const marker = await firstCreatedObject(file);
-        if (!marker) continue; // a migration with no table/function marker (rare) is skipped, not failed
-        const exists =
-          marker.kind === "table"
-            ? await tableExists(client, marker.name)
-            : await functionExists(client, marker.name);
-        if (!exists) missing.push(`${file} -> ${marker.kind} ${marker.name}`);
+    return await withConnection(async (client) => {
+      const criticalMissing = await checkCriticalMigrationObjects(client);
+
+      let ledgerExists = true;
+      let hostedVersions;
+      try {
+        const { rows } = await client.query(
+          "select version from supabase_migrations.schema_migrations",
+        );
+        hostedVersions = new Set(rows.map((r) => String(r.version)));
+      } catch {
+        ledgerExists = false;
       }
+
+      if (!ledgerExists) {
+        // Honest degraded path: no authoritative ledger to compare against.
+        // Never claims PASS -- "one object exists" was exactly the
+        // overclaim this correction removes. The bounded critical-object
+        // check above is reported as supplementary evidence only.
+        return blocked(
+          "MIGRATIONS",
+          "supabase_migrations.schema_migrations is not present (or not readable) on this target -- it was not provisioned via the Supabase CLI, or this connection lacks access. Authoritative migration-version verification is unavailable; object-existence alone is not sufficient evidence of PASS.",
+          [
+            criticalMissing.length
+              ? `Supplementary critical-migration object check (040/041/042): ${criticalMissing.length} missing -- ${criticalMissing.join("; ")}`
+              : "Supplementary critical-migration object check (040/041/042): all present (not authoritative on its own).",
+          ],
+        );
+      }
+
+      const missingFromHosted = [...localVersions].filter(
+        (v) => !hostedVersions.has(v),
+      );
+      const extraOnHosted = [...hostedVersions].filter(
+        (v) => !localVersions.has(v),
+      );
+
+      if (
+        missingFromHosted.length ||
+        extraOnHosted.length ||
+        criticalMissing.length
+      ) {
+        const details = [];
+        if (missingFromHosted.length)
+          details.push(
+            `${missingFromHosted.length} local migration version(s) not applied on hosted: ${missingFromHosted.join(", ")}`,
+          );
+        if (extraOnHosted.length)
+          details.push(
+            `${extraOnHosted.length} hosted migration version(s) not present locally: ${extraOnHosted.join(", ")}`,
+          );
+        if (criticalMissing.length)
+          details.push(
+            `Critical migration object(s) missing despite ledger row: ${criticalMissing.join("; ")}`,
+          );
+        return fail(
+          "MIGRATIONS",
+          "Hosted migration-ledger version set does not genuinely match the repository's expected migration set.",
+          details,
+        );
+      }
+
+      return pass(
+        "MIGRATIONS",
+        `Hosted supabase_migrations.schema_migrations exactly matches the local repository's ${localVersions.size} migration versions (through ${localMigrationVersion(files[files.length - 1])}), and all bounded critical-migration objects (040/041/042) exist.`,
+      );
     });
   } catch (error) {
     return fail("MIGRATIONS", "Migration verification query failed.", [
       error instanceof Error ? error.message : String(error),
     ]);
   }
-  if (missing.length)
-    return fail(
-      "MIGRATIONS",
-      `${missing.length} of ${files.length} local migrations have no matching object in the hosted database.`,
-      missing,
-    );
-  return pass(
-    "MIGRATIONS",
-    `All ${files.length} local migrations (through 202609250042) have a matching object hosted.`,
-  );
 }
 
 // ---------------------------------------------------------------------------
-// RLS_ACL -- reuses the exact has_table_privilege/has_function_privilege
-// effective-privilege check every reviewed migration in this codebase
-// already runs at deployment time, against a sample of the most sensitive
-// Commercial V1 tables.
+// RLS_ACL
+//
+// Independent-review finding 5: this surface's PASS was worded as if it
+// were broad RLS/ACL acceptance. It is not -- it is the exact
+// has_table_privilege effective-privilege check every reviewed migration in
+// this codebase already runs at deployment time, against a bounded sample
+// of the most sensitive Commercial V1 tables. It does NOT evaluate RLS
+// policy predicates/behaviour (row-level filtering itself), and does not
+// exercise every table this repository protects. The real, behavioural
+// row-level checks (a learner can read only their own data, a foreign
+// learner is denied, etc.) are separate, already-genuine evidence gathered
+// by JWT_POSTGREST, not this surface. This result is now explicitly
+// labelled as a bounded sample so it cannot be mistaken for the broader
+// claim.
 // ---------------------------------------------------------------------------
 const SENSITIVE_TABLES = [
   "commercial_v1_examiner_executions",
@@ -140,19 +236,21 @@ export async function checkRlsAcl() {
       }
     });
   } catch (error) {
-    return fail("RLS_ACL", "RLS/ACL introspection query failed.", [
-      error instanceof Error ? error.message : String(error),
-    ]);
+    return fail(
+      "RLS_ACL",
+      "Sensitive-table ACL sample introspection query failed.",
+      [error instanceof Error ? error.message : String(error)],
+    );
   }
   if (unsafe.length)
     return fail(
       "RLS_ACL",
-      `${unsafe.length} unsafe effective privilege(s) found on sensitive tables.`,
+      `Sensitive-table ACL sample: ${unsafe.length} unsafe effective privilege(s) found.`,
       unsafe,
     );
   return pass(
     "RLS_ACL",
-    `No unsafe anon/authenticated/service_role privileges on ${SENSITIVE_TABLES.length} sampled sensitive tables.`,
+    `Sensitive-table ACL sample only (${SENSITIVE_TABLES.length} tables x anon/authenticated/service_role effective table privileges) -- no unsafe privilege found. This is not full RLS policy/behavioural acceptance; see JWT_POSTGREST for real row-level behavioural evidence.`,
   );
 }
 
@@ -361,6 +459,10 @@ export async function checkResultProgressCompletion() {
       [`Acceptance run ${runId}`],
     );
   } catch (error) {
+    if (error instanceof AcceptanceWriteNotAuthorizedError)
+      return blocked("RESULT_PROGRESS_COMPLETION", error.message, [
+        "See scripts/acceptance/db.mjs's ACCEPTANCE_MARKER_PROVISIONING_SQL for how to designate a database as a disposable acceptance environment.",
+      ]);
     return fail(
       "RESULT_PROGRESS_COMPLETION",
       "Hosted result/progress/completion acceptance failed.",
@@ -400,9 +502,13 @@ export async function checkStripeTestMode() {
         "STRIPE_TEST_MODE",
         "Stripe account reports livemode=true despite an sk_test_ key.",
       );
-    return pass("STRIPE_TEST_MODE", "Connected to Stripe in test mode.", [
-      "Full checkout/webhook/entitlement acceptance requires this harness to run alongside the application's own commerce Server Actions (server-owned amount/currency, signed webhook, entitlement creation) -- not yet wired here; this check proves test-mode connectivity only.",
-    ]);
+    return pass(
+      "STRIPE_TEST_MODE",
+      "Test-mode API connectivity only (balance retrieval) -- NOT full Commercial V1 Stripe acceptance.",
+      [
+        "Does not yet prove: server-owned checkout amount/currency, a signed test webhook, duplicate-webhook idempotency, entitlement creation, redirect-is-not-payment-proof, or the REVIEWER_COMPLIMENTARY non-payment path (docs/38 section 6). Wiring those requires this harness to run alongside the application's own commerce Server Actions -- not yet implemented here.",
+      ],
+    );
   } catch (error) {
     return fail(
       "STRIPE_TEST_MODE",
