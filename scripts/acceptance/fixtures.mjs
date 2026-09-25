@@ -4,8 +4,14 @@
 //   seedAcceptanceCourse()  -- builds a real course through the SAME
 //     governed, non-HMAC RPCs the application itself calls (import/
 //     validate/apply/test/publish/activate/enrol/bind/publish policy).
-//     Nothing here writes to a table directly.
+//     A cohort row is the one exception (see that function's own header
+//     comment): no migration through 2609250042 grants `authenticated`
+//     INSERT on public.cohorts, so a real hosted ACCEPTANCE_ADMIN cannot
+//     create one via PostgREST at all -- it is created directly, gated,
+//     through the same privileged acceptance-only connection every other
+//     direct mutation in this harness uses, never a production grant.
 //
+
 //   seedAcceptanceResult()  -- a DEDICATED, explicitly-labelled acceptance
 //     setup mechanism that inserts a minimal valid result revision directly
 //     (privileged ACCEPTANCE_DATABASE_URL connection only), because a real
@@ -41,7 +47,14 @@
 // environment. seedAcceptanceCourse therefore also calls supabase.mjs's
 // assertAcceptanceSupabaseWriteAuthorized, and only proceeds once BOTH
 // independently confirm the SAME ACCEPTANCE_ENVIRONMENT_ID.
-import { withConnection, withAcceptanceWriteConnection } from "./db.mjs";
+import { randomUUID } from "node:crypto";
+import {
+  withConnection,
+  withAcceptanceWriteConnection,
+  resolveAppUserId,
+  appUserHasRole,
+  appUserHasStaffProfile,
+} from "./db.mjs";
 import { assertAcceptanceSupabaseWriteAuthorized } from "./supabase.mjs";
 
 const COMPONENTS = ["QUIZ_1", "QUIZ_2", "MIDTERM", "QUIZ_3", "QUIZ_4", "FINAL"];
@@ -146,12 +159,75 @@ export function buildAcceptancePackage(runId) {
 
 /**
  * Builds a real, activated Commercial V1 course through the governed RPCs
- * only (never a raw table write): import -> mark validated -> apply -> run
- * pre-publication test -> publish -> activate -> enrol the acceptance
- * learner -> bind all six components -> publish grading policy -> set lab
- * policy -> publish result policy. `admin` and `learnerUserId` are an
- * authenticated supabase-js client (ACCEPTANCE_ADMIN) and the acceptance
- * learner's app_users id respectively.
+ * only for anything a real learner/admin action would normally reach:
+ * import -> mark validated -> apply -> run pre-publication test -> publish
+ * -> activate -> enrol the acceptance learner -> bind all six components ->
+ * publish grading policy -> set lab policy -> publish result policy.
+ * `admin` is an authenticated supabase-js client (ACCEPTANCE_ADMIN) that is
+ * ALSO the provisioned acceptance instructor AND the verified
+ * ACADEMIC_ADMIN/PLATFORM_ADMIN recovery actor concurrency.mjs's
+ * RECOVERY_VS_RECOVERY race needs (see the instructor-discovery comment
+ * below, and the returned recoveryActorId field). `learnerAuthUserId` is
+ * the acceptance learner's Supabase
+ * AUTH user id (auth.users.id -- e.g. from
+ * `(await learner.auth.getUser()).data.user.id`), NEVER their app_users.id
+ * -- those are two separately-generated uuids (see db.mjs's
+ * resolveAppUserId). This function resolves the real application
+ * app_users.id itself before calling any RPC that takes a student id, so
+ * every caller passes the SAME kind of identifier it already has on hand
+ * (the Auth session's own user id) and can never accidentally pass the
+ * wrong id space.
+ *
+ * Independent-review finding (schema-consistency audit, this pass): a
+ * prior version of this function accepted an already-resolved
+ * "learnerUserId" and forwarded it directly to create_enrolment's
+ * p_student_id -- but every call site actually had only the Auth user id
+ * on hand (auth.users.id), not app_users.id. create_enrolment's
+ * p_student_id is matched directly against student_profiles.user_id,
+ * which references app_users.id (migration 2609080001/002) -- passing the
+ * Auth id there would not enrol the real acceptance learner. Fixed by
+ * resolving the correct id internally, once, from the one identifier every
+ * caller actually already has.
+ *
+ * Independent-review finding (this pass, blocker): cohorts, and the
+ * course_practicals/course_assessment_bindings tables read further below,
+ * cannot be reached this way at all by a real hosted ACCEPTANCE_ADMIN
+ * using the publishable-key authenticated client:
+ *   - public.cohorts: migration 2609080001 revokes all access from
+ *     `authenticated`; migration 2609080003 grants only SELECT, with only
+ *     a SELECT policy -- no later migration through 2609250042 grants
+ *     INSERT. A direct `.from("cohorts").insert(...)` would be rejected.
+ *   - public.course_practicals / public.course_assessment_bindings:
+ *     migration 2609140027 is stricter still -- its own self-verifying DO
+ *     block explicitly revokes EVERY privilege (including column-level)
+ *     from anon/authenticated/service_role and RAISES if any is ever
+ *     found, for exactly this table set. Not even SELECT is reachable via
+ *     PostgREST.
+ * None of that may be worked around with a production grant or a weaker
+ * RLS policy (this harness never weakens production constraints to make
+ * acceptance pass). Since this IS acceptance-fixture setup, the cohort is
+ * instead created through the SAME privileged, gated, acceptance-only
+ * direct PostgreSQL path every other direct mutation in this harness uses
+ * (withAcceptanceWriteConnection -- both the direct-database gate and,
+ * because assertAcceptanceSupabaseWriteAuthorized above already ran first,
+ * the Supabase same-environment gate are proven before this or any other
+ * write), narrowly scoped to exactly one cohort row for this run, under
+ * the governed programme version apply_course_package already returned.
+ * course_practicals/course_assessment_bindings are read back the same
+ * way -- a plain read needs no gate, only ACCEPTANCE_DATABASE_URL.
+ *
+ * Independent-review finding (this pass): instructor discovery previously
+ * used `.from("staff_profiles").select("user_id, role_grants!inner(role)")`
+ * -- but there is no foreign key between staff_profiles and role_grants at
+ * all (both independently reference app_users only), so PostgREST cannot
+ * resolve that embed; and, separately, an arbitrary INSTRUCTOR picked from
+ * the whole hosted database is not necessarily the one acceptance
+ * identity actually provisioned for this purpose. Fixed by resolving the
+ * ACCEPTANCE_ADMIN's own app_users.id (the same identity this function
+ * already authenticates as) and verifying, directly against the database,
+ * that it genuinely carries the INSTRUCTOR role and a staff_profiles row
+ * -- never picking a different, arbitrary row. Fails closed with an
+ * explicit error naming exactly which prerequisite is missing.
  *
  * Independent-review finding 2 (prior pass): writes here go through
  * supabase-js/PostgREST, not the direct pg connection -- so this function
@@ -166,13 +242,74 @@ export function buildAcceptancePackage(runId) {
  * the ordering here is a testability/fail-fast convenience, not a
  * security dependency between the two.
  */
-export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
+export async function seedAcceptanceCourse(admin, runId, learnerAuthUserId) {
   await assertAcceptanceSupabaseWriteAuthorized(admin);
-  // This connection issues no SQL of its own -- its sole purpose is the
-  // direct-database gate probe, via the same withAcceptanceWriteConnection
-  // every other direct-pg mutation in this harness uses, so there is one
-  // gating shape everywhere, not a bespoke variant here.
-  await withAcceptanceWriteConnection(() => {});
+  const { data: adminUser, error: adminUserError } = await admin.auth.getUser();
+  if (adminUserError || !adminUser?.user?.id)
+    throw new Error(
+      "Could not resolve the acceptance admin's own hosted Supabase Auth user id.",
+    );
+  // One privileged connection resolves BOTH real app_users ids this
+  // function needs (the learner's and the admin/instructor's) and
+  // verifies the admin genuinely carries INSTRUCTOR + a staff_profiles
+  // row -- all read-only, but run on the SAME gated connection as a
+  // matter of course, never a bespoke ungated variant.
+  //
+  // Independent-review finding (v5, this pass): concurrency.mjs's
+  // RECOVERY_VS_RECOVERY race needs a real, verified ACADEMIC_ADMIN/
+  // PLATFORM_ADMIN app_users.id to use as commercial_v1_examiner_recovery_
+  // executions.actor_id -- migration 2609240040 defines actor_id as "the
+  // initiating ACADEMIC_ADMIN/PLATFORM_ADMIN" and its own governed
+  // recovery function rejects any other actor. INSTRUCTOR is a DIFFERENT
+  // role and never implies admin recovery authority on its own, so this
+  // is checked independently and explicitly, never inferred from the
+  // INSTRUCTOR check above. Exposed as `recoveryActorId` -- a distinctly
+  // named field, even though it happens to resolve to the same acceptance
+  // admin identity as `instructorId` here, so no caller can confuse "is
+  // an instructor" with "is authorized to act as the recovery actor".
+  const { studentId, instructorId, recoveryActorId } =
+    await withAcceptanceWriteConnection(async (client) => {
+      const resolvedStudentId = await resolveAppUserId(
+        client,
+        learnerAuthUserId,
+      );
+      if (!resolvedStudentId)
+        throw new Error(
+          "No public.app_users row is linked to the acceptance learner's Auth user id -- ACCEPTANCE_LEARNER_EMAIL must be a real Supabase Auth user that has actually signed up against this hosted project (migration 002's provision_academy_user() trigger creates this link on signup).",
+        );
+      const resolvedInstructorId = await resolveAppUserId(
+        client,
+        adminUser.user.id,
+      );
+      if (!resolvedInstructorId)
+        throw new Error(
+          "No public.app_users row is linked to the acceptance admin's Auth user id -- ACCEPTANCE_ADMIN_EMAIL must be a real Supabase Auth user that has actually signed up against this hosted project.",
+        );
+      if (!(await appUserHasRole(client, resolvedInstructorId, "INSTRUCTOR")))
+        throw new Error(
+          "The acceptance admin's app_users row does not carry the INSTRUCTOR role -- grant it INSTRUCTOR (see docs/38) before running acceptance course seeding.",
+        );
+      if (!(await appUserHasStaffProfile(client, resolvedInstructorId)))
+        throw new Error(
+          "The acceptance admin's app_users row has no public.staff_profiles row -- provision one before running acceptance course seeding.",
+        );
+      const hasAdminRecoveryAuthority =
+        (await appUserHasRole(
+          client,
+          resolvedInstructorId,
+          "ACADEMIC_ADMIN",
+        )) ||
+        (await appUserHasRole(client, resolvedInstructorId, "PLATFORM_ADMIN"));
+      if (!hasAdminRecoveryAuthority)
+        throw new Error(
+          "The acceptance admin's app_users row carries neither ACADEMIC_ADMIN nor PLATFORM_ADMIN -- migration 2609240040 requires the recovery actor to hold one of those roles (INSTRUCTOR alone is never sufficient); grant one before running acceptance course seeding.",
+        );
+      return {
+        studentId: resolvedStudentId,
+        instructorId: resolvedInstructorId,
+        recoveryActorId: resolvedInstructorId,
+      };
+    });
   const pkg = buildAcceptancePackage(runId);
   const call = async (name, args) => {
     const { data, error } = await admin.rpc(name, args);
@@ -196,66 +333,157 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
     p_import_id: importId,
     p_reason: "Acceptance course apply",
   });
+
+  // Independent-review finding (v6, this pass, BLOCKER -- confirmed by a
+  // real hosted acceptance:concurrency run, acceptance run
+  // 1790361944555-1nzbhw, whose persisted course_package_test_runs row
+  // recorded outcome=FAIL, failure_code=CONFIGURATION_INCOMPLETE,
+  // failed_roles=PROFESSOR,TUTOR,LAB_INSTRUCTOR,EXAMINER,COUNSELLOR):
+  // migration 2609120024's apply_course_package() does NOT materialise
+  // pkg.agentConfiguration into public.academic_agent_configs at all --
+  // that table is configured SEPARATELY, through the governed
+  // public.set_agent_config() RPC (migration 2609170036). Migration
+  // 2609170035's run_course_package_test() calls
+  // evaluate_config_readiness(), which requires the STORED
+  // academic_agent_configs rows to exactly match the package's own
+  // proposed agentConfiguration -- with none configured at all, every
+  // one of the five reviewed roles was reported missing. Fixed by
+  // calling set_agent_config once per role, copying the EXACT values
+  // buildAcceptancePackage() already proposed for that role -- never
+  // inventing different settings, never merely enabling a role to force
+  // the test to pass. This MUST run here, strictly AFTER
+  // apply_course_package and BEFORE run_course_package_test: migration
+  // 2609170035's publication authority binds a PASSing test to the
+  // exact configuration/fingerprint in place AT THAT TEST, so
+  // academic_agent_configs must never be touched again between the test
+  // and publish_course_package below.
+  const AGENT_ROLES = [
+    "PROFESSOR",
+    "TUTOR",
+    "LAB_INSTRUCTOR",
+    "EXAMINER",
+    "COUNSELLOR",
+  ];
+  for (const role of AGENT_ROLES) {
+    const roleConfig = pkg.agentConfiguration[role];
+    await call("set_agent_config", {
+      p_programme_version_id: programmeVersionId,
+      p_role: role,
+      p_enabled: roleConfig.enabled,
+      p_model_profile_ref: roleConfig.modelProfileRef,
+      p_instructional_notes: roleConfig.instructionalNotes,
+      p_capabilities: roleConfig.capabilities,
+      p_escalation_policy: roleConfig.escalationPolicy,
+      p_reason: `Acceptance ${role} agent configuration`,
+    });
+  }
+
   const test = await call("run_course_package_test", {
     p_import_id: importId,
     p_reason: "Acceptance pre-publication test",
   });
-  const outcome = Array.isArray(test) ? test[0]?.outcome : test?.outcome;
-  if (outcome !== "PASS")
-    throw new Error(`Acceptance pre-publication test did not pass: ${outcome}`);
+  // run_course_package_test's own `returns table(...)` shape means
+  // PostgREST/supabase-js normalizes it to an array of one row -- the
+  // SAME normalization the outcome check already used before this pass,
+  // never assuming a bare object shape.
+  const testResult = Array.isArray(test) ? test[0] : test;
+  const outcome = testResult?.outcome;
+  if (outcome !== "PASS") {
+    // Independent-review finding (v6, this pass): the previous error
+    // only said "did not pass: FAIL", discarding
+    // run_course_package_test's own bounded, non-sensitive diagnostic
+    // columns (failure_code/failed_roles) -- exactly the fields that
+    // would have identified CONFIGURATION_INCOMPLETE immediately instead
+    // of requiring an independent read of the persisted
+    // course_package_test_runs row. Never includes the fingerprint, raw
+    // package content, or any SQL error text -- only these three
+    // already-governed, already-safe-to-surface columns.
+    const failureCode = testResult?.failure_code ?? "UNKNOWN";
+    const failedRoles = Array.isArray(testResult?.failed_roles)
+      ? testResult.failed_roles.join(",")
+      : (testResult?.failed_roles ?? "");
+    throw new Error(
+      `Acceptance pre-publication test did not pass: outcome=${outcome} failure_code=${failureCode} failed_roles=${failedRoles}`,
+    );
+  }
   await call("publish_course_package", {
     p_import_id: importId,
     p_reason: "Acceptance course publish",
   });
 
-  const { data: cohort, error: cohortError } = await admin
-    .from("cohorts")
-    .insert({
-      programme_version_id: programmeVersionId,
-      title: `Acceptance cohort ${runId}`,
-      starts_on: new Date().toISOString().slice(0, 10),
-    })
-    .select("id")
-    .single();
-  if (cohortError)
-    throw new Error(`Acceptance cohort insert failed: ${cohortError.message}`);
-
-  const { data: instructor, error: instructorError } = await admin
-    .from("staff_profiles")
-    .select("user_id, role_grants!inner(role)")
-    .eq("role_grants.role", "INSTRUCTOR")
-    .limit(1)
-    .maybeSingle();
-  if (instructorError || !instructor)
-    throw new Error(
-      "No INSTRUCTOR staff profile exists in this hosted database -- provision one before running acceptance course seeding.",
+  // Direct, gated, acceptance-only insert -- see the function header for
+  // why cohorts cannot be created via PostgREST here. Narrowly scoped to
+  // exactly one cohort row for this run, under the governed programme
+  // version apply_course_package just returned.
+  const cohortId = await withAcceptanceWriteConnection(async (client) => {
+    const id = randomUUID();
+    await client.query(
+      `insert into cohorts(id, programme_version_id, title, starts_on)
+       values($1, $2, $3, current_date)`,
+      [id, programmeVersionId, `Acceptance cohort ${runId}`],
     );
+    return id;
+  });
+
+  // Independent-review finding (v4, this pass): every one of the six
+  // components previously shared the EXACT SAME opens_at/closes_at
+  // window. publish_commercial_v1_grading_policy (migration 2609140029)
+  // walks the six components in the fixed institutional order QUIZ_1 ->
+  // QUIZ_2 -> MIDTERM -> QUIZ_3 -> QUIZ_4 -> FINAL and raises
+  // ASSESSMENT_SEQUENCE_INVALID the moment a later component's opens_at
+  // is earlier than the previous component's closes_at -- which an
+  // identical shared window always is. seedAcceptanceCourse could
+  // therefore never actually reach a published grading policy. Fixed by
+  // deriving six deterministic, strictly sequential, non-overlapping
+  // windows from ONE captured base timestamp -- windowMinutes (2 hours)
+  // comfortably exceeds durationMinutes=30 (buildAcceptancePackage's own
+  // template value, which activate_course_package uses verbatim as each
+  // assessment's duration_minutes -- migration 2609140029's
+  // ASSESSMENT_WINDOW_TOO_SHORT guard requires closes_at-opens_at >=
+  // duration_minutes), and each window's opens_at is set to exactly the
+  // previous window's closes_at (never earlier), satisfying the sequence
+  // check with no gap and no overlap. QUIZ_1 still opens in the past
+  // (baseTime, one hour before this call), matching the previous
+  // fixture's own intent that the first component is already open.
+  const baseTime = Date.now() - 3600_000;
+  const windowMinutes = 120;
+  const p_assessments = COMPONENTS.map((c, index) => ({
+    templateKey: c.toLowerCase(),
+    opensAt: new Date(baseTime + index * windowMinutes * 60_000).toISOString(),
+    closesAt: new Date(
+      baseTime + (index + 1) * windowMinutes * 60_000,
+    ).toISOString(),
+  }));
 
   const activationId = await call("activate_course_package", {
     p_import_id: importId,
-    p_cohort_id: cohort.id,
-    p_instructor_id: instructor.user_id,
+    p_cohort_id: cohortId,
+    p_instructor_id: instructorId,
     p_assignments: [],
-    p_assessments: COMPONENTS.map((c) => ({
-      templateKey: c.toLowerCase(),
-      opensAt: new Date(Date.now() - 3600_000).toISOString(),
-      closesAt: new Date(Date.now() + 3600_000 * 24).toISOString(),
-    })),
+    p_assessments,
     p_reason: "Acceptance course activation",
   });
 
   const enrolmentId = await call("create_enrolment", {
-    p_student_id: learnerUserId,
-    p_cohort_id: cohort.id,
+    p_student_id: studentId,
+    p_cohort_id: cohortId,
     p_reason: "Acceptance enrolment",
   });
 
-  const { data: bindings } = await admin
-    .from("course_assessment_bindings")
-    .select("assessment_id, template_key")
-    .eq("activation_id", activationId);
+  // Read-only -- see the function header for why course_assessment_bindings
+  // cannot be read via PostgREST here (migration 2609140027 revokes every
+  // privilege, including SELECT, for this table set, and self-verifies
+  // that nothing has re-granted one).
+  const bindings = await withConnection((client) =>
+    client
+      .query(
+        "select assessment_id, template_key from course_assessment_bindings where activation_id=$1",
+        [activationId],
+      )
+      .then((r) => r.rows),
+  );
   for (const component of COMPONENTS) {
-    const binding = bindings?.find(
+    const binding = bindings.find(
       (b) => b.template_key === component.toLowerCase(),
     );
     if (!binding)
@@ -272,17 +500,19 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
     p_reason: "Acceptance grading policy",
   });
 
-  const { data: practical } = await admin
-    .from("course_practicals")
-    .select("id")
-    .eq("import_id", importId)
-    .eq("kind", "PRACTICAL_LAB")
-    .limit(1)
-    .maybeSingle();
-  if (!practical) throw new Error("No PRACTICAL_LAB practical found.");
+  // Read-only -- same PostgREST-unreachable table set as bindings above.
+  const practicalId = await withConnection((client) =>
+    client
+      .query(
+        "select id from course_practicals where import_id=$1 and kind='PRACTICAL_LAB' limit 1",
+        [importId],
+      )
+      .then((r) => r.rows[0]?.id ?? null),
+  );
+  if (!practicalId) throw new Error("No PRACTICAL_LAB practical found.");
   await call("set_commercial_v1_lab_policy", {
     p_activation_id: activationId,
-    p_practical_id: practical.id,
+    p_practical_id: practicalId,
     p_max_marks: 10,
     p_contribution_bp: 2000,
     p_grading_guidance: "Acceptance grading guidance.",
@@ -299,10 +529,85 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
     importId,
     programmeVersionId,
     activationId,
-    cohortId: cohort.id,
+    cohortId,
     enrolmentId,
-    practicalId: practical.id,
+    practicalId,
+    studentId,
+    instructorId,
+    recoveryActorId,
   };
+}
+
+/**
+ * Dedicated acceptance-only test-owner insert of ONE assessment_attempts
+ * row on the caller's already-gated connection. A real attempt is
+ * normally created only by the learner's own start_assessment_attempt RPC
+ * (an ordinary write, no HMAC involved) -- this exists because both
+ * seedAcceptanceResults (below) and the true-concurrency owning-chain
+ * fixture (concurrency.mjs) need a real, FK-satisfying attempt row without
+ * exercising session/attempt-window timing that neither is actually
+ * testing. Inserted directly as SUBMITTED (never ACTIVE), so it never
+ * touches the one-active-attempt-per-student partial unique index.
+ * assessment_attempts is guarded, immutable institutional history once
+ * inserted (migration 2609090016's guard_assessment_attempt_history
+ * rejects every UPDATE/DELETE unconditionally) -- like every other row
+ * this harness seeds through the governed graph, this is permanent,
+ * run-scoped history, never cleaned up.
+ */
+export async function seedAcceptanceAttempt(client, params) {
+  const {
+    assessmentId,
+    enrolmentId,
+    studentId,
+    cohortId,
+    programmeVersionId,
+    attemptNumber = 1,
+  } = params;
+  const attemptId = randomUUID();
+  await client.query(
+    `insert into assessment_attempts(
+      id,assessment_id,enrolment_id,student_id,cohort_id,programme_version_id,attempt_number,
+      state,started_at,expires_at,submitted_at,submission_provenance
+    ) values($1,$2,$3,$4,$5,$6,$7,'SUBMITTED',
+      now()-interval '10 minutes',now()+interval '20 minutes',now()-interval '5 minutes','STUDENT_SUBMIT')`,
+    [
+      attemptId,
+      assessmentId,
+      enrolmentId,
+      studentId,
+      cohortId,
+      programmeVersionId,
+      attemptNumber,
+    ],
+  );
+  return attemptId;
+}
+
+/**
+ * Dedicated acceptance-only test-owner insert of ONE
+ * commercial_v1_lab_submissions row -- the same rationale as
+ * seedAcceptanceAttempt, for the lab-result revision's required, non-null
+ * submission_id. Append-only once inserted (migration
+ * 2609150030's lab_submission_append_only).
+ */
+export async function seedAcceptanceLabSubmission(client, params) {
+  const { activationId, practicalId, enrolmentId, studentId, idempotencySeed } =
+    params;
+  const submissionId = randomUUID();
+  await client.query(
+    `insert into commercial_v1_lab_submissions(
+      id,activation_id,practical_id,enrolment_id,student_id,body,idempotency_key
+    ) values($1,$2,$3,$4,$5,'Acceptance lab submission body.',$6)`,
+    [
+      submissionId,
+      activationId,
+      practicalId,
+      enrolmentId,
+      studentId,
+      `acceptance-lab-${idempotencySeed}`,
+    ],
+  );
+  return submissionId;
 }
 
 /**
@@ -311,63 +616,179 @@ export async function seedAcceptanceCourse(admin, runId, learnerUserId) {
  * privileged ACCEPTANCE_DATABASE_URL connection. Deliberately mirrors the
  * already-reviewed local test-owner seedResult pattern; never reachable by
  * a real learner/admin action. `allCorrect` controls whether the seeded
- * score is a passing (10/10) or failing (0/10) score, so RESULT_PROGRESS_
- * COMPLETION acceptance can exercise both COMPLETED and BELOW_PASS_MARK.
+ * score is a passing (10/10-per-question) or failing (0) score, so
+ * RESULT_PROGRESS_COMPLETION acceptance can exercise both COMPLETED and
+ * BELOW_PASS_MARK.
+ *
+ * Independent-review finding (schema-consistency audit, this pass):
+ * migration 2609150030's derive_and_insert_objective_outcomes() calls
+ * assert_complete_question_marks() FIRST, which requires exactly one
+ * public.commercial_v1_assessment_question_marks row per
+ * public.assessment_questions row bound to the assessment, with
+ * max_marks_snapshot matching the real question and the revision's own
+ * earned_marks_total/max_marks_total matching the sum of those marks
+ * exactly (assessment_result_is_valid() checks the identical totals). A
+ * prior version of this function never inserted any question_marks row at
+ * all and hard-coded max_marks_total=10 regardless of how many questions
+ * (or what max_marks) the seeded package actually defined -- every call
+ * would throw INCOMPLETE_QUESTION_MARKS. Fixed by reading the REAL
+ * assessment_questions rows for each bound assessment, deriving
+ * max_marks_total as their sum, inserting one question_marks row per
+ * question (marks_awarded = the question's own max_marks when
+ * allCorrect, else 0 -- never a value the question's own max_marks
+ * couldn't support), and only THEN calling
+ * derive_and_insert_objective_outcomes(). assessment_result_is_valid() is
+ * asserted true immediately afterward -- this function throws, rather
+ * than returning a silently-invalid revision, if it is not.
+ *
+ * Independent-review finding (this pass): every table this function
+ * writes to is append-only/guarded (immutable the instant a row commits
+ * -- see seedAcceptanceAttempt/seedAcceptanceLabSubmission above and
+ * commercial_v1_assessment_result_revisions' own append-only trigger).
+ * Without a transaction, a defect partway through (a later component, or
+ * the lab) would leave an earlier component's revision permanently
+ * committed and unrepairable by DELETE. The entire operation -- every
+ * component's attempt/result/question-marks insert, plus the lab
+ * submission/result -- now runs inside one BEGIN/COMMIT, ROLLBACK on any
+ * error, so a defect leaves nothing committed at all.
+ *
+ * Independent-review finding (schema-consistency audit, prior pass): both
+ * result-revision inserts below previously supplied `null` for a NOT NULL
+ * column -- attempt_id on commercial_v1_assessment_result_revisions and
+ * submission_id on commercial_v1_lab_result_revisions (migration
+ * 2609150030) -- which can never have succeeded against the current
+ * schema. Fixed by seeding one real attempt/submission row per component
+ * (seedAcceptanceAttempt/seedAcceptanceLabSubmission above) and using
+ * their real ids. Also drops the separate `learnerUserId` parameter
+ * entirely -- `course.studentId` (resolved once, correctly, by
+ * seedAcceptanceCourse) is now the single source of truth, so no call
+ * site can pass a mismatched id.
  */
-export async function seedAcceptanceResults(course, learnerUserId, allCorrect) {
+export async function seedAcceptanceResults(course, allCorrect) {
   await withAcceptanceWriteConnection(async (client) => {
-    for (const component of COMPONENTS) {
-      const { rows } = await client.query(
-        `select a.id as assessment_id from commercial_v1_component_bindings cb
-         join assessments a on a.id=cb.assessment_id
-         where cb.activation_id=$1 and cb.component=$2`,
-        [course.activationId, component],
-      );
-      const assessmentId = rows[0]?.assessment_id;
-      if (!assessmentId)
-        throw new Error(`No bound assessment for ${component}`);
-      const resultId = await client
-        .query(
+    await client.query("begin");
+    try {
+      for (const component of COMPONENTS) {
+        const { rows: bindingRows } = await client.query(
+          `select a.id as assessment_id from commercial_v1_component_bindings cb
+           join assessments a on a.id=cb.assessment_id
+           where cb.activation_id=$1 and cb.component=$2`,
+          [course.activationId, component],
+        );
+        const assessmentId = bindingRows[0]?.assessment_id;
+        if (!assessmentId)
+          throw new Error(`No bound assessment for ${component}`);
+
+        const { rows: questions } = await client.query(
+          "select id, max_marks from assessment_questions where assessment_id=$1 order by position",
+          [assessmentId],
+        );
+        if (!questions.length)
+          throw new Error(
+            `No assessment_questions found for ${component} (assessment ${assessmentId}) -- cannot derive a valid result revision without at least one real question.`,
+          );
+        const maxMarksTotal = questions.reduce(
+          (sum, q) => sum + q.max_marks,
+          0,
+        );
+        const earnedMarksTotal = allCorrect ? maxMarksTotal : 0;
+
+        const attemptId = await seedAcceptanceAttempt(client, {
+          assessmentId,
+          enrolmentId: course.enrolmentId,
+          studentId: course.studentId,
+          cohortId: course.cohortId,
+          programmeVersionId: course.programmeVersionId,
+        });
+        const resultId = await client.query(
           `insert into commercial_v1_assessment_result_revisions(
             activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
             earned_marks_total,max_marks_total,component_weight_bp
-          ) values($1,$2,$3,$4,null,$5,1,$6,10,commercial_v1_private.expected_component_weight($1,$4))
+          ) values($1,$2,$3,$4,$5,$6,1,$7,$8,commercial_v1_private.expected_component_weight($1,$4))
           returning id`,
           [
             course.activationId,
             course.enrolmentId,
-            learnerUserId,
+            course.studentId,
             component,
+            attemptId,
             assessmentId,
-            allCorrect ? 10 : 0,
+            earnedMarksTotal,
+            maxMarksTotal,
           ],
-        )
-        .catch((error) => {
-          throw new Error(
-            `Seeding ${component} result failed (attempt_id null may violate a NOT NULL/consistency constraint on this migration snapshot -- see acceptance-course-result CHECK requirements): ${error.message}`,
+        );
+        const resultRevisionId = resultId.rows[0].id;
+
+        // One commercial_v1_assessment_question_marks row per REAL question
+        // -- assert_complete_question_marks() (called by
+        // derive_and_insert_objective_outcomes below) requires an exact
+        // 1:1 match against assessment_questions, never a subset/superset.
+        for (const question of questions) {
+          const marksAwarded = allCorrect ? question.max_marks : 0;
+          await client.query(
+            `insert into commercial_v1_assessment_question_marks(
+              result_revision_id, question_id, marks_awarded, max_marks_snapshot
+            ) values($1,$2,$3,$4)`,
+            [resultRevisionId, question.id, marksAwarded, question.max_marks],
           );
-        });
-      await client.query(
-        "select commercial_v1_private.derive_and_insert_objective_outcomes($1)",
-        [resultId.rows[0].id],
+        }
+
+        await client.query(
+          "select commercial_v1_private.derive_and_insert_objective_outcomes($1)",
+          [resultRevisionId],
+        );
+        const { rows: validRows } = await client.query(
+          "select commercial_v1_private.assessment_result_is_valid($1) as valid",
+          [resultRevisionId],
+        );
+        if (!validRows[0]?.valid)
+          throw new Error(
+            `Seeded ${component} result revision ${resultRevisionId} failed commercial_v1_private.assessment_result_is_valid() after derivation -- refusing to leave an invalid acceptance result in place.`,
+          );
+      }
+
+      const submissionId = await seedAcceptanceLabSubmission(client, {
+        activationId: course.activationId,
+        practicalId: course.practicalId,
+        enrolmentId: course.enrolmentId,
+        studentId: course.studentId,
+        // course.enrolmentId is already unique per acceptance run (one
+        // enrolment per run) and doubles as a stable idempotency-key seed --
+        // no need to fabricate a second, separate uniqueness token here.
+        idempotencySeed: course.enrolmentId,
+      });
+      const labResult = await client.query(
+        `insert into commercial_v1_lab_result_revisions(
+          activation_id,enrolment_id,student_id,practical_id,submission_id,revision_number,earned_marks,max_marks,contribution_bp
+        ) values($1,$2,$3,$4,$5,1,$6,10,2000) returning id`,
+        [
+          course.activationId,
+          course.enrolmentId,
+          course.studentId,
+          course.practicalId,
+          submissionId,
+          allCorrect ? 10 : 0,
+        ],
       );
+      const labResultRevisionId = labResult.rows[0].id;
+      await client.query(
+        "select commercial_v1_private.derive_and_insert_lab_objective_outcomes($1)",
+        [labResultRevisionId],
+      );
+      const { rows: labValidRows } = await client.query(
+        "select commercial_v1_private.lab_result_is_valid($1) as valid",
+        [labResultRevisionId],
+      );
+      if (!labValidRows[0]?.valid)
+        throw new Error(
+          `Seeded lab result revision ${labResultRevisionId} failed commercial_v1_private.lab_result_is_valid() after derivation -- refusing to leave an invalid acceptance result in place.`,
+        );
+
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
     }
-    const labResult = await client.query(
-      `insert into commercial_v1_lab_result_revisions(
-        activation_id,enrolment_id,student_id,practical_id,submission_id,revision_number,earned_marks,max_marks,contribution_bp
-      ) values($1,$2,$3,$4,null,1,$5,10,2000) returning id`,
-      [
-        course.activationId,
-        course.enrolmentId,
-        learnerUserId,
-        course.practicalId,
-        allCorrect ? 10 : 0,
-      ],
-    );
-    await client.query(
-      "select commercial_v1_private.derive_and_insert_lab_objective_outcomes($1)",
-      [labResult.rows[0].id],
-    );
   });
 }
 
