@@ -1,5 +1,20 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+// Captured via a plain static import, at file-load time, BEFORE any test's
+// vi.doMock/vi.resetModules() ever runs -- these are pure functions with no
+// internal state, so this reference stays perfectly valid and unaffected by
+// later module-registry resets. Reused inside the mocked supabase.mjs below
+// so the JWT-classification tests genuinely exercise the REAL classifier
+// logic against a controlled raw response shape, rather than a hand-rolled
+// duplicate that could silently drift from it.
+import {
+  isJwtAuthRejection as realIsJwtAuthRejection,
+  isJwtExpiryRejection as realIsJwtExpiryRejection,
+  isAnonInsufficientPrivilegeRejection as realIsAnonInsufficientPrivilegeRejection,
+  isAuthenticatedInsufficientPrivilegeRejection as realIsAuthenticatedInsufficientPrivilegeRejection,
+} from "../scripts/acceptance/supabase.mjs";
 
 // env.mjs is plain, untyped JS (see tests/mjs-modules.d.ts); this local
 // shape lets the callbacks below avoid implicit-any without adding a
@@ -36,6 +51,29 @@ function clearAcceptanceVars() {
     )
       delete process.env[key];
   }
+}
+
+// JWT_POSTGREST completion (docs/38 section 3): a genuinely structurally
+// JWT-shaped (three dot-separated base64url segments, valid JSON payload)
+// synthetic token, with a fully caller-controlled `exp` claim and NO real
+// signature -- exactly what jwt.mjs's structural-only decoder (never a
+// signature verifier) needs to exercise. Never used as a real credential
+// against anything; only ever fed to this harness's own local decode logic
+// or to a mocked callProtectedRpcWithBearerToken.
+function base64url(value: unknown): string {
+  return Buffer.from(JSON.stringify(value), "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+function makeFakeJwt(expSecondsFromNow: number): string {
+  const header = base64url({ alg: "HS256", typ: "JWT" });
+  const payload = base64url({
+    sub: "acceptance-test-fixture",
+    exp: Math.floor(Date.now() / 1000) + expSecondsFromNow,
+  });
+  return `${header}.${payload}.fake-signature-segment-never-a-real-mac`;
 }
 
 describe("acceptance harness: env.mjs preflight", () => {
@@ -1918,6 +1956,155 @@ describe("acceptance harness: Supabase/PostgREST same-environment gate (independ
   });
 });
 
+describe("acceptance harness: enrolAcceptanceLearner independently asserts the Supabase same-environment gate (independent review V2, blocker 4)", () => {
+  afterEach(() => {
+    vi.doUnmock("pg");
+    vi.resetModules();
+  });
+
+  it("a Supabase environment mismatch blocks BEFORE create_enrolment is ever called -- the direct-DB gate alone is not enough", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    // Deliberately does NOT set ACCEPTANCE_WRITE_ENABLED or
+    // ACCEPTANCE_DATABASE_URL -- if enrolAcceptanceLearner reached the
+    // direct-DB gate at all here, it would throw for an UNRELATED reason
+    // (no database configured), which would make this test pass for the
+    // wrong reason. The Supabase gate must reject first, on its own.
+    const { enrolAcceptanceLearner } =
+      await import("../scripts/acceptance/fixtures.mjs");
+    const { AcceptanceWriteNotAuthorizedError } =
+      await import("../scripts/acceptance/db.mjs");
+    const calledRpcNames: string[] = [];
+    const fakeAdmin = {
+      rpc: async (name: string) => {
+        if (name === "get_ducelio_acceptance_environment_id")
+          return { data: OTHER_ENV_ID, error: null }; // the mismatch
+        calledRpcNames.push(name);
+        return { data: null, error: null };
+      },
+    };
+    await expect(
+      enrolAcceptanceLearner(
+        fakeAdmin,
+        "cohort-1",
+        "10000000-0000-4000-8000-000000000009",
+      ),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+    expect(calledRpcNames).toEqual([]);
+  });
+
+  it("a direct-database gate denial ALSO blocks before create_enrolment is called, even when the Supabase gate agrees", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    // Deliberately does NOT set ACCEPTANCE_WRITE_ENABLED=true -- the
+    // Supabase gate (checked first) agrees, but the direct-database gate
+    // must still independently reject before resolveAppUserId ever runs
+    // a query, and before create_enrolment is ever called.
+    class FakeClient {
+      async connect() {}
+      async end() {}
+      async query() {
+        throw new Error(
+          "the direct-database gate must reject before any query runs",
+        );
+      }
+    }
+    vi.doMock("pg", () => ({ default: { Client: FakeClient } }));
+    vi.resetModules();
+    const { enrolAcceptanceLearner } =
+      await import("../scripts/acceptance/fixtures.mjs");
+    const { AcceptanceWriteNotAuthorizedError } =
+      await import("../scripts/acceptance/db.mjs");
+    const calledRpcNames: string[] = [];
+    const fakeAdmin = {
+      rpc: async (name: string) => {
+        if (name === "get_ducelio_acceptance_environment_id")
+          return { data: VALID_ENV_ID, error: null }; // the Supabase gate agrees
+        calledRpcNames.push(name);
+        return { data: null, error: null };
+      },
+    };
+    await expect(
+      enrolAcceptanceLearner(
+        fakeAdmin,
+        "cohort-1",
+        "10000000-0000-4000-8000-000000000009",
+      ),
+    ).rejects.toThrow(AcceptanceWriteNotAuthorizedError);
+    expect(calledRpcNames).toEqual([]);
+  });
+
+  it("neither gate can be omitted -- fixtures.mjs's source calls assertAcceptanceSupabaseWriteAuthorized as enrolAcceptanceLearner's own first action, ahead of withAcceptanceWriteConnection", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/fixtures.mjs", import.meta.url),
+      "utf8",
+    );
+    const fnStart = text.indexOf(
+      "export async function enrolAcceptanceLearner(",
+    );
+    expect(fnStart).toBeGreaterThan(-1);
+    const fnEnd = text.indexOf("\n/**", fnStart + 1);
+    const fnText = text.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
+    const supabaseGateIndex = fnText.indexOf(
+      "assertAcceptanceSupabaseWriteAuthorized(admin)",
+    );
+    const dbGateIndex = fnText.indexOf("withAcceptanceWriteConnection(");
+    const createEnrolmentIndex = fnText.indexOf('"create_enrolment"');
+    expect(supabaseGateIndex).toBeGreaterThan(-1);
+    expect(dbGateIndex).toBeGreaterThan(-1);
+    expect(createEnrolmentIndex).toBeGreaterThan(-1);
+    expect(supabaseGateIndex).toBeLessThan(dbGateIndex);
+    expect(dbGateIndex).toBeLessThan(createEnrolmentIndex);
+  });
+
+  it("the successful path calls create_enrolment only after both gates pass", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    const { ACCEPTANCE_MARKER_TABLE } =
+      await import("../scripts/acceptance/db.mjs");
+    class FakeClient {
+      async connect() {}
+      async end() {}
+      async query(sql: string) {
+        if (sql.includes(ACCEPTANCE_MARKER_TABLE)) return { rows: [{ x: 1 }] }; // direct-DB gate agrees
+        if (sql.includes("app_users"))
+          return { rows: [{ id: "resolved-student-id" }] };
+        return { rows: [] };
+      }
+    }
+    vi.doMock("pg", () => ({ default: { Client: FakeClient } }));
+    vi.resetModules();
+    const { enrolAcceptanceLearner } =
+      await import("../scripts/acceptance/fixtures.mjs");
+    const rpcCallOrder: string[] = [];
+    const fakeAdmin = {
+      rpc: async (name: string) => {
+        rpcCallOrder.push(name);
+        if (name === "get_ducelio_acceptance_environment_id")
+          return { data: VALID_ENV_ID, error: null };
+        if (name === "create_enrolment")
+          return { data: "new-enrolment-id", error: null };
+        return { data: null, error: null };
+      },
+    };
+    const result = await enrolAcceptanceLearner(
+      fakeAdmin,
+      "cohort-1",
+      "10000000-0000-4000-8000-000000000009",
+    );
+    expect(result.enrolmentId).toBe("new-enrolment-id");
+    expect(rpcCallOrder).toEqual([
+      "get_ducelio_acceptance_environment_id",
+      "create_enrolment",
+    ]);
+  });
+});
+
 describe("acceptance harness: TLS is never unconditionally insecure (independent-review finding 4)", () => {
   it("connect() does not pass ssl:{rejectUnauthorized:false} by default", async () => {
     clearAcceptanceVars();
@@ -1947,23 +2134,8 @@ describe("acceptance harness: TLS is never unconditionally insecure (independent
   });
 });
 
-describe("acceptance harness: foreign-learner pair is a hard JWT_POSTGREST prerequisite (independent-review finding 3)", () => {
-  it("BLOCKED when neither foreign credential is configured", async () => {
-    clearAcceptanceVars();
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
-    process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
-    process.env.ACCEPTANCE_ADMIN_PASSWORD = "password";
-    process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
-    process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
-    const surfaces = await import("../scripts/acceptance/surfaces.mjs");
-    const result = await surfaces.checkJwtPostgrest();
-    expect(result.status).toBe("BLOCKED");
-    expect(result.reason.toLowerCase()).toContain("foreign-learner");
-  });
-
-  it("BLOCKED when only the foreign email is configured", async () => {
-    clearAcceptanceVars();
+describe("acceptance harness: checkJwtPostgrest prerequisite gating (docs/38 section 3 completion)", () => {
+  function setBaselineIdentityEnv() {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
     process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
@@ -1971,184 +2143,1550 @@ describe("acceptance harness: foreign-learner pair is a hard JWT_POSTGREST prere
     process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
     process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
     process.env.ACCEPTANCE_FOREIGN_LEARNER_EMAIL = "foreign@example.com";
-    const surfaces = await import("../scripts/acceptance/surfaces.mjs");
-    const result = await surfaces.checkJwtPostgrest();
-    expect(result.status).toBe("BLOCKED");
-  });
-
-  it("BLOCKED when only the foreign password is configured", async () => {
-    clearAcceptanceVars();
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
-    process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
-    process.env.ACCEPTANCE_ADMIN_PASSWORD = "password";
-    process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
-    process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
     process.env.ACCEPTANCE_FOREIGN_LEARNER_PASSWORD = "password";
-    const surfaces = await import("../scripts/acceptance/surfaces.mjs");
-    const result = await surfaces.checkJwtPostgrest();
+  }
+
+  it("BLOCKED when ACCEPTANCE_DATABASE_URL is not configured, even with every hosted identity present", async () => {
+    clearAcceptanceVars();
+    setBaselineIdentityEnv();
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = makeFakeJwt(-3600);
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason.toLowerCase()).toContain("acceptance_database_url");
+  });
+
+  it("BLOCKED when the unrelated-staff credential pair is incomplete (only the email is configured)", async () => {
+    clearAcceptanceVars();
+    setBaselineIdentityEnv();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = makeFakeJwt(-3600);
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason.toLowerCase()).toContain("unrelated-staff");
+  });
+
+  it("BLOCKED when the unrelated-staff credential pair is incomplete (only the password is configured)", async () => {
+    clearAcceptanceVars();
+    setBaselineIdentityEnv();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = makeFakeJwt(-3600);
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
     expect(result.status).toBe("BLOCKED");
   });
 
-  it("foreignLearnerIdentityConfigured requires the complete pair", async () => {
+  it("unrelatedStaffIdentityConfigured requires the complete pair", async () => {
     clearAcceptanceVars();
-    const { foreignLearnerIdentityConfigured } =
+    const { unrelatedStaffIdentityConfigured } =
       await import("../scripts/acceptance/supabase.mjs");
-    expect(foreignLearnerIdentityConfigured()).toBe(false);
-    process.env.ACCEPTANCE_FOREIGN_LEARNER_EMAIL = "foreign@example.com";
-    expect(foreignLearnerIdentityConfigured()).toBe(false);
-    process.env.ACCEPTANCE_FOREIGN_LEARNER_PASSWORD = "password";
-    expect(foreignLearnerIdentityConfigured()).toBe(true);
+    expect(unrelatedStaffIdentityConfigured()).toBe(false);
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    expect(unrelatedStaffIdentityConfigured()).toBe(false);
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    expect(unrelatedStaffIdentityConfigured()).toBe(true);
   });
 
-  it("checkJwtPostgrest's source always executes the foreign-learner isolation assertion once past its guards -- never conditionally skipped", async () => {
-    const text = await readFile(
-      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
-      "utf8",
-    );
-    // The prior conditional wrapper (`if (isConfigured("ACCEPTANCE_FOREIGN_LEARNER_EMAIL"))`)
-    // around the isolation assertion must be gone.
-    expect(text).not.toMatch(
-      /if\s*\(\s*isConfigured\("ACCEPTANCE_FOREIGN_LEARNER_EMAIL"\)\s*\)\s*\{/,
-    );
-    expect(text).toContain("foreignLearnerIdentityConfigured()");
+  it("BLOCKED when ACCEPTANCE_EXPIRED_LEARNER_JWT is not configured -- a malformed token alone is not evidence that expiry enforcement itself works", async () => {
+    clearAcceptanceVars();
+    setBaselineIdentityEnv();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason).toContain("ACCEPTANCE_EXPIRED_LEARNER_JWT");
+    expect(result.reason.toLowerCase()).toContain("is not configured");
+  });
+
+  it("BLOCKED when ACCEPTANCE_EXPIRED_LEARNER_JWT is not structurally JWT-shaped -- reported as an unconfigured (malformed) prerequisite, never treated as a valid expired token", async () => {
+    clearAcceptanceVars();
+    setBaselineIdentityEnv();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = "not-a-jwt-at-all";
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason).toContain("ACCEPTANCE_EXPIRED_LEARNER_JWT");
+  });
+
+  it("BLOCKED when ACCEPTANCE_EXPIRED_LEARNER_JWT's exp claim is NOT actually in the past -- refuses to claim expired-token evidence dishonestly", async () => {
+    clearAcceptanceVars();
+    setBaselineIdentityEnv();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = makeFakeJwt(3600);
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason.toLowerCase()).toContain("exp claim");
   });
 });
 
-describe("acceptance harness: checkJwtPostgrest RPC-error handling and non-vacuous isolation (independent-review findings 2 and 3, this pass)", () => {
+describe("acceptance harness: checkJwtPostgrest full docs/38 section 3 evidence (JWT_POSTGREST completion)", () => {
   afterEach(() => {
     vi.doUnmock("../scripts/acceptance/supabase.mjs");
+    vi.doUnmock("../scripts/acceptance/fixtures.mjs");
     vi.resetModules();
   });
 
-  type RpcResult = { data: unknown; error: { message: string } | null };
-  function client(rpc: (name: string) => RpcResult | Promise<RpcResult>) {
-    return { rpc: async (name: string) => rpc(name) };
-  }
+  type RpcResult = {
+    data: unknown;
+    error: { message: string; code?: string } | null;
+    status?: number;
+  };
+  type RpcHandlers = Record<
+    string,
+    (args?: unknown) => RpcResult | Promise<RpcResult>
+  >;
+  type FromSelectResult = {
+    data: unknown;
+    error: { message: string; code?: string } | null;
+    status?: number;
+  };
   function ok(data: unknown): RpcResult {
     return { data, error: null };
   }
-  function denied(): RpcResult {
-    return { data: null, error: { message: "denied" } };
+  function denied(message = "denied", status?: number): RpcResult {
+    return { data: null, error: { message }, status };
+  }
+  function postgrestError(
+    code: string,
+    message: string,
+    status?: number,
+  ): RpcResult {
+    return { data: null, error: { code, message }, status };
+  }
+  function makeClient(
+    handlers: RpcHandlers,
+    opts: {
+      authUserId?: string;
+      authUserError?: string;
+      fromSelectResult?: FromSelectResult;
+    } = {},
+  ) {
+    return {
+      rpc: async (name: string, args?: unknown) => {
+        const handler = handlers[name];
+        if (!handler) throw new Error(`Unexpected RPC in test mock: ${name}`);
+        return handler(args);
+      },
+      auth: {
+        getUser: async () =>
+          opts.authUserError
+            ? { data: { user: null }, error: { message: opts.authUserError } }
+            : {
+                data: { user: { id: opts.authUserId ?? "auth-id" } },
+                error: null,
+              },
+      },
+      from: () => ({
+        select: async () =>
+          opts.fromSelectResult ?? {
+            data: null,
+            error: {
+              message: "permission denied for table assessment_answer_keys",
+              code: "42501",
+            },
+            status: 403,
+          },
+      }),
+    };
   }
 
-  // A fully-passing baseline: anon denied; learner has one real, known
-  // owned enrolment; learner denied the admin RPC; admin permitted; the
-  // foreign learner's own list does not include the learner's enrolment.
-  function mockSupabase({
-    anonRpc = () => denied(),
-    learnerFirstRpc = () => ok([{ id: "e1" }]),
-    learnerAdminRpc = () => denied(),
-    adminRpc = () => ok([{ id: "a1" }]),
-    foreignRpc = () => ok([]),
-    learnerSecondRpc,
-  }: Partial<{
-    anonRpc: () => RpcResult;
-    learnerFirstRpc: () => RpcResult;
-    learnerAdminRpc: () => RpcResult;
-    adminRpc: () => RpcResult;
-    foreignRpc: () => RpcResult;
-    learnerSecondRpc: () => RpcResult;
-  }> = {}) {
-    let learnerCall = 0;
-    const learnerClient = client((name) => {
-      if (name === "list_commercial_v1_activations") return learnerAdminRpc();
-      learnerCall += 1;
-      if (learnerCall === 1) return learnerFirstRpc();
-      return (learnerSecondRpc ?? learnerFirstRpc)();
-    });
+  function setFullyConfiguredEnv() {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgres://acceptance:secret@db.example.com:5432/acceptance_db";
+    process.env.ACCEPTANCE_ADMIN_EMAIL = "admin@example.com";
+    process.env.ACCEPTANCE_ADMIN_PASSWORD = "password";
+    process.env.ACCEPTANCE_LEARNER_EMAIL = "learner@example.com";
+    process.env.ACCEPTANCE_LEARNER_PASSWORD = "password";
+    process.env.ACCEPTANCE_FOREIGN_LEARNER_EMAIL = "foreign@example.com";
+    process.env.ACCEPTANCE_FOREIGN_LEARNER_PASSWORD = "password";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "password";
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = makeFakeJwt(-3600);
+  }
+
+  // A fully-passing baseline covering every docs/38 section 3 subcheck;
+  // each test below overrides exactly the ONE handler/result it means to
+  // break, proving that single failure is what the surface actually
+  // reports -- never a coincidental, unrelated failure. `hasActiveAttempt`
+  // models the REAL get_active_assessment_questions contract: it denies
+  // with the documented P0001 error until start_assessment_attempt has
+  // genuinely run, then releases the learner-safe projection, then denies
+  // again once submit_assessment_attempt tears the attempt back down --
+  // exactly the state machine surfaces.mjs's own start->release->submit
+  // sequence walks through.
+  type IdentityKey = "admin" | "learner" | "foreign" | "unrelatedStaff";
+  function mockDeps(
+    overrides: Partial<{
+      learnerHandlers: RpcHandlers;
+      adminHandlers: RpcHandlers;
+      foreignHandlers: RpcHandlers;
+      staffHandlers: RpcHandlers;
+      anonHandlers: RpcHandlers;
+      learnerFromSelectResult: FromSelectResult;
+      // Blocker 4 (V3): lets a test make two identities resolve to the
+      // SAME hosted Auth user id, or make one identity's auth.getUser()
+      // itself error/return no user -- defaults are four distinct ids.
+      authUserIds: Partial<Record<IdentityKey, string>>;
+      authUserErrors: Partial<Record<IdentityKey, string>>;
+      invalidJwtResult: Record<string, unknown>;
+      expiredJwtResult: Record<string, unknown>;
+      staffVerification: { verified: boolean; reason?: string };
+      seedAcceptanceCourseImpl: (...args: unknown[]) => Promise<unknown>;
+      enrolAcceptanceLearnerImpl: (...args: unknown[]) => Promise<unknown>;
+    }> = {},
+  ) {
+    let hasActiveAttempt = false;
+    const learnerHandlers: RpcHandlers = {
+      list_practical_enrolments: () => ok([{ id: "primary-enrolment" }]),
+      list_commercial_v1_activations: () =>
+        postgrestError("42501", "FORBIDDEN", 403),
+      get_commercial_v1_course_progress: () =>
+        ok({ code: "NOT_FOUND_OR_FORBIDDEN" }),
+      start_assessment_attempt: () => {
+        hasActiveAttempt = true;
+        return ok("attempt-1");
+      },
+      get_active_assessment_questions: () =>
+        hasActiveAttempt
+          ? ok([{ id: "q1", position: 1, prompt: "...", max_marks: 10 }])
+          : postgrestError(
+              "P0001",
+              "Protected assessment content requires an active attempt",
+            ),
+      submit_assessment_attempt: () => {
+        hasActiveAttempt = false;
+        return ok("attempt-1");
+      },
+      govern_commercial_v1_examiner_recovery: () => ok({ code: "FORBIDDEN" }),
+      ...overrides.learnerHandlers,
+    };
+    const adminHandlers: RpcHandlers = {
+      list_commercial_v1_activations: () => ok([{ id: "a1" }]),
+      govern_commercial_v1_examiner_recovery: () =>
+        ok({ code: "UNTRUSTED_EXECUTION" }),
+      ...overrides.adminHandlers,
+    };
+    const foreignHandlers: RpcHandlers = {
+      list_practical_enrolments: () => ok([{ id: "foreign-enrolment" }]),
+      get_commercial_v1_course_progress: () =>
+        ok({ code: "NOT_FOUND_OR_FORBIDDEN" }),
+      ...overrides.foreignHandlers,
+    };
+    const staffHandlers: RpcHandlers = {
+      govern_commercial_v1_examiner_recovery: () => ok({ code: "FORBIDDEN" }),
+      ...overrides.staffHandlers,
+    };
+    const anonHandlers: RpcHandlers = {
+      list_practical_enrolments: () =>
+        postgrestError(
+          "42501",
+          "permission denied for function list_practical_enrolments",
+          401,
+        ),
+      ...overrides.anonHandlers,
+    };
+
+    let protectedRpcCall = 0;
+    // V2 correction (blockers 1 & 2): a genuine hosted rejection carries a
+    // recognised PGRST3XX code AND HTTP 401; the expired-token default
+    // additionally carries a message that specifically identifies expiry
+    // (never merely "invalid").
+    const invalidJwtResult = overrides.invalidJwtResult ?? {
+      networkError: false,
+      status: 401,
+      ok: false,
+      code: "PGRST301",
+      message: "JWT invalid",
+    };
+    const expiredJwtResult = overrides.expiredJwtResult ?? {
+      networkError: false,
+      status: 401,
+      ok: false,
+      code: "PGRST301",
+      message: "JWT expired",
+    };
+
+    // Blocker 4 (V3): four DISTINCT hosted Auth user ids by default -- a
+    // test overrides one to collide with another to prove the
+    // pairwise-distinctness check actually fires.
+    const authUserIds: Record<IdentityKey, string> = {
+      admin: "admin-auth-id",
+      learner: "learner-auth-id",
+      foreign: "foreign-auth-id",
+      unrelatedStaff: "staff-auth-id",
+      ...overrides.authUserIds,
+    };
+    const authUserErrors = overrides.authUserErrors ?? {};
+
     vi.doMock("../scripts/acceptance/supabase.mjs", () => ({
       hostedSupabaseConfigured: () => true,
       acceptanceIdentitiesConfigured: () => true,
       foreignLearnerIdentityConfigured: () => true,
-      anonClient: () => client(anonRpc),
+      unrelatedStaffIdentityConfigured: () => true,
+      anonClient: () => makeClient(anonHandlers, { authUserId: "anon" }),
       acceptanceIdentities: {
-        admin: async () => client(adminRpc),
-        learner: async () => learnerClient,
-        foreignLearner: async () => client(foreignRpc),
+        admin: async () =>
+          makeClient(adminHandlers, {
+            authUserId: authUserIds.admin,
+            authUserError: authUserErrors.admin,
+          }),
+        learner: async () =>
+          makeClient(learnerHandlers, {
+            authUserId: authUserIds.learner,
+            authUserError: authUserErrors.learner,
+            fromSelectResult: overrides.learnerFromSelectResult,
+          }),
+        foreignLearner: async () =>
+          makeClient(foreignHandlers, {
+            authUserId: authUserIds.foreign,
+            authUserError: authUserErrors.foreign,
+          }),
+        unrelatedStaff: async () =>
+          makeClient(staffHandlers, {
+            authUserId: authUserIds.unrelatedStaff,
+            authUserError: authUserErrors.unrelatedStaff,
+          }),
       },
+      verifyNonAdminStaffRole: async () =>
+        overrides.staffVerification ?? { verified: true },
+      // The REAL implementations (captured by the static import at the
+      // top of this file) -- only callProtectedRpcWithBearerToken itself
+      // is mocked here, so this block genuinely exercises surfaces.mjs's
+      // use of the real classifiers against a controlled raw response
+      // shape, never a hand-rolled duplicate that could drift from it.
+      isJwtAuthRejection: realIsJwtAuthRejection,
+      isJwtExpiryRejection: realIsJwtExpiryRejection,
+      isAnonInsufficientPrivilegeRejection:
+        realIsAnonInsufficientPrivilegeRejection,
+      isAuthenticatedInsufficientPrivilegeRejection:
+        realIsAuthenticatedInsufficientPrivilegeRejection,
+      // The invalid-JWT check always runs before the expired-JWT check
+      // (surfaces.mjs's own fixed order) -- a call counter mirrors that
+      // without needing to inspect the raw token this harness never logs.
+      callProtectedRpcWithBearerToken: async () => {
+        protectedRpcCall += 1;
+        return protectedRpcCall === 1 ? invalidJwtResult : expiredJwtResult;
+      },
+    }));
+    vi.doMock("../scripts/acceptance/fixtures.mjs", () => ({
+      seedAcceptanceCourse:
+        overrides.seedAcceptanceCourseImpl ??
+        (async () => ({
+          enrolmentId: "primary-enrolment",
+          cohortId: "cohort-1",
+          quiz1AssessmentId: "quiz-1-assessment",
+        })),
+      enrolAcceptanceLearner:
+        overrides.enrolAcceptanceLearnerImpl ??
+        (async () => ({
+          enrolmentId: "foreign-enrolment",
+          studentId: "foreign-student",
+        })),
+      seedAcceptanceResults: async () => ({}),
+      cleanupAcceptanceRun: async () => {},
     }));
     vi.resetModules();
   }
 
-  it("returns BLOCKED, never PASS, even when every core identity/role/isolation check succeeds", async () => {
+  it("PASS only when every docs/38 section 3 subcheck genuinely succeeds -- and the PASS text is explicit that this is not proof of successful recovery", async () => {
     clearAcceptanceVars();
-    mockSupabase();
+    setFullyConfiguredEnv();
+    mockDeps();
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("PASS");
+    expect(result.reason.toLowerCase()).toContain("not proof of successful");
+  });
+
+  it("FAIL when the anon caller is NOT denied list_practical_enrolments at all", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ anonHandlers: { list_practical_enrolments: () => ok([]) } });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it.each([
+    ["400 bad request, no 42501 code", { status: 400, code: null }],
+    ["404 schema-cache miss", { status: 404, code: "PGRST205" }],
+    ["429 rate limited", { status: 429, code: null }],
+    ["500 internal server error", { status: 500, code: null }],
+    ["503 database outage", { status: 503, code: null }],
+    ["401 with an unrelated code", { status: 401, code: "PGRST116" }],
+    // Even a 403 (the AUTHENTICATED shape) must not satisfy the ANON check.
+    [
+      "403 (the authenticated shape, not anon's)",
+      { status: 403, code: "42501" },
+    ],
+  ])(
+    "FAIL (blocker 1), never a PASS-worthy anon denial, for %s",
+    async (_label, shape) => {
+      clearAcceptanceVars();
+      setFullyConfiguredEnv();
+      mockDeps({
+        anonHandlers: {
+          list_practical_enrolments: () =>
+            postgrestError(
+              shape.code ?? "UNKNOWN",
+              "unrelated failure",
+              shape.status,
+            ),
+        },
+      });
+      const { checkJwtPostgrest } =
+        await import("../scripts/acceptance/surfaces.mjs");
+      const result = await checkJwtPostgrest();
+      expect(result.status).toBe("FAIL");
+    },
+  );
+
+  it("FAIL when the learner is NOT denied the admin-only activation-discovery RPC at all", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: { list_commercial_v1_activations: () => ok([]) },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it.each([
+    ["400 bad request, no 42501 code", { status: 400, code: null }],
+    ["404 schema-cache miss (PGRST202)", { status: 404, code: "PGRST202" }],
+    ["429 rate limited", { status: 429, code: null }],
+    ["500 internal server error", { status: 500, code: null }],
+    ["503 database outage", { status: 503, code: null }],
+    // Even a 401 (the ANON shape) must not satisfy the AUTHENTICATED check.
+    [
+      "401 (the anon shape, not authenticated's)",
+      { status: 401, code: "42501" },
+    ],
+  ])(
+    "FAIL (blocker 2), never a PASS-worthy learner admin-RPC denial, for %s",
+    async (_label, shape) => {
+      clearAcceptanceVars();
+      setFullyConfiguredEnv();
+      mockDeps({
+        learnerHandlers: {
+          list_commercial_v1_activations: () =>
+            postgrestError(
+              shape.code ?? "UNKNOWN",
+              "unrelated failure",
+              shape.status,
+            ),
+        },
+      });
+      const { checkJwtPostgrest } =
+        await import("../scripts/acceptance/surfaces.mjs");
+      const result = await checkJwtPostgrest();
+      expect(result.status).toBe("FAIL");
+    },
+  );
+
+  it("FAIL when the invalid-JWT check gets back a 2xx response instead of a recognised JWT rejection", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      invalidJwtResult: { networkError: false, status: 200, ok: true },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("malformed bearer jwt");
+  });
+
+  it.each([
+    ["400 with no recognised auth code", { status: 400, code: null }],
+    ["403 forbidden (RLS, not JWT/auth)", { status: 403, code: "42501" }],
+    ["404 schema-cache miss", { status: 404, code: "PGRST205" }],
+    ["429 rate limited", { status: 429, code: null }],
+    ["500 internal server error", { status: 500, code: null }],
+    ["503 database outage", { status: 503, code: null }],
+    ["401 with no recognised code at all", { status: 401, code: null }],
+  ])(
+    "FAIL, never a PASS-worthy invalid-JWT rejection, for %s",
+    async (_label, shape) => {
+      clearAcceptanceVars();
+      setFullyConfiguredEnv();
+      mockDeps({
+        invalidJwtResult: {
+          networkError: false,
+          ok: false,
+          status: shape.status,
+          code: shape.code,
+          message: "unrelated failure",
+        },
+      });
+      const { checkJwtPostgrest } =
+        await import("../scripts/acceptance/surfaces.mjs");
+      const result = await checkJwtPostgrest();
+      expect(result.status).toBe("FAIL");
+    },
+  );
+
+  it("FAIL, never treated as a denial, when the invalid-JWT check hits a network error", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      invalidJwtResult: {
+        networkError: true,
+        status: null,
+        ok: false,
+        networkErrorMessage: "ECONNREFUSED",
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("network error");
+  });
+
+  it("FAIL (blocker 3, integration), never a PASS-worthy invalid-JWT rejection, for HTTP 401 + PGRST302 -- 'no Bearer header' is not evidence the SUPPLIED malformed token was inspected", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      invalidJwtResult: {
+        networkError: false,
+        status: 401,
+        ok: false,
+        code: "PGRST302",
+        message: "Anonymous access is disabled",
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when the expired-JWT check gets back a 2xx response instead of a rejection", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      expiredJwtResult: { networkError: false, status: 200, ok: true },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("expired");
+  });
+
+  it("FAIL (blocker 2) when a structurally-expired token gets back only a GENERIC invalid-JWT rejection -- a bad signature with an old exp claim must not count as expiry evidence", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      expiredJwtResult: {
+        networkError: false,
+        status: 401,
+        ok: false,
+        code: "PGRST301",
+        message: "JWT invalid",
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain(
+      "does not establish that expiry enforcement",
+    );
+  });
+
+  it.each([
+    ["400 with no recognised auth code", { status: 400, code: null }],
+    ["404 schema-cache miss", { status: 404, code: "PGRST205" }],
+    ["500 internal server error", { status: 500, code: null }],
+    ["503 database outage", { status: 503, code: null }],
+  ])(
+    "FAIL, never PASS-worthy expired-JWT evidence, for %s",
+    async (_label, shape) => {
+      clearAcceptanceVars();
+      setFullyConfiguredEnv();
+      mockDeps({
+        expiredJwtResult: {
+          networkError: false,
+          ok: false,
+          status: shape.status,
+          code: shape.code,
+          message: "JWT expired", // even a matching message is not enough without the right code/status
+        },
+      });
+      const { checkJwtPostgrest } =
+        await import("../scripts/acceptance/surfaces.mjs");
+      const result = await checkJwtPostgrest();
+      expect(result.status).toBe("FAIL");
+    },
+  );
+
+  it("FAIL, never treated as a denial, when the expired-JWT check hits a network error", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      expiredJwtResult: {
+        networkError: true,
+        status: null,
+        ok: false,
+        networkErrorMessage: "ETIMEDOUT",
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("network error");
+  });
+
+  it("BLOCKED, not silently trusted, when the configured 'unrelated staff' identity fails independent role verification", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      staffVerification: {
+        verified: false,
+        reason:
+          "The configured 'unrelated staff' identity actually carries ACADEMIC_ADMIN or PLATFORM_ADMIN -- refusing to use it as a non-admin denial fixture.",
+      },
+    });
     const { checkJwtPostgrest } =
       await import("../scripts/acceptance/surfaces.mjs");
     const result = await checkJwtPostgrest();
     expect(result.status).toBe("BLOCKED");
-    expect(result.status).not.toBe("PASS");
-    expect(result.reason).toContain(
-      "Core hosted identity/role/cross-learner-isolation sample passed",
+    expect(result.reason).toContain("ACADEMIC_ADMIN");
+  });
+
+  it("FAIL, never a vacuous PASS, when the learner's own enrolment list does not include the real, known enrolment this run just seeded", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: { list_practical_enrolments: () => ok([]) },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when either learner's enrolment list includes the other's known-owned enrolment", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      foreignHandlers: {
+        list_practical_enrolments: () => ok([{ id: "primary-enrolment" }]),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when a foreign learner supplying the primary learner's real enrolment id does NOT receive the documented NOT_FOUND_OR_FORBIDDEN denial", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      foreignHandlers: {
+        get_commercial_v1_course_progress: () =>
+          ok({ code: "OK", enrolment: {} }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason).toContain("NOT_FOUND_OR_FORBIDDEN");
+  });
+
+  it("FAIL when the primary learner supplying the foreign learner's real enrolment id does NOT receive the documented NOT_FOUND_OR_FORBIDDEN denial", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: {
+        get_commercial_v1_course_progress: () => ok({ code: "OK" }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when a learner's direct PostgREST read of assessment_answer_keys is NOT denied", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerFromSelectResult: {
+        data: [{ expected_answer: "42" }],
+        error: null,
+        status: 200,
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("assessment_answer_keys");
+  });
+
+  it("FAIL (blocker 3A) when the assessment_answer_keys denial is not the documented insufficient-privilege shape (e.g. a 404 schema-cache miss, not HTTP 403/42501)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerFromSelectResult: {
+        data: null,
+        error: { message: "relation not found" },
+        status: 404,
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when get_active_assessment_questions releases content to a learner with no active attempt", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: {
+        get_active_assessment_questions: () =>
+          ok([{ id: "q1", position: 1, prompt: "...", max_marks: 5 }]),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL (blocker 3B) when the 'no active attempt' denial is an unrelated RPC error, not the documented P0001 contract", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: {
+        get_active_assessment_questions: () => denied("schema cache error"),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain(
+      "did not receive the documented",
     );
-    expect(result.reason.toLowerCase()).toContain("expired/invalid jwt");
   });
 
-  it("a foreign-learner enrolment-list RPC error is FAIL, never a silently-empty list that lets isolation appear to pass", async () => {
+  it("FAIL (blocker 3C) when the learner cannot start the seeded, in-window QUIZ_1 attempt", async () => {
     clearAcceptanceVars();
-    mockSupabase({ foreignRpc: () => denied() });
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: {
+        start_assessment_attempt: () => denied("could not start"),
+      },
+    });
     const { checkJwtPostgrest } =
       await import("../scripts/acceptance/surfaces.mjs");
     const result = await checkJwtPostgrest();
     expect(result.status).toBe("FAIL");
   });
 
-  it("a second (re-fetch) learner enrolment-list RPC error is FAIL, never a silently-empty list", async () => {
+  it("FAIL (blocker 3C) when a genuinely active attempt's released question leaks a protected field (expected_answer)", async () => {
     clearAcceptanceVars();
-    mockSupabase({ learnerSecondRpc: () => denied() });
+    setFullyConfiguredEnv();
+    // Stateful, like mockDeps's own default -- the "no active attempt"
+    // denial (the FIRST call, before start_assessment_attempt) must still
+    // behave normally; only the POST-start release leaks the field this
+    // test means to catch. A static always-succeeding override would trip
+    // the earlier no-active-attempt check instead, never reaching start/
+    // submit at all -- which is exactly the mistake this shape avoids.
+    let hasActiveAttempt = false;
+    const submitSpy = vi.fn(() => {
+      hasActiveAttempt = false;
+      return ok("attempt-1");
+    });
+    mockDeps({
+      learnerHandlers: {
+        start_assessment_attempt: () => {
+          hasActiveAttempt = true;
+          return ok("attempt-1");
+        },
+        get_active_assessment_questions: () =>
+          hasActiveAttempt
+            ? ok([
+                {
+                  id: "q1",
+                  position: 1,
+                  prompt: "...",
+                  max_marks: 10,
+                  expected_answer: "leaked",
+                },
+              ])
+            : postgrestError(
+                "P0001",
+                "Protected assessment content requires an active attempt",
+              ),
+        submit_assessment_attempt: submitSpy,
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    // Even though the projection itself failed, the started attempt must
+    // still be terminalized -- the finally block runs regardless.
+    expect(submitSpy).toHaveBeenCalled();
+  });
+
+  it("FAIL (blocker 3C) when a genuinely active attempt's release is empty", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    let hasActiveAttempt = false;
+    mockDeps({
+      learnerHandlers: {
+        start_assessment_attempt: () => {
+          hasActiveAttempt = true;
+          return ok("attempt-1");
+        },
+        get_active_assessment_questions: () =>
+          hasActiveAttempt
+            ? ok([])
+            : postgrestError(
+                "P0001",
+                "Protected assessment content requires an active attempt",
+              ),
+      },
+    });
     const { checkJwtPostgrest } =
       await import("../scripts/acceptance/surfaces.mjs");
     const result = await checkJwtPostgrest();
     expect(result.status).toBe("FAIL");
   });
 
-  it("an empty primary-learner enrolment set is BLOCKED with a clear prerequisite, never a vacuous PASS", async () => {
+  it("FAIL (blocker 3C), never a stranded ACTIVE attempt, when terminalization itself fails", async () => {
     clearAcceptanceVars();
-    mockSupabase({ learnerFirstRpc: () => ok([]) });
+    setFullyConfiguredEnv();
+    const submitSpy = vi.fn(() => denied("cannot submit"));
+    mockDeps({
+      learnerHandlers: { submit_assessment_attempt: submitSpy },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("terminaliz");
+    expect(submitSpy).toHaveBeenCalled();
+  });
+
+  it("FAIL (blocker 3C), and both the original defect and the termination failure are recorded, when the projection fails AND terminalization also fails", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    let hasActiveAttempt = false;
+    mockDeps({
+      learnerHandlers: {
+        start_assessment_attempt: () => {
+          hasActiveAttempt = true;
+          return ok("attempt-1");
+        },
+        get_active_assessment_questions: () =>
+          hasActiveAttempt
+            ? ok([])
+            : postgrestError(
+                "P0001",
+                "Protected assessment content requires an active attempt",
+              ),
+        submit_assessment_attempt: () => denied("cannot submit either"),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(JSON.stringify(result.details ?? [])).toContain(
+      "could not be terminalized",
+    );
+  });
+
+  it("FAIL when the learner's recovery role-gate call does not return the documented FORBIDDEN code", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      learnerHandlers: {
+        govern_commercial_v1_examiner_recovery: () =>
+          ok({ code: "UNTRUSTED_EXECUTION" }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain("learner");
+  });
+
+  it("FAIL when the unrelated (verified non-admin) staff identity's recovery role-gate call does not return FORBIDDEN", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      staffHandlers: {
+        govern_commercial_v1_examiner_recovery: () =>
+          ok({ code: "UNTRUSTED_EXECUTION" }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when the authorized admin's deliberately non-authoritative recovery call is incorrectly denied at the role gate (FORBIDDEN) -- the role check itself would be broken", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      adminHandlers: {
+        govern_commercial_v1_examiner_recovery: () => ok({ code: "FORBIDDEN" }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain(
+      "role check itself appears broken",
+    );
+  });
+
+  it("FAIL when the authorized admin's deliberately non-authoritative recovery call is incorrectly denied at the role gate (UNAUTHENTICATED)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      adminHandlers: {
+        govern_commercial_v1_examiner_recovery: () =>
+          ok({ code: "UNAUTHENTICATED" }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+  });
+
+  it("FAIL when the authorized admin's deliberately non-authoritative recovery call does not reach the expected post-role HMAC boundary result -- and this is explicitly NOT evidence of successful recovery either way", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({
+      adminHandlers: {
+        govern_commercial_v1_examiner_recovery: () =>
+          ok({ code: "SOMETHING_ELSE" }),
+      },
+    });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("FAIL");
+    expect(result.reason.toLowerCase()).toContain(
+      "not evidence of successful recovery",
+    );
+  });
+
+  it("BLOCKED (never FAIL) when the same-environment write gate rejects the run while seeding the course", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    // The thrown error's class must come from the SAME db.mjs module
+    // instance surfaces.mjs's own `instanceof` check resolves against --
+    // vi.resetModules() (inside mockDeps) means a class reference captured
+    // BEFORE that reset would be a different, unequal class. Importing
+    // db.mjs lazily, inside the mocked implementation itself, guarantees
+    // both resolve the same post-reset module instance.
+    mockDeps({
+      seedAcceptanceCourseImpl: async () => {
+        const { AcceptanceWriteNotAuthorizedError } =
+          await import("../scripts/acceptance/db.mjs");
+        throw new AcceptanceWriteNotAuthorizedError("environment mismatch");
+      },
+    });
     const { checkJwtPostgrest } =
       await import("../scripts/acceptance/surfaces.mjs");
     const result = await checkJwtPostgrest();
     expect(result.status).toBe("BLOCKED");
-    expect(result.status).not.toBe("PASS");
-    expect(result.reason.toLowerCase()).toContain("no owned enrolment");
   });
 
-  it("a real cross-learner overlap is still FAIL, not masked by the new BLOCKED-on-success behaviour", async () => {
+  it("PASS's own evidence explicitly records that all four identities resolved to pairwise-distinct hosted Auth user ids (blocker 4)", async () => {
     clearAcceptanceVars();
-    mockSupabase({ foreignRpc: () => ok([{ id: "e1" }]) });
+    setFullyConfiguredEnv();
+    mockDeps();
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("PASS");
+    expect(JSON.stringify(result.details ?? [])).toContain("pairwise-distinct");
+  });
+
+  it("BLOCKED when the configured 'unrelated staff' identity resolves to the SAME hosted Auth user id as the learner (blocker 4)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ authUserIds: { unrelatedStaff: "learner-auth-id" } });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason.toLowerCase()).toContain("same hosted supabase");
+  });
+
+  it("BLOCKED when the configured 'unrelated staff' identity resolves to the SAME hosted Auth user id as the foreign learner (blocker 4)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ authUserIds: { unrelatedStaff: "foreign-auth-id" } });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+  });
+
+  it("BLOCKED when the configured 'unrelated staff' identity resolves to the SAME hosted Auth user id as the admin (blocker 4)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ authUserIds: { unrelatedStaff: "admin-auth-id" } });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+  });
+
+  it("BLOCKED when the learner and the foreign learner happen to resolve to the SAME hosted Auth user id (blocker 4, any pair, not only staff)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ authUserIds: { foreign: "learner-auth-id" } });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).toBe("BLOCKED");
+  });
+
+  it("FAIL, never PASS, when an identity's own auth.getUser() call errors before the distinctness check can even run (blocker 4)", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ authUserErrors: { learner: "session invalid" } });
     const { checkJwtPostgrest } =
       await import("../scripts/acceptance/surfaces.mjs");
     const result = await checkJwtPostgrest();
     expect(result.status).toBe("FAIL");
+    expect(result.status).not.toBe("PASS");
   });
 
-  it("surfaces.mjs's source checks the error on both the foreign-learner and second-learner RPC calls, never destructuring only `data`", async () => {
+  it("FAIL, never PASS, when an identity's auth.getUser() returns no user id at all", async () => {
+    clearAcceptanceVars();
+    setFullyConfiguredEnv();
+    mockDeps({ authUserIds: { admin: "" } });
+    const { checkJwtPostgrest } =
+      await import("../scripts/acceptance/surfaces.mjs");
+    const result = await checkJwtPostgrest();
+    expect(result.status).not.toBe("PASS");
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- structural JWT helpers (jwt.mjs) never verify a signature", () => {
+  it("decodeJwtPayloadStructurally decodes a real base64url JWT payload without touching its signature", async () => {
+    const { decodeJwtPayloadStructurally } =
+      await import("../scripts/acceptance/jwt.mjs");
+    const payload = decodeJwtPayloadStructurally(makeFakeJwt(3600)) as {
+      exp: number;
+    };
+    expect(payload).not.toBeNull();
+    expect(typeof payload.exp).toBe("number");
+  });
+
+  it("decodeJwtPayloadStructurally returns null for anything not three dot-separated, non-empty segments", async () => {
+    const { decodeJwtPayloadStructurally } =
+      await import("../scripts/acceptance/jwt.mjs");
+    expect(decodeJwtPayloadStructurally("not-a-jwt")).toBeNull();
+    expect(decodeJwtPayloadStructurally("a.b")).toBeNull();
+    expect(decodeJwtPayloadStructurally("a..c")).toBeNull();
+    expect(
+      decodeJwtPayloadStructurally(undefined as unknown as string),
+    ).toBeNull();
+  });
+
+  it("isStructurallyExpiredJwt is true only when exp is a genuinely past timestamp", async () => {
+    const { isStructurallyExpiredJwt } =
+      await import("../scripts/acceptance/jwt.mjs");
+    expect(isStructurallyExpiredJwt(makeFakeJwt(-3600))).toBe(true);
+    expect(isStructurallyExpiredJwt(makeFakeJwt(3600))).toBe(false);
+    expect(isStructurallyExpiredJwt("not-a-jwt")).toBe(false);
+  });
+
+  it("isStructurallyExpiredJwt's optional skewSeconds requires the expiry to be COMFORTABLY in the past, not merely in the past (blocker 2)", async () => {
+    const { isStructurallyExpiredJwt } =
+      await import("../scripts/acceptance/jwt.mjs");
+    // Expired 30s ago: past with no skew, but NOT comfortably past a
+    // 300s clock-skew allowance.
+    const barelyExpired = makeFakeJwt(-30);
+    expect(isStructurallyExpiredJwt(barelyExpired)).toBe(true);
+    expect(isStructurallyExpiredJwt(barelyExpired, 300)).toBe(false);
+    // Expired 3600s ago comfortably clears any ordinary skew allowance.
+    const comfortablyExpired = makeFakeJwt(-3600);
+    expect(isStructurallyExpiredJwt(comfortablyExpired, 300)).toBe(true);
+  });
+
+  it("jwt.mjs never imports a signature-verification or JWT-signing library -- structural decoding only", async () => {
+    const text = await readFile(
+      new URL("../scripts/acceptance/jwt.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(text).not.toMatch(/createHmac|createVerify|jsonwebtoken|jose/);
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- callProtectedRpcWithBearerToken distinguishes network errors from denials", () => {
+  const originalFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.resetModules();
+  });
+
+  it("networkError: true when fetch itself throws -- never mistaken for a denial", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    global.fetch = (async () => {
+      throw new Error("ECONNREFUSED");
+    }) as typeof fetch;
+    const { callProtectedRpcWithBearerToken } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const result = await callProtectedRpcWithBearerToken(
+      "list_practical_enrolments",
+      "bad-token",
+    );
+    expect(result.networkError).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(result.networkErrorMessage).toContain("ECONNREFUSED");
+  });
+
+  it("networkError: false with the real HTTP status when fetch completes (a rejection, not a network failure)", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    global.fetch = (async () =>
+      new Response(null, { status: 401 })) as typeof fetch;
+    const { callProtectedRpcWithBearerToken } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const result = await callProtectedRpcWithBearerToken(
+      "list_practical_enrolments",
+      "bad-token",
+    );
+    expect(result.networkError).toBe(false);
+    expect(result.status).toBe(401);
+    expect(result.ok).toBe(false);
+  });
+
+  it("parses the bounded PostgREST JSON error envelope into ONLY code/message -- never the raw body itself", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    global.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          code: "PGRST301",
+          message: "JWT expired",
+          details: "some-internal-detail-never-surfaced",
+          hint: "some-internal-hint-never-surfaced",
+        }),
+        { status: 401 },
+      )) as typeof fetch;
+    const { callProtectedRpcWithBearerToken } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const result = await callProtectedRpcWithBearerToken(
+      "list_practical_enrolments",
+      "expired-token",
+    );
+    expect(result.code).toBe("PGRST301");
+    expect(result.message).toBe("JWT expired");
+    expect(result.bodyParseError).toBe(false);
+    expect(Object.keys(result).sort()).toEqual(
+      [
+        "bodyParseError",
+        "code",
+        "message",
+        "networkError",
+        "ok",
+        "status",
+      ].sort(),
+    );
+  });
+
+  it("honestly reports bodyParseError, never a fabricated code/message, when the response body is not the expected JSON envelope", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    global.fetch = (async () =>
+      new Response("<html>not json</html>", { status: 401 })) as typeof fetch;
+    const { callProtectedRpcWithBearerToken } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const result = await callProtectedRpcWithBearerToken(
+      "list_practical_enrolments",
+      "bad-token",
+    );
+    expect(result.networkError).toBe(false);
+    expect(result.bodyParseError).toBe(true);
+    expect(result.code).toBeNull();
+    expect(result.message).toBeNull();
+  });
+
+  it("never returns the raw token or a response body -- only the bounded code/message/status classification fields", async () => {
+    clearAcceptanceVars();
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "publishable-key";
+    global.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          code: "PGRST301",
+          message: "JWT expired",
+          details: "super-secret-response-body-detail",
+        }),
+        { status: 401 },
+      )) as typeof fetch;
+    const { callProtectedRpcWithBearerToken } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const result = await callProtectedRpcWithBearerToken(
+      "list_practical_enrolments",
+      "the-raw-bearer-token-value",
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      "super-secret-response-body-detail",
+    );
+    expect(JSON.stringify(result)).not.toContain("the-raw-bearer-token-value");
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- isJwtAuthRejection/isJwtExpiryRejection never accept an arbitrary non-2xx status or an unrelated PGRST3XX code (blockers 1, 2 & 3)", () => {
+  function response(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      networkError: false,
+      status: 401,
+      ok: false,
+      code: "PGRST301",
+      message: "JWT invalid",
+      bodyParseError: false,
+      ...overrides,
+    };
+  }
+
+  it.each([
+    ["401 + PGRST301 (JWT invalid)", { status: 401, code: "PGRST301" }],
+    ["401 + PGRST303", { status: 401, code: "PGRST303" }],
+  ])(
+    "isJwtAuthRejection is true for a genuine hosted rejection: %s",
+    async (_label, shape) => {
+      const { isJwtAuthRejection } =
+        await import("../scripts/acceptance/supabase.mjs");
+      expect(isJwtAuthRejection(response(shape))).toBe(true);
+    },
+  );
+
+  it.each([
+    ["400 bad request, no PGRST3XX code", { status: 400, code: null }],
+    ["403 forbidden (RLS, not JWT/auth)", { status: 403, code: "42501" }],
+    ["404 schema-cache miss", { status: 404, code: "PGRST205" }],
+    ["429 rate limited", { status: 429, code: null }],
+    ["500 internal server error", { status: 500, code: null }],
+    ["503 database outage", { status: 503, code: null }],
+    ["401 with no recognised code", { status: 401, code: null }],
+    ["401 with an unrelated code", { status: 401, code: "PGRST116" }],
+    ["2xx success", { status: 200, ok: true, code: null }],
+    // Blocker 3: PGRST302 ("Bearer header missing while anon role is
+    // disabled") is NOT eligible even though it is in the PGRST3XX
+    // family -- this harness's checks always send a Bearer token, so a
+    // "no Bearer header at all" rejection could never mean the SUPPLIED
+    // token was inspected and rejected.
+    [
+      "401 + PGRST302 (no Bearer header at all)",
+      { status: 401, code: "PGRST302" },
+    ],
+    // An arbitrary/unknown PGRST3XX suffix must not be automatically
+    // eligible either -- only the exact PGRST301/PGRST303 pair is.
+    [
+      "401 + an arbitrary unknown PGRST3XX code",
+      { status: 401, code: "PGRST399" },
+    ],
+  ])(
+    "isJwtAuthRejection is false for an unrelated failure: %s",
+    async (_label, shape) => {
+      const { isJwtAuthRejection } =
+        await import("../scripts/acceptance/supabase.mjs");
+      expect(isJwtAuthRejection(response(shape))).toBe(false);
+    },
+  );
+
+  it("isJwtAuthRejection is false for HTTP 401 + PGRST302 specifically (blocker 3) -- the harness always sends a Bearer token, so 'no Bearer header' is never evidence it was inspected", async () => {
+    const { isJwtAuthRejection } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(
+      isJwtAuthRejection(response({ status: 401, code: "PGRST302" })),
+    ).toBe(false);
+  });
+
+  it("isJwtAuthRejection is true for HTTP 401 + PGRST301, and true for HTTP 401 + PGRST303 (blocker 3 regression)", async () => {
+    const { isJwtAuthRejection } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(
+      isJwtAuthRejection(response({ status: 401, code: "PGRST301" })),
+    ).toBe(true);
+    expect(
+      isJwtAuthRejection(response({ status: 401, code: "PGRST303" })),
+    ).toBe(true);
+  });
+
+  it.each([400, 403, 404, 429, 500, 503])(
+    "isJwtAuthRejection is false for HTTP %i even with an otherwise-eligible PGRST301 code -- every non-401 status is ineligible",
+    async (status) => {
+      const { isJwtAuthRejection } =
+        await import("../scripts/acceptance/supabase.mjs");
+      expect(isJwtAuthRejection(response({ status, code: "PGRST301" }))).toBe(
+        false,
+      );
+    },
+  );
+
+  it("isJwtAuthRejection is false for a network error, regardless of any status/code fields left over", async () => {
+    const { isJwtAuthRejection } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(
+      isJwtAuthRejection({
+        networkError: true,
+        status: 401,
+        code: "PGRST301",
+        message: "JWT invalid",
+      }),
+    ).toBe(false);
+  });
+
+  it("isJwtExpiryRejection is true only when isJwtAuthRejection is ALSO true AND the message specifically identifies expiry (case-insensitive)", async () => {
+    const { isJwtExpiryRejection } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(isJwtExpiryRejection(response({ message: "JWT expired" }))).toBe(
+      true,
+    );
+    expect(
+      isJwtExpiryRejection(response({ message: "jwt EXPIRED for user" })),
+    ).toBe(true);
+  });
+
+  it("isJwtExpiryRejection is false for a GENERIC invalid-JWT rejection -- the same shape a merely malformed token gets (blocker 2)", async () => {
+    const { isJwtExpiryRejection } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(isJwtExpiryRejection(response({ message: "JWT invalid" }))).toBe(
+      false,
+    );
+    expect(isJwtExpiryRejection(response({ message: null }))).toBe(false);
+  });
+
+  it("isJwtExpiryRejection is false whenever isJwtAuthRejection is false, even if the message happens to mention 'expired'", async () => {
+    const { isJwtExpiryRejection } =
+      await import("../scripts/acceptance/supabase.mjs");
+    expect(
+      isJwtExpiryRejection(
+        response({ status: 500, code: null, message: "session expired" }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- verifyNonAdminStaffRole never trusts the identity by label", () => {
+  it("verified: false when the identity does not actually carry the wanted staff role", async () => {
+    const { verifyNonAdminStaffRole } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({ data: false, error: null }),
+    };
+    const result = await verifyNonAdminStaffRole(fakeClient, "INSTRUCTOR");
+    expect(result.verified).toBe(false);
+  });
+
+  it("verified: false when the identity actually carries ACADEMIC_ADMIN, even though it also carries the wanted staff role", async () => {
+    const { verifyNonAdminStaffRole } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async (name: string, args: { wanted: string }) => ({
+        data: args.wanted === "INSTRUCTOR" || args.wanted === "ACADEMIC_ADMIN",
+        error: null,
+      }),
+    };
+    const result = await verifyNonAdminStaffRole(fakeClient, "INSTRUCTOR");
+    expect(result.verified).toBe(false);
+    expect(result.reason).toContain("ACADEMIC_ADMIN");
+  });
+
+  it("verified: false when the identity actually carries PLATFORM_ADMIN", async () => {
+    const { verifyNonAdminStaffRole } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async (name: string, args: { wanted: string }) => ({
+        data: args.wanted === "INSTRUCTOR" || args.wanted === "PLATFORM_ADMIN",
+        error: null,
+      }),
+    };
+    const result = await verifyNonAdminStaffRole(fakeClient, "INSTRUCTOR");
+    expect(result.verified).toBe(false);
+  });
+
+  it("verified: true only when has_role confirms the staff role AND both admin roles are confirmed absent", async () => {
+    const { verifyNonAdminStaffRole } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async (name: string, args: { wanted: string }) => ({
+        data: args.wanted === "INSTRUCTOR",
+        error: null,
+      }),
+    };
+    const result = await verifyNonAdminStaffRole(fakeClient, "INSTRUCTOR");
+    expect(result.verified).toBe(true);
+  });
+
+  it("fails closed (verified: false) if any has_role RPC call itself errors", async () => {
+    const { verifyNonAdminStaffRole } =
+      await import("../scripts/acceptance/supabase.mjs");
+    const fakeClient = {
+      rpc: async () => ({
+        data: null,
+        error: { message: "function does not exist" },
+      }),
+    };
+    const result = await verifyNonAdminStaffRole(fakeClient, "INSTRUCTOR");
+    expect(result.verified).toBe(false);
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- no HMAC signing implementation exists anywhere in the acceptance scripts", () => {
+  it("surfaces.mjs's recovery invocation uses a fixed, obviously non-authoritative p_mac placeholder -- never a computed signature", async () => {
     const text = await readFile(
       new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
       "utf8",
     );
-    expect(text).toContain("error: foreignListError");
-    expect(text).toContain("if (foreignListError)");
-    expect(text).toContain("error: learnerRecheckError");
-    expect(text).toContain("if (learnerRecheckError)");
-    expect(text).not.toContain(
-      "const { data: foreignEnrolments } = await foreign.rpc(",
-    );
+    expect(text).not.toMatch(/createHmac/);
+    expect(text).toContain('p_mac: "0".repeat(64)');
   });
 
-  it("checkJwtPostgrest never returns a PASS status at all -- the full documented contract is not yet implemented", async () => {
-    const text = await readFile(
-      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
-      "utf8",
-    );
-    const fnStart = text.indexOf("export async function checkJwtPostgrest()");
-    const fnEnd = text.indexOf(
-      "\n// ---",
-      fnStart + "export async function checkJwtPostgrest()".length,
-    );
-    const fnText = text.slice(fnStart, fnEnd === -1 ? undefined : fnEnd);
-    expect(fnText).not.toMatch(/return pass\(/);
+  it("no acceptance script imports node:crypto's createHmac or a JWT-signing library", async () => {
+    const filenames = [
+      "surfaces.mjs",
+      "supabase.mjs",
+      "fixtures.mjs",
+      "jwt.mjs",
+      "env.mjs",
+      "db.mjs",
+    ];
+    for (const filename of filenames) {
+      const text = await readFile(
+        new URL(`../scripts/acceptance/${filename}`, import.meta.url),
+        "utf8",
+      );
+      expect(text).not.toMatch(/createHmac|jsonwebtoken|jose\//);
+    }
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- new acceptance-only env vars are never read by application source", () => {
+  it("ACCEPTANCE_EXPIRED_LEARNER_JWT and ACCEPTANCE_UNRELATED_STAFF_EMAIL/PASSWORD never appear anywhere under src/**", async () => {
+    const forbidden = [
+      "ACCEPTANCE_EXPIRED_LEARNER_JWT",
+      "ACCEPTANCE_UNRELATED_STAFF_EMAIL",
+      "ACCEPTANCE_UNRELATED_STAFF_PASSWORD",
+    ];
+    const srcRoot = fileURLToPath(new URL("../src/", import.meta.url));
+    async function walk(dir: string): Promise<string[]> {
+      const entries = await readdir(dir, { withFileTypes: true });
+      const files: string[] = [];
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) files.push(...(await walk(full)));
+        else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) files.push(full);
+      }
+      return files;
+    }
+    const files = await walk(srcRoot);
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      const text = await readFile(file, "utf8");
+      for (const name of forbidden) expect(text).not.toContain(name);
+    }
+  });
+});
+
+describe("acceptance harness: JWT_POSTGREST completion -- preflight never prints the new credential/JWT values", () => {
+  it("ACCEPTANCE_EXPIRED_LEARNER_JWT's report carries no value field, and the raw token never appears in it", async () => {
+    clearAcceptanceVars();
+    const token = makeFakeJwt(-3600);
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = token;
+    const { preflightReport } = await import("../scripts/acceptance/env.mjs");
+    const report = (preflightReport() as VarReport[]).find(
+      (r) => r.name === "ACCEPTANCE_EXPIRED_LEARNER_JWT",
+    )!;
+    expect(Object.keys(report).sort()).toEqual(["name", "scope", "status"]);
+    expect(report.status).toBe("configured");
+    expect(JSON.stringify(report)).not.toContain(token);
+  });
+
+  it("ACCEPTANCE_UNRELATED_STAFF_EMAIL/PASSWORD reports carry no value field", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_UNRELATED_STAFF_EMAIL = "staff@example.com";
+    process.env.ACCEPTANCE_UNRELATED_STAFF_PASSWORD = "top-secret-password";
+    const { preflightReport } = await import("../scripts/acceptance/env.mjs");
+    const reports = preflightReport() as VarReport[];
+    const emailReport = reports.find(
+      (r) => r.name === "ACCEPTANCE_UNRELATED_STAFF_EMAIL",
+    )!;
+    const passwordReport = reports.find(
+      (r) => r.name === "ACCEPTANCE_UNRELATED_STAFF_PASSWORD",
+    )!;
+    expect(Object.keys(emailReport).sort()).toEqual([
+      "name",
+      "scope",
+      "status",
+    ]);
+    expect(Object.keys(passwordReport).sort()).toEqual([
+      "name",
+      "scope",
+      "status",
+    ]);
+    expect(JSON.stringify(reports)).not.toContain("top-secret-password");
+    expect(JSON.stringify(reports)).not.toContain("staff@example.com");
+  });
+
+  it("ACCEPTANCE_EXPIRED_LEARNER_JWT is reported malformed when not structurally JWT-shaped", async () => {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_EXPIRED_LEARNER_JWT = "not-a-jwt-at-all";
+    const { statusOf } = await import("../scripts/acceptance/env.mjs");
+    expect(statusOf("ACCEPTANCE_EXPIRED_LEARNER_JWT")).toBe("malformed");
   });
 });
 

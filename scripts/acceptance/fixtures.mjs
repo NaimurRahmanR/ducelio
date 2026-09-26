@@ -535,7 +535,67 @@ export async function seedAcceptanceCourse(admin, runId, learnerAuthUserId) {
     studentId,
     instructorId,
     recoveryActorId,
+    // Independent-review finding (JWT_POSTGREST completion, this pass):
+    // surfaces.mjs's checkJwtPostgrest needs a real, bound assessment id
+    // to prove the protected-content boundary (get_active_assessment_
+    // questions) -- reusing the `bindings` read this function's own
+    // component-binding loop above already performed, rather than a
+    // second, separate direct-DB read for the same data.
+    quiz1AssessmentId: bindings.find((b) => b.template_key === "quiz_1")
+      ?.assessment_id,
   };
+}
+
+/**
+ * Enrols a SECOND, already-signed-up acceptance identity into an EXISTING
+ * cohort a prior seedAcceptanceCourse() call already created -- used only
+ * to give a foreign/unrelated learner their OWN real, known enrolment
+ * (never a synthetic id) for cross-learner ownership-override acceptance
+ * (docs/38 section 3: "learner cannot override actor/student IDs").
+ * Reuses the exact same resolveAppUserId + create_enrolment pattern
+ * seedAcceptanceCourse's own primary-learner enrolment already uses --
+ * never a raw table insert, never a second copy of create_enrolment's own
+ * authority logic.
+ *
+ * Independent-review finding (V2): this function's write travels through
+ * the SAME two independent network paths seedAcceptanceCourse's own do --
+ * the authenticated Supabase client (`admin.rpc("create_enrolment", ...)`,
+ * authenticated by NEXT_PUBLIC_SUPABASE_URL/PUBLISHABLE_KEY) and the
+ * direct database connection (ACCEPTANCE_DATABASE_URL, via
+ * withAcceptanceWriteConnection, used here only to resolve `studentId`).
+ * A prior version asserted only the direct-database gate before ever
+ * reaching create_enrolment -- proving ACCEPTANCE_DATABASE_URL points at
+ * a genuine acceptance environment, but never independently proving
+ * NEXT_PUBLIC_SUPABASE_URL (a completely different path) points at the
+ * SAME one. Both gates -- assertAcceptanceSupabaseWriteAuthorized (this
+ * call) and the direct-database gate withAcceptanceWriteConnection
+ * enforces internally -- must independently agree on the SAME
+ * ACCEPTANCE_ENVIRONMENT_ID, exactly matching seedAcceptanceCourse's own
+ * safety model, before create_enrolment is ever called.
+ */
+export async function enrolAcceptanceLearner(
+  admin,
+  cohortId,
+  learnerAuthUserId,
+) {
+  await assertAcceptanceSupabaseWriteAuthorized(admin);
+  const studentId = await withAcceptanceWriteConnection((client) =>
+    resolveAppUserId(client, learnerAuthUserId),
+  );
+  if (!studentId)
+    throw new Error(
+      "No public.app_users row is linked to this learner's Auth user id -- it must be a real Supabase Auth user that has actually signed up against this hosted project (migration 002's provision_academy_user() trigger creates this link on signup).",
+    );
+  const { data, error } = await admin.rpc("create_enrolment", {
+    p_student_id: studentId,
+    p_cohort_id: cohortId,
+    p_reason: "Acceptance additional-learner enrolment",
+  });
+  if (error)
+    throw new Error(
+      `create_enrolment failed: ${error.message ?? "unknown error"}`,
+    );
+  return { enrolmentId: data, studentId };
 }
 
 /**
