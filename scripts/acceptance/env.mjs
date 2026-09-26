@@ -20,6 +20,8 @@
 // separate, acceptance-tooling-only privileged connection string, used only
 // for read/verify migration introspection (see db.mjs), never granted to
 // the running application.
+import { isStructurallyJwtShaped } from "./jwt.mjs";
+
 const HEX_KEY_64 = /^[0-9a-f]{64}$/i;
 const UUID_LIKE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -184,6 +186,22 @@ const KNOWN_VARS = [
     name: "ACCEPTANCE_FOREIGN_LEARNER_PASSWORD",
     scope: "acceptance",
     note: "Password for ACCEPTANCE_FOREIGN_LEARNER_EMAIL.",
+  },
+  {
+    name: "ACCEPTANCE_EXPIRED_LEARNER_JWT",
+    scope: "acceptance",
+    validate: (v) => isStructurallyJwtShaped(v),
+    note: "A genuinely expired, previously valid synthetic acceptance-learner JWT (real hosted Supabase Auth token, never freshly generated/signed by this harness). Preflight only confirms it is structurally JWT-shaped (three dot-separated segments) -- it never verifies the signature and never itself confirms expiry; checkJwtPostgrest separately decodes only the non-secret `exp` claim to confirm it is genuinely in the past before using it, and BLOCKS/FAILs rather than claiming expired-token evidence if it is not.",
+  },
+  {
+    name: "ACCEPTANCE_UNRELATED_STAFF_EMAIL",
+    scope: "acceptance",
+    note: "A synthetic institutional staff identity (hosted Supabase Auth email) that is genuinely NOT ACADEMIC_ADMIN/PLATFORM_ADMIN -- used only to prove unrelated staff cannot cross the institutional recovery role gate. checkJwtPostgrest independently verifies this via the real hosted role model (public.has_role RPC), never trusting this variable's name alone.",
+  },
+  {
+    name: "ACCEPTANCE_UNRELATED_STAFF_PASSWORD",
+    scope: "acceptance",
+    note: "Password for ACCEPTANCE_UNRELATED_STAFF_EMAIL.",
   },
   {
     name: "ACCEPTANCE_LIVE_PROVIDER_OPT_IN",
