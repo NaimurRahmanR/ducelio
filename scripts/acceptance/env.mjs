@@ -81,16 +81,34 @@ const KNOWN_VARS = [
     note: "Supabase publishable/anon key (browser-exposed).",
   },
   // -- Application runtime: src/server/academic-runtime/provider.ts --
+  // The CURRENT Commercial V1 native provider credentials (PR22). Endpoints,
+  // models, tariffs and budgets stay code-owned in provider.ts /
+  // profile-registry.ts; only these keys are configuration. A key existing is
+  // never permission to make a billable request -- see
+  // `npm run acceptance:live-provider` and docs/38 section 5.
+  {
+    name: "OPENAI_API_KEY",
+    scope: "app",
+    note: "Native OpenAI Responses key (server-only). Used by every OPENAI_RESPONSES production profile, including EXAMINER_COMMERCIAL_V1; the app fails closed to NO_PROVIDER_CONFIGURED without it.",
+  },
+  {
+    name: "ANTHROPIC_API_KEY",
+    scope: "app",
+    note: "Native Anthropic Messages key (server-only). Used by the ANTHROPIC_MESSAGES production profile LAB_INSTRUCTOR_COMMERCIAL_V1; the app fails closed to NO_PROVIDER_CONFIGURED without it.",
+  },
+  // Legacy generic HTTP_JSON gateway (resolveConfiguredProvider). Kept for
+  // backward compatibility only: NO current Commercial V1 production profile
+  // routes through it, so it is not required for Commercial V1.
   {
     name: "ACADEMIC_PROVIDER_BASE_URL",
     scope: "app",
     validate: (v) => isValidUrl(v, { requireHttps: true }),
-    note: "AI provider base URL. Server-only; the running app fails closed to NO_PROVIDER_CONFIGURED without it.",
+    note: "LEGACY generic HTTP_JSON gateway URL (HTTPS). Not used by any current Commercial V1 production profile; not required.",
   },
   {
     name: "ACADEMIC_PROVIDER_API_KEY",
     scope: "app",
-    note: "AI provider API key. Server-only.",
+    note: "LEGACY generic HTTP_JSON gateway key. Not used by any current Commercial V1 production profile; not required.",
   },
   // -- Application runtime: src/server/{academic-execution,academic-provider-execution,
   //    commercial-v1-examiner-grading,commercial-v1-examiner-regrade,
@@ -207,7 +225,7 @@ const KNOWN_VARS = [
     name: "ACCEPTANCE_LIVE_PROVIDER_OPT_IN",
     scope: "acceptance",
     validate: (v) => v === "true",
-    note: "Must be exactly the string 'true' AND the operator must have separately instructed this session to run live acceptance -- a key existing is never itself permission. See docs/38 section 5.",
+    note: "Must be exactly the string 'true' AND `npm run acceptance:live-provider` must be given --authorize-live-provider before any billable provider request is made -- a key existing is never itself permission. See docs/38 section 5.",
   },
   {
     name: "ACCEPTANCE_STRIPE_LIVE_OPT_IN",
@@ -250,16 +268,13 @@ export function stripeLooksLive() {
   return typeof raw === "string" && raw.trim().startsWith("sk_live_");
 }
 
-// True only when the explicit, double-gated opt-in env var is exactly
-// "true". This function alone is NEVER sufficient permission to run a
-// billable provider call -- callers must also have been separately
-// instructed by the operator in this session (see surfaces.mjs).
+// True only when the opt-in env var is exactly "true". This alone is NEVER
+// sufficient permission to run a billable provider call: the dedicated
+// `npm run acceptance:live-provider` command additionally requires its
+// explicit --authorize-live-provider flag (scripts/acceptance/
+// live-provider.mjs). Provider keys play no part in opting in.
 export function liveProviderOptedIn() {
-  return (
-    isConfigured("ACADEMIC_PROVIDER_BASE_URL") &&
-    isConfigured("ACADEMIC_PROVIDER_API_KEY") &&
-    process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN?.trim() === "true"
-  );
+  return process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN === "true";
 }
 
 export { KNOWN_VARS };
