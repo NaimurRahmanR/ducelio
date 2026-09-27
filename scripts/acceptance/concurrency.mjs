@@ -3,21 +3,30 @@
 //
 // True PostgreSQL concurrency acceptance (Checkpoint E3). PGlite is a
 // single-connection embedded database and cannot prove independent-session
-// locking/uniqueness behaviour -- every scenario here uses TWO genuinely
-// independent `pg` connections (db.mjs's connectMany), each with its own
-// backend process on the server, and fires their conflicting statements
-// inside a deliberate synchronization barrier so both are truly in flight
-// together before either resolves. Never sequential queries dressed up as
-// concurrency.
+// locking/uniqueness behaviour. Two kinds of race live here:
 //
-// Scope: each scenario tests the DATABASE-LEVEL constraint (unique index /
-// row lock discipline) that the governed RPCs rely on to admit "exactly
-// one" under real contention -- the same guarantee this repository's local
-// PGlite tests can only prove sequentially. It does not re-exercise the
-// HMAC-attested RPC business logic itself (already proven correct, in
-// isolation, by the existing local test suite); see surfaces.mjs's
-// GRADING/INITIAL_RECOVERY/REGRADE comments for why this harness never
-// reimplements that trust-critical protocol.
+// - INITIAL_VS_INITIAL, RECOVERY_VS_RECOVERY and NEVER_TWO_REVISION_ONES
+//   use TWO genuinely independent `pg` connections (db.mjs's connectMany),
+//   each with its own backend process on the server, and race the
+//   DATABASE-LEVEL constraint (unique index) the governed RPCs rely on to
+//   admit "exactly one" under real contention. They do not re-exercise the
+//   HMAC-attested RPC business logic itself (already proven correct, in
+//   isolation, by the existing local test suite); see surfaces.mjs's
+//   GRADING/INITIAL_RECOVERY/REGRADE comments for why this harness never
+//   reimplements that trust-critical protocol.
+// - COMPLETION_VS_COMPLETION (V7) is NOT a raw insert race. It drives the
+//   governed public.attempt_commercial_v1_course_completion RPC itself,
+//   from two independently signed-in learner Supabase clients, against a
+//   separate completion-ready course (see scenarioCompletionVsCompletion).
+//
+// Start discipline (V7): NEVER_TWO_REVISION_ONES and
+// COMPLETION_VS_COMPLETION release both contenders from one in-process
+// start gate (createStartGate) once both are fully prepared.
+// INITIAL_VS_INITIAL/RECOVERY_VS_RECOVERY dispatch both statements from
+// the same synchronous Promise.allSettled call. In every case this proves
+// both requests were dispatched together from the client side -- never
+// that the server began executing them at the same instant. Never
+// sequential queries dressed up as concurrency.
 //
 // Isolation: every row this script creates is tagged with a unique
 // acceptance run id (embedded in the course package key seedAcceptanceCourse
@@ -82,10 +91,12 @@
 // insert lands in an explicitly append-only/guarded table
 // (assessment_attempts, commercial_v1_examiner_executions,
 // commercial_v1_examiner_recovery_executions,
-// commercial_v1_assessment_result_revisions,
-// commercial_v1_completion_receipts -- migrations
+// commercial_v1_assessment_result_revisions -- migrations
 // 2609090016/2609160031/2609240040/2609150030 each unconditionally reject
-// DELETE). There is nothing left a cleanup step could safely remove --
+// DELETE). COMPLETION_VS_COMPLETION's separate course and the completion
+// receipt the governed RPC writes are equally permanent; its PASS/FAIL
+// details name that course's run id/import/enrolment for operator review.
+// There is nothing left a cleanup step could safely remove --
 // attempting to would throw, exactly as the previous version's ungated
 // post-race DELETEs in scenarioRecoveryVsRecovery did the first time this
 // ran hosted. logAcceptanceChain() below only logs what this run created,
@@ -106,7 +117,11 @@ import {
   acceptanceIdentities,
   acceptanceIdentitiesConfigured,
 } from "./supabase.mjs";
-import { seedAcceptanceCourse, seedAcceptanceAttempt } from "./fixtures.mjs";
+import {
+  seedAcceptanceCourse,
+  seedAcceptanceAttempt,
+  seedAcceptanceResults,
+} from "./fixtures.mjs";
 import {
   printResult,
   printSummary,
@@ -151,6 +166,27 @@ function classifyRace(settled) {
   return { fulfilled, uniqueRejected, otherRejections };
 }
 
+// V7: the smallest explicit start barrier. Each contender calls arrive()
+// exactly once, when it is fully prepared (connection open and transaction
+// begun, or client signed in); every arrive() promise resolves together
+// only after all `parties` have arrived. This proves both contenders were
+// released from the same client-side point -- not that the server executed
+// them at the same instant.
+export function createStartGate(parties) {
+  let arrived = 0;
+  let release;
+  const released = new Promise((resolve) => {
+    release = resolve;
+  });
+  return {
+    arrive() {
+      arrived += 1;
+      if (arrived >= parties) release();
+      return released;
+    },
+  };
+}
+
 // Builds the minimal, real-shaped owning chain (course/activation/cohort/
 // enrolment plus two distinct assessment/attempt pairs, QUIZ_1 and
 // QUIZ_2) every race scenario below needs a foreign key into. See the
@@ -185,8 +221,10 @@ export async function seedOwningChain() {
   // recovery race even starts. Two DISTINCT bound assessments -- QUIZ_1
   // and QUIZ_2, both already bound by the governed pipeline above -- each
   // get their own real attempt: QUIZ_1/its attempt for
-  // INITIAL_VS_INITIAL/NEVER_TWO_REVISION_ONES/COMPLETION_VS_COMPLETION;
-  // the wholly separate QUIZ_2/its attempt for RECOVERY_VS_RECOVERY only.
+  // INITIAL_VS_INITIAL/NEVER_TWO_REVISION_ONES; the wholly separate
+  // QUIZ_2/its attempt for RECOVERY_VS_RECOVERY only.
+  // COMPLETION_VS_COMPLETION (V7) never uses this chain's enrolment -- it
+  // seeds its own separate completion-ready course.
   // Neither assessment's attempts_allowed=1 governed limit is exceeded --
   // each gets exactly one real attempt, never a second one fabricated
   // against the same assessment merely to dodge the unique index.
@@ -210,7 +248,7 @@ export async function seedOwningChain() {
   );
   if (!assessmentId || !recoveryAssessmentId)
     throw new Error(
-      "Both a QUIZ_1 and a QUIZ_2 assessment binding are required for the acceptance activation -- QUIZ_1 targets INITIAL_VS_INITIAL/NEVER_TWO_REVISION_ONES/COMPLETION_VS_COMPLETION and the distinct QUIZ_2 targets RECOVERY_VS_RECOVERY, so the two never collide on examiner_execution_one_per_attempt.",
+      "Both a QUIZ_1 and a QUIZ_2 assessment binding are required for the acceptance activation -- QUIZ_1 targets INITIAL_VS_INITIAL/NEVER_TWO_REVISION_ONES and the distinct QUIZ_2 targets RECOVERY_VS_RECOVERY, so the two never collide on examiner_execution_one_per_attempt.",
     );
 
   // The one thing the governed pipeline does not create: real attempts
@@ -275,7 +313,8 @@ function logAcceptanceChain(chain) {
       `enrolment ${chain.enrolmentId}, QUIZ_1 attempt ${chain.attemptId}, ` +
       `QUIZ_2 attempt ${chain.recoveryAttemptId}) plus the institutional-audit rows the ` +
       "scenarios below inserted under it (examiner executions/recovery executions/result " +
-      "revisions/completion receipts). These are immutable institutional history by design " +
+      "revisions; COMPLETION_VS_COMPLETION's separate course is named in its own result " +
+      "details). These are immutable institutional history by design " +
       "(append-only/guarded triggers reject every DELETE) and are not auto-deleted; they " +
       "remain uniquely identifiable by this run id for manual operator review.",
   );
@@ -474,115 +513,131 @@ export async function scenarioRecoveryVsRecovery(chain) {
   }
 }
 
-export async function scenarioNeverTwoRevisionOnes(chain) {
-  // Independent-review finding (v4, this pass): a hard-coded
-  // max_marks_total=10 assumed the seeded QUIZ_1 assessment always has
-  // exactly one 10-mark question -- true only for buildAcceptancePackage's
-  // own current shape, and not something this scenario should silently
-  // depend on. Derived instead from the REAL assessment_questions rows,
-  // exactly as fixtures.mjs's seedAcceptanceResults now does.
-  const actualMax = await withConnection(async (c) => {
-    const { rows } = await c.query(
-      "select coalesce(sum(max_marks),0)::int as total from assessment_questions where assessment_id=$1",
-      [chain.assessmentId],
-    );
-    return rows[0].total;
-  });
-  if (!actualMax)
-    throw new Error(
-      "No assessment_questions found for the QUIZ_1 assessment -- cannot derive a valid max_marks_total.",
-    );
-  const { clients, closeAll } = await connectMany(2);
+// V7 (Defect A): one contender's whole revision-1 write -- the result
+// revision, one question-marks row per REAL question, derived objective
+// outcomes and a successful assessment_result_is_valid() assertion -- inside
+// ONE transaction on ONE independent connection, before COMMIT. The
+// previous shape raced bare revision inserts, let the winner COMMIT with no
+// marks/outcomes, and only completed it afterwards in a second transaction:
+// if that repair failed, an invalid immutable revision stayed committed
+// forever. Now a contender either commits a complete, verified-valid
+// revision or rolls back everything it wrote. The loser's unique-index
+// rejection (SQLSTATE 23505) happens at its INSERT, which blocks on the
+// winner's uncommitted index entry until the winner commits.
+async function commitCompleteRevisionOne(client, gate, chain, questions) {
   try {
-    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
-    // Independent-review finding (v5, this pass): races full marks
-    // (actualMax/actualMax) rather than a zero score -- the uniqueness
-    // property under test does not depend on the score value, and full
-    // marks never opens unnecessary remediation history for a row this
-    // harness cannot delete.
-    const insert = () => [
+    await client.query("begin");
+  } finally {
+    // Arrive even if BEGIN failed, so the other contender is never
+    // stranded at the gate; the BEGIN error still propagates.
+    await gate.arrive();
+  }
+  try {
+    const maxMarksTotal = questions.reduce((sum, q) => sum + q.max_marks, 0);
+    const { rows } = await client.query(
       `insert into commercial_v1_assessment_result_revisions(
         activation_id,enrolment_id,student_id,component,attempt_id,assessment_id,revision_number,
         earned_marks_total,max_marks_total,component_weight_bp
-      ) values($1,$2,$3,'QUIZ_1',$4,$5,1,$6,$6,500)`,
+      ) values($1,$2,$3,'QUIZ_1',$4,$5,1,$6,$6,500)
+      returning id`,
       [
         chain.activationId,
         chain.enrolmentId,
         chain.studentId,
         chain.attemptId,
         chain.assessmentId,
-        actualMax,
+        maxMarksTotal,
       ],
-    ];
-    const settled = await Promise.allSettled([
-      clients[0].query(...insert()),
-      clients[1].query(...insert()),
-    ]);
+    );
+    const resultRevisionId = rows[0].id;
+    for (const question of questions) {
+      await client.query(
+        `insert into commercial_v1_assessment_question_marks(
+          result_revision_id, question_id, marks_awarded, max_marks_snapshot
+        ) values($1,$2,$3,$4)`,
+        [resultRevisionId, question.id, question.max_marks, question.max_marks],
+      );
+    }
+    await client.query(
+      "select commercial_v1_private.derive_and_insert_objective_outcomes($1)",
+      [resultRevisionId],
+    );
+    const { rows: validRows } = await client.query(
+      "select commercial_v1_private.assessment_result_is_valid($1) as valid",
+      [resultRevisionId],
+    );
+    if (validRows[0]?.valid !== true)
+      throw new Error(
+        `NEVER_TWO_REVISION_ONES result revision ${resultRevisionId} failed commercial_v1_private.assessment_result_is_valid() inside its own transaction -- rolled back, never committed.`,
+      );
+    await client.query("commit");
+    return resultRevisionId;
+  } catch (error) {
+    // The original error (23505 for the expected loser) stays the one
+    // classifyRace sees; a failed ROLLBACK on a broken connection is moot
+    // because the server aborts the transaction when closeAll() ends it.
+    await client.query("rollback").catch(() => {});
+    throw error;
+  }
+}
+
+export async function scenarioNeverTwoRevisionOnes(chain) {
+  // Real questions (and so the real max_marks_total) come from
+  // assessment_questions, never a hard-coded 10. Races full marks, so the
+  // surviving revision never opens remediation history this harness
+  // cannot delete.
+  const questions = await withConnection(async (c) => {
+    const { rows } = await c.query(
+      "select id, max_marks from assessment_questions where assessment_id=$1 order by position",
+      [chain.assessmentId],
+    );
+    return rows;
+  });
+  if (!questions.length)
+    throw new Error(
+      "No assessment_questions found for the QUIZ_1 assessment -- cannot build a valid result revision.",
+    );
+  const { clients, closeAll } = await connectMany(2);
+  try {
+    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
+    const gate = createStartGate(clients.length);
+    const settled = await Promise.allSettled(
+      clients.map((client) =>
+        commitCompleteRevisionOne(client, gate, chain, questions),
+      ),
+    );
     const { fulfilled, uniqueRejected, otherRejections } =
       classifyRace(settled);
+    const winnerId =
+      settled.find((s) => s.status === "fulfilled")?.value ?? null;
+    // Every QUIZ_1 revision for this enrolment, whatever its number: the
+    // race must leave exactly one, it must be revision 1, it must be the
+    // one the winning contender committed, and it must be valid.
     const { rows } = await withConnection((c) =>
       c.query(
-        "select id from commercial_v1_assessment_result_revisions where enrolment_id=$1 and component='QUIZ_1' and revision_number=1",
+        `select id, revision_number,
+                commercial_v1_private.assessment_result_is_valid(id) as valid
+         from commercial_v1_assessment_result_revisions
+         where enrolment_id=$1 and component='QUIZ_1'`,
         [chain.enrolmentId],
       ),
     );
-    // Independent-review finding (v5, this pass, BLOCKER): whichever side
-    // won the race left a raw commercial_v1_assessment_result_revisions
-    // row with NO question_marks and NO objective outcomes --
-    // append-only, and this harness never deletes it, so an incomplete/
-    // invalid revision left behind would be PERMANENT acceptance history.
-    // Whenever exactly one admitted revision exists, it is completed
-    // (real question marks -> derive_and_insert_objective_outcomes ->
-    // assert_result_is_valid) BEFORE the pass/fail decision below, on
-    // both a successful and an unsuccessful race outcome -- never only
-    // on the PASS path.
-    if (rows.length === 1) {
-      const resultRevisionId = rows[0].id;
-      await withAcceptanceWriteConnection(async (c) => {
-        const { rows: questions } = await c.query(
-          "select id, max_marks from assessment_questions where assessment_id=$1 order by position",
-          [chain.assessmentId],
-        );
-        for (const question of questions) {
-          await c.query(
-            `insert into commercial_v1_assessment_question_marks(
-              result_revision_id, question_id, marks_awarded, max_marks_snapshot
-            ) values($1,$2,$3,$4)`,
-            [
-              resultRevisionId,
-              question.id,
-              question.max_marks,
-              question.max_marks,
-            ],
-          );
-        }
-        await c.query(
-          "select commercial_v1_private.derive_and_insert_objective_outcomes($1)",
-          [resultRevisionId],
-        );
-        const { rows: validRows } = await c.query(
-          "select commercial_v1_private.assessment_result_is_valid($1) as valid",
-          [resultRevisionId],
-        );
-        if (!validRows[0]?.valid)
-          throw new Error(
-            `The admitted NEVER_TWO_REVISION_ONES result revision ${resultRevisionId} failed commercial_v1_private.assessment_result_is_valid() after completion -- refusing to leave invalid permanent history in place.`,
-          );
-      });
-    }
+    const survivor = rows.length === 1 ? rows[0] : null;
     if (
       fulfilled === 1 &&
       uniqueRejected === 1 &&
       otherRejections.length === 0 &&
-      rows.length === 1
+      survivor?.revision_number === 1 &&
+      survivor.valid === true &&
+      survivor.id === winnerId
     )
       return pass(
         "POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES",
-        "Database-constraint acceptance test (raw insert against unique(enrolment_id,component,revision_number), the constraint every governed FINALIZE path -- initial, recovery and regrade -- ultimately relies on): two genuinely concurrent revision-1 result inserts for the same (enrolment, component) never both succeeded -- the loser was rejected by the unique index (SQLSTATE 23505), no split-brain target. The admitted revision was completed with real question marks/objective outcomes and verified valid.",
+        "Database-constraint acceptance test (raw transactional write against unique(enrolment_id,component,revision_number), the constraint every governed FINALIZE path -- initial, recovery and regrade -- ultimately relies on): two independent connections each began a transaction, were released together from one start gate, and each tried to write a COMPLETE revision 1 (revision, every question mark, derived objective outcomes, validity asserted) before COMMIT. Exactly one committed; the other was rejected by the unique index (SQLSTATE 23505) and rolled back. Exactly one valid revision 1 survives.",
       );
     return fail(
       "POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES",
-      `Expected 1 fulfilled/1 unique-violation(23505)-rejected/0 other rejections/1 row; got ${fulfilled} fulfilled, ${uniqueRejected} unique-violation-rejected, ${otherRejections.length} other rejection(s), ${rows.length} row(s).`,
+      `Expected 1 committed/1 unique-violation(23505)-rolled-back/0 other rejections and exactly one surviving valid revision 1 matching the winner; got ${fulfilled} committed, ${uniqueRejected} unique-violation-rejected, ${otherRejections.length} other rejection(s), ${rows.length} QUIZ_1 revision(s) (${rows.map((r) => `revision ${r.revision_number} valid=${r.valid}`).join(", ") || "none"}).`,
       otherRejections,
     );
   } finally {
@@ -590,78 +645,195 @@ export async function scenarioNeverTwoRevisionOnes(chain) {
   }
 }
 
+// V7 (Defect B): COMPLETION_VS_COMPLETION used to race two raw INSERTs into
+// commercial_v1_completion_receipts from privileged pg connections --
+// bypassing the real institutional completion authority entirely. It now
+// drives the governed public.attempt_commercial_v1_course_completion RPC
+// (current_app_user() identity, enrolment row lock FOR UPDATE, real
+// course_progress eligibility, receipt + status + audit written by the RPC
+// itself) from two independently signed-in learner clients.
+//
+// It needs its OWN completion-ready course: NEVER_TWO_REVISION_ONES
+// already leaves a permanent QUIZ_1 revision 1 on the owning chain's
+// enrolment, so seedAcceptanceResults(course, true) -- which writes valid
+// results for all six components plus the lab in one transaction -- would
+// collide with it there. The separate course is built through the same
+// governed helpers RESULT_PROGRESS_COMPLETION uses (seedAcceptanceCourse,
+// seedAcceptanceResults), each carrying its own write gates; nothing here
+// fabricates enrolment status or inserts a receipt.
 export async function scenarioCompletionVsCompletion(chain) {
-  // Independent-review finding (v5, this pass): this scenario used to
-  // ALSO seed its own QUIZ_1 revision-1 result (with
-  // `on conflict do nothing`), duplicating the exact row
-  // NEVER_TWO_REVISION_ONES -- which always runs first in main()'s
-  // scenario list, and which (after the v5 fix above) always completes
-  // its admitted revision to a genuinely valid one -- already created.
-  // By the time this scenario runs, that revision already exists, so
-  // this insert was never a genuine no-op either: migration
-  // 2609150030's guard_assessment_result_insert() trigger raises
-  // INVALID_RESULT_REVISION_SEQUENCE for a second revision_number=1 row
-  // on the same (enrolment, component) BEFORE ON CONFLICT DO NOTHING
-  // ever gets a chance to suppress anything (the BEFORE INSERT row
-  // trigger fires ahead of conflict resolution). It never did anything
-  // useful, and public.commercial_v1_completion_receipts carries no
-  // foreign key to commercial_v1_assessment_result_revisions at all --
-  // only enrolment_id/activation_id (checked against course_activations)
-  // and completed_by (checked against app_users) -- so there is no real
-  // schema requirement for a result revision to exist before this raw
-  // insert either. Removed entirely, along with the actualMax lookup it
-  // existed only to feed. This scenario exercises ONLY the raw
-  // unique(enrolment_id) constraint on commercial_v1_completion_receipts
-  // -- never the governed attempt_commercial_v1_course_completion RPC,
-  // and never proof that a real completion would actually be ELIGIBLE
-  // (that depends on the governed RPC's own result/policy evaluation,
-  // not re-exercised here).
-  const { clients, closeAll } = await connectMany(2);
-  try {
-    await assertAllAcceptanceDatabaseWriteAuthorized(clients);
-    const insert = () => [
-      `insert into commercial_v1_completion_receipts(
-        enrolment_id,student_id,activation_id,cohort_id,programme_version_id,
-        final_course_score_bp,pass_mark_bp,completed_by
-      ) values($1,$2,$3,$4,$5,10000,5000,$2)`,
-      [
-        chain.enrolmentId,
-        chain.studentId,
-        chain.activationId,
-        chain.cohortId,
-        chain.versionId,
-      ],
-    ];
-    const settled = await Promise.allSettled([
-      clients[0].query(...insert()),
-      clients[1].query(...insert()),
-    ]);
-    const { fulfilled, uniqueRejected, otherRejections } =
-      classifyRace(settled);
-    const { rows } = await withConnection((c) =>
-      c.query(
-        "select count(*)::int as n from commercial_v1_completion_receipts where enrolment_id=$1",
-        [chain.enrolmentId],
-      ),
-    );
-    if (
-      fulfilled === 1 &&
-      uniqueRejected === 1 &&
-      otherRejections.length === 0 &&
-      rows[0].n === 1
-    )
-      return pass(
-        "POSTGRES_CONCURRENCY:COMPLETION_VS_COMPLETION",
-        "Database-constraint acceptance test bounded EXACTLY to the raw unique(enrolment_id) constraint on commercial_v1_completion_receipts -- never the governed attempt_commercial_v1_course_completion RPC, and never proof that a real completion would actually be eligible under any result/policy evaluation: exactly one of two genuinely concurrent completion-receipt inserts for the same enrolment was admitted; the other was rejected by the unique index (SQLSTATE 23505).",
+  const surface = "POSTGRES_CONCURRENCY:COMPLETION_VS_COMPLETION";
+  const completionRunId = `${runId}-completion`;
+
+  // Two separate sign-ins -> two independent learner sessions/clients,
+  // never one shared client. Both must resolve to the same learner.
+  const admin = await acceptanceIdentities.admin();
+  const learners = [
+    await acceptanceIdentities.learner(),
+    await acceptanceIdentities.learner(),
+  ];
+  const learnerIds = [];
+  for (const learner of learners) {
+    const { data, error } = await learner.auth.getUser();
+    if (error || !data?.user?.id)
+      throw new Error(
+        "Could not resolve the acceptance learner's own hosted Supabase Auth user id.",
       );
-    return fail(
-      "POSTGRES_CONCURRENCY:COMPLETION_VS_COMPLETION",
-      `Expected 1 fulfilled/1 unique-violation(23505)-rejected/0 other rejections/1 row; got ${fulfilled} fulfilled, ${uniqueRejected} unique-violation-rejected, ${otherRejections.length} other rejection(s), ${rows[0].n} row(s).`,
-      otherRejections,
-    );
-  } finally {
-    await closeAll();
+    learnerIds.push(data.user.id);
   }
+  if (learners[0] === learners[1] || learnerIds[0] !== learnerIds[1])
+    throw new Error(
+      "COMPLETION_VS_COMPLETION requires two independent sessions of the SAME acceptance learner.",
+    );
+
+  const course = await seedAcceptanceCourse(
+    admin,
+    completionRunId,
+    learnerIds[0],
+  );
+  if (course.enrolmentId === chain?.enrolmentId)
+    throw new Error(
+      "COMPLETION_VS_COMPLETION must use its own completion-ready enrolment, never the owning chain's.",
+    );
+  await seedAcceptanceResults(course, true);
+  const evidence = [
+    `Completion course run ${completionRunId}: course_package_imports ${course.importId}, activation ${course.activationId}, enrolment ${course.enrolmentId}`,
+  ];
+
+  const gate = createStartGate(learners.length);
+  const settled = await Promise.allSettled(
+    learners.map(async (learner, index) => {
+      await gate.arrive();
+      return learner.rpc("attempt_commercial_v1_course_completion", {
+        p_enrolment_id: course.enrolmentId,
+        p_reason: `Concurrency acceptance completion ${index + 1}`,
+      });
+    }),
+  );
+
+  const problems = [];
+  const responses = settled.map((s, index) => {
+    if (s.status === "rejected") {
+      problems.push(
+        `Call ${index + 1} threw: ${s.reason instanceof Error ? s.reason.message : String(s.reason)}`,
+      );
+      return null;
+    }
+    if (s.value?.error) {
+      problems.push(`Call ${index + 1} errored: ${s.value.error.message}`);
+      return null;
+    }
+    return s.value?.data ?? null;
+  });
+  const codes = responses.map((r) => r?.code ?? "NO_RESPONSE").sort();
+  if (codes[0] !== "ALREADY_COMPLETED" || codes[1] !== "COMPLETED")
+    problems.push(
+      `Expected exactly one COMPLETED and one ALREADY_COMPLETED; got ${JSON.stringify(responses)}.`,
+    );
+  if (!responses.every((r) => r?.ok === true))
+    problems.push("Both completion responses must be ok=true.");
+  const completed = responses.find((r) => r?.code === "COMPLETED") ?? null;
+
+  // Independent read-only verification of the institutional state the
+  // governed RPC left behind.
+  const state = await withConnection(async (c) => {
+    const receipts = (
+      await c.query(
+        `select id, student_id, activation_id, cohort_id, programme_version_id,
+                final_course_score_bp, pass_mark_bp, completed_by
+         from commercial_v1_completion_receipts where enrolment_id=$1`,
+        [course.enrolmentId],
+      )
+    ).rows;
+    const enrolment =
+      (
+        await c.query(
+          "select status, student_id, cohort_id, programme_version_id from enrolments where id=$1",
+          [course.enrolmentId],
+        )
+      ).rows[0] ?? null;
+    const activation =
+      (
+        await c.query(
+          "select cohort_id, programme_version_id from course_activations where id=$1",
+          [course.activationId],
+        )
+      ).rows[0] ?? null;
+    const policy =
+      (
+        await c.query(
+          "select pass_mark_bp from commercial_v1_result_policies where activation_id=$1",
+          [course.activationId],
+        )
+      ).rows[0] ?? null;
+    const completionAudits = (
+      await c.query(
+        "select count(*)::int as n from audit_events where action='COMMERCIAL_V1_COURSE_COMPLETED' and target_id=$1",
+        [course.enrolmentId],
+      )
+    ).rows[0].n;
+    return { receipts, enrolment, activation, policy, completionAudits };
+  });
+
+  const { receipts, enrolment, activation, policy, completionAudits } = state;
+  const receipt = receipts.length === 1 ? receipts[0] : null;
+  if (!receipt)
+    problems.push(
+      `Expected exactly one completion receipt for the enrolment; found ${receipts.length}.`,
+    );
+  if (enrolment?.status !== "COMPLETED")
+    problems.push(
+      `Expected enrolment status COMPLETED; got ${enrolment?.status ?? "no enrolment"}.`,
+    );
+  if (completionAudits !== 1)
+    problems.push(
+      `Expected exactly one COMMERCIAL_V1_COURSE_COMPLETED audit event; found ${completionAudits}.`,
+    );
+  if (receipt && enrolment && activation && policy) {
+    if (
+      !responses.every((r) => r?.receiptId === receipt.id) ||
+      receipt.student_id !== enrolment.student_id ||
+      receipt.student_id !== course.studentId ||
+      receipt.completed_by !== course.studentId
+    )
+      problems.push(
+        "Receipt identity is incoherent: both responses must name the one receipt, and its student/completed_by must be the enrolment's own learner.",
+      );
+    if (
+      receipt.activation_id !== course.activationId ||
+      receipt.cohort_id !== enrolment.cohort_id ||
+      receipt.programme_version_id !== enrolment.programme_version_id ||
+      activation.cohort_id !== enrolment.cohort_id ||
+      activation.programme_version_id !== enrolment.programme_version_id
+    )
+      problems.push(
+        "Receipt activation/cohort/programme-version lineage does not match the governed enrolment/activation.",
+      );
+    if (
+      receipt.pass_mark_bp !== policy.pass_mark_bp ||
+      receipt.final_course_score_bp < receipt.pass_mark_bp ||
+      receipt.final_course_score_bp !== completed?.courseScoreBp
+    )
+      problems.push(
+        `Receipt score/pass-mark state is incoherent (final ${receipt.final_course_score_bp}, pass mark ${receipt.pass_mark_bp}, policy ${policy.pass_mark_bp}, COMPLETED response ${completed?.courseScoreBp}).`,
+      );
+  } else if (receipt) {
+    problems.push(
+      "Could not read the enrolment, activation or result policy to verify the receipt lineage.",
+    );
+  }
+
+  if (problems.length === 0)
+    return pass(
+      surface,
+      "Governed completion acceptance test (public.attempt_commercial_v1_course_completion, not a raw receipt insert): two independently signed-in sessions of the same learner were released together from one start gate against a separate, legitimately completion-ready enrolment. Exactly one call returned COMPLETED and the other ALREADY_COMPLETED naming the same receipt; exactly one receipt, one completion audit event and enrolment status COMPLETED resulted, with coherent lineage and score. Proves the operation is idempotent under concurrently dispatched calls; does not prove the two server transactions overlapped in time.",
+      evidence,
+    );
+  return fail(
+    surface,
+    "Governed concurrent completion did not produce exactly one coherent completion.",
+    [...evidence, ...problems],
+  );
 }
 
 // Independent-review finding 4: these two scenarios previously returned a

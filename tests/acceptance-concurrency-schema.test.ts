@@ -244,15 +244,13 @@ describe("acceptance concurrency SQL against a REAL migrated schema (independent
   });
 });
 
-describe("acceptance concurrency: NEVER_TWO_REVISION_ONES completes and validates the admitted revision on a non-10 max-marks assessment (independent-review findings B & D, v5)", () => {
+describe("acceptance concurrency: NEVER_TWO_REVISION_ONES commits only a complete, valid revision 1 inside each contender's own transaction (V7, Defect A)", () => {
   let f: Awaited<ReturnType<typeof buildAssessmentPolicyFixture>>;
   let attemptId: string;
 
   beforeAll(async () => {
     // additionalQuizQuestion: true -- QUIZ_1 has TWO real 10-mark
-    // questions (real max 20, never the old hard-coded 10) so this test
-    // cannot pass merely because the fixture's default shape happens to
-    // total 10 either way.
+    // questions (real max 20, never the old hard-coded 10).
     f = await buildAssessmentPolicyFixture({
       withLabs: false,
       additionalQuizQuestion: true,
@@ -279,113 +277,213 @@ describe("acceptance concurrency: NEVER_TWO_REVISION_ONES completes and validate
     vi.resetModules();
   });
 
-  function mockPgAroundRealDb() {
+  function chain() {
+    return {
+      studentId: learner,
+      enrolmentId: f.learnerEnrolmentId,
+      activationId: f.activationId,
+      assessmentId: f.assessmentIds.QUIZ_1,
+      attemptId,
+    };
+  }
+
+  // PGlite is ONE embedded session, so two fake "connections" cannot hold
+  // two independent transactions at once. This fake serializes whole
+  // transactions instead: BEGIN is deferred until a contender's first real
+  // statement (after the start gate), which then waits for any other
+  // contender's transaction to COMMIT/ROLLBACK first -- the same ordering
+  // a real server imposes when the second INSERT blocks on the first's
+  // uncommitted unique-index entry. Non-transactional reads also wait, so
+  // nothing ever runs inside another contender's open transaction.
+  //
+  // One structural PGlite difference remains: guard_assessment_result_insert()
+  // pre-checks for an existing revision BEFORE the unique index is reached.
+  // Here the loser starts only after the winner COMMITTED, so that
+  // pre-check sees the row and raises INVALID_RESULT_REVISION_SEQUENCE
+  // rather than SQLSTATE 23505. The harness's SQLSTATE discipline correctly
+  // reports that as FAIL (PASS proof needs a real hosted PostgreSQL run);
+  // what these tests prove is what actually gets COMMITTED.
+  function mockSerializedPgAroundRealDb(
+    options: { forceInvalid?: boolean } = {},
+  ) {
     process.env.ACCEPTANCE_DATABASE_URL =
       "postgresql://acceptance:acceptance@localhost:5432/acceptance";
     process.env.ACCEPTANCE_WRITE_ENABLED = "true";
     process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    let transactionTail: Promise<void> = Promise.resolve();
+    const statements: { client: number; sql: string }[] = [];
+    let nextClient = 0;
     function FakeClient() {
+      const clientNo = nextClient++;
+      let beginPending = false;
+      let endTransaction: (() => void) | null = null;
       return {
         connect: async () => {
+          await transactionTail;
           await owner(f.db);
         },
         end: async () => {},
         query: async (sql: string, params: unknown[] = []) => {
           if (sql.includes("acceptance_marker"))
             return { rows: [{ marker: "x" }] };
-          const result = await f.db.query(sql, params);
-          return { rows: result.rows };
+          const trimmed = sql.trim().toLowerCase();
+          if (trimmed === "begin") {
+            beginPending = true;
+            return { rows: [] };
+          }
+          if (beginPending) {
+            beginPending = false;
+            const previous = transactionTail;
+            transactionTail = new Promise<void>((resolve) => {
+              endTransaction = resolve;
+            });
+            await previous;
+            await f.db.query("begin");
+          } else if (!endTransaction) {
+            await transactionTail;
+          }
+          statements.push({ client: clientNo, sql: trimmed });
+          try {
+            if (
+              options.forceInvalid &&
+              trimmed.includes("assessment_result_is_valid($1) as valid")
+            )
+              return { rows: [{ valid: false }] };
+            const result = await f.db.query(sql, params);
+            return { rows: result.rows };
+          } finally {
+            if (
+              endTransaction &&
+              (trimmed === "commit" || trimmed === "rollback")
+            ) {
+              (endTransaction as () => void)();
+              endTransaction = null;
+            }
+          }
         },
       };
     }
     vi.doMock("pg", () => ({ default: { Client: FakeClient } }));
     vi.resetModules();
+    return statements;
   }
 
-  it("leaves exactly one revision with the real 20-mark total, exactly two real question-mark rows, and a revision that satisfies assessment_result_is_valid() -- whatever the scenario's own PASS/FAIL outcome", async () => {
-    // Independent-review finding (v5, this pass): PGlite is genuinely
-    // single-connection (this file's own header comment already says
-    // so), and migration 2609150030's guard_assessment_result_insert()
-    // trigger adds an application-level pre-check
-    // (`exists(... where enrolment_id=... and component=...)`) BEFORE
-    // the unique(enrolment_id,component,revision_number) index is ever
-    // reached. Under a real two-BACKEND race, neither transaction's
-    // pre-check can see the other's still-uncommitted row, so both pass
-    // it and the unique index correctly rejects exactly one with SQLSTATE
-    // 23505. Under PGlite's single, serialized connection, the first
-    // insert's trigger effectively runs to completion before the second
-    // one starts, so the SECOND insert's OWN pre-check now sees the
-    // first row and rejects with INVALID_RESULT_REVISION_SEQUENCE
-    // instead -- a genuine, structural PGlite limitation for THIS
-    // specific table (not present for examiner_executions/
-    // examiner_recovery_executions above, which have no such pre-check
-    // and so already race correctly even under PGlite). Per the v4
-    // SQLSTATE-discipline fix, that non-23505 rejection correctly makes
-    // this scenario report FAIL here, never a fabricated PASS -- genuine
-    // PASS proof for this specific scenario can only come from a real
-    // hosted PostgreSQL run (npm run acceptance:concurrency), not yet
-    // executed. What THIS test proves, unconditionally regardless of
-    // that PASS/FAIL outcome, is exactly finding B's own stated goal:
-    // "so even an unsuccessful acceptance run does not strand an invalid
-    // append-only result" -- the admitted revision is still completed
-    // with real question marks and verified valid.
-    mockPgAroundRealDb();
-    const { scenarioNeverTwoRevisionOnes } =
-      await import("../scripts/acceptance/concurrency.mjs");
-    const result = await scenarioNeverTwoRevisionOnes({
-      studentId: learner,
-      enrolmentId: f.learnerEnrolmentId,
-      activationId: f.activationId,
-      assessmentId: f.assessmentIds.QUIZ_1,
-      attemptId,
-    });
-    // Whichever status this reaches, it must never be a rejection this
-    // harness's own SQLSTATE discipline should have caught as something
-    // OTHER than the documented PGlite-vs-trigger interaction above --
-    // pin the exact known reason so any DIFFERENT failure (a genuine
-    // regression) still fails this test loudly.
-    if (result.status === "FAIL") {
-      expect(result.details).toContain("INVALID_RESULT_REVISION_SEQUENCE");
-    } else {
-      expect(result.status).toBe("PASS");
-    }
-
+  async function quiz1Revisions() {
     await owner(f.db);
-    const { rows: resultRows } = await f.db.query<{
+    const { rows } = await f.db.query<{
       id: string;
+      revision_number: number;
       earned_marks_total: number;
       max_marks_total: number;
       valid: boolean;
     }>(
-      `select r.id, r.earned_marks_total, r.max_marks_total,
+      `select r.id, r.revision_number, r.earned_marks_total, r.max_marks_total,
               commercial_v1_private.assessment_result_is_valid(r.id) as valid
        from commercial_v1_assessment_result_revisions r
-       where r.enrolment_id=$1 and r.component='QUIZ_1' and r.revision_number=1`,
+       where r.enrolment_id=$1 and r.component='QUIZ_1'`,
       [f.learnerEnrolmentId],
     );
-    expect(resultRows.length).toBe(1);
-    const revision = resultRows[0];
-    // Real max (two 10-mark questions), never the old hard-coded 10 --
-    // and the v5 full-marks race shape (actualMax/actualMax).
+    return rows;
+  }
+
+  // Runs FIRST (vitest runs a file's tests in declaration order): proves a
+  // validity failure inside the contender transaction leaves NOTHING
+  // committed on the real schema -- no revision and no question marks.
+  it("a validity failure inside the contender transaction rolls back completely -- no committed half-built revision or question marks remain", async () => {
+    const statements = mockSerializedPgAroundRealDb({ forceInvalid: true });
+    const { scenarioNeverTwoRevisionOnes } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const result = await scenarioNeverTwoRevisionOnes(chain());
+    expect(result.status).toBe("FAIL");
+    expect(result.details?.join("\n")).toContain(
+      "failed commercial_v1_private.assessment_result_is_valid() inside its own transaction",
+    );
+    // Neither contender ever issued COMMIT; both rolled back.
+    expect(statements.some((s) => s.sql === "commit")).toBe(false);
+    expect(statements.filter((s) => s.sql === "rollback").length).toBe(2);
+
+    expect(await quiz1Revisions()).toEqual([]);
+    const { rows: marks } = await f.db.query<{ n: number }>(
+      `select count(*)::int as n from commercial_v1_assessment_question_marks m
+       join assessment_questions q on q.id=m.question_id
+       where q.assessment_id=$1`,
+      [f.assessmentIds.QUIZ_1],
+    );
+    expect(marks[0].n).toBe(0);
+  });
+
+  it("each contender writes revision + every question mark + objective outcomes + validity on its OWN client before COMMIT; exactly one complete, valid revision 1 (the winner's) survives", async () => {
+    const statements = mockSerializedPgAroundRealDb();
+    const { scenarioNeverTwoRevisionOnes } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const result = await scenarioNeverTwoRevisionOnes(chain());
+    // See mockSerializedPgAroundRealDb: under PGlite the loser is rejected
+    // by the trigger pre-check, not 23505, so this is a documented FAIL.
+    expect(result.status).toBe("FAIL");
+    expect(result.details?.join("\n")).toContain(
+      "INVALID_RESULT_REVISION_SEQUENCE",
+    );
+    expect(result.reason).toContain("got 1 committed");
+
+    // The winner's statements, in order, on ONE client, all before COMMIT.
+    const commits = statements.filter((s) => s.sql === "commit");
+    expect(commits.length).toBe(1);
+    const winnerClient = commits[0].client;
+    const winner = statements
+      .filter((s) => s.client === winnerClient)
+      .map((s) => s.sql);
+    const revisionAt = winner.findIndex((s) =>
+      s.startsWith("insert into commercial_v1_assessment_result_revisions"),
+    );
+    const markIndexes = winner
+      .map((s, i) =>
+        s.startsWith("insert into commercial_v1_assessment_question_marks")
+          ? i
+          : -1,
+      )
+      .filter((i) => i >= 0);
+    const deriveAt = winner.findIndex((s) =>
+      s.includes("derive_and_insert_objective_outcomes"),
+    );
+    const validAt = winner.findIndex((s) =>
+      s.includes("assessment_result_is_valid($1) as valid"),
+    );
+    const commitAt = winner.indexOf("commit");
+    expect(revisionAt).toBeGreaterThanOrEqual(0);
+    expect(markIndexes.length).toBe(2); // one per REAL question
+    expect(Math.min(...markIndexes)).toBeGreaterThan(revisionAt);
+    expect(deriveAt).toBeGreaterThan(Math.max(...markIndexes));
+    expect(validAt).toBeGreaterThan(deriveAt);
+    expect(commitAt).toBeGreaterThan(validAt);
+    // The loser attempted its own revision insert on a DIFFERENT client
+    // and rolled back.
+    const loser = statements
+      .filter((s) => s.client !== winnerClient)
+      .map((s) => s.sql);
+    expect(
+      loser.some((s) =>
+        s.startsWith("insert into commercial_v1_assessment_result_revisions"),
+      ),
+    ).toBe(true);
+    expect(loser).toContain("rollback");
+    expect(loser).not.toContain("commit");
+
+    const revisions = await quiz1Revisions();
+    expect(revisions.length).toBe(1);
+    const revision = revisions[0];
+    expect(revision.revision_number).toBe(1);
     expect(revision.max_marks_total).toBe(20);
     expect(revision.earned_marks_total).toBe(20);
     expect(revision.valid).toBe(true);
-
-    const { rows: markRows } = await f.db.query<{
-      question_id: string;
-      marks_awarded: number;
-      max_marks_snapshot: number;
-    }>(
-      "select question_id, marks_awarded, max_marks_snapshot from commercial_v1_assessment_question_marks where result_revision_id=$1",
+    const { rows: markRows } = await f.db.query<{ marks_awarded: number }>(
+      "select marks_awarded from commercial_v1_assessment_question_marks where result_revision_id=$1",
       [revision.id],
     );
-    // One question_marks row per real question -- two for QUIZ_1, never
-    // left with none (the exact append-only, unrepairable-history bug
-    // this scenario previously left behind).
-    expect(markRows.length).toBe(2);
-    for (const m of markRows) {
-      expect(m.marks_awarded).toBe(10);
-      expect(m.max_marks_snapshot).toBe(10);
-    }
+    expect(markRows.map((m) => m.marks_awarded)).toEqual([10, 10]);
+    const { rows: outcomeRows } = await f.db.query<{ n: number }>(
+      "select count(*)::int as n from commercial_v1_assessment_objective_outcomes where result_revision_id=$1",
+      [revision.id],
+    );
+    expect(outcomeRows[0].n).toBeGreaterThan(0);
   });
 });
