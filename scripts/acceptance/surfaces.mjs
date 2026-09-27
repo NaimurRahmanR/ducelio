@@ -1162,30 +1162,28 @@ export async function checkSupabaseAuthEmail() {
 }
 
 // ---------------------------------------------------------------------------
-// LIVE_PROVIDER -- never runs without an explicit, double-gated opt-in AND
-// the operator having separately instructed this session to perform live
-// acceptance. A configured credential is never itself permission.
+// LIVE_PROVIDER -- this broad hosted matrix NEVER makes a billable provider
+// request, whatever is configured or passed. Current Commercial V1 routes
+// natively (OPENAI_API_KEY / ANTHROPIC_API_KEY; endpoints and models are
+// code-owned), not through the legacy ACADEMIC_PROVIDER_* HTTP_JSON gateway.
+// The dedicated, double-authorized `npm run acceptance:live-provider`
+// (scripts/acceptance/live-provider.mjs) owns billable execution and reports
+// its own LIVE_PROVIDER:OPENAI_EXAMINER / LIVE_PROVIDER:ANTHROPIC_LAB
+// surfaces. Names only; no value is ever read into a message.
 // ---------------------------------------------------------------------------
-export async function checkLiveProvider({ operatorAuthorized = false } = {}) {
-  if (
-    !isConfigured("ACADEMIC_PROVIDER_BASE_URL") ||
-    !isConfigured("ACADEMIC_PROVIDER_API_KEY")
-  )
-    return blocked(
-      "LIVE_PROVIDER",
-      "ACADEMIC_PROVIDER_BASE_URL/ACADEMIC_PROVIDER_API_KEY are not configured.",
-    );
-  if (!liveProviderOptedIn())
-    return blocked("LIVE_PROVIDER", "EXPLICIT_AUTHORIZATION_REQUIRED", [
-      "ACCEPTANCE_LIVE_PROVIDER_OPT_IN must be exactly 'true'.",
-    ]);
-  if (!operatorAuthorized)
-    return blocked("LIVE_PROVIDER", "EXPLICIT_AUTHORIZATION_REQUIRED", [
-      "Credentials and the opt-in flag are present, but the operator has not separately instructed this session to run a billable live-provider request. Never inferred from a key existing.",
-    ]);
-  return notRun(
+export async function checkLiveProvider() {
+  const configured = (name) =>
+    `${name}: ${isConfigured(name) ? "configured" : "missing"}`;
+  return blocked(
     "LIVE_PROVIDER",
-    "Live provider acceptance was authorized but this invocation did not request it.",
+    "Run separately: `npm run acceptance:live-provider` (explicitly double-authorized; this matrix never makes a paid provider request).",
+    [
+      configured("OPENAI_API_KEY"),
+      configured("ANTHROPIC_API_KEY"),
+      `ACCEPTANCE_LIVE_PROVIDER_OPT_IN: ${liveProviderOptedIn() ? "exactly 'true'" : "not 'true'"}`,
+      "Billable execution additionally requires `npm run acceptance:live-provider -- --authorize-live-provider`. A configured key is never itself permission.",
+      "ACADEMIC_PROVIDER_BASE_URL/ACADEMIC_PROVIDER_API_KEY are the legacy generic gateway and are not used by any current Commercial V1 production profile.",
+    ],
   );
 }
 

@@ -16,6 +16,7 @@ Verified directly in this environment (not assumed): `.env.local` holds only `NE
 - `npm run acceptance:hosted` — runs every surface in the matrix below (HOSTED_DATABASE, MIGRATIONS, RLS_ACL, JWT_POSTGREST, GRADING, INITIAL_RECOVERY, REGRADE, RESULT_PROGRESS_COMPLETION, STRIPE_TEST_MODE, SUPABASE_AUTH_EMAIL, LIVE_PROVIDER, MONITORING, BACKUP_RESTORE, FULL_CUSTOMER_JOURNEY) and prints a PASS/FAIL/BLOCKED/NOT_RUN matrix. A missing prerequisite is always BLOCKED, never a false PASS.
 - `npm run acceptance:concurrency` — the true multi-connection PostgreSQL concurrency scenarios from section 2 below, using genuinely independent `pg` connections (never PGlite, never sequential queries dressed up as concurrency).
 - `npm run acceptance:examiner-app` — the real-application driver for `EXAMINER_APP:GRADING`, `EXAMINER_APP:INITIAL_RECOVERY` and `EXAMINER_APP:REGRADE` (section 4a below). It never signs anything itself; `acceptance:hosted` is unchanged and still reports these three surfaces as BLOCKED.
+- `npm run acceptance:live-provider` — the explicitly double-authorized paid smoke tests `LIVE_PROVIDER:OPENAI_EXAMINER` and `LIVE_PROVIDER:ANTHROPIC_LAB` (section 5 below). It is the only command that may make a billable provider request; `acceptance:hosted` never does.
 
 Three surfaces (`GRADING`, `INITIAL_RECOVERY`, `REGRADE`) are deliberately, permanently `BLOCKED` from this harness by design: the HMAC canonical-message-construction logic for those governance surfaces exists in exactly one place, `src/server/commercial-v1-examiner-*/authority.ts`, and this harness never reimplements that trust-critical protocol outside the application itself. Full acceptance of those three surfaces means driving the real Ducelio application server (configured against the hosted database/provider) over HTTP, mirroring `scripts/smoke.mjs`'s own established pattern — not a parallel script. This is an explicit, reviewed architectural choice, not an oversight.
 
@@ -98,17 +99,34 @@ Successful acceptance permits: **HOSTED JWT/POSTGREST — PASS**.
 
 ---
 
-## 5. Live AI provider acceptance
+## 5. Live AI provider acceptance (`npm run acceptance:live-provider`)
 
-**Blocker:** no live provider credentials are configured. Confirmed exact environment variable names (`src/server/academic-runtime/provider.ts`): `ACADEMIC_PROVIDER_BASE_URL`, `ACADEMIC_PROVIDER_API_KEY`. Neither is set. Live provider acceptance would also incur external usage and therefore requires explicit authorization before execution.
+**Correction (live-provider acceptance checkpoint):** an earlier version of this section named `ACADEMIC_PROVIDER_BASE_URL`/`ACADEMIC_PROVIDER_API_KEY` as the Commercial V1 provider configuration. That has been stale since PR22's native AI routing (`docs/32-commercial-v1-native-ai-routing.md`).
 
-Current status: **LIVE_PROVIDER_ACCEPTANCE_PENDING_AUTHORIZATION**.
+**Current configuration.** Commercial V1 production profiles route natively. The only provider credentials are the server-only `OPENAI_API_KEY` (every `OPENAI_RESPONSES` profile, including `EXAMINER_COMMERCIAL_V1`) and `ANTHROPIC_API_KEY` (the `ANTHROPIC_MESSAGES` profile `LAB_INSTRUCTOR_COMMERCIAL_V1`). Endpoints, model ids, tariffs and budget policies stay code-owned in `src/server/academic-runtime/provider.ts` and `src/server/academic-runtime/profile-registry.ts`; no environment variable, browser, course package or stored agent configuration can choose them. Without the relevant key, `resolveAdapterForProfile` returns `null` and execution fails closed to `NO_PROVIDER_CONFIGURED` before any network call.
 
-**Prerequisites:** provision the existing server-only provider configuration (never exposed to the browser — `resolveAdapterForProfile` fails closed to `NO_PROVIDER_CONFIGURED` without it). Explicitly authorize a bounded paid smoke test before performing one.
+`ACADEMIC_PROVIDER_BASE_URL`/`ACADEMIC_PROVIDER_API_KEY` configure only the **legacy** generic `HTTP_JSON` adapter (`resolveConfiguredProvider`), kept for backward compatibility. No current Commercial V1 production profile routes through it, so it is not required for Commercial V1 and is not a live-provider acceptance target.
 
-**Minimum acceptance test:** smallest safe fixture that contains no real learner PII; uses a bounded synthetic grading context; invokes exactly the reviewed Examiner profile; makes at most the configured provider-call limit; validates strict returned JSON; records real observed token/usage accounting; checks real elapsed time against the current deadline; proves provider transport failure remains non-authoritative; proves provider output cannot bypass result validation.
+**Explicit double authorization.** A key existing — in `.env.local` or the shell — is never permission to spend. `npm run acceptance:live-provider` makes a provider request only when BOTH `ACCEPTANCE_LIVE_PROVIDER_OPT_IN` is exactly `true` AND the operator passes `--authorize-live-provider` (`npm run acceptance:live-provider -- --authorize-live-provider`). Without both, every surface reports `BLOCKED` (`EXPLICIT_AUTHORIZATION_REQUIRED`), no server starts and zero provider requests are made. With both, a surface whose own key is absent BLOCKS on its own and the other still runs. `npm run acceptance:hosted` never makes a paid request: its `LIVE_PROVIDER` row is always `BLOCKED` and points at the dedicated command.
 
-A successful smoke test establishes **LIVE PROVIDER — SMOKE-TESTED**, never **PRODUCTION-PROVEN**, and never a claim about general model quality.
+**Surfaces (exactly two).**
+
+| Surface                         | Production profile             | Adapter / model                          | Role / capability                          |
+| ------------------------------- | ------------------------------ | ---------------------------------------- | ------------------------------------------ |
+| `LIVE_PROVIDER:OPENAI_EXAMINER` | `EXAMINER_COMMERCIAL_V1`       | `OPENAI_RESPONSES` / `gpt-5.6-luna`      | `EXAMINER` / `grade_controlled_assessment` |
+| `LIVE_PROVIDER:ANTHROPIC_LAB`   | `LAB_INSTRUCTOR_COMMERCIAL_V1` | `ANTHROPIC_MESSAGES` / `claude-sonnet-5` | `LAB_INSTRUCTOR` / `tutor_lab_support`     |
+
+Each is requested exactly once per authorized invocation: at most one OpenAI and one Anthropic request, no script-level retry and no probe call; the only provider retry is what the production profile permits (`maxAttempts` 1).
+
+**How it runs.** `scripts/acceptance/live-provider.mjs` builds no provider request. It starts the real app locally (`next dev`, loopback only) and calls the acceptance-only route `src/app/api/acceptance/live-provider/route.ts`, which accepts exactly `{ "operation": "OPENAI_EXAMINER_SMOKE" | "ANTHROPIC_LAB_SMOKE" }` — any other field (provider, model, profile, endpoint, key, budget, context, role, capability, prompt/instructions) is rejected with 400. `src/server/live-provider-acceptance-driver.ts` then reaches the existing production path: `resolveRoleBoundRuntimeProfile` → `resolveAdapterForProfile` → `runGovernedProviderExecution` (the same adapters, request construction, response schemas, tariffs, failure vocabulary and budget/deadline enforcement the product uses). Each plan pins the expected profile ref, adapter, model, OpenAI reasoning effort (`medium` for the Examiner) and the exact execution envelope (`maxProviderCalls` 1, `maxAttempts` 1, `maxOutputTokens` 1200/700, `maxEstimatedCostMicrousd` 50000/40000, `totalDeadlineMs` 15000). Drift in any pinned value — e.g. `maxAttempts` 2, which could otherwise allow a second billable request — fails closed as `PROFILE_MISMATCH` / `NOT_EXECUTED` / `providerCalls=0` before the adapter is resolved or the runtime runs. Tariffs are not pinned (they stay owned by the registry/adapter and only affect the reported cost, which the pinned cost ceiling bounds). The Examiner smoke applies the existing strict `parseExaminerAssessmentProviderOutput` and, for `GRADED`, `validateExaminerAssessmentMarks` against its synthetic context; a valid `ESCALATE` is a valid fail-safe outcome. The Lab smoke relies on the production adapter's bounded output parser; its synthetic reason is `PRACTICAL_HELP`, typed against the existing `TUTOR_LAB_ALLOWED_REASONS.LAB_INSTRUCTOR` authority. A PASS additionally requires the evidence to show exactly one provider request (`providerCalls === 1` and `attempts === 1`), enforced at the server verdict and again by the driver's evidence consumer. Both contexts are tiny, hard-coded, labelled synthetic demo content with fixed UUID-shaped identifiers, no real learner or course data and no personal data. This harness uses no database, no HMAC attestation and no database clock; only the normal provider/runtime deadline applies.
+
+- **Route gate (404 unless all hold, checked before the body is read):** `ACCEPTANCE_LIVE_PROVIDER_DRIVER_ENABLED=true`; a fresh per-run 64-hex `ACCEPTANCE_LIVE_PROVIDER_DRIVER_TOKEN` presented in `x-ducelio-live-provider-driver` (constant-time comparison); `NODE_ENV` not production; `ACCEPTANCE_LIVE_PROVIDER_OPT_IN=true`; `ACCEPTANCE_LIVE_PROVIDER_AUTHORIZED=true` (the driver's propagation of `--authorize-live-provider`); no examiner-app driver/provider-stub redirect marker in the process (so stubbed traffic can never be reported as live evidence); loopback `APP_URL` and request Host; no `Origin`/`Sec-Fetch-Site`. The driver sets these only in its own child process; operators never configure them. This gate deliberately does not reuse, and does not change, the examiner-app redirect-attestation gate (section 4a).
+- **Child secret minimisation:** the child receives the per-run gate settings, a loopback `APP_URL` and only the provider key(s) for the authorized, key-present surfaces. The acceptance database URL and write flag, acceptance identities, `ACADEMIC_EXECUTION_*`, `STRIPE_*`, `COMMERCE_CONTROLLER_*`, the legacy `ACADEMIC_PROVIDER_*` pair, Supabase URL/keys, `NODE_OPTIONS`, any other inherited credential-shaped name and every name defined in any `.env*` file Next.js could load are forced to empty strings (which Next.js's `.env` loader never overrides). Name enumeration fails closed: if such a file exists but cannot be read or decoded as UTF-8, the authorized run is `BLOCKED` (`ENV_FILE_NOT_INSPECTABLE`, naming only the file) before the app starts, with zero provider requests. Child output is never forwarded; keys are never written to any file.
+- **Evidence (metadata only):** provider family, adapter kind, profile ref, model id, runtime outcome and bounded detail code, parsed Examiner outcome (`GRADED`/`ESCALATE`), strict-parse and marks-validation booleans, Lab output length, `providerCalls`, `attempts`, input/output tokens, estimated cost (micro-USD, production tariff), elapsed ms, and whether usage fits the exact production profile envelope. The driver re-validates every field against a closed vocabulary before printing and reports the total provider requests made. Raw model output, provider request/response bodies, the synthetic expected answer/marking guidance, parsed marks, headers and keys are never returned, printed or stored. **No raw provider or model content is acceptance evidence.**
+
+A successful run establishes **LIVE-PROVIDER-TESTED** for the named surface(s) only — one authorized request through the current production adapter/runtime returned a result that passed the existing strict parsing/validation inside the production budget envelope. It never establishes **PRODUCTION-PROVEN**, production readiness, or any claim about grading or instructional quality.
+
+Current status: **LIVE_PROVIDER_ACCEPTANCE_PENDING_AUTHORIZATION** — the harness exists and its unauthorized invocation is verified to make zero provider requests; no authorized run has been performed.
 
 ---
 
@@ -164,7 +182,7 @@ Successful evidence: **BACKUP/RESTORE — PASS**.
 
 ## 10. Required hosted acceptance environment
 
-A dedicated Ducelio staging/acceptance environment, never production learner records, with: a separate hosted Supabase project/database; synthetic users; current migrations 001–040; dedicated controller/HMAC keys (`ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, `COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`); a test provider credential or explicit provider smoke-test permission (`ACADEMIC_PROVIDER_BASE_URL`/`ACADEMIC_PROVIDER_API_KEY`); Stripe test-mode credentials (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`); a confirmed email-delivery path (Supabase Auth's own, or a built custom SMTP integration); monitoring enabled.
+A dedicated Ducelio staging/acceptance environment, never production learner records, with: a separate hosted Supabase project/database; synthetic users; current migrations 001–040; dedicated controller/HMAC keys (`ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, `COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`); native provider credentials (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`) plus explicit double authorization for the provider smoke test (section 5); Stripe test-mode credentials (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`); a confirmed email-delivery path (Supabase Auth's own, or a built custom SMTP integration); monitoring enabled.
 
 ---
 
@@ -176,7 +194,7 @@ A dedicated Ducelio staging/acceptance environment, never production learner rec
 4. Provision controller/HMAC trust (`ACADEMIC_EXECUTION_*`).
 5. Run real multi-connection PostgreSQL concurrency tests (Section 2).
 6. Run hosted grading/recovery/result/completion acceptance using mocked/no-provider execution first.
-7. Perform one explicitly authorized bounded live-provider smoke test.
+7. Perform one explicitly authorized bounded live-provider smoke test (`npm run acceptance:live-provider -- --authorize-live-provider` with `ACCEPTANCE_LIVE_PROVIDER_OPT_IN=true`).
 8. Run Stripe test-mode acceptance.
 9. Confirm the email-delivery path.
 10. Verify monitoring.
@@ -209,18 +227,18 @@ Never infer a stronger status from a weaker one.
 
 ## Current Checkpoint D matrix
 
-| Surface                     | Current status                                                                          | Requirement to unblock                                                          |
-| --------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Hosted DB migrations        | BLOCKED                                                                                 | Hosted DB + migration access                                                    |
-| Hosted RLS/ACL              | BLOCKED                                                                                 | Hosted Supabase/PostgreSQL                                                      |
-| Hosted JWT/PostgREST        | BLOCKED                                                                                 | Hosted Auth + synthetic identities                                              |
-| True PostgreSQL concurrency | NOT RUN                                                                                 | Multiple real DB connections                                                    |
-| Hosted grading/recovery     | BLOCKED                                                                                 | DB + controller key provisioning, then `npm run acceptance:examiner-app`        |
-| Hosted result/completion    | BLOCKED                                                                                 | Hosted DB/auth acceptance                                                       |
-| Live provider               | PENDING AUTHORIZATION                                                                   | `ACADEMIC_PROVIDER_*` + explicit spend authorization                            |
-| Stripe                      | BLOCKED                                                                                 | `STRIPE_*`/`COMMERCE_CONTROLLER_*` test-mode keys/webhook                       |
-| SMTP / email delivery       | BLOCKED (or N/A if Supabase Auth's built-in email is the accepted path — confirm which) | Mail provider configuration, or acceptance test of Supabase Auth's own delivery |
-| Monitoring                  | BLOCKED                                                                                 | Hosted deployment + monitoring                                                  |
-| Backup/restore              | BLOCKED                                                                                 | Hosted DB + backup/restore procedure                                            |
+| Surface                     | Current status                                                                          | Requirement to unblock                                                           |
+| --------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Hosted DB migrations        | BLOCKED                                                                                 | Hosted DB + migration access                                                     |
+| Hosted RLS/ACL              | BLOCKED                                                                                 | Hosted Supabase/PostgreSQL                                                       |
+| Hosted JWT/PostgREST        | BLOCKED                                                                                 | Hosted Auth + synthetic identities                                               |
+| True PostgreSQL concurrency | NOT RUN                                                                                 | Multiple real DB connections                                                     |
+| Hosted grading/recovery     | BLOCKED                                                                                 | DB + controller key provisioning, then `npm run acceptance:examiner-app`         |
+| Hosted result/completion    | BLOCKED                                                                                 | Hosted DB/auth acceptance                                                        |
+| Live provider               | PENDING AUTHORIZATION (harness built; zero-request unauthorized run verified)           | `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` + explicit double authorization (section 5) |
+| Stripe                      | BLOCKED                                                                                 | `STRIPE_*`/`COMMERCE_CONTROLLER_*` test-mode keys/webhook                        |
+| SMTP / email delivery       | BLOCKED (or N/A if Supabase Auth's built-in email is the accepted path — confirm which) | Mail provider configuration, or acceptance test of Supabase Auth's own delivery  |
+| Monitoring                  | BLOCKED                                                                                 | Hosted deployment + monitoring                                                   |
+| Backup/restore              | BLOCKED                                                                                 | Hosted DB + backup/restore procedure                                             |
 
 Checkpoint D becomes complete only when the required rows are supported by actual acceptance evidence, never configuration assumptions.

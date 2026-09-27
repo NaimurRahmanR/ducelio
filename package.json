@@ -20,7 +20,8 @@
     "acceptance:preflight": "node --env-file-if-exists=.env.local scripts/acceptance/preflight.mjs",
     "acceptance:hosted": "node --env-file-if-exists=.env.local scripts/acceptance/hosted.mjs",
     "acceptance:concurrency": "node --env-file-if-exists=.env.local scripts/acceptance/concurrency.mjs",
-    "acceptance:examiner-app": "node --env-file-if-exists=.env.local scripts/acceptance/examiner-app.mjs"
+    "acceptance:examiner-app": "node --env-file-if-exists=.env.local scripts/acceptance/examiner-app.mjs",
+    "acceptance:live-provider": "node --env-file-if-exists=.env.local scripts/acceptance/live-provider.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

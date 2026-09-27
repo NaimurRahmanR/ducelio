@@ -47,7 +47,9 @@ function clearAcceptanceVars() {
       key.startsWith("ACADEMIC_") ||
       key.startsWith("STRIPE_") ||
       key.startsWith("COMMERCE_") ||
-      key.startsWith("NEXT_PUBLIC_SUPABASE_")
+      key.startsWith("NEXT_PUBLIC_SUPABASE_") ||
+      key === "OPENAI_API_KEY" ||
+      key === "ANTHROPIC_API_KEY"
     )
       delete process.env[key];
   }
@@ -4181,42 +4183,78 @@ describe("acceptance harness: Stripe live-key detection", () => {
 });
 
 describe("acceptance harness: live-provider gating", () => {
-  it("never opts in merely because provider credentials exist", async () => {
+  it("never opts in merely because native provider credentials exist", async () => {
     clearAcceptanceVars();
-    process.env.ACADEMIC_PROVIDER_BASE_URL = "https://provider.example.com";
-    process.env.ACADEMIC_PROVIDER_API_KEY = "a-real-looking-key";
+    process.env.OPENAI_API_KEY = "sk-openai-sentinel";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-sentinel";
     const { liveProviderOptedIn } =
       await import("../scripts/acceptance/env.mjs");
     expect(liveProviderOptedIn()).toBe(false);
   });
   it("requires the opt-in flag to be exactly the string 'true'", async () => {
     clearAcceptanceVars();
-    process.env.ACADEMIC_PROVIDER_BASE_URL = "https://provider.example.com";
-    process.env.ACADEMIC_PROVIDER_API_KEY = "a-real-looking-key";
-    process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN = "yes";
     const { liveProviderOptedIn } =
       await import("../scripts/acceptance/env.mjs");
-    expect(liveProviderOptedIn()).toBe(false);
+    for (const value of ["yes", "TRUE", " true", "true ", "1"]) {
+      process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN = value;
+      expect(liveProviderOptedIn()).toBe(false);
+    }
     process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN = "true";
     expect(liveProviderOptedIn()).toBe(true);
   });
-  it("the LIVE_PROVIDER surface still refuses without operatorAuthorized, even fully opted in", async () => {
+  it("preflight knows the current native keys and labels ACADEMIC_PROVIDER_* as legacy", async () => {
+    clearAcceptanceVars();
+    process.env.OPENAI_API_KEY = "sk-openai-sentinel";
+    const { preflightReport, KNOWN_VARS } =
+      await import("../scripts/acceptance/env.mjs");
+    const byName = Object.fromEntries(
+      (preflightReport() as VarReport[]).map((r) => [r.name, r]),
+    );
+    expect(byName.OPENAI_API_KEY.status).toBe("configured");
+    expect(byName.ANTHROPIC_API_KEY.status).toBe("missing");
+    expect(JSON.stringify(preflightReport())).not.toContain(
+      "sk-openai-sentinel",
+    );
+    const notes = Object.fromEntries(
+      (KNOWN_VARS as { name: string; note: string }[]).map((v) => [
+        v.name,
+        v.note,
+      ]),
+    );
+    expect(notes.ACADEMIC_PROVIDER_BASE_URL).toMatch(/^LEGACY/);
+    expect(notes.ACADEMIC_PROVIDER_API_KEY).toMatch(/^LEGACY/);
+  });
+  it("the broad LIVE_PROVIDER surface is always BLOCKED and points at the dedicated command, even fully configured and opted in", async () => {
+    clearAcceptanceVars();
+    process.env.OPENAI_API_KEY = "sk-openai-sentinel";
+    process.env.ANTHROPIC_API_KEY = "sk-ant-sentinel";
+    process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN = "true";
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    try {
+      const { checkLiveProvider } =
+        await import("../scripts/acceptance/surfaces.mjs");
+      const result = await checkLiveProvider();
+      expect(result.status).toBe("BLOCKED");
+      expect(result.reason).toContain("npm run acceptance:live-provider");
+      expect(result.details).toContain("OPENAI_API_KEY: configured");
+      expect(result.details).toContain("ANTHROPIC_API_KEY: configured");
+      expect(JSON.stringify(result)).not.toMatch(/sentinel/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it("the broad LIVE_PROVIDER surface no longer depends on the legacy ACADEMIC_PROVIDER_* pair", async () => {
     clearAcceptanceVars();
     process.env.ACADEMIC_PROVIDER_BASE_URL = "https://provider.example.com";
-    process.env.ACADEMIC_PROVIDER_API_KEY = "a-real-looking-key";
-    process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN = "true";
+    process.env.ACADEMIC_PROVIDER_API_KEY = "legacy-sentinel";
     const { checkLiveProvider } =
       await import("../scripts/acceptance/surfaces.mjs");
-    const result = await checkLiveProvider({ operatorAuthorized: false });
+    const result = await checkLiveProvider();
     expect(result.status).toBe("BLOCKED");
-    expect(result.reason).toContain("EXPLICIT_AUTHORIZATION_REQUIRED");
-  });
-  it("still reports BLOCKED (never runs) without credentials, even with operatorAuthorized true", async () => {
-    clearAcceptanceVars();
-    const { checkLiveProvider } =
-      await import("../scripts/acceptance/surfaces.mjs");
-    const result = await checkLiveProvider({ operatorAuthorized: true });
-    expect(result.status).toBe("BLOCKED");
+    expect(result.reason).not.toContain("ACADEMIC_PROVIDER");
+    expect(JSON.stringify(result)).not.toContain("legacy-sentinel");
   });
 });
 

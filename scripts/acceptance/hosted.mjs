@@ -10,10 +10,6 @@ import { printResult, printSummary, exitCodeFor, blocked } from "./report.mjs";
 import { acceptanceDbConfigured } from "./db.mjs";
 import * as surfaces from "./surfaces.mjs";
 
-const liveProviderAuthorized = process.argv.includes(
-  "--authorize-live-provider",
-);
-
 console.log("===== Commercial V1 hosted acceptance =====");
 console.log(
   "Run `npm run acceptance:preflight` first if you have not already -- this " +
@@ -51,9 +47,8 @@ await run(surfaces.checkRegrade);
 await run(surfaces.checkResultProgressCompletion);
 await run(surfaces.checkStripeTestMode);
 await run(surfaces.checkSupabaseAuthEmail);
-await run(surfaces.checkLiveProvider, {
-  operatorAuthorized: liveProviderAuthorized,
-});
+// Never billable here: `npm run acceptance:live-provider` owns that.
+await run(surfaces.checkLiveProvider);
 await run(surfaces.checkMonitoring);
 await run(surfaces.checkBackupRestore);
 await run(surfaces.checkFullCustomerJourney, results);
