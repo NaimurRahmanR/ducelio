@@ -1,31 +1,40 @@
 #!/usr/bin/env node
-// npm run acceptance:live-provider [-- --authorize-live-provider]
+// npm run acceptance:live-provider [-- --authorize-live-provider --surface=<SELECTOR>]
 //
 // Commercial V1 LIVE PROVIDER acceptance (docs/38 section 5): the smallest
 // explicitly authorized paid smoke tests against the CURRENT native provider
-// adapters, one surface per reviewed provider family:
+// adapters. Three fixed surfaces, each selected by a fixed selector:
 //
-//   LIVE_PROVIDER:OPENAI_EXAMINER  EXAMINER_COMMERCIAL_V1 / OPENAI_RESPONSES
-//   LIVE_PROVIDER:ANTHROPIC_LAB    LAB_INSTRUCTOR_COMMERCIAL_V1 / ANTHROPIC_MESSAGES
+//   --surface=OPENAI_EXAMINER                LIVE_PROVIDER:OPENAI_EXAMINER
+//       EXAMINER_COMMERCIAL_V1 / OPENAI_RESPONSES / gpt-5.6-luna
+//   --surface=ANTHROPIC_LAB                  LIVE_PROVIDER:ANTHROPIC_LAB
+//       LAB_INSTRUCTOR_COMMERCIAL_V1 / ANTHROPIC_MESSAGES / claude-sonnet-5
+//   --surface=ANTHROPIC_OPERATIONS_ENGINEER  LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER
+//       OPERATIONS_ENGINEER_PLATFORM_V1 / ANTHROPIC_MESSAGES / claude-opus-5-5
 //
 // A key existing -- in .env.local or the shell -- is NEVER permission.
 // Billable execution requires BOTH ACCEPTANCE_LIVE_PROVIDER_OPT_IN exactly
 // "true" AND the explicit --authorize-live-provider command-line flag;
 // without both, every surface reports BLOCKED and this process starts no
-// server and makes no network request at all. With both, a surface whose
-// own key is absent BLOCKS on its own; the other still runs.
+// server and makes no network request at all. An authorized run must ALSO
+// name exactly one surface with --surface=<SELECTOR> on the command line
+// (never read from the environment): a missing, unknown or repeated selector
+// BLOCKS every surface. Only the selected surface may run; every other
+// surface is NOT_RUN. One invocation therefore makes at most ONE provider
+// request -- one Anthropic key can never cause both a Sonnet and an Opus
+// call. If the selected surface's key is absent it BLOCKS.
 //
 // This script never builds a provider request. It starts the real Ducelio
 // Next.js server locally (`next dev`, loopback only) and asks the
 // fail-closed, acceptance-only route src/app/api/acceptance/live-provider/
-// route.ts to run one of two fixed operations, which reach the EXISTING
+// route.ts to run one of three fixed operations, which reach the EXISTING
 // production profile registry, native adapter and governed runtime
-// (src/server/live-provider-acceptance-driver.ts). Each authorized surface
-// is requested exactly once: no script-level retry, no probe call. The only
+// (src/server/live-provider-acceptance-driver.ts). The selected surface is
+// requested exactly once: no script-level retry, no probe call. The only
 // provider retry is whatever the production profile permits (maxAttempts 1).
 //
 // The child server receives only what this route needs: the per-run gate
-// settings and the provider key(s) for the authorized surfaces. Every other
+// settings and the provider key for the selected surface. Every other
 // credential -- acceptance database, identities, HMAC/controller keys,
 // Stripe, the legacy ACADEMIC_PROVIDER_* pair, Supabase -- is forced to an
 // empty string, which Next.js's own .env loader never overrides. Child
@@ -45,9 +54,11 @@ import {
   pass,
   fail,
   blocked,
+  notRun,
 } from "./report.mjs";
 
 export const AUTHORIZE_FLAG = "--authorize-live-provider";
+export const SURFACE_FLAG_PREFIX = "--surface=";
 export const OPT_IN_VAR = "ACCEPTANCE_LIVE_PROVIDER_OPT_IN";
 export const ROUTE_PATH = "/api/acceptance/live-provider";
 export const DRIVER_HEADER = "x-ducelio-live-provider-driver";
@@ -55,6 +66,7 @@ export const DRIVER_HEADER = "x-ducelio-live-provider-driver";
 export const LIVE_PROVIDER_SURFACES = Object.freeze([
   Object.freeze({
     surface: "LIVE_PROVIDER:OPENAI_EXAMINER",
+    selector: "OPENAI_EXAMINER",
     operation: "OPENAI_EXAMINER_SMOKE",
     keyVar: "OPENAI_API_KEY",
     providerFamily: "OPENAI",
@@ -64,6 +76,7 @@ export const LIVE_PROVIDER_SURFACES = Object.freeze([
   }),
   Object.freeze({
     surface: "LIVE_PROVIDER:ANTHROPIC_LAB",
+    selector: "ANTHROPIC_LAB",
     operation: "ANTHROPIC_LAB_SMOKE",
     keyVar: "ANTHROPIC_API_KEY",
     providerFamily: "ANTHROPIC",
@@ -71,10 +84,25 @@ export const LIVE_PROVIDER_SURFACES = Object.freeze([
     profileRef: "LAB_INSTRUCTOR_COMMERCIAL_V1",
     modelId: "claude-sonnet-5",
   }),
+  Object.freeze({
+    surface: "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER",
+    selector: "ANTHROPIC_OPERATIONS_ENGINEER",
+    operation: "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+    keyVar: "ANTHROPIC_API_KEY",
+    providerFamily: "ANTHROPIC",
+    adapterKind: "ANTHROPIC_MESSAGES",
+    profileRef: "OPERATIONS_ENGINEER_PLATFORM_V1",
+    modelId: "claude-opus-5-5",
+  }),
 ]);
 
+// The fixed selector allowlist; nothing else is ever accepted.
+export const LIVE_PROVIDER_SURFACE_SELECTORS = Object.freeze(
+  LIVE_PROVIDER_SURFACES.map((s) => s.selector),
+);
+
 export const TRUTHFULNESS_STATEMENT =
-  "A PASS here establishes only LIVE-PROVIDER-TESTED for the named surface: one authorized request through the current production adapter and governed runtime returned a result that passed the existing strict parsing/validation within the production profile's budget envelope. It is not production-readiness proof, not evidence of grading or instructional quality, and no raw provider or model content is acceptance evidence.";
+  "A PASS here establishes only LIVE-PROVIDER-TESTED for the named surface: one authorized request through the current production adapter and governed runtime returned a result that passed the existing strict parsing/validation within the production profile's budget envelope. It is not production-readiness proof, not evidence of grading or instructional quality, not evidence of Operations Engineer diagnostic, coding, remediation or deployment capability, and no raw provider or model content is acceptance evidence.";
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const NEXT_BIN = fileURLToPath(
@@ -82,50 +110,107 @@ const NEXT_BIN = fileURLToPath(
 );
 
 // ---------------------------------------------------------------------------
-// Authorization. Pure: reads names and the exact opt-in value only.
+// Authorization and surface selection. Pure: reads argv, key names and the
+// exact opt-in value only. The selector comes from argv alone -- never from
+// the environment (so e.g. npm's npm_config_* translation of a flag given
+// without `--` can never select a surface).
 // ---------------------------------------------------------------------------
 export function parseCliArgs(argv) {
-  const authorized = argv.includes(AUTHORIZE_FLAG);
-  const unrecognized = argv.filter((arg) => arg !== AUTHORIZE_FLAG).length;
-  return { authorized, unrecognized };
+  let authorized = false;
+  let unrecognized = 0;
+  const selectors = [];
+  for (const arg of argv) {
+    if (arg === AUTHORIZE_FLAG) authorized = true;
+    else if (arg.startsWith(SURFACE_FLAG_PREFIX))
+      selectors.push(arg.slice(SURFACE_FLAG_PREFIX.length));
+    else unrecognized += 1;
+  }
+  const unknownSelector = selectors.some(
+    (value) => !LIVE_PROVIDER_SURFACE_SELECTORS.includes(value),
+  );
+  // Exactly one recognized selector, or none. The raw value is returned only
+  // once it is known to be an allowlisted constant; it is never echoed.
+  const selector =
+    selectors.length === 1 && !unknownSelector ? selectors[0] : null;
+  return {
+    authorized,
+    unrecognized,
+    selector,
+    unknownSelector,
+    multipleSelectors: selectors.length > 1,
+  };
 }
 
 function keyConfigured(env, name) {
   return typeof env[name] === "string" && env[name].trim() !== "";
 }
 
-// Returns, per surface, either a final BLOCKED result or `runnable: true`.
-// Never returns a key value.
+const SELECTOR_USAGE = `Select exactly one surface: ${LIVE_PROVIDER_SURFACE_SELECTORS.map((s) => `${SURFACE_FLAG_PREFIX}${s}`).join(" | ")}.`;
+
+// Returns, per surface, either a final BLOCKED/NOT_RUN result or
+// `runnable: true`. At most ONE surface is ever runnable. Never returns a
+// key value.
 export function planLiveProviderRun(env, argv) {
-  const { authorized, unrecognized } = parseCliArgs(argv);
+  const {
+    authorized,
+    unrecognized,
+    selector,
+    unknownSelector,
+    multipleSelectors,
+  } = parseCliArgs(argv);
   const optedIn = env[OPT_IN_VAR] === "true";
   const zeroCalls = "Zero provider requests were made.";
-  if (unrecognized > 0)
-    return LIVE_PROVIDER_SURFACES.map((s) => ({
+  const blockAll = (reason, details) =>
+    LIVE_PROVIDER_SURFACES.map((s) => ({
       ...s,
       runnable: false,
-      result: blocked(s.surface, "UNRECOGNIZED_ARGUMENT", [
-        `Only ${AUTHORIZE_FLAG} is accepted (arguments are never echoed).`,
-        zeroCalls,
-      ]),
+      result: blocked(s.surface, reason, details),
     }));
+  if (unrecognized > 0)
+    return blockAll("UNRECOGNIZED_ARGUMENT", [
+      `Only ${AUTHORIZE_FLAG} and one ${SURFACE_FLAG_PREFIX}<SELECTOR> are accepted (arguments are never echoed).`,
+      zeroCalls,
+    ]);
+  if (unknownSelector)
+    return blockAll("UNKNOWN_SURFACE_SELECTOR", [
+      `The ${SURFACE_FLAG_PREFIX} value is not a recognized surface (it is never echoed).`,
+      SELECTOR_USAGE,
+      zeroCalls,
+    ]);
+  if (multipleSelectors)
+    return blockAll("MULTIPLE_SURFACE_SELECTORS", [
+      `${SURFACE_FLAG_PREFIX} was given more than once; exactly one surface may run per invocation.`,
+      SELECTOR_USAGE,
+      zeroCalls,
+    ]);
   if (!optedIn || !authorized) {
     const missing = [];
     if (!optedIn) missing.push(`${OPT_IN_VAR} is not exactly 'true'.`);
     if (!authorized)
       missing.push(`The ${AUTHORIZE_FLAG} command-line flag was not given.`);
-    return LIVE_PROVIDER_SURFACES.map((s) => ({
-      ...s,
-      runnable: false,
-      result: blocked(s.surface, "EXPLICIT_AUTHORIZATION_REQUIRED", [
-        ...missing,
-        "Billable execution requires BOTH; a configured provider key is never itself permission.",
-        zeroCalls,
-      ]),
-    }));
+    return blockAll("EXPLICIT_AUTHORIZATION_REQUIRED", [
+      ...missing,
+      "Billable execution requires BOTH; a configured provider key is never itself permission.",
+      zeroCalls,
+    ]);
   }
-  return LIVE_PROVIDER_SURFACES.map((s) =>
-    keyConfigured(env, s.keyVar)
+  if (selector === null)
+    return blockAll("SURFACE_SELECTION_REQUIRED", [
+      `An authorized run must name exactly one surface on the command line. ${SELECTOR_USAGE}`,
+      "There is no run-all mode: one invocation makes at most one provider request.",
+      zeroCalls,
+    ]);
+  return LIVE_PROVIDER_SURFACES.map((s) => {
+    if (s.selector !== selector)
+      return {
+        ...s,
+        runnable: false,
+        result: notRun(s.surface, "NOT_SELECTED", [
+          `Only ${SURFACE_FLAG_PREFIX}${selector} was selected for this invocation.`,
+          zeroCalls,
+        ]),
+      };
+    return keyConfigured(env, s.keyVar)
       ? { ...s, runnable: true, result: null }
       : {
           ...s,
@@ -133,8 +218,8 @@ export function planLiveProviderRun(env, argv) {
           result: blocked(s.surface, `${s.keyVar} is not configured.`, [
             zeroCalls,
           ]),
-        },
-  );
+        };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -453,6 +538,20 @@ export function sanitizeEvidence(evidence, surface) {
     if (!evidence.lab || !isCount(evidence.lab.outputLength)) return null;
     lab = { outputLength: evidence.lab.outputLength };
   }
+  let operationsEngineer = null;
+  if (evidence.operationsEngineer !== null) {
+    const o = evidence.operationsEngineer;
+    if (!o || !isCount(o.outputLength)) return null;
+    operationsEngineer = { outputLength: o.outputLength };
+  }
+  // Each surface-specific evidence field may appear only on its own surface.
+  if (examiner && surface.operation !== "OPENAI_EXAMINER_SMOKE") return null;
+  if (lab && surface.operation !== "ANTHROPIC_LAB_SMOKE") return null;
+  if (
+    operationsEngineer &&
+    surface.operation !== "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE"
+  )
+    return null;
   return {
     operation: evidence.operation,
     surface: evidence.surface,
@@ -467,6 +566,7 @@ export function sanitizeEvidence(evidence, surface) {
     withinEnvelope: evidence.withinEnvelope,
     examiner,
     lab,
+    operationsEngineer,
     verdict: evidence.verdict,
     verdictReason: evidence.verdictReason,
   };
@@ -487,6 +587,8 @@ export function evidenceDetails(e) {
       `examinerOutcome=${e.examiner.outcome ?? "NONE"} strictParse=${e.examiner.strictParsePassed ? "passed" : "failed"} marksValidation=${e.examiner.marksValidationPassed === null ? "n/a" : e.examiner.marksValidationPassed ? "passed" : "failed"}`,
     );
   if (e.lab) details.push(`outputLength=${e.lab.outputLength}`);
+  if (e.operationsEngineer)
+    details.push(`outputLength=${e.operationsEngineer.outputLength}`);
   return details;
 }
 
@@ -536,6 +638,18 @@ export async function runLiveProviderAcceptance({
   let providerRequestsMade = 0;
   if (runnable.length === 0)
     return { results: plan.map((p) => p.result), providerRequestsMade };
+  // Defence in depth for the one-request-per-invocation rule: planning never
+  // yields more than the single selected surface, and if it ever did,
+  // nothing starts.
+  if (runnable.length !== 1)
+    return {
+      results: plan.map((p) =>
+        blocked(p.surface, "MORE_THAN_ONE_RUNNABLE_SURFACE", [
+          "Zero provider requests were made.",
+        ]),
+      ),
+      providerRequestsMade,
+    };
 
   const blockRunnable = (reason, details) =>
     plan.map((p) =>

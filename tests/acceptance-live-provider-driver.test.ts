@@ -7,6 +7,7 @@ import {
   AUTHORIZE_FLAG,
   DRIVER_HEADER,
   EnvFileInspectionError,
+  LIVE_PROVIDER_SURFACE_SELECTORS,
   ROUTE_PATH,
   TRUTHFULNESS_STATEMENT,
   WITHHELD_FROM_LIVE_PROVIDER_APP,
@@ -27,7 +28,11 @@ import {
 
 const OPENAI_KEY = "sk-openai-driver-sentinel";
 const ANTHROPIC_KEY = "sk-ant-driver-sentinel";
-const [OPENAI_SURFACE, ANTHROPIC_SURFACE] = LIVE_PROVIDER_SURFACES;
+const [OPENAI_SURFACE, ANTHROPIC_SURFACE, OPS_SURFACE] = LIVE_PROVIDER_SURFACES;
+// The fixed single-surface selectors an authorized paid run must name.
+const SELECT_OPENAI = "--surface=OPENAI_EXAMINER";
+const SELECT_LAB = "--surface=ANTHROPIC_LAB";
+const SELECT_OPS = "--surface=ANTHROPIC_OPERATIONS_ENGINEER";
 
 const SECRET_SENTINELS = {
   ACCEPTANCE_DATABASE_URL: "postgres://user:db-sentinel@db.example.com/x",
@@ -70,6 +75,7 @@ function evidenceFor(
   overrides: Record<string, unknown> = {},
 ) {
   const openai = surface.operation === "OPENAI_EXAMINER_SMOKE";
+  const ops = surface.operation === "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE";
   return {
     operation: surface.operation,
     surface: surface.surface,
@@ -90,9 +96,9 @@ function evidenceFor(
     envelope: {
       maxProviderCalls: 1,
       maxAttempts: 1,
-      maxOutputTokens: openai ? 1200 : 700,
-      maxEstimatedCostMicrousd: openai ? 50000 : 40000,
-      totalDeadlineMs: 15000,
+      maxOutputTokens: openai || ops ? 1200 : 700,
+      maxEstimatedCostMicrousd: ops ? 100000 : openai ? 50000 : 40000,
+      totalDeadlineMs: ops ? 20000 : 15000,
     },
     withinEnvelope: true,
     examiner: openai
@@ -102,9 +108,14 @@ function evidenceFor(
           marksValidationPassed: true,
         }
       : null,
-    lab: openai ? null : { outputLength: 120 },
+    lab: openai || ops ? null : { outputLength: 120 },
+    operationsEngineer: ops ? { outputLength: 160 } : null,
     verdict: "PASS",
-    verdictReason: openai ? "EXAMINER_GRADED_VALID" : "LAB_OUTPUT_ACCEPTED",
+    verdictReason: ops
+      ? "OPERATIONS_ENGINEER_OUTPUT_ACCEPTED"
+      : openai
+        ? "EXAMINER_GRADED_VALID"
+        : "LAB_OUTPUT_ACCEPTED",
     ...overrides,
   };
 }
@@ -200,7 +211,7 @@ function noSecretsIn(value: unknown) {
 }
 
 describe("live-provider driver: explicit double authorization", () => {
-  it("with neither the env opt-in nor the CLI flag: both surfaces BLOCKED, no server, zero requests", async () => {
+  it("with neither the env opt-in nor the CLI flag: every surface BLOCKED, no server, zero requests", async () => {
     const env = authorizedEnv();
     delete (env as Record<string, string>).ACCEPTANCE_LIVE_PROVIDER_OPT_IN;
     const { results, providerRequestsMade, app } = await run(env, []);
@@ -212,6 +223,7 @@ describe("live-provider driver: explicit double authorization", () => {
           "BLOCKED",
           "EXPLICIT_AUTHORIZATION_REQUIRED",
         ],
+        [OPS_SURFACE.surface, "BLOCKED", "EXPLICIT_AUTHORIZATION_REQUIRED"],
       ],
     );
     expect(providerRequestsMade).toBe(0);
@@ -223,7 +235,7 @@ describe("live-provider driver: explicit double authorization", () => {
   it("the CLI flag alone is insufficient", async () => {
     const env = authorizedEnv();
     delete (env as Record<string, string>).ACCEPTANCE_LIVE_PROVIDER_OPT_IN;
-    const { results, app } = await run(env, [AUTHORIZE_FLAG]);
+    const { results, app } = await run(env, [AUTHORIZE_FLAG, SELECT_OPS]);
     expect(results.every((r: Result) => r.status === "BLOCKED")).toBe(true);
     expect(results[0].details.join(" ")).toContain(
       "ACCEPTANCE_LIVE_PROVIDER_OPT_IN is not exactly 'true'",
@@ -232,8 +244,8 @@ describe("live-provider driver: explicit double authorization", () => {
     expect(app.fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("the env opt-in alone is insufficient", async () => {
-    const { results, app } = await run(authorizedEnv(), []);
+  it("the env opt-in alone is insufficient, even with a surface selected", async () => {
+    const { results, app } = await run(authorizedEnv(), [SELECT_OPS]);
     expect(results.every((r: Result) => r.status === "BLOCKED")).toBe(true);
     expect(results[0].details.join(" ")).toContain(
       `The ${AUTHORIZE_FLAG} command-line flag was not given.`,
@@ -246,7 +258,7 @@ describe("live-provider driver: explicit double authorization", () => {
     for (const value of ["TRUE", "yes", " true", "1"]) {
       const { results, app } = await run(
         authorizedEnv({ ACCEPTANCE_LIVE_PROVIDER_OPT_IN: value }),
-        [AUTHORIZE_FLAG],
+        [AUTHORIZE_FLAG, SELECT_LAB],
       );
       expect(results.every((r: Result) => r.status === "BLOCKED")).toBe(true);
       expect(app.startApp).not.toHaveBeenCalled();
@@ -256,6 +268,7 @@ describe("live-provider driver: explicit double authorization", () => {
   it("an unrecognized argument BLOCKS without echoing it (it might be a pasted key)", async () => {
     const { results, app } = await run(authorizedEnv(), [
       AUTHORIZE_FLAG,
+      SELECT_LAB,
       "sk-pasted-key-sentinel",
     ]);
     expect(
@@ -265,16 +278,39 @@ describe("live-provider driver: explicit double authorization", () => {
     expect(app.startApp).not.toHaveBeenCalled();
   });
 
-  it("a missing OpenAI key blocks only the OpenAI surface; the Anthropic surface still runs", async () => {
+  it("a selected surface whose key is missing BLOCKS on its own; nothing starts and no other surface runs instead", async () => {
     const env = authorizedEnv({ OPENAI_API_KEY: "  " });
     const { results, app, providerRequestsMade } = await run(env, [
       AUTHORIZE_FLAG,
+      SELECT_OPENAI,
+    ]);
+    expect(results.map((r: Result) => [r.surface, r.status, r.reason])).toEqual(
+      [
+        [
+          OPENAI_SURFACE.surface,
+          "BLOCKED",
+          "OPENAI_API_KEY is not configured.",
+        ],
+        [ANTHROPIC_SURFACE.surface, "NOT_RUN", "NOT_SELECTED"],
+        [OPS_SURFACE.surface, "NOT_RUN", "NOT_SELECTED"],
+      ],
+    );
+    expect(app.startApp).not.toHaveBeenCalled();
+    expect(app.fetchImpl).not.toHaveBeenCalled();
+    expect(providerRequestsMade).toBe(0);
+  });
+
+  it("a missing OpenAI key does not affect a selected Anthropic surface, and the child never receives the OpenAI key", async () => {
+    const env = authorizedEnv({ OPENAI_API_KEY: "  " });
+    const { results, app, providerRequestsMade } = await run(env, [
+      AUTHORIZE_FLAG,
+      SELECT_LAB,
     ]);
     expect(results.map((r: Result) => [r.surface, r.status])).toEqual([
-      [OPENAI_SURFACE.surface, "BLOCKED"],
+      [OPENAI_SURFACE.surface, "NOT_RUN"],
       [ANTHROPIC_SURFACE.surface, "PASS"],
+      [OPS_SURFACE.surface, "NOT_RUN"],
     ]);
-    expect(results[0].reason).toBe("OPENAI_API_KEY is not configured.");
     expect(app.operationCalls().map((c) => c.body)).toEqual([
       { operation: "ANTHROPIC_LAB_SMOKE" },
     ]);
@@ -283,15 +319,26 @@ describe("live-provider driver: explicit double authorization", () => {
     expect(providerRequestsMade).toBe(1);
   });
 
-  it("a missing Anthropic key blocks only the Anthropic surface; the OpenAI surface still runs", async () => {
+  it("a missing Anthropic key BLOCKS a selected Anthropic surface; a selected OpenAI surface still runs", async () => {
     const env = authorizedEnv();
     delete (env as Record<string, string>).ANTHROPIC_API_KEY;
-    const { results, app } = await run(env, [AUTHORIZE_FLAG]);
+    for (const selector of [SELECT_LAB, SELECT_OPS]) {
+      const blockedRun = await run(env, [AUTHORIZE_FLAG, selector]);
+      expect(
+        blockedRun.results.filter((r: Result) => r.status === "BLOCKED"),
+      ).toEqual([
+        expect.objectContaining({
+          reason: "ANTHROPIC_API_KEY is not configured.",
+        }),
+      ]);
+      expect(blockedRun.app.startApp).not.toHaveBeenCalled();
+    }
+    const { results, app } = await run(env, [AUTHORIZE_FLAG, SELECT_OPENAI]);
     expect(results.map((r: Result) => [r.surface, r.status])).toEqual([
       [OPENAI_SURFACE.surface, "PASS"],
-      [ANTHROPIC_SURFACE.surface, "BLOCKED"],
+      [ANTHROPIC_SURFACE.surface, "NOT_RUN"],
+      [OPS_SURFACE.surface, "NOT_RUN"],
     ]);
-    expect(results[1].reason).toBe("ANTHROPIC_API_KEY is not configured.");
     expect(app.operationCalls().map((c) => c.body)).toEqual([
       { operation: "OPENAI_EXAMINER_SMOKE" },
     ]);
@@ -299,35 +346,288 @@ describe("live-provider driver: explicit double authorization", () => {
     expect(app.childEnvs[0].OPENAI_API_KEY).toBe(OPENAI_KEY);
   });
 
-  it("with neither key, even fully authorized, nothing starts", async () => {
+  it("with neither key, even fully authorized and selected, nothing starts", async () => {
     const env = authorizedEnv({ OPENAI_API_KEY: "", ANTHROPIC_API_KEY: "" });
-    const { results, app, providerRequestsMade } = await run(env, [
-      AUTHORIZE_FLAG,
-    ]);
-    expect(results.every((r: Result) => r.status === "BLOCKED")).toBe(true);
-    expect(app.startApp).not.toHaveBeenCalled();
-    expect(providerRequestsMade).toBe(0);
+    for (const selector of [SELECT_OPENAI, SELECT_LAB, SELECT_OPS]) {
+      const { results, app, providerRequestsMade } = await run(env, [
+        AUTHORIZE_FLAG,
+        selector,
+      ]);
+      expect(
+        results.every((r: Result) => ["BLOCKED", "NOT_RUN"].includes(r.status)),
+      ).toBe(true);
+      expect(app.startApp).not.toHaveBeenCalled();
+      expect(providerRequestsMade).toBe(0);
+    }
   });
 
   it("planLiveProviderRun never returns a key value", () => {
-    const plan = planLiveProviderRun(authorizedEnv(), [AUTHORIZE_FLAG]);
-    expect(plan.every((p: { runnable: boolean }) => p.runnable)).toBe(true);
-    noSecretsIn(plan);
+    for (const selector of [SELECT_OPENAI, SELECT_LAB, SELECT_OPS]) {
+      const plan = planLiveProviderRun(authorizedEnv(), [
+        AUTHORIZE_FLAG,
+        selector,
+      ]);
+      expect(
+        plan.filter((p: { runnable: boolean }) => p.runnable),
+      ).toHaveLength(1);
+      noSecretsIn(plan);
+    }
+  });
+});
+
+describe("live-provider driver: explicit single-surface selection", () => {
+  type PlanEntry = {
+    surface: string;
+    selector: string;
+    runnable: boolean;
+    result: Result | null;
+  };
+  const plan = (env: Record<string, string>, argv: string[]) =>
+    planLiveProviderRun(env, argv) as PlanEntry[];
+
+  it("the selector allowlist is exactly the three fixed surfaces", () => {
+    expect(LIVE_PROVIDER_SURFACE_SELECTORS).toEqual([
+      "OPENAI_EXAMINER",
+      "ANTHROPIC_LAB",
+      "ANTHROPIC_OPERATIONS_ENGINEER",
+    ]);
+    expect(LIVE_PROVIDER_SURFACES.map((s: PlanEntry) => s.surface)).toEqual([
+      "LIVE_PROVIDER:OPENAI_EXAMINER",
+      "LIVE_PROVIDER:ANTHROPIC_LAB",
+      "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER",
+    ]);
+    expect(OPS_SURFACE).toMatchObject({
+      operation: "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      keyVar: "ANTHROPIC_API_KEY",
+      providerFamily: "ANTHROPIC",
+      adapterKind: "ANTHROPIC_MESSAGES",
+      profileRef: "OPERATIONS_ENGINEER_PLATFORM_V1",
+      modelId: "claude-opus-5-5",
+    });
+  });
+
+  it("a fully authorized run with both keys but NO selector BLOCKS every surface; nothing starts", async () => {
+    const { results, app, providerRequestsMade } = await run(authorizedEnv(), [
+      AUTHORIZE_FLAG,
+    ]);
+    expect(
+      results.every(
+        (r: Result) =>
+          r.status === "BLOCKED" && r.reason === "SURFACE_SELECTION_REQUIRED",
+      ),
+    ).toBe(true);
+    expect(results[0].details.join(" ")).toContain(
+      "--surface=ANTHROPIC_OPERATIONS_ENGINEER",
+    );
+    expect(app.startApp).not.toHaveBeenCalled();
+    expect(app.fetchImpl).not.toHaveBeenCalled();
+    expect(providerRequestsMade).toBe(0);
+  });
+
+  it("an unknown selector BLOCKS every surface without echoing it", async () => {
+    for (const bad of [
+      "--surface=sk-ant-pasted-key-sentinel",
+      "--surface=ANTHROPIC_OPS",
+      "--surface=anthropic_lab",
+      "--surface=OPERATIONS_ENGINEER",
+      "--surface=ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "--surface=ALL",
+      "--surface=",
+      "--surface= ANTHROPIC_LAB",
+    ]) {
+      const { results, app } = await run(authorizedEnv(), [
+        AUTHORIZE_FLAG,
+        bad,
+      ]);
+      expect(
+        results.every(
+          (r: Result) =>
+            r.status === "BLOCKED" && r.reason === "UNKNOWN_SURFACE_SELECTOR",
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(results)).not.toContain(
+        "sk-ant-pasted-key-sentinel",
+      );
+      expect(JSON.stringify(results)).not.toContain('ANTHROPIC_OPS"');
+      expect(app.startApp).not.toHaveBeenCalled();
+    }
+  });
+
+  it("an unknown selector alongside a valid one still BLOCKS", async () => {
+    const { results, app } = await run(authorizedEnv(), [
+      AUTHORIZE_FLAG,
+      SELECT_LAB,
+      "--surface=BOGUS",
+    ]);
+    expect(results.every((r: Result) => r.status === "BLOCKED")).toBe(true);
+    expect(app.startApp).not.toHaveBeenCalled();
+  });
+
+  it("more than one selector -- even the same one twice -- BLOCKS every surface", async () => {
+    for (const argv of [
+      [AUTHORIZE_FLAG, SELECT_LAB, SELECT_OPS],
+      [AUTHORIZE_FLAG, SELECT_OPS, SELECT_OPS],
+      [AUTHORIZE_FLAG, SELECT_OPENAI, SELECT_LAB, SELECT_OPS],
+    ]) {
+      const { results, app } = await run(authorizedEnv(), argv);
+      expect(
+        results.every(
+          (r: Result) =>
+            r.status === "BLOCKED" && r.reason === "MULTIPLE_SURFACE_SELECTORS",
+        ),
+      ).toBe(true);
+      expect(app.startApp).not.toHaveBeenCalled();
+    }
+  });
+
+  it("the space-separated form is not a selector (fails closed as an unrecognized argument)", async () => {
+    const { results, app } = await run(authorizedEnv(), [
+      AUTHORIZE_FLAG,
+      "--surface",
+      "ANTHROPIC_LAB",
+    ]);
+    expect(
+      results.every((r: Result) => r.reason === "UNRECOGNIZED_ARGUMENT"),
+    ).toBe(true);
+    expect(app.startApp).not.toHaveBeenCalled();
+  });
+
+  it("a selector can never be supplied through the environment", async () => {
+    const env = authorizedEnv({
+      ACCEPTANCE_LIVE_PROVIDER_SURFACE: "ANTHROPIC_OPERATIONS_ENGINEER",
+      LIVE_PROVIDER_SURFACE: "ANTHROPIC_OPERATIONS_ENGINEER",
+      SURFACE: "ANTHROPIC_OPERATIONS_ENGINEER",
+      // What npm sets for `npm run acceptance:live-provider --surface=X`
+      // (flag given without `--`, so it never reaches argv).
+      npm_config_surface: "ANTHROPIC_OPERATIONS_ENGINEER",
+      npm_config_authorize_live_provider: "true",
+    });
+    const { results, app } = await run(env, [AUTHORIZE_FLAG]);
+    expect(
+      results.every((r: Result) => r.reason === "SURFACE_SELECTION_REQUIRED"),
+    ).toBe(true);
+    expect(app.startApp).not.toHaveBeenCalled();
+    const noFlag = await run(env, [SELECT_OPS]);
+    expect(
+      noFlag.results.every(
+        (r: Result) => r.reason === "EXPLICIT_AUTHORIZATION_REQUIRED",
+      ),
+    ).toBe(true);
+    expect(noFlag.app.startApp).not.toHaveBeenCalled();
+  });
+
+  it("a configured key plus a selector is never itself authorization", async () => {
+    const env = authorizedEnv();
+    delete (env as Record<string, string>).ACCEPTANCE_LIVE_PROVIDER_OPT_IN;
+    for (const selector of [SELECT_OPENAI, SELECT_LAB, SELECT_OPS]) {
+      const { results, app } = await run(env, [selector]);
+      expect(
+        results.every(
+          (r: Result) => r.reason === "EXPLICIT_AUTHORIZATION_REQUIRED",
+        ),
+      ).toBe(true);
+      expect(app.startApp).not.toHaveBeenCalled();
+    }
+  });
+
+  for (const [selector, surface, operation] of [
+    [SELECT_OPENAI, "LIVE_PROVIDER:OPENAI_EXAMINER", "OPENAI_EXAMINER_SMOKE"],
+    [SELECT_LAB, "LIVE_PROVIDER:ANTHROPIC_LAB", "ANTHROPIC_LAB_SMOKE"],
+    [
+      SELECT_OPS,
+      "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER",
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+    ],
+  ] as const) {
+    it(`${selector} makes exactly that one surface runnable and every other surface NOT_RUN`, async () => {
+      const entries = plan(authorizedEnv(), [AUTHORIZE_FLAG, selector]);
+      expect(entries.filter((p) => p.runnable).map((p) => p.surface)).toEqual([
+        surface,
+      ]);
+      for (const p of entries.filter((e) => !e.runnable))
+        expect(p.result).toMatchObject({
+          status: "NOT_RUN",
+          reason: "NOT_SELECTED",
+        });
+      const { results, app, providerRequestsMade } = await run(
+        authorizedEnv(),
+        [AUTHORIZE_FLAG, selector],
+      );
+      expect(app.operationCalls().map((c) => c.body)).toEqual([{ operation }]);
+      expect(
+        results
+          .filter((r: Result) => r.status === "PASS")
+          .map((r) => r.surface),
+      ).toEqual([surface]);
+      expect(providerRequestsMade).toBe(1);
+    });
+  }
+
+  it("with ANTHROPIC_OPERATIONS_ENGINEER selected: only ANTHROPIC_API_KEY reaches the child, the OpenAI key stays blank and the Lab surface never runs", async () => {
+    const { results, app, providerRequestsMade } = await run(authorizedEnv(), [
+      AUTHORIZE_FLAG,
+      SELECT_OPS,
+    ]);
+    const child = app.childEnvs[0];
+    expect(app.startApp).toHaveBeenCalledTimes(1);
+    expect(child.ANTHROPIC_API_KEY).toBe(ANTHROPIC_KEY);
+    expect(child.OPENAI_API_KEY).toBe("");
+    for (const name of Object.keys(SECRET_SENTINELS))
+      expect(child[name]).toBe("");
+    expect(child.NODE_OPTIONS).toBe("");
+    expect(app.operationCalls().map((c) => c.body)).toEqual([
+      { operation: "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE" },
+    ]);
+    expect(results.map((r: Result) => [r.surface, r.status, r.reason])).toEqual(
+      [
+        [OPENAI_SURFACE.surface, "NOT_RUN", "NOT_SELECTED"],
+        [ANTHROPIC_SURFACE.surface, "NOT_RUN", "NOT_SELECTED"],
+        [OPS_SURFACE.surface, "PASS", "OPERATIONS_ENGINEER_OUTPUT_ACCEPTED"],
+      ],
+    );
+    expect(results[2].details).toContain("outputLength=160");
+    expect(providerRequestsMade).toBe(1);
+    noSecretsIn(results);
+  });
+
+  it("with only ANTHROPIC_API_KEY configured, no argument combination makes both Anthropic surfaces runnable", () => {
+    const env = authorizedEnv({ OPENAI_API_KEY: "" });
+    const tokens = [
+      AUTHORIZE_FLAG,
+      SELECT_OPENAI,
+      SELECT_LAB,
+      SELECT_OPS,
+      "--surface=ALL",
+    ];
+    // Every ordered subset of up to four tokens.
+    const argvs: string[][] = [[]];
+    for (let depth = 0; depth < 4; depth++)
+      for (const prefix of argvs.filter((a) => a.length === depth))
+        for (const token of tokens) argvs.push([...prefix, token]);
+    for (const argv of argvs) {
+      const runnable = plan(env, argv).filter((p) => p.runnable);
+      expect(runnable.length).toBeLessThanOrEqual(1);
+    }
+    for (const argv of argvs) {
+      const runnable = plan(authorizedEnv(), argv).filter((p) => p.runnable);
+      expect(runnable.length).toBeLessThanOrEqual(1);
+    }
   });
 });
 
 describe("live-provider driver: fully authorized run against a fake app", () => {
-  it("sends exactly one request per surface -- a readiness probe plus two operations -- with a fresh per-run token", async () => {
+  it("sends a readiness probe plus exactly one operation for the selected surface, with a fresh per-run token", async () => {
     const { results, app, providerRequestsMade } = await run(authorizedEnv(), [
       AUTHORIZE_FLAG,
+      SELECT_OPENAI,
     ]);
     expect(results.map((r: Result) => [r.surface, r.status])).toEqual([
       [OPENAI_SURFACE.surface, "PASS"],
-      [ANTHROPIC_SURFACE.surface, "PASS"],
+      [ANTHROPIC_SURFACE.surface, "NOT_RUN"],
+      [OPS_SURFACE.surface, "NOT_RUN"],
     ]);
     expect(app.operationCalls().map((c) => c.body)).toEqual([
       { operation: "OPENAI_EXAMINER_SMOKE" },
-      { operation: "ANTHROPIC_LAB_SMOKE" },
     ]);
     const env = app.childEnvs[0];
     const token = env.ACCEPTANCE_LIVE_PROVIDER_DRIVER_TOKEN;
@@ -340,11 +640,11 @@ describe("live-provider driver: fully authorized run against a fake app", () => 
       // The caller sends an operation name and nothing else.
       expect(Object.keys(call.body).every((k) => k === "operation")).toBe(true);
     }
-    expect(providerRequestsMade).toBe(2);
+    expect(providerRequestsMade).toBe(1);
     expect(app.stopApp).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(results)).not.toContain(token);
     noSecretsIn(results);
-    const second = await run(authorizedEnv(), [AUTHORIZE_FLAG]);
+    const second = await run(authorizedEnv(), [AUTHORIZE_FLAG, SELECT_OPENAI]);
     expect(
       second.app.childEnvs[0].ACCEPTANCE_LIVE_PROVIDER_DRIVER_TOKEN,
     ).not.toBe(token);
@@ -366,7 +666,11 @@ describe("live-provider driver: fully authorized run against a fake app", () => 
         },
       },
     });
-    const { results } = await run(authorizedEnv(), [AUTHORIZE_FLAG], app);
+    const { results } = await run(
+      authorizedEnv(),
+      [AUTHORIZE_FLAG, SELECT_OPENAI],
+      app,
+    );
     expect(results[0]).toMatchObject({
       status: "FAIL",
       reason: "RUNTIME_FAILED",
@@ -385,14 +689,15 @@ describe("live-provider driver: fully authorized run against a fake app", () => 
     const app = fakeApp({ OPENAI_EXAMINER_SMOKE: "throw" });
     const { results, providerRequestsMade } = await run(
       authorizedEnv(),
-      [AUTHORIZE_FLAG],
+      [AUTHORIZE_FLAG, SELECT_OPENAI],
       app,
     );
     expect(results[0]).toMatchObject({
       status: "FAIL",
       reason: "ROUTE_DID_NOT_ANSWER",
     });
-    expect(results[1].status).toBe("PASS");
+    expect(results[1].status).toBe("NOT_RUN");
+    expect(results[2].status).toBe("NOT_RUN");
     expect(
       app
         .operationCalls()
@@ -423,7 +728,11 @@ describe("live-provider driver: fully authorized run against a fake app", () => 
         },
       },
     });
-    const { results } = await run(authorizedEnv(), [AUTHORIZE_FLAG], app);
+    const { results } = await run(
+      authorizedEnv(),
+      [AUTHORIZE_FLAG, SELECT_LAB],
+      app,
+    );
     expect(results[1]).toMatchObject({
       status: "FAIL",
       reason: "MORE_THAN_ONE_PROVIDER_CALL",
@@ -452,13 +761,79 @@ describe("live-provider driver: fully authorized run against a fake app", () => 
           body: { ok: true, evidence: bad },
         },
       });
-      const { results } = await run(authorizedEnv(), [AUTHORIZE_FLAG], app);
+      const { results } = await run(
+        authorizedEnv(),
+        [AUTHORIZE_FLAG, SELECT_OPENAI],
+        app,
+      );
       expect(results[0]).toMatchObject({
         status: "FAIL",
         reason: "ROUTE_RETURNED_NO_VALID_EVIDENCE",
       });
       expect(JSON.stringify(results)).not.toContain("RAW");
     }
+  });
+
+  it("Operations Engineer evidence that does not match its exact surface, or misuses another surface's field, is rejected", async () => {
+    for (const bad of [
+      evidenceFor(OPS_SURFACE, { modelId: "claude-sonnet-5" }),
+      evidenceFor(OPS_SURFACE, { profileRef: "LAB_INSTRUCTOR_COMMERCIAL_V1" }),
+      evidenceFor(OPS_SURFACE, { surface: "LIVE_PROVIDER:ANTHROPIC_LAB" }),
+      evidenceFor(OPS_SURFACE, { operation: "ANTHROPIC_LAB_SMOKE" }),
+      evidenceFor(OPS_SURFACE, { operationsEngineer: { outputLength: "RAW" } }),
+      evidenceFor(OPS_SURFACE, { operationsEngineer: undefined }),
+      evidenceFor(OPS_SURFACE, { lab: { outputLength: 5 } }),
+      evidenceFor(OPS_SURFACE, {
+        examiner: {
+          strictParsePassed: true,
+          outcome: "GRADED",
+          marksValidationPassed: true,
+        },
+      }),
+    ]) {
+      const app = fakeApp({
+        ANTHROPIC_OPERATIONS_ENGINEER_SMOKE: {
+          status: 200,
+          body: { ok: true, evidence: bad },
+        },
+      });
+      const { results } = await run(
+        authorizedEnv(),
+        [AUTHORIZE_FLAG, SELECT_OPS],
+        app,
+      );
+      expect(results[2]).toMatchObject({
+        status: "FAIL",
+        reason: "ROUTE_RETURNED_NO_VALID_EVIDENCE",
+      });
+      expect(JSON.stringify(results)).not.toContain("RAW");
+    }
+    // ...and the Lab surface may not carry the Operations Engineer field.
+    expect(
+      sanitizeEvidence(
+        evidenceFor(ANTHROPIC_SURFACE, {
+          operationsEngineer: { outputLength: 5 },
+        }),
+        ANTHROPIC_SURFACE,
+      ),
+    ).toBeNull();
+  });
+
+  it("Operations Engineer raw output fields are dropped, never printed", () => {
+    const sanitized = sanitizeEvidence(
+      {
+        ...evidenceFor(OPS_SURFACE),
+        outputText: "RAW-MODEL-OUTPUT",
+        operationsEngineer: { outputLength: 10, text: "RAW-MODEL-OUTPUT" },
+      },
+      OPS_SURFACE,
+    );
+    expect(sanitized).toMatchObject({
+      operationsEngineer: { outputLength: 10 },
+      lab: null,
+      examiner: null,
+    });
+    expect(JSON.stringify(sanitized)).not.toContain("RAW");
   });
 
   it("extra fields in evidence (e.g. raw output) are dropped, never printed", () => {
@@ -475,15 +850,19 @@ describe("live-provider driver: fully authorized run against a fake app", () => 
     expect(JSON.stringify(sanitized)).not.toContain("RAW");
   });
 
-  it("a 404 readiness (gate refused) BLOCKS every runnable surface with no operation request", async () => {
+  it("a 404 readiness (gate refused) BLOCKS the selected surface with no operation request", async () => {
     const app = fakeApp({}, 404);
     const { results, providerRequestsMade } = await run(
       authorizedEnv(),
-      [AUTHORIZE_FLAG],
+      [AUTHORIZE_FLAG, SELECT_OPS],
       app,
     );
-    expect(results.every((r: Result) => r.status === "BLOCKED")).toBe(true);
-    expect(results[0].reason).toContain("GATE_REFUSED");
+    expect(results.map((r: Result) => r.status)).toEqual([
+      "NOT_RUN",
+      "NOT_RUN",
+      "BLOCKED",
+    ]);
+    expect(results[2].reason).toContain("GATE_REFUSED");
     expect(app.operationCalls()).toHaveLength(0);
     expect(providerRequestsMade).toBe(0);
     expect(app.stopApp).toHaveBeenCalledTimes(1);
@@ -526,6 +905,20 @@ describe("live-provider driver: the child process receives only what the route n
       "ACCEPTANCE_PROVIDER_REDIRECT_TOKEN",
     ])
       expect(env[name]).toBe("");
+  });
+
+  it("an Operations Engineer grant passes only ANTHROPIC_API_KEY", () => {
+    const env = buildLiveProviderChildEnv(authorizedEnv(), {
+      port: 4321,
+      token: "a".repeat(64),
+      authorized: true,
+      grant: { ANTHROPIC_API_KEY: true },
+      envFileNames: [],
+    });
+    expect(env.ANTHROPIC_API_KEY).toBe(ANTHROPIC_KEY);
+    expect(env.OPENAI_API_KEY).toBe("");
+    for (const name of WITHHELD_FROM_LIVE_PROVIDER_APP)
+      if (name !== "ANTHROPIC_API_KEY") expect(env[name]).toBe("");
   });
 
   it("refuses to build a child environment without double authorization or a well-formed per-run token", () => {
@@ -605,6 +998,9 @@ describe("live-provider driver: the real CLI without authorization", () => {
       "[BLOCKED] LIVE_PROVIDER:ANTHROPIC_LAB -- EXPLICIT_AUTHORIZATION_REQUIRED",
     );
     expect(result.stdout).toContain(
+      "[BLOCKED] LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER -- EXPLICIT_AUTHORIZATION_REQUIRED",
+    );
+    expect(result.stdout).toContain(
       "Provider requests made by this invocation: 0",
     );
     expect(result.stdout).toContain(TRUTHFULNESS_STATEMENT);
@@ -619,6 +1015,9 @@ describe("live-provider driver: the real CLI without authorization", () => {
     expect(TRUTHFULNESS_STATEMENT).toContain("not production-readiness proof");
     expect(TRUTHFULNESS_STATEMENT).toContain(
       "not evidence of grading or instructional quality",
+    );
+    expect(TRUTHFULNESS_STATEMENT).toContain(
+      "not evidence of Operations Engineer diagnostic, coding, remediation or deployment capability",
     );
   });
 });
@@ -637,42 +1036,51 @@ describe("live-provider driver: a PASS must prove exactly one provider request",
       elapsedMs: 1,
     };
   }
-  async function consume(u: ReturnType<typeof usage>) {
-    const app = fakeApp({
-      ANTHROPIC_LAB_SMOKE: {
-        status: 200,
-        body: {
-          ok: true,
-          evidence: evidenceFor(ANTHROPIC_SURFACE, { usage: u }),
+  for (const [surface, selector, index] of [
+    [ANTHROPIC_SURFACE, SELECT_LAB, 1],
+    [OPS_SURFACE, SELECT_OPS, 2],
+  ] as const) {
+    async function consume(u: ReturnType<typeof usage>) {
+      const app = fakeApp({
+        [surface.operation]: {
+          status: 200,
+          body: {
+            ok: true,
+            evidence: evidenceFor(surface, { usage: u }),
+          },
         },
-      },
-    });
-    const { results } = await run(authorizedEnv(), [AUTHORIZE_FLAG], app);
-    return results[1];
-  }
-
-  it("PASS with providerCalls=0 is FAIL", async () => {
-    expect(await consume(usage(0, 1))).toMatchObject({
-      status: "FAIL",
-      reason: "PASS_WITHOUT_EXACTLY_ONE_PROVIDER_REQUEST",
-    });
-  });
-  it("PASS with attempts=0 is FAIL", async () => {
-    expect(await consume(usage(1, 0))).toMatchObject({
-      status: "FAIL",
-      reason: "PASS_WITHOUT_EXACTLY_ONE_PROVIDER_REQUEST",
-    });
-  });
-  it("PASS with providerCalls=1 and attempts=1 is allowed", async () => {
-    expect((await consume(usage(1, 1))).status).toBe("PASS");
-  });
-  it("more than one call or attempt remains FAIL", async () => {
-    for (const u of [usage(2, 1), usage(1, 2), usage(2, 2)])
-      expect(await consume(u)).toMatchObject({
-        status: "FAIL",
-        reason: "MORE_THAN_ONE_PROVIDER_CALL",
       });
-  });
+      const { results } = await run(
+        authorizedEnv(),
+        [AUTHORIZE_FLAG, selector],
+        app,
+      );
+      return results[index];
+    }
+
+    it(`${surface.surface}: PASS with providerCalls=0 is FAIL`, async () => {
+      expect(await consume(usage(0, 1))).toMatchObject({
+        status: "FAIL",
+        reason: "PASS_WITHOUT_EXACTLY_ONE_PROVIDER_REQUEST",
+      });
+    });
+    it(`${surface.surface}: PASS with attempts=0 is FAIL`, async () => {
+      expect(await consume(usage(1, 0))).toMatchObject({
+        status: "FAIL",
+        reason: "PASS_WITHOUT_EXACTLY_ONE_PROVIDER_REQUEST",
+      });
+    });
+    it(`${surface.surface}: PASS with providerCalls=1 and attempts=1 is allowed`, async () => {
+      expect((await consume(usage(1, 1))).status).toBe("PASS");
+    });
+    it(`${surface.surface}: more than one call or attempt remains FAIL`, async () => {
+      for (const u of [usage(2, 1), usage(1, 2), usage(2, 2)])
+        expect(await consume(u)).toMatchObject({
+          status: "FAIL",
+          reason: "MORE_THAN_ONE_PROVIDER_CALL",
+        });
+    });
+  }
 });
 
 describe("live-provider driver: env-file inspection fails closed", () => {
@@ -698,7 +1106,7 @@ describe("live-provider driver: env-file inspection fails closed", () => {
       const app = fakeApp();
       const outcome = await runLiveProviderAcceptance({
         env: authorizedEnv(),
-        argv: [AUTHORIZE_FLAG],
+        argv: [AUTHORIZE_FLAG, SELECT_OPS],
         startApp: app.startApp,
         stopApp: app.stopApp,
         fetchImpl: app.fetchImpl,
@@ -746,7 +1154,7 @@ describe("live-provider driver: env-file inspection fails closed", () => {
         const { results, providerRequestsMade } = await (async () => {
           const outcome = await runLiveProviderAcceptance({
             env: authorizedEnv(),
-            argv: [AUTHORIZE_FLAG],
+            argv: [AUTHORIZE_FLAG, SELECT_LAB],
             startApp: app.startApp,
             stopApp: app.stopApp,
             fetchImpl: app.fetchImpl,
@@ -760,10 +1168,11 @@ describe("live-provider driver: env-file inspection fails closed", () => {
           };
         })();
         expect(results.map((r) => [r.status, r.reason])).toEqual([
+          ["NOT_RUN", "NOT_SELECTED"],
           ["BLOCKED", "ENV_FILE_NOT_INSPECTABLE"],
-          ["BLOCKED", "ENV_FILE_NOT_INSPECTABLE"],
+          ["NOT_RUN", "NOT_SELECTED"],
         ]);
-        expect(results[0].details.join(" ")).toMatch(
+        expect(results[1].details.join(" ")).toMatch(
           /\.env\.(local|development) exists but its variable names could not be inspected\./,
         );
         expect(providerRequestsMade).toBe(0);
@@ -787,7 +1196,7 @@ describe("live-provider driver: env-file inspection fails closed", () => {
       const app = fakeApp();
       const outcome = await runLiveProviderAcceptance({
         env: authorizedEnv(),
-        argv: [],
+        argv: [SELECT_OPS],
         startApp: app.startApp,
         stopApp: app.stopApp,
         fetchImpl: app.fetchImpl,

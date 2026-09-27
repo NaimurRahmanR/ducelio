@@ -1168,8 +1168,10 @@ export async function checkSupabaseAuthEmail() {
 // code-owned), not through the legacy ACADEMIC_PROVIDER_* HTTP_JSON gateway.
 // The dedicated, double-authorized `npm run acceptance:live-provider`
 // (scripts/acceptance/live-provider.mjs) owns billable execution and reports
-// its own LIVE_PROVIDER:OPENAI_EXAMINER / LIVE_PROVIDER:ANTHROPIC_LAB
-// surfaces. Names only; no value is ever read into a message.
+// its own LIVE_PROVIDER:OPENAI_EXAMINER / LIVE_PROVIDER:ANTHROPIC_LAB /
+// LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER surfaces, one explicitly
+// selected surface per invocation. Names only; no value is ever read into a
+// message.
 // ---------------------------------------------------------------------------
 export async function checkLiveProvider() {
   const configured = (name) =>
@@ -1181,7 +1183,7 @@ export async function checkLiveProvider() {
       configured("OPENAI_API_KEY"),
       configured("ANTHROPIC_API_KEY"),
       `ACCEPTANCE_LIVE_PROVIDER_OPT_IN: ${liveProviderOptedIn() ? "exactly 'true'" : "not 'true'"}`,
-      "Billable execution additionally requires `npm run acceptance:live-provider -- --authorize-live-provider`. A configured key is never itself permission.",
+      "Billable execution additionally requires `npm run acceptance:live-provider -- --authorize-live-provider --surface=<OPENAI_EXAMINER|ANTHROPIC_LAB|ANTHROPIC_OPERATIONS_ENGINEER>` (exactly one surface per invocation). A configured key is never itself permission.",
       "ACADEMIC_PROVIDER_BASE_URL/ACADEMIC_PROVIDER_API_KEY are the legacy generic gateway and are not used by any current Commercial V1 production profile.",
     ],
   );
