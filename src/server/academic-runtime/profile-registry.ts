@@ -107,14 +107,13 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
     }),
     OPERATIONS_ENGINEER_PLATFORM_V1: Object.freeze({
       ref: "OPERATIONS_ENGINEER_PLATFORM_V1",
-      adapterKind: "OPENAI_RESPONSES",
+      adapterKind: "ANTHROPIC_MESSAGES",
       providerConfig: Object.freeze({
-        model: "gpt-5.6-terra",
-        reasoningEffort: "high",
+        model: "claude-opus-5-5",
         tariff: Object.freeze({
-          inputMicrousdPerMillionTokens: 2_000_000,
-          outputMicrousdPerMillionTokens: 12_000_000,
-          reviewedAt: "2026-09-18",
+          inputMicrousdPerMillionTokens: 4_000_000,
+          outputMicrousdPerMillionTokens: 20_000_000,
+          reviewedAt: "2026-09-27",
         }),
       }),
       budgetPolicy: Object.freeze({

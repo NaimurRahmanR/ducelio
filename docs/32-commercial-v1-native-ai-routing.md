@@ -19,7 +19,13 @@ The fixed routing is:
 | LAB_INSTRUCTOR      | Anthropic Messages | `claude-sonnet-5` |
 | EXAMINER            | OpenAI Responses   | `gpt-5.6-luna`    |
 | COUNSELLOR          | OpenAI Responses   | `gpt-5.6-luna`    |
-| OPERATIONS_ENGINEER | OpenAI Responses   | `gpt-5.6-terra`   |
+| OPERATIONS_ENGINEER | Anthropic Messages | `claude-opus-5-5` |
+
+**Routing correction (after PR #32):** `OPERATIONS_ENGINEER` was originally
+routed to OpenAI Responses / `gpt-5.6-terra` with high reasoning effort. It now
+routes to Anthropic Messages / `claude-opus-5-5` through the existing native
+Anthropic adapter. Only that one profile changed; the other five mappings, the
+Operations Engineer budget policy and all authority restrictions are unchanged.
 
 No browser, learner, course package or stored agent configuration can select a
 vendor, model, endpoint, API key or tariff. They can only reference the same
@@ -27,9 +33,11 @@ role-bound profile ids already governed before this checkpoint.
 
 ## Cost governance
 
-Tariffs are code-owned reviewed snapshots dated 2026-09-18 and are used only
-to produce the provider-neutral `estimatedCostMicrousd` consumed by the
-existing post-call budget reconciliation.
+Tariffs are code-owned reviewed snapshots dated 2026-09-18 (the Operations
+Engineer's Claude Opus 5.5 snapshot — $4 input / $20 output per million
+tokens, standard API pricing — is dated 2026-09-27) and are used only to
+produce the provider-neutral `estimatedCostMicrousd` consumed by the existing
+post-call budget reconciliation.
 
 OpenAI input is deliberately charged by this adapter at the full input tariff
 even when the API reports cached input. Anthropic input accounting sums base,
@@ -101,8 +109,11 @@ agent.
 ## Operations Engineer boundary
 
 PR22 also defines `OPERATIONS_ENGINEER_PLATFORM_V1` as an **internal,
-admin-facing** AI role. It is routed to OpenAI Terra for bounded systems
-reasoning. Its capability catalogue is observation/proposal only: system
+admin-facing** AI role. It is routed to Claude Opus 5.5 (`claude-opus-5-5`,
+Anthropic Messages) for its internal coding and systems-reasoning work; it is
+no longer routed to OpenAI Terra. It reuses the existing native Anthropic
+adapter (no Opus-specific adapter) and is gated only by `ANTHROPIC_API_KEY`.
+Its capability catalogue is observation/proposal only: system
 health, provider failures, usage/cost, jobs/CI, migration status, error
 summaries, proposed fixes, proposed PRs, and draft release notes.
 
@@ -113,7 +124,9 @@ deploy authority. The intended path remains:
 `Admin -> Operations Engineer -> permissioned deterministic tools/services -> systems`
 
 PR22 defines routing and policy only; it does not create a production
-Operations Engineer tool-execution plane.
+Operations Engineer tool-execution plane. The routing correction to Claude
+Opus 5.5 changes none of these authority restrictions and does not create
+that plane either.
 
 ## Evidence and non-claims
 

@@ -94,7 +94,7 @@ const KNOWN_VARS = [
   {
     name: "ANTHROPIC_API_KEY",
     scope: "app",
-    note: "Native Anthropic Messages key (server-only). Used by the ANTHROPIC_MESSAGES production profile LAB_INSTRUCTOR_COMMERCIAL_V1; the app fails closed to NO_PROVIDER_CONFIGURED without it.",
+    note: "Native Anthropic Messages key (server-only). Used by every ANTHROPIC_MESSAGES production profile (LAB_INSTRUCTOR_COMMERCIAL_V1 and the internal OPERATIONS_ENGINEER_PLATFORM_V1); the app fails closed to NO_PROVIDER_CONFIGURED without it.",
   },
   // Legacy generic HTTP_JSON gateway (resolveConfiguredProvider). Kept for
   // backward compatibility only: NO current Commercial V1 production profile

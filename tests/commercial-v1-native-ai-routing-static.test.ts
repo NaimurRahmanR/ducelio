@@ -16,6 +16,7 @@ describe("PR22 native AI routing static safety", () => {
     expect(registry).toContain('model: "gpt-5.6-terra"');
     expect(registry).toContain('model: "gpt-5.6-luna"');
     expect(registry).toContain('model: "claude-sonnet-5"');
+    expect(registry).toContain('model: "claude-opus-5-5"');
     expect(provider).not.toMatch(/request\.context\.model/);
     expect(provider).not.toMatch(/request\.context\.provider/);
   });
