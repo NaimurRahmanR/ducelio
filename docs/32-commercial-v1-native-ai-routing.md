@@ -134,7 +134,26 @@ PR22 tests native request/response mapping, refusal handling, secret hygiene,
 role routing, tariff arithmetic, database-ceiling compatibility and fail-closed
 missing-key behaviour using deterministic mocked HTTP responses.
 
-No OpenAI or Anthropic live request is made by this checkpoint. Passing local
-or GitHub CI therefore does **not** establish provider quality, latency,
-billing accuracy against a real invoice, hosted Supabase behaviour or
-production readiness. Those remain post-PR24 paid acceptance gates.
+PR22 itself made no live provider request. Subsequent dedicated acceptance work
+has now exercised three fixed production-profile paths with explicitly
+authorized, single-request paid smokes through the current production adapters
+and governed runtime:
+
+- `EXAMINER_COMMERCIAL_V1` -> `OPENAI_RESPONSES` -> `gpt-5.6-luna`:
+  **LIVE-PROVIDER-TESTED**;
+- `LAB_INSTRUCTOR_COMMERCIAL_V1` -> `ANTHROPIC_MESSAGES` ->
+  `claude-sonnet-5`: **LIVE-PROVIDER-TESTED**;
+- `OPERATIONS_ENGINEER_PLATFORM_V1` -> `ANTHROPIC_MESSAGES` ->
+  `claude-opus-5-5`: **LIVE-PROVIDER-TESTED**.
+
+The Operations Engineer live run made exactly one provider request and one
+attempt, returned `SUCCEEDED`, used 321 input tokens and 179 output tokens,
+reported 4,864 micro-USD estimated cost and 3,837 ms elapsed time, and remained
+inside its pinned production profile envelope. The raw model response is not
+acceptance evidence and was not recorded in this document.
+
+These results prove only the named live-provider surfaces. They do **not**
+establish provider/model quality, production billing accuracy against an
+invoice, production readiness, or an Operations Engineer production
+tool-execution plane. Hosted database/application acceptance and operational
+launch gates remain separately classified.
