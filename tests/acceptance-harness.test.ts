@@ -652,8 +652,10 @@ describe("acceptance harness: owning-chain schema-consistency audit (concurrency
       expect(text.toLowerCase()).not.toContain(table);
     }
     expect(text).not.toMatch(/'PUBLISHED'/);
-    expect(text).toContain(
-      'import { seedAcceptanceCourse, seedAcceptanceAttempt } from "./fixtures.mjs"',
+    // V7 also imports seedAcceptanceResults (COMPLETION_VS_COMPLETION's
+    // separate completion-ready course).
+    expect(text).toMatch(
+      /import \{\s*seedAcceptanceCourse,\s*seedAcceptanceAttempt,\s*seedAcceptanceResults,\s*\} from "\.\/fixtures\.mjs"/,
     );
     expect(text).toMatch(/await seedAcceptanceCourse\(/);
   });
@@ -820,17 +822,17 @@ describe("acceptance harness: concurrency races only treat a SQLSTATE 23505 reje
     expect(text).toContain('const UNIQUE_VIOLATION_SQLSTATE = "23505";');
     expect(text).toContain("reason.code === UNIQUE_VIOLATION_SQLSTATE");
     expect(text).toContain("function classifyRace(settled)");
-    // NEVER_TWO_REVISION_ONES (v5) reads the admitted row's real id via
-    // `select id from ...` and checks `rows.length === 1`; the other
-    // three still use `select count(*) as n` and `rows[0].n === 1` --
-    // both are an equally valid "exactly one admitted row" check.
+    // INITIAL_VS_INITIAL and RECOVERY_VS_RECOVERY check `rows[0].n === 1`;
+    // NEVER_TWO_REVISION_ONES (V7) additionally requires the one surviving
+    // QUIZ_1 revision to be revision 1, valid, and the winner's own id.
+    // COMPLETION_VS_COMPLETION (V7) is no longer a raw-insert race at all
+    // (it drives the governed RPC), so it has no 23505 pass condition.
     const passConditions = text.match(
-      /if \(\s*\n\s*fulfilled === 1 &&\s*\n\s*uniqueRejected === 1 &&\s*\n\s*otherRejections\.length === 0 &&\s*\n\s*(rows\[0\]\.n === 1|rows\.length === 1)\s*\n\s*\)/g,
+      /if \(\s*\n\s*fulfilled === 1 &&\s*\n\s*uniqueRejected === 1 &&\s*\n\s*otherRejections\.length === 0 &&\s*\n\s*(rows\[0\]\.n === 1|survivor\?\.revision_number === 1 &&\s*\n\s*survivor\.valid === true &&\s*\n\s*survivor\.id === winnerId)\s*\n\s*\)/g,
     );
     expect(passConditions).not.toBeNull();
-    // INITIAL_VS_INITIAL, RECOVERY_VS_RECOVERY, NEVER_TWO_REVISION_ONES,
-    // COMPLETION_VS_COMPLETION -- all four races.
-    expect(passConditions!.length).toBe(4);
+    // INITIAL_VS_INITIAL, RECOVERY_VS_RECOVERY, NEVER_TWO_REVISION_ONES.
+    expect(passConditions!.length).toBe(3);
     // The old, insufficient shape (a bare boolean rejected-count with no
     // SQLSTATE check) must be gone from every scenario.
     expect(text).not.toMatch(
@@ -879,93 +881,561 @@ describe("acceptance harness: concurrency races only treat a SQLSTATE 23505 reje
   });
 });
 
-describe("acceptance harness: NEVER_TWO_REVISION_ONES derives real max marks and completes/validates the admitted revision (independent-review findings 3 & B, v4/v5, BLOCKER)", () => {
-  it("reads SUM(assessment_questions.max_marks) for the QUIZ_1 assessment instead of a literal 10, races full marks (actualMax/actualMax), and completes the admitted revision with real question marks before returning PASS or FAIL", async () => {
-    const text = await readFile(
-      new URL("../scripts/acceptance/concurrency.mjs", import.meta.url),
-      "utf8",
+describe("acceptance harness: NEVER_TWO_REVISION_ONES builds each contender's COMPLETE revision inside its own transaction before COMMIT (V7, Defect A)", () => {
+  // The real-schema proof (what actually gets committed/rolled back on the
+  // migrated PGlite schema) lives in tests/acceptance-concurrency-schema.
+  // test.ts. These mocked-pg tests prove the harness's own control flow:
+  // independent connections, the start gate, per-client statement order,
+  // rollback on failure, and the post-race survivor checks.
+  afterEach(() => {
+    vi.doUnmock("pg");
+    vi.resetModules();
+  });
+
+  const chain = {
+    studentId: "s1",
+    enrolmentId: "e1",
+    activationId: "a1",
+    assessmentId: "quiz1-assessment",
+    attemptId: "quiz1-attempt",
+  };
+
+  type Event = { client: number; sql: string; params: unknown[] };
+  function mockRevisionRace(
+    options: {
+      invalid?: boolean;
+      survivors?: { id: string; revision_number: number; valid: boolean }[];
+    } = {},
+  ) {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgresql://acceptance:acceptance@localhost:5432/acceptance";
+    process.env.ACCEPTANCE_WRITE_ENABLED = "true";
+    process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
+    const events: Event[] = [];
+    let nextClient = 0;
+    let revisionInserts = 0;
+    function FakeClient() {
+      const client = nextClient++;
+      return {
+        connect: async () => {},
+        end: async () => {},
+        query: async (sql: string, params: unknown[] = []) => {
+          const text = sql.trim().toLowerCase();
+          events.push({ client, sql: text, params });
+          if (text.includes("acceptance_marker"))
+            return { rows: [{ marker: "x" }] };
+          if (text === "begin") {
+            // The SECOND connection's BEGIN is deliberately slow: without
+            // the start gate, the first contender would already have sent
+            // its INSERT before this one is ready.
+            if (client % 2 === 0)
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            events.push({ client, sql: "begin:done", params: [] });
+            return { rows: [] };
+          }
+          if (text.startsWith("select id, max_marks from assessment_questions"))
+            return {
+              rows: [
+                { id: "q1", max_marks: 10 },
+                { id: "q2", max_marks: 5 },
+              ],
+            };
+          if (
+            text.startsWith(
+              "insert into commercial_v1_assessment_result_revisions",
+            )
+          ) {
+            revisionInserts += 1;
+            if (revisionInserts === 1) return { rows: [{ id: "rev-winner" }] };
+            throw Object.assign(new Error("duplicate key value"), {
+              code: "23505",
+            });
+          }
+          if (text.includes("assessment_result_is_valid($1) as valid"))
+            return { rows: [{ valid: !options.invalid }] };
+          if (text.includes("from commercial_v1_assessment_result_revisions"))
+            return {
+              rows: options.survivors ?? [
+                { id: "rev-winner", revision_number: 1, valid: true },
+              ],
+            };
+          return { rows: [] };
+        },
+      };
+    }
+    vi.doMock("pg", () => ({ default: { Client: FakeClient } }));
+    vi.resetModules();
+    return events;
+  }
+
+  function contenderClients(events: Event[]) {
+    return [
+      ...new Set(events.filter((e) => e.sql === "begin").map((e) => e.client)),
+    ];
+  }
+
+  it("PASS: two independent, individually gated connections each BEGIN, wait at one start gate, and the winner writes revision -> every question mark -> objective outcomes -> validity -> COMMIT on its own connection; the 23505 loser rolls back", async () => {
+    const events = mockRevisionRace();
+    const { scenarioNeverTwoRevisionOnes } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const result = await scenarioNeverTwoRevisionOnes(chain);
+    expect(result.status).toBe("PASS");
+
+    const contenders = contenderClients(events);
+    expect(contenders.length).toBe(2);
+    for (const client of contenders) {
+      const own = events.filter((e) => e.client === client).map((e) => e.sql);
+      // Each contender connection is gated BEFORE its transaction begins.
+      const gateAt = own.findIndex((s) => s.includes("acceptance_marker"));
+      expect(gateAt).toBeGreaterThanOrEqual(0);
+      expect(gateAt).toBeLessThan(own.indexOf("begin"));
+    }
+    // Start gate: BOTH transactions were open before EITHER revision INSERT.
+    const firstInsert = events.findIndex((e) =>
+      e.sql.startsWith("insert into commercial_v1_assessment_result_revisions"),
     );
-    const neverTwoStart = text.indexOf(
-      "export async function scenarioNeverTwoRevisionOnes",
+    const beginsDone = events
+      .map((e, i) => (e.sql === "begin:done" ? i : -1))
+      .filter((i) => i >= 0);
+    expect(beginsDone.length).toBe(2);
+    expect(Math.max(...beginsDone)).toBeLessThan(firstInsert);
+
+    const commits = events.filter((e) => e.sql === "commit");
+    expect(commits.length).toBe(1);
+    const winner = events
+      .filter((e) => e.client === commits[0].client)
+      .map((e) => e.sql);
+    const revisionAt = winner.findIndex((s) =>
+      s.startsWith("insert into commercial_v1_assessment_result_revisions"),
     );
-    const completionStart = text.indexOf(
-      "export async function scenarioCompletionVsCompletion",
+    const marks = winner
+      .map((s, i) =>
+        s.startsWith("insert into commercial_v1_assessment_question_marks")
+          ? i
+          : -1,
+      )
+      .filter((i) => i >= 0);
+    const deriveAt = winner.findIndex((s) =>
+      s.includes("derive_and_insert_objective_outcomes($1)"),
     );
-    const neverTwoFn = text.slice(neverTwoStart, completionStart);
-    expect(neverTwoFn).toContain(
-      "select coalesce(sum(max_marks),0)::int as total from assessment_questions where assessment_id=$1",
+    const validAt = winner.findIndex((s) =>
+      s.includes("assessment_result_is_valid($1) as valid"),
     );
-    // v5: full marks (actualMax/actualMax), never 0/actualMax and never
-    // the old hard-coded 5/10.
-    expect(neverTwoFn).toContain("1,$6,$6,500)");
-    expect(neverTwoFn).not.toContain("1,0,$6,500)");
-    expect(neverTwoFn).not.toContain("1,5,10,500)");
-    // v5, BLOCKER: whenever exactly one admitted revision exists, it is
-    // completed (real question marks -> derive objective outcomes ->
-    // assert validity) BEFORE the pass/fail decision -- never only on
-    // the PASS path, and never left as permanent invalid history.
-    expect(neverTwoFn).toContain("if (rows.length === 1) {");
-    expect(neverTwoFn).toContain(
-      "insert into commercial_v1_assessment_question_marks(",
+    expect(marks.length).toBe(2); // one per REAL question
+    expect(Math.min(...marks)).toBeGreaterThan(revisionAt);
+    expect(deriveAt).toBeGreaterThan(Math.max(...marks));
+    expect(validAt).toBeGreaterThan(deriveAt);
+    expect(winner.indexOf("commit")).toBeGreaterThan(validAt);
+    // max_marks_total derives from the REAL questions (10 + 5), never 10.
+    const revisionInsert = events.find(
+      (e) =>
+        e.client === commits[0].client &&
+        e.sql.startsWith(
+          "insert into commercial_v1_assessment_result_revisions",
+        ),
+    )!;
+    expect(revisionInsert.params).toContain(15);
+
+    const loser = events
+      .filter(
+        (e) => e.client !== commits[0].client && contenders.includes(e.client),
+      )
+      .map((e) => e.sql);
+    expect(loser).toContain("rollback");
+    expect(loser).not.toContain("commit");
+    expect(
+      loser.some((s) =>
+        s.startsWith("insert into commercial_v1_assessment_question_marks"),
+      ),
+    ).toBe(false);
+  });
+
+  it("a validity result other than exactly true ROLLS BACK inside the contender transaction -- COMMIT is never sent, and the scenario FAILs", async () => {
+    const events = mockRevisionRace({ invalid: true });
+    const { scenarioNeverTwoRevisionOnes } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const result = await scenarioNeverTwoRevisionOnes(chain);
+    expect(result.status).toBe("FAIL");
+    expect(events.some((e) => e.sql === "commit")).toBe(false);
+    expect(events.filter((e) => e.sql === "rollback").length).toBe(2);
+    expect(result.details?.join("\n")).toContain(
+      "rolled back, never committed",
     );
-    expect(neverTwoFn).toContain(
-      "commercial_v1_private.derive_and_insert_objective_outcomes($1)",
+  });
+
+  it.each([
+    [
+      "the surviving revision is not valid",
+      [{ id: "rev-winner", revision_number: 1, valid: false }],
+    ],
+    [
+      "two QUIZ_1 revisions survive",
+      [
+        { id: "rev-winner", revision_number: 1, valid: true },
+        { id: "rev-other", revision_number: 1, valid: true },
+      ],
+    ],
+    [
+      "the surviving revision is not the winner's",
+      [{ id: "rev-other", revision_number: 1, valid: true }],
+    ],
+    ["no revision survives", []],
+  ])(
+    "FAIL even after a clean 1-commit/1-23505 race when %s",
+    async (_label, survivors) => {
+      mockRevisionRace({ survivors });
+      const { scenarioNeverTwoRevisionOnes } =
+        await import("../scripts/acceptance/concurrency.mjs");
+      const result = await scenarioNeverTwoRevisionOnes(chain);
+      expect(result.status).toBe("FAIL");
+    },
+  );
+
+  it("the acceptance write gate stays mandatory: without ACCEPTANCE_WRITE_ENABLED it throws AcceptanceWriteNotAuthorizedError before any BEGIN or INSERT", async () => {
+    const events = mockRevisionRace();
+    delete process.env.ACCEPTANCE_WRITE_ENABLED;
+    const { scenarioNeverTwoRevisionOnes } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const { AcceptanceWriteNotAuthorizedError } =
+      await import("../scripts/acceptance/db.mjs");
+    await expect(scenarioNeverTwoRevisionOnes(chain)).rejects.toBeInstanceOf(
+      AcceptanceWriteNotAuthorizedError,
     );
-    expect(neverTwoFn).toContain(
-      "commercial_v1_private.assessment_result_is_valid($1) as valid",
-    );
-    const completionBlockIndex = neverTwoFn.indexOf(
-      "insert into commercial_v1_assessment_question_marks(",
-    );
-    const passFailIndex = neverTwoFn.indexOf("if (\n      fulfilled === 1");
-    expect(completionBlockIndex).toBeGreaterThan(-1);
-    expect(passFailIndex).toBeGreaterThan(-1);
-    expect(completionBlockIndex).toBeLessThan(passFailIndex);
+    expect(events.some((e) => e.sql === "begin")).toBe(false);
+    expect(events.some((e) => e.sql.startsWith("insert"))).toBe(false);
   });
 });
 
-describe("acceptance harness: COMPLETION_VS_COMPLETION no longer duplicates NEVER_TWO_REVISION_ONES's result setup (independent-review finding C, v5)", () => {
-  it("no longer inserts into commercial_v1_assessment_result_revisions or looks up actualMax -- only the raw commercial_v1_completion_receipts race remains", async () => {
+describe("acceptance harness: createStartGate releases every contender together only once all have arrived (V7)", () => {
+  it("no arrive() promise resolves until the last party arrives, then all resolve", async () => {
+    const { createStartGate } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const gate = createStartGate(2);
+    let released = 0;
+    const first = gate.arrive().then(() => {
+      released += 1;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(released).toBe(0);
+    const second = gate.arrive().then(() => {
+      released += 1;
+    });
+    await Promise.all([first, second]);
+    expect(released).toBe(2);
+  });
+});
+
+describe("acceptance harness: COMPLETION_VS_COMPLETION drives the governed completion RPC on a separate completion-ready course (V7, Defect B)", () => {
+  afterEach(() => {
+    vi.doUnmock("pg");
+    vi.doUnmock("../scripts/acceptance/supabase.mjs");
+    vi.doUnmock("../scripts/acceptance/fixtures.mjs");
+    vi.resetModules();
+  });
+
+  // The owning chain NEVER_TWO_REVISION_ONES already used -- completion
+  // must never touch this enrolment.
+  const chain = { enrolmentId: "owning-chain-enrolment" };
+  const course = {
+    importId: "completion-import",
+    programmeVersionId: "completion-pv",
+    activationId: "completion-activation",
+    cohortId: "completion-cohort",
+    enrolmentId: "completion-enrolment",
+    studentId: "learner-app-user",
+  };
+  const goodReceipt = {
+    id: "receipt-1",
+    student_id: "learner-app-user",
+    activation_id: "completion-activation",
+    cohort_id: "completion-cohort",
+    programme_version_id: "completion-pv",
+    final_course_score_bp: 10000,
+    pass_mark_bp: 5000,
+    completed_by: "learner-app-user",
+  };
+  const COMPLETED = {
+    data: {
+      ok: true,
+      code: "COMPLETED",
+      receiptId: "receipt-1",
+      courseScoreBp: 10000,
+    },
+    error: null,
+  };
+  const ALREADY = {
+    data: { ok: true, code: "ALREADY_COMPLETED", receiptId: "receipt-1" },
+    error: null,
+  };
+
+  type RpcResponse = { data: unknown; error: { message: string } | null };
+  type Overrides = {
+    responses?: (RpcResponse | Error)[];
+    receipts?: Record<string, unknown>[];
+    enrolment?: Record<string, unknown>;
+    activation?: Record<string, unknown>;
+    audits?: number;
+  };
+
+  function mockCompletionDeps(overrides: Overrides = {}) {
+    clearAcceptanceVars();
+    process.env.ACCEPTANCE_DATABASE_URL =
+      "postgresql://acceptance:acceptance@localhost:5432/acceptance";
+    const record = {
+      learnerClients: [] as object[],
+      rpcCalls: [] as {
+        client: object;
+        name: string;
+        args: Record<string, unknown>;
+      }[],
+      maxInFlight: 0,
+      seedCourseCalls: [] as unknown[][],
+      seedResultsCalls: [] as unknown[][],
+      sql: [] as string[],
+    };
+    let inFlight = 0;
+    const responses = overrides.responses ?? [COMPLETED, ALREADY];
+    function learnerClient() {
+      const client = {
+        auth: {
+          getUser: async () => ({
+            data: { user: { id: "learner-auth-user" } },
+            error: null,
+          }),
+        },
+        rpc: async (name: string, args: Record<string, unknown>) => {
+          const index = record.rpcCalls.length;
+          record.rpcCalls.push({ client, name, args });
+          inFlight += 1;
+          record.maxInFlight = Math.max(record.maxInFlight, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          inFlight -= 1;
+          const response = responses[index];
+          if (response instanceof Error) throw response;
+          return response;
+        },
+      };
+      record.learnerClients.push(client);
+      return client;
+    }
+    vi.doMock("../scripts/acceptance/supabase.mjs", () => ({
+      hostedSupabaseConfigured: () => true,
+      acceptanceIdentitiesConfigured: () => true,
+      acceptanceIdentities: {
+        admin: async () => ({ rpc: async () => ({ data: null, error: null }) }),
+        learner: async () => learnerClient(),
+      },
+    }));
+    vi.doMock("../scripts/acceptance/fixtures.mjs", () => ({
+      seedAcceptanceCourse: async (...args: unknown[]) => {
+        record.seedCourseCalls.push(args);
+        return course;
+      },
+      seedAcceptanceResults: async (...args: unknown[]) => {
+        record.seedResultsCalls.push(args);
+      },
+      seedAcceptanceAttempt: async () => "unused-attempt",
+    }));
+    function FakeClient() {
+      return {
+        connect: async () => {},
+        end: async () => {},
+        query: async (sql: string) => {
+          record.sql.push(sql);
+          if (sql.includes("from commercial_v1_completion_receipts"))
+            return { rows: overrides.receipts ?? [goodReceipt] };
+          if (sql.includes("from enrolments"))
+            return {
+              rows: [
+                {
+                  status: "COMPLETED",
+                  student_id: "learner-app-user",
+                  cohort_id: "completion-cohort",
+                  programme_version_id: "completion-pv",
+                  ...overrides.enrolment,
+                },
+              ],
+            };
+          if (sql.includes("from course_activations"))
+            return {
+              rows: [
+                {
+                  cohort_id: "completion-cohort",
+                  programme_version_id: "completion-pv",
+                  ...overrides.activation,
+                },
+              ],
+            };
+          if (sql.includes("from commercial_v1_result_policies"))
+            return { rows: [{ pass_mark_bp: 5000 }] };
+          if (sql.includes("from audit_events"))
+            return { rows: [{ n: overrides.audits ?? 1 }] };
+          return { rows: [] };
+        },
+      };
+    }
+    vi.doMock("pg", () => ({ default: { Client: FakeClient } }));
+    vi.resetModules();
+    return record;
+  }
+
+  it("PASS: seeds a SEPARATE completion course via the governed helpers, then two distinct learner sessions call attempt_commercial_v1_course_completion together on it -- no receipt is ever written directly", async () => {
+    const record = mockCompletionDeps();
+    const { scenarioCompletionVsCompletion } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const result = await scenarioCompletionVsCompletion(chain);
+    expect(result.status).toBe("PASS");
+    expect(result.details?.join("\n")).toContain("completion-enrolment");
+
+    // Separate, completion-specific fixture -- never the owning chain.
+    expect(record.seedCourseCalls.length).toBe(1);
+    const [, completionRunId, learnerAuthUserId] = record.seedCourseCalls[0];
+    expect(String(completionRunId)).toMatch(/-completion$/);
+    expect(learnerAuthUserId).toBe("learner-auth-user");
+    expect(record.seedResultsCalls).toEqual([[course, true]]);
+
+    // The governed RPC, on the completion enrolment, from two DISTINCT
+    // authenticated learner clients, both in flight together.
+    expect(record.rpcCalls.length).toBe(2);
+    for (const call of record.rpcCalls) {
+      expect(call.name).toBe("attempt_commercial_v1_course_completion");
+      expect(call.args.p_enrolment_id).toBe("completion-enrolment");
+      expect(call.args.p_enrolment_id).not.toBe(chain.enrolmentId);
+      expect(String(call.args.p_reason).trim().length).toBeGreaterThanOrEqual(
+        5,
+      );
+    }
+    expect(record.learnerClients.length).toBe(2);
+    expect(record.rpcCalls[0].client).not.toBe(record.rpcCalls[1].client);
+    expect(record.maxInFlight).toBe(2);
+
+    // Direct database access is read-only verification only.
+    for (const sql of record.sql) {
+      expect(sql.toLowerCase()).not.toMatch(
+        /\binsert\s+into\b|\bupdate\s+\w+\s+set\b/,
+      );
+    }
+    expect(
+      record.sql.some((s) =>
+        s.includes("from commercial_v1_completion_receipts"),
+      ),
+    ).toBe(true);
+  });
+
+  it("PASS regardless of which call wins (ALREADY_COMPLETED may resolve first)", async () => {
+    mockCompletionDeps({ responses: [ALREADY, COMPLETED] });
+    const { scenarioCompletionVsCompletion } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    expect((await scenarioCompletionVsCompletion(chain)).status).toBe("PASS");
+  });
+
+  it.each<[string, Overrides]>([
+    ["both calls report COMPLETED", { responses: [COMPLETED, COMPLETED] }],
+    ["both calls report ALREADY_COMPLETED", { responses: [ALREADY, ALREADY] }],
+    [
+      "one call returns a PostgREST error",
+      { responses: [COMPLETED, { data: null, error: { message: "boom" } }] },
+    ],
+    ["one call throws", { responses: [COMPLETED, new Error("network")] }],
+    [
+      "one call is refused as not eligible",
+      {
+        responses: [
+          COMPLETED,
+          { data: { ok: false, code: "COMPONENTS_INCOMPLETE" }, error: null },
+        ],
+      },
+    ],
+    [
+      "the two responses name different receipts",
+      {
+        responses: [
+          COMPLETED,
+          { data: { ...ALREADY.data, receiptId: "receipt-2" }, error: null },
+        ],
+      },
+    ],
+    ["no receipt exists", { receipts: [] }],
+    [
+      "two receipts exist",
+      { receipts: [goodReceipt, { ...goodReceipt, id: "receipt-2" }] },
+    ],
+    ["the enrolment is still ACTIVE", { enrolment: { status: "ACTIVE" } }],
+    [
+      "the receipt belongs to another student",
+      { receipts: [{ ...goodReceipt, student_id: "someone-else" }] },
+    ],
+    [
+      "the receipt was completed by someone other than the learner",
+      { receipts: [{ ...goodReceipt, completed_by: "an-admin" }] },
+    ],
+    [
+      "the receipt cohort does not match the enrolment",
+      { receipts: [{ ...goodReceipt, cohort_id: "other-cohort" }] },
+    ],
+    [
+      "the activation lineage does not match the enrolment",
+      { activation: { programme_version_id: "other-pv" } },
+    ],
+    [
+      "the final score is below the pass mark",
+      { receipts: [{ ...goodReceipt, final_course_score_bp: 4000 }] },
+    ],
+    [
+      "the receipt pass mark differs from the published policy",
+      { receipts: [{ ...goodReceipt, pass_mark_bp: 4000 }] },
+    ],
+    ["two completion audit events exist", { audits: 2 }],
+  ])("FAIL when %s", async (_label, overrides) => {
+    mockCompletionDeps(overrides);
+    const { scenarioCompletionVsCompletion } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    expect((await scenarioCompletionVsCompletion(chain)).status).toBe("FAIL");
+  });
+
+  it("the acceptance write gate stays mandatory: with the REAL fixtures and no ACCEPTANCE_ENVIRONMENT_ID, the completion course seed throws AcceptanceWriteNotAuthorizedError before any completion RPC", async () => {
+    clearAcceptanceVars();
+    const rpcNames: string[] = [];
+    const client = (id: string) => ({
+      auth: {
+        getUser: async () => ({ data: { user: { id } }, error: null }),
+      },
+      rpc: async (name: string) => {
+        rpcNames.push(name);
+        return { data: null, error: null };
+      },
+    });
+    vi.doMock("../scripts/acceptance/supabase.mjs", async (importOriginal) => ({
+      ...(await importOriginal<Record<string, unknown>>()),
+      acceptanceIdentities: {
+        admin: async () => client("admin-auth-user"),
+        learner: async () => client("learner-auth-user"),
+      },
+    }));
+    vi.resetModules();
+    const { scenarioCompletionVsCompletion } =
+      await import("../scripts/acceptance/concurrency.mjs");
+    const { AcceptanceWriteNotAuthorizedError } =
+      await import("../scripts/acceptance/db.mjs");
+    await expect(scenarioCompletionVsCompletion(chain)).rejects.toBeInstanceOf(
+      AcceptanceWriteNotAuthorizedError,
+    );
+    expect(rpcNames).not.toContain("attempt_commercial_v1_course_completion");
+    expect(rpcNames).toEqual([]);
+  });
+
+  it("no code path in concurrency.mjs inserts into commercial_v1_completion_receipts any more", async () => {
     const text = await readFile(
       new URL("../scripts/acceptance/concurrency.mjs", import.meta.url),
       "utf8",
     );
-    const completionStart = text.indexOf(
-      "export async function scenarioCompletionVsCompletion",
-    );
-    const nextFnStart = text.indexOf(
-      "\n// Independent-review finding 4:",
-      completionStart,
-    );
-    const rawCompletionFn = text.slice(
-      completionStart,
-      nextFnStart === -1 ? undefined : nextFnStart,
-    );
-    // Strip line comments first -- this function's own explanatory
-    // comment deliberately says "actualMax" in prose (explaining why the
-    // lookup was removed), which would otherwise trip a naive substring
-    // check on the comment text itself, not the actual code.
-    const completionFn = rawCompletionFn
+    const code = text
       .split("\n")
       .filter((line) => !line.trim().startsWith("//"))
       .join("\n");
-    expect(completionFn).not.toContain(
-      "insert into commercial_v1_assessment_result_revisions(",
-    );
-    expect(completionFn).not.toContain(
-      "select coalesce(sum(max_marks),0)::int as total from assessment_questions where assessment_id=$1",
-    );
-    expect(completionFn).not.toContain("actualMax");
-    expect(completionFn).toContain(
-      "insert into commercial_v1_completion_receipts(",
-    );
-    // The PASS description must stay explicitly bounded -- never implying
-    // this proves governed course-completion eligibility.
-    expect(completionFn).toContain(
-      "bounded EXACTLY to the raw unique(enrolment_id) constraint",
-    );
-    expect(completionFn).toContain(
-      "never proof that a real completion would actually be eligible",
+    expect(code).not.toMatch(
+      /insert\s+into\s+commercial_v1_completion_receipts/i,
     );
   });
 });
