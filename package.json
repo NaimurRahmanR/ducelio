@@ -19,7 +19,8 @@
     "format:check": "prettier --check .",
     "acceptance:preflight": "node --env-file-if-exists=.env.local scripts/acceptance/preflight.mjs",
     "acceptance:hosted": "node --env-file-if-exists=.env.local scripts/acceptance/hosted.mjs",
-    "acceptance:concurrency": "node --env-file-if-exists=.env.local scripts/acceptance/concurrency.mjs"
+    "acceptance:concurrency": "node --env-file-if-exists=.env.local scripts/acceptance/concurrency.mjs",
+    "acceptance:examiner-app": "node --env-file-if-exists=.env.local scripts/acceptance/examiner-app.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
