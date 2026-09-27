@@ -997,7 +997,7 @@ function hmacBlockedResult(surface) {
     "Requires driving the real Ducelio application server (exclusive HMAC signing implementation), not a standalone acceptance script.",
     [
       "This harness deliberately never reimplements the controller/HMAC canonical-message protocol outside src/server/commercial-v1-examiner-*/authority.ts.",
-      "Next step: run the Next.js app itself against this hosted database/provider config and drive it over HTTP (see scripts/smoke.mjs's pattern) for full acceptance of this surface.",
+      "Empirical evidence for this surface comes only from `npm run acceptance:examiner-app` (scripts/acceptance/examiner-app.mjs), which drives the real Next.js application server over HTTP so the existing production authority signs every command. This direct harness never reads that driver's report and never claims its result.",
     ],
   );
 }

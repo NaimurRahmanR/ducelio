@@ -69,8 +69,27 @@ function disabledRole() {
   };
 }
 
-/** A minimal, real COURSE_PACKAGE_V1 package: six formal components + one lab. */
-export function buildAcceptancePackage(runId) {
+// Examiner app acceptance (scripts/acceptance/examiner-app.mjs) only: the
+// SAME reviewed EXAMINER configuration a real course author could publish --
+// the role's single allowed profile ref, the controlled-assessment grading
+// capability from migration 036's allowlist, and no ACADEMIC_REVIEW
+// escalation (which would terminate every claim ESCALATED before any
+// provider call). Recovery reuses this same config check; regrade does not
+// consult it. Every other caller keeps the default all-disabled package.
+const EXAMINER_ACCEPTANCE_ROLE = Object.freeze({
+  enabled: true,
+  modelProfileRef: "EXAMINER_COMMERCIAL_V1",
+  instructionalNotes: null,
+  capabilities: ["grade_controlled_assessment"],
+  escalationPolicy: "NONE",
+});
+
+/**
+ * A minimal, real COURSE_PACKAGE_V1 package: six formal components + one lab.
+ * `options.examinerEnabled` enables only the EXAMINER role (see
+ * EXAMINER_ACCEPTANCE_ROLE); it is false for every existing caller.
+ */
+export function buildAcceptancePackage(runId, options = {}) {
   return {
     schemaVersion: "COURSE_PACKAGE_V1",
     packageKey: `acceptance-${runId}`,
@@ -150,7 +169,12 @@ export function buildAcceptancePackage(runId) {
       PROFESSOR: disabledRole(),
       TUTOR: disabledRole(),
       LAB_INSTRUCTOR: disabledRole(),
-      EXAMINER: disabledRole(),
+      EXAMINER: options.examinerEnabled
+        ? {
+            ...EXAMINER_ACCEPTANCE_ROLE,
+            capabilities: [...EXAMINER_ACCEPTANCE_ROLE.capabilities],
+          }
+        : disabledRole(),
       COUNSELLOR: disabledRole(),
     },
     reason: `Acceptance run ${runId}`,
@@ -242,7 +266,12 @@ export function buildAcceptancePackage(runId) {
  * the ordering here is a testability/fail-fast convenience, not a
  * security dependency between the two.
  */
-export async function seedAcceptanceCourse(admin, runId, learnerAuthUserId) {
+export async function seedAcceptanceCourse(
+  admin,
+  runId,
+  learnerAuthUserId,
+  options = {},
+) {
   await assertAcceptanceSupabaseWriteAuthorized(admin);
   const { data: adminUser, error: adminUserError } = await admin.auth.getUser();
   if (adminUserError || !adminUser?.user?.id)
@@ -310,7 +339,7 @@ export async function seedAcceptanceCourse(admin, runId, learnerAuthUserId) {
         recoveryActorId: resolvedInstructorId,
       };
     });
-  const pkg = buildAcceptancePackage(runId);
+  const pkg = buildAcceptancePackage(runId, options);
   const call = async (name, args) => {
     const { data, error } = await admin.rpc(name, args);
     if (error)
