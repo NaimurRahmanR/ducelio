@@ -35,12 +35,27 @@ describe("production native routing registry", () => {
     });
   });
 
+  it("routes the platform roles: Counsellor to OpenAI Luna, Operations Engineer to Claude Opus 5.5", () => {
+    expect(resolveRuntimeProfile("COUNSELLOR_PLATFORM_V1")).toMatchObject({
+      adapterKind: "OPENAI_RESPONSES",
+      providerConfig: { model: "gpt-5.6-luna", reasoningEffort: "low" },
+    });
+    expect(
+      resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1"),
+    ).toMatchObject({
+      adapterKind: "ANTHROPIC_MESSAGES",
+      providerConfig: { model: "claude-opus-5-5" },
+    });
+  });
+
   it("every production registry entry satisfies the full runtime-profile schema", () => {
     for (const ref of [
       "PROFESSOR_COMMERCIAL_V1",
       "TUTOR_COMMERCIAL_V1",
       "LAB_INSTRUCTOR_COMMERCIAL_V1",
       "EXAMINER_COMMERCIAL_V1",
+      "COUNSELLOR_PLATFORM_V1",
+      "OPERATIONS_ENGINEER_PLATFORM_V1",
     ]) {
       expect(() =>
         runtimeProfileSchema.parse(resolveRuntimeProfile(ref)),
@@ -65,6 +80,15 @@ describe("production native routing registry", () => {
         inputMicrousdPerMillionTokens: 2_000_000,
         outputMicrousdPerMillionTokens: 10_000_000,
         reviewedAt: "2026-09-18",
+      });
+    }
+    const ops = resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1");
+    expect(ops?.adapterKind).toBe("ANTHROPIC_MESSAGES");
+    if (ops?.adapterKind === "ANTHROPIC_MESSAGES") {
+      expect(ops.providerConfig.tariff).toEqual({
+        inputMicrousdPerMillionTokens: 4_000_000,
+        outputMicrousdPerMillionTokens: 20_000_000,
+        reviewedAt: "2026-09-27",
       });
     }
   });
@@ -227,6 +251,16 @@ describe("resolveAdapterForProfile", () => {
           resolveRuntimeProfile("EXAMINER_COMMERCIAL_V1")!,
         )?.name,
       ).toBe("openai-responses");
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("COUNSELLOR_PLATFORM_V1")!,
+        )?.name,
+      ).toBe("openai-responses");
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1")!,
+        )?.name,
+      ).toBe("anthropic-messages");
     } finally {
       if (oldOpenAI === undefined) delete process.env.OPENAI_API_KEY;
       else process.env.OPENAI_API_KEY = oldOpenAI;
@@ -249,6 +283,11 @@ describe("resolveAdapterForProfile", () => {
       expect(
         resolveAdapterForProfile(
           resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1")!,
+        ),
+      ).toBeNull();
+      expect(
+        resolveAdapterForProfile(
+          resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1")!,
         ),
       ).toBeNull();
     } finally {
