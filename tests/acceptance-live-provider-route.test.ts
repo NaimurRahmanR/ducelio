@@ -11,9 +11,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // fake that answers the two fixed vendor URLs with canned bodies and throws
 // for anything else. Only @/lib/env's APP_URL is otherwise replaced;
 // everything behind the route -- resolveRoleBoundRuntimeProfile,
-// resolveAdapterForProfile, the OpenAI/Anthropic adapters, tariffs,
-// runGovernedProviderExecution and the Examiner parser/validator -- is the
-// real production code.
+// resolvePlatformRuntimeProfile, resolveAdapterForProfile, the OpenAI/
+// Anthropic adapters, tariffs, runGovernedProviderExecution and the Examiner
+// parser/validator -- is the real production code.
 // ============================================================================
 
 const state = vi.hoisted(() => ({ appUrl: "http://127.0.0.1:3200" }));
@@ -37,12 +37,14 @@ import {
   LIVE_PROVIDER_SMOKE_PLANS,
   SYNTHETIC_EXAMINER_CONTEXT,
   SYNTHETIC_LAB_CONTEXT,
+  SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT,
   liveProviderAcceptanceRequestAllowed,
   runLiveProviderSmoke,
   type LiveProviderSmokeDeps,
 } from "@/server/live-provider-acceptance-driver";
 import {
   resolveAdapterForProfile,
+  resolvePlatformRuntimeProfile,
   resolveRoleBoundRuntimeProfile,
   resolveRuntimeProfile,
 } from "@/server/academic-runtime/profile-registry";
@@ -52,6 +54,12 @@ import {
   TUTOR_LAB_ALLOWED_REASONS,
   TUTOR_LAB_EXECUTION_DB_CEILING,
 } from "@/domain/tutor-lab-execution";
+import { agentRoleSchema } from "@/domain/academic-capability-policy";
+import {
+  OPERATIONS_ENGINEER_PROHIBITED_SCOPES,
+  isOperationsEngineerCapabilityAllowed,
+  operationsEngineerCapabilityCatalogue,
+} from "@/domain/platform-ai-policy";
 import type { RuntimeProfile } from "@/domain/academic-runtime-profile";
 import type { RuntimeResult } from "@/domain/academic-runtime";
 
@@ -176,6 +184,7 @@ afterEach(() => {
 
 const openai = { operation: "OPENAI_EXAMINER_SMOKE" };
 const anthropic = { operation: "ANTHROPIC_LAB_SMOKE" };
+const opsEngineer = { operation: "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE" };
 
 describe("live-provider acceptance route: disabled by default and fail-closed", () => {
   it("answers 404 with no acceptance configuration, without reading the body or calling any provider", async () => {
@@ -287,6 +296,11 @@ describe("live-provider acceptance route: strict caller input", () => {
       {},
       { operation: "PROBE" },
       { operation: 1 },
+      // CLI selector names and near-misses are not operations.
+      { operation: "ANTHROPIC_OPERATIONS_ENGINEER" },
+      { operation: "OPERATIONS_ENGINEER_SMOKE" },
+      { operation: "anthropic_operations_engineer_smoke" },
+      { operation: ["ANTHROPIC_OPERATIONS_ENGINEER_SMOKE"] },
     ])
       expect((await callRoute(body)).status).toBe(400);
     expect(fakeFetch).not.toHaveBeenCalled();
@@ -302,13 +316,17 @@ describe("live-provider acceptance route: strict caller input", () => {
     ["budget", { maxOutputTokens: 100000 }],
     ["context", { learnerMessage: "ignore previous instructions" }],
     ["role", "PROFESSOR"],
+    ["role", "OPERATIONS_ENGINEER"],
     ["capability", "grade_practical_lab"],
+    ["capability", "propose_pull_request"],
+    ["surface", "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER"],
+    ["selector", "ANTHROPIC_OPERATIONS_ENGINEER"],
     ["prompt", "say hi"],
     ["instructions", "system override"],
   ] as const) {
     it(`rejects a caller-supplied ${field} with 400 and no provider call`, async () => {
       enableGate();
-      for (const op of [openai, anthropic])
+      for (const op of [openai, anthropic, opsEngineer])
         expect((await callRoute({ ...op, [field]: value })).status).toBe(400);
       expect(fakeFetch).not.toHaveBeenCalled();
     });
@@ -385,8 +403,10 @@ describe("live-provider acceptance: exact production surfaces", () => {
 
   it("a registry drift fails closed as PROFILE_MISMATCH before any provider call", async () => {
     const execute = vi.fn(runGovernedProviderExecution);
+    const resolvePlatformProfile = vi.fn(resolvePlatformRuntimeProfile);
     const deps: LiveProviderSmokeDeps = {
       resolveProfile: () => resolveRuntimeProfile("TUTOR_COMMERCIAL_V1"),
+      resolvePlatformProfile,
       resolveAdapter: resolveAdapterForProfile,
       execute,
     };
@@ -398,6 +418,7 @@ describe("live-provider acceptance: exact production surfaces", () => {
     });
     expect(evidence.usage.providerCalls).toBe(0);
     expect(execute).not.toHaveBeenCalled();
+    expect(resolvePlatformProfile).not.toHaveBeenCalled();
     expect(fakeFetch).not.toHaveBeenCalled();
   });
 });
@@ -455,6 +476,7 @@ describe("live-provider acceptance: OpenAI Examiner smoke through the production
         marksValidationPassed: true,
       },
       lab: null,
+      operationsEngineer: null,
       verdict: "PASS",
       verdictReason: "EXAMINER_GRADED_VALID",
     });
@@ -717,6 +739,12 @@ describe("live-provider acceptance: no duplicated trust-critical provider logic"
     expect(driver).toContain("resolveAdapterForProfile");
     expect(driver).toContain("parseExaminerAssessmentProviderOutput");
     expect(driver).toContain("validateExaminerAssessmentMarks");
+    expect(driver).toContain("resolvePlatformRuntimeProfile");
+  });
+
+  it("never force-casts the platform role into the academic AgentRole", () => {
+    expect(driver).not.toMatch(/as\s+(unknown\s+as\s+)?AgentRole/);
+    expect(driver).not.toMatch(/OPERATIONS_ENGINEER"\s+as\b/);
   });
 });
 
@@ -813,6 +841,54 @@ describe("live-provider acceptance: the exact one-call execution envelope is pin
         budgetPolicy: { ...p.budgetPolicy, totalDeadlineMs: 60_000 },
       }),
     ],
+    [
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "maxAttempts 2",
+      (p) => ({ ...p, budgetPolicy: { ...p.budgetPolicy, maxAttempts: 2 } }),
+    ],
+    [
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "maxProviderCalls 2",
+      (p) => ({
+        ...p,
+        budgetPolicy: { ...p.budgetPolicy, maxProviderCalls: 2 },
+      }),
+    ],
+    [
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "maxOutputTokens 4000",
+      (p) => ({
+        ...p,
+        budgetPolicy: { ...p.budgetPolicy, maxOutputTokens: 4000 },
+      }),
+    ],
+    [
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "maxEstimatedCostMicrousd 500000",
+      (p) => ({
+        ...p,
+        budgetPolicy: { ...p.budgetPolicy, maxEstimatedCostMicrousd: 500_000 },
+      }),
+    ],
+    [
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "totalDeadlineMs 60000",
+      (p) => ({
+        ...p,
+        budgetPolicy: { ...p.budgetPolicy, totalDeadlineMs: 60_000 },
+      }),
+    ],
+    [
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      "model claude-sonnet-5",
+      (p) =>
+        p.adapterKind === "ANTHROPIC_MESSAGES"
+          ? {
+              ...p,
+              providerConfig: { ...p.providerConfig, model: "claude-sonnet-5" },
+            }
+          : p,
+    ],
   ];
   for (const [operation, label, change] of drifts) {
     it(`${operation}: correct profile/model but drifted ${label} is PROFILE_MISMATCH with no adapter, runtime or provider reached`, async () => {
@@ -824,6 +900,7 @@ describe("live-provider acceptance: the exact one-call execution envelope is pin
       const execute = vi.fn(runGovernedProviderExecution);
       const evidence = await runLiveProviderSmoke(operation, {
         resolveProfile: () => profile,
+        resolvePlatformProfile: () => profile,
         resolveAdapter,
         execute,
       });
@@ -861,6 +938,7 @@ describe("live-provider acceptance: PASS proves exactly one provider request", (
     };
     return {
       resolveProfile: (role, ref) => resolveRoleBoundRuntimeProfile(role, ref),
+      resolvePlatformProfile: (role) => resolvePlatformRuntimeProfile(role),
       resolveAdapter: () => null,
       execute: async () => result,
     };
@@ -869,6 +947,7 @@ describe("live-provider acceptance: PASS proves exactly one provider request", (
   for (const operation of [
     "OPENAI_EXAMINER_SMOKE",
     "ANTHROPIC_LAB_SMOKE",
+    "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
   ] as const) {
     it(`${operation}: an otherwise-PASS result with providerCalls=0 is FAIL`, async () => {
       expect(
@@ -929,5 +1008,331 @@ describe("live-provider acceptance: the synthetic Lab reason follows the product
     expect(JSON.parse(sent.messages[0].content).context.reasonCode).toBe(
       "PRACTICAL_HELP",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Operations Engineer (OPERATIONS_ENGINEER_PLATFORM_V1 / claude-opus-5-5).
+// ---------------------------------------------------------------------------
+const OPS_RAW_OUTPUT =
+  "RAW-OPS-OUTPUT-SENTINEL: rerun the synthetic job with verbose logging.";
+
+describe("live-provider acceptance: Operations Engineer surface maps exactly to the platform profile", () => {
+  const plan = LIVE_PROVIDER_SMOKE_PLANS.ANTHROPIC_OPERATIONS_ENGINEER_SMOKE;
+
+  it("pins OPERATIONS_ENGINEER_PLATFORM_V1 / ANTHROPIC_MESSAGES / claude-opus-5-5 with no reasoning effort", () => {
+    expect(plan).toMatchObject({
+      surface: "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER",
+      providerFamily: "ANTHROPIC",
+      profilePlane: "PLATFORM",
+      role: "OPERATIONS_ENGINEER",
+      capability: "read_system_health",
+      profileRef: "OPERATIONS_ENGINEER_PLATFORM_V1",
+      adapterKind: "ANTHROPIC_MESSAGES",
+      modelId: "claude-opus-5-5",
+      reasoningEffort: null,
+    });
+  });
+
+  it("pins the exact one-call budget envelope: calls 1, attempts 1, output 1200, cost 100000, deadline 20000", () => {
+    expect(plan.envelope).toEqual({
+      maxProviderCalls: 1,
+      maxAttempts: 1,
+      maxOutputTokens: 1200,
+      maxEstimatedCostMicrousd: 100_000,
+      totalDeadlineMs: 20_000,
+    });
+  });
+
+  it("the production platform resolver returns exactly the registry profile the plan pins", () => {
+    const profile = resolvePlatformRuntimeProfile("OPERATIONS_ENGINEER");
+    expect(profile).toBe(
+      resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1"),
+    );
+    expect(profile?.ref).toBe("OPERATIONS_ENGINEER_PLATFORM_V1");
+    expect(profile?.adapterKind).toBe("ANTHROPIC_MESSAGES");
+    expect(
+      profile?.adapterKind === "ANTHROPIC_MESSAGES" &&
+        profile.providerConfig.model,
+    ).toBe("claude-opus-5-5");
+    expect(profile?.budgetPolicy).toMatchObject(plan.envelope);
+  });
+
+  it("the platform profile is unreachable through the academic role-bound resolver", () => {
+    for (const role of agentRoleSchema.options)
+      expect(
+        resolveRoleBoundRuntimeProfile(role, "OPERATIONS_ENGINEER_PLATFORM_V1"),
+      ).toBeNull();
+  });
+
+  it("uses an existing observation capability from the Operations Engineer catalogue", () => {
+    expect(isOperationsEngineerCapabilityAllowed(plan.capability)).toBe(true);
+    expect(
+      (operationsEngineerCapabilityCatalogue as readonly string[]).includes(
+        plan.capability,
+      ),
+    ).toBe(true);
+    expect(
+      (OPERATIONS_ENGINEER_PROHIBITED_SCOPES as readonly string[]).includes(
+        plan.capability,
+      ),
+    ).toBe(false);
+  });
+
+  it("the synthetic context is tiny, labelled demo content with no obvious real-user or secret data", () => {
+    const text = JSON.stringify(SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT);
+    expect(Buffer.byteLength(text)).toBeLessThan(2000);
+    expect(SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT.label).toMatch(/demo content/);
+    expect(SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT.systemStatus).toBe(
+      "SYNTHETIC",
+    );
+    for (const pattern of [
+      /@/, // e-mail addresses
+      /https?:\/\//i,
+      /postgres(ql)?:\/\//i,
+      /\bsk[-_]/i,
+      /\bghp_/i,
+      /\bey[A-Za-z0-9_-]{10,}/, // JWT-shaped
+      /[0-9a-f]{32,}/i, // long hex (keys/tokens)
+      /api[_-]?key|secret|password|token|credential|service[_-]?role/i,
+      /learner|student|customer|enrol/i,
+      /supabase|stripe|github/i,
+    ])
+      expect(text).not.toMatch(pattern);
+  });
+
+  it("the platform resolver -- never the academic resolver -- is used, and the academic surfaces never use the platform resolver", async () => {
+    const execute = vi.fn(async (): Promise<RuntimeResult> => ({
+      outcome: "SUCCEEDED",
+      usage: {
+        providerCalls: 1,
+        attempts: 1,
+        inputTokens: 10,
+        outputTokens: 10,
+        estimatedCostMicrousd: 1,
+        elapsedMs: 5,
+      },
+      response: {
+        outputText: JSON.stringify({ outcome: "ESCALATE" }),
+        usage: { inputTokens: 10, outputTokens: 10, estimatedCostMicrousd: 1 },
+      },
+    }));
+    const resolveProfile = vi.fn(resolveRoleBoundRuntimeProfile);
+    const resolvePlatformProfile = vi.fn(resolvePlatformRuntimeProfile);
+    const deps: LiveProviderSmokeDeps = {
+      resolveProfile: (role, ref) => resolveProfile(role, ref),
+      resolvePlatformProfile: (role) => resolvePlatformProfile(role),
+      resolveAdapter: () => null,
+      execute,
+    };
+    const evidence = await runLiveProviderSmoke(
+      "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+      deps,
+    );
+    expect(evidence.verdict).toBe("PASS");
+    expect(resolvePlatformProfile).toHaveBeenCalledTimes(1);
+    expect(resolvePlatformProfile).toHaveBeenCalledWith("OPERATIONS_ENGINEER");
+    expect(resolveProfile).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]).toEqual([
+      null,
+      {
+        role: "OPERATIONS_ENGINEER",
+        capability: "read_system_health",
+        context: SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT,
+      },
+      resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1")!.budgetPolicy,
+    ]);
+
+    resolvePlatformProfile.mockClear();
+    for (const operation of [
+      "OPENAI_EXAMINER_SMOKE",
+      "ANTHROPIC_LAB_SMOKE",
+    ] as const)
+      await runLiveProviderSmoke(operation, deps);
+    expect(resolveProfile).toHaveBeenCalledTimes(2);
+    expect(resolvePlatformProfile).not.toHaveBeenCalled();
+  });
+
+  for (const [label, resolved] of [
+    ["the platform resolver returns null", () => null],
+    [
+      "the platform resolver returns the Lab (Sonnet) profile",
+      () => resolveRuntimeProfile("LAB_INSTRUCTOR_COMMERCIAL_V1"),
+    ],
+    [
+      "the platform resolver returns the Counsellor profile",
+      () => resolveRuntimeProfile("COUNSELLOR_PLATFORM_V1"),
+    ],
+  ] as const) {
+    it(`PROFILE_MISMATCH with no adapter, runtime or provider when ${label}`, async () => {
+      enableGate();
+      const resolveAdapter = vi.fn(resolveAdapterForProfile);
+      const execute = vi.fn(runGovernedProviderExecution);
+      const evidence = await runLiveProviderSmoke(
+        "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+        {
+          resolveProfile: () =>
+            resolveRuntimeProfile("OPERATIONS_ENGINEER_PLATFORM_V1"),
+          resolvePlatformProfile: resolved,
+          resolveAdapter,
+          execute,
+        },
+      );
+      expect(evidence).toMatchObject({
+        verdict: "FAIL",
+        verdictReason: "PROFILE_MISMATCH",
+        runtimeOutcome: "NOT_EXECUTED",
+        usage: { providerCalls: 0, attempts: 0 },
+        operationsEngineer: null,
+      });
+      expect(resolveAdapter).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+      expect(fakeFetch).not.toHaveBeenCalled();
+    });
+  }
+});
+
+describe("live-provider acceptance: Operations Engineer smoke through the production adapter/runtime", () => {
+  it("a valid Opus response passes the production bounded parser; only its length is returned, in the Operations Engineer field", async () => {
+    enableGate();
+    anthropicReply = anthropicText(OPS_RAW_OUTPUT);
+    const { status, body, text } = await callRoute(opsEngineer);
+    expect(status).toBe(200);
+    expect(captured).toHaveLength(1);
+    expect(captured[0].url).toBe(ANTHROPIC_URL);
+    expect(captured[0].init.redirect).toBe("error");
+    const headers = captured[0].init.headers as Record<string, string>;
+    expect(headers["x-api-key"]).toBe(ANTHROPIC_KEY);
+    const sent = JSON.parse(String(captured[0].init.body));
+    expect(sent).toMatchObject({ model: "claude-opus-5-5", max_tokens: 1200 });
+    expect(JSON.parse(sent.messages[0].content)).toEqual({
+      capability: "read_system_health",
+      context: SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT,
+    });
+    expect(body).toEqual({
+      ok: true,
+      evidence: {
+        operation: "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
+        surface: "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER",
+        providerFamily: "ANTHROPIC",
+        adapterKind: "ANTHROPIC_MESSAGES",
+        profileRef: "OPERATIONS_ENGINEER_PLATFORM_V1",
+        modelId: "claude-opus-5-5",
+        runtimeOutcome: "SUCCEEDED",
+        runtimeDetail: null,
+        usage: {
+          providerCalls: 1,
+          attempts: 1,
+          inputTokens: 200,
+          outputTokens: 50,
+          // ceil((200 * 4000000 + 50 * 20000000) / 1e6): the registry tariff.
+          estimatedCostMicrousd: 1800,
+          elapsedMs: expect.any(Number),
+        },
+        envelope: {
+          maxProviderCalls: 1,
+          maxAttempts: 1,
+          maxOutputTokens: 1200,
+          maxEstimatedCostMicrousd: 100000,
+          totalDeadlineMs: 20000,
+        },
+        withinEnvelope: true,
+        examiner: null,
+        lab: null,
+        operationsEngineer: { outputLength: OPS_RAW_OUTPUT.length },
+        verdict: "PASS",
+        verdictReason: "OPERATIONS_ENGINEER_OUTPUT_ACCEPTED",
+      },
+    });
+    for (const secret of [
+      "RAW-OPS-OUTPUT-SENTINEL",
+      "verbose logging",
+      ANTHROPIC_KEY,
+      OPENAI_KEY,
+      TOKEN,
+      "synthetic-nightly-report",
+      "diagnostic next step",
+    ])
+      expect(text).not.toContain(secret);
+  });
+
+  it("the Lab surface keeps its own evidence field and never fills the Operations Engineer field", async () => {
+    enableGate();
+    const { body } = await callRoute(anthropic);
+    expect(body.evidence).toMatchObject({
+      verdictReason: "LAB_OUTPUT_ACCEPTED",
+      lab: { outputLength: expect.any(Number) },
+      operationsEngineer: null,
+    });
+    const examiner = await callRoute(openai);
+    expect(examiner.body.evidence.operationsEngineer).toBeNull();
+  });
+
+  it("an empty output fails the production bounded parser", async () => {
+    enableGate();
+    anthropicReply = anthropicText("");
+    const { body } = await callRoute(opsEngineer);
+    expect(body.evidence).toMatchObject({
+      runtimeOutcome: "FAILED",
+      runtimeDetail: "PROVIDER_INVALID_RESPONSE",
+      verdict: "FAIL",
+      operationsEngineer: null,
+    });
+  });
+
+  it("output over 1200 tokens is BUDGET_BLOCKED post-call and fails", async () => {
+    enableGate();
+    anthropicReply = anthropicText(OPS_RAW_OUTPUT, {
+      input: 200,
+      output: 5000,
+    });
+    const { body, text } = await callRoute(opsEngineer);
+    expect(captured).toHaveLength(1);
+    expect(body.evidence).toMatchObject({
+      runtimeOutcome: "BUDGET_BLOCKED",
+      verdict: "FAIL",
+      withinEnvelope: false,
+      operationsEngineer: null,
+    });
+    expect(text).not.toContain("RAW-OPS-OUTPUT-SENTINEL");
+  });
+
+  it("a rate-limit is not retried beyond the profile's single attempt and never echoes the provider body", async () => {
+    enableGate();
+    anthropicReply = () =>
+      new Response(`slow down ${ANTHROPIC_KEY} RAW-ERROR-SENTINEL`, {
+        status: 429,
+      });
+    const { body, text } = await callRoute(opsEngineer);
+    expect(captured).toHaveLength(1);
+    expect(body.evidence).toMatchObject({
+      runtimeDetail: "PROVIDER_RATE_LIMITED",
+      verdict: "FAIL",
+      usage: { providerCalls: 1, attempts: 1 },
+    });
+    expect(text).not.toContain("RAW-ERROR-SENTINEL");
+    expect(text).not.toContain(ANTHROPIC_KEY);
+  });
+
+  it("a missing Anthropic key BLOCKS with zero provider calls", async () => {
+    enableGate();
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    const { body } = await callRoute(opsEngineer);
+    expect(body.evidence).toMatchObject({
+      verdict: "BLOCKED",
+      verdictReason: "RUNTIME_ABSTAINED_NO_PROVIDER_CONFIGURED",
+      usage: { providerCalls: 0 },
+    });
+    expect(fakeFetch).not.toHaveBeenCalled();
+  });
+
+  it("the route gate still refuses the Operations Engineer operation with 404 before reading the body", async () => {
+    enableGate();
+    vi.stubEnv("NODE_ENV", "production");
+    const req = request(opsEngineer);
+    expect((await POST(req)).status).toBe(404);
+    expect(req.bodyUsed).toBe(false);
+    expect(fakeFetch).not.toHaveBeenCalled();
   });
 });

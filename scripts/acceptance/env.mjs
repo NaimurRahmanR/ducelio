@@ -225,7 +225,7 @@ const KNOWN_VARS = [
     name: "ACCEPTANCE_LIVE_PROVIDER_OPT_IN",
     scope: "acceptance",
     validate: (v) => v === "true",
-    note: "Must be exactly the string 'true' AND `npm run acceptance:live-provider` must be given --authorize-live-provider before any billable provider request is made -- a key existing is never itself permission. See docs/38 section 5.",
+    note: "Must be exactly the string 'true' AND `npm run acceptance:live-provider` must be given --authorize-live-provider and exactly one --surface=<SELECTOR> before any billable provider request is made -- a key existing is never itself permission. See docs/38 section 5.",
   },
   {
     name: "ACCEPTANCE_STRIPE_LIVE_OPT_IN",

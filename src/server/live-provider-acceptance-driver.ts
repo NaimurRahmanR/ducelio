@@ -11,6 +11,10 @@ import type {
   RuntimeProfile,
 } from "@/domain/academic-runtime-profile";
 import type { AgentRole } from "@/domain/academic-capability-policy";
+import type {
+  PlatformAgentRole,
+  operationsEngineerCapabilityCatalogue,
+} from "@/domain/platform-ai-policy";
 import {
   parseExaminerAssessmentProviderOutput,
   validateExaminerAssessmentMarks,
@@ -20,27 +24,30 @@ import type { TUTOR_LAB_ALLOWED_REASONS } from "@/domain/tutor-lab-execution";
 import type { LabContext } from "@/server/tutor-lab-execution/context";
 import {
   resolveAdapterForProfile,
+  resolvePlatformRuntimeProfile,
   resolveRoleBoundRuntimeProfile,
 } from "@/server/academic-runtime/profile-registry";
 import { runGovernedProviderExecution } from "@/server/academic-runtime/runtime";
 
 // ============================================================================
-// Commercial V1 LIVE PROVIDER acceptance: the fail-closed gate and the two
+// Commercial V1 LIVE PROVIDER acceptance: the fail-closed gate and the three
 // fixed smoke operations behind src/app/api/acceptance/live-provider/
 // route.ts. Its only caller is scripts/acceptance/live-provider.mjs
 // (`npm run acceptance:live-provider`), which starts a local `next dev`
 // child for exactly one explicitly double-authorized run.
 //
 // This module adds no provider logic of its own. Each smoke reaches the
-// EXISTING production path: resolveRoleBoundRuntimeProfile ->
-// resolveAdapterForProfile -> runGovernedProviderExecution, i.e. the same
+// EXISTING production path: resolveRoleBoundRuntimeProfile (academic
+// AgentRole profiles) or resolvePlatformRuntimeProfile (the platform-level
+// Operations Engineer profile) -> resolveAdapterForProfile ->
+// runGovernedProviderExecution, i.e. the same
 // native OpenAI Responses / Anthropic Messages adapters, request
 // construction, response schemas, tariffs, failure mapping and budget/
 // deadline enforcement the product uses. The Examiner smoke then applies
 // the existing strict parseExaminerAssessmentProviderOutput and
 // validateExaminerAssessmentMarks. No caller can choose a provider, model,
 // profile, endpoint, key, tariff, budget, role, capability or context: the
-// route accepts one of two operation names and nothing else.
+// route accepts one of three operation names and nothing else.
 //
 // Unlike the examiner-app gate (src/server/acceptance-app-driver.ts) this
 // deliberately does NOT attest a provider redirect -- this surface exists
@@ -116,7 +123,7 @@ export function liveProviderAcceptanceRequestAllowed(
 }
 
 // ---------------------------------------------------------------------------
-// The two fixed smoke operations. Every value below is server-owned. The
+// The three fixed smoke operations. Every value below is server-owned. The
 // expected profile, adapter, model (and OpenAI reasoning effort) AND the
 // exact execution envelope are pinned: any drift in the resolved production
 // profile -- e.g. maxAttempts 2, which could otherwise make a second billable
@@ -128,6 +135,7 @@ export function liveProviderAcceptanceRequestAllowed(
 export const LIVE_PROVIDER_SMOKE_OPERATIONS = [
   "OPENAI_EXAMINER_SMOKE",
   "ANTHROPIC_LAB_SMOKE",
+  "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE",
 ] as const;
 export type LiveProviderSmokeOperation =
   (typeof LIVE_PROVIDER_SMOKE_OPERATIONS)[number];
@@ -140,10 +148,13 @@ type SmokeEnvelope = {
   readonly totalDeadlineMs: number;
 };
 
-type SmokePlan = {
+// Two profile planes, each resolved only by its own production resolver:
+// ACADEMIC plans carry an academic AgentRole (resolveRoleBoundRuntimeProfile);
+// the PLATFORM plan carries a PlatformAgentRole (resolvePlatformRuntimeProfile)
+// and is never cast into, or reachable through, the academic resolver.
+type SmokePlanBase = {
   readonly surface: string;
   readonly providerFamily: "OPENAI" | "ANTHROPIC";
-  readonly role: AgentRole;
   readonly capability: string;
   readonly profileRef: string;
   readonly adapterKind: RuntimeAdapterKind;
@@ -152,13 +163,26 @@ type SmokePlan = {
   readonly reasoningEffort: string | null;
   readonly envelope: SmokeEnvelope;
 };
+type SmokePlan =
+  | (SmokePlanBase & {
+      readonly profilePlane: "ACADEMIC";
+      readonly role: AgentRole;
+    })
+  | (SmokePlanBase & {
+      readonly profilePlane: "PLATFORM";
+      readonly role: PlatformAgentRole;
+    });
 
-export const LIVE_PROVIDER_SMOKE_PLANS: Readonly<
-  Record<LiveProviderSmokeOperation, SmokePlan>
-> = Object.freeze({
+// Typed against the existing Operations Engineer catalogue (no new
+// capability, no second allowlist): an observation capability only.
+const SYNTHETIC_OPERATIONS_ENGINEER_CAPABILITY: (typeof operationsEngineerCapabilityCatalogue)[number] =
+  "read_system_health";
+
+export const LIVE_PROVIDER_SMOKE_PLANS = Object.freeze({
   OPENAI_EXAMINER_SMOKE: Object.freeze({
     surface: "LIVE_PROVIDER:OPENAI_EXAMINER",
     providerFamily: "OPENAI",
+    profilePlane: "ACADEMIC",
     role: "EXAMINER",
     capability: "grade_controlled_assessment",
     profileRef: "EXAMINER_COMMERCIAL_V1",
@@ -176,6 +200,7 @@ export const LIVE_PROVIDER_SMOKE_PLANS: Readonly<
   ANTHROPIC_LAB_SMOKE: Object.freeze({
     surface: "LIVE_PROVIDER:ANTHROPIC_LAB",
     providerFamily: "ANTHROPIC",
+    profilePlane: "ACADEMIC",
     role: "LAB_INSTRUCTOR",
     capability: "tutor_lab_support",
     profileRef: "LAB_INSTRUCTOR_COMMERCIAL_V1",
@@ -190,7 +215,25 @@ export const LIVE_PROVIDER_SMOKE_PLANS: Readonly<
       totalDeadlineMs: 15_000,
     }),
   }),
-});
+  ANTHROPIC_OPERATIONS_ENGINEER_SMOKE: Object.freeze({
+    surface: "LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER",
+    providerFamily: "ANTHROPIC",
+    profilePlane: "PLATFORM",
+    role: "OPERATIONS_ENGINEER",
+    capability: SYNTHETIC_OPERATIONS_ENGINEER_CAPABILITY,
+    profileRef: "OPERATIONS_ENGINEER_PLATFORM_V1",
+    adapterKind: "ANTHROPIC_MESSAGES",
+    modelId: "claude-opus-5-5",
+    reasoningEffort: null,
+    envelope: Object.freeze({
+      maxProviderCalls: 1,
+      maxAttempts: 1,
+      maxOutputTokens: 1200,
+      maxEstimatedCostMicrousd: 100_000,
+      totalDeadlineMs: 20_000,
+    }),
+  }),
+} as const satisfies Record<LiveProviderSmokeOperation, SmokePlan>);
 
 // Synthetic, labelled demo content only: no real learner, course, question
 // bank or official exam content, and no personal data. The identifiers are
@@ -238,12 +281,39 @@ export const SYNTHETIC_LAB_CONTEXT: LabContext & { learnerMessage: string } = {
   learnerMessage: "What is the first step to put words in alphabetical order?",
 };
 
+// A tiny fixed, labelled synthetic systems snapshot. It is NOT read from any
+// database, log, provider, CI system, repository or deployment: no real
+// user, learner, customer, log line, secret, token or source code. It asks
+// only for a short observation/proposal; the Operations Engineer has no
+// tool-execution plane and nothing here can act on its answer.
+export const SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT = {
+  label:
+    "Synthetic live-provider smoke check (demo content, not real system data)",
+  systemStatus: "SYNTHETIC",
+  providerStatus: "HEALTHY",
+  jobs: [
+    {
+      jobId: "synthetic-job-1",
+      name: "synthetic-nightly-report",
+      status: "FAILING",
+      consecutiveFailures: 1,
+    },
+  ],
+  request:
+    "In at most three sentences, propose one short diagnostic next step for the synthetic failing job. Observation and proposal only.",
+};
+
 function syntheticContext(
   operation: LiveProviderSmokeOperation,
 ): Record<string, unknown> {
-  return operation === "OPENAI_EXAMINER_SMOKE"
-    ? SYNTHETIC_EXAMINER_CONTEXT
-    : SYNTHETIC_LAB_CONTEXT;
+  switch (operation) {
+    case "OPENAI_EXAMINER_SMOKE":
+      return SYNTHETIC_EXAMINER_CONTEXT;
+    case "ANTHROPIC_LAB_SMOKE":
+      return SYNTHETIC_LAB_CONTEXT;
+    case "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE":
+      return SYNTHETIC_OPERATIONS_ENGINEER_CONTEXT;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +355,7 @@ export type LiveProviderSmokeEvidence = {
     marksValidationPassed: boolean | null;
   } | null;
   lab: { outputLength: number } | null;
+  operationsEngineer: { outputLength: number } | null;
   verdict: LiveProviderSmokeVerdict;
   verdictReason: string;
 };
@@ -318,12 +389,14 @@ function runtimeDetail(result: RuntimeResult): string | null {
 
 export type LiveProviderSmokeDeps = {
   resolveProfile: (role: AgentRole, ref: string) => RuntimeProfile | null;
+  resolvePlatformProfile: (role: PlatformAgentRole) => RuntimeProfile | null;
   resolveAdapter: (profile: RuntimeProfile) => ProviderAdapter | null;
   execute: typeof runGovernedProviderExecution;
 };
 
 const productionDeps: LiveProviderSmokeDeps = {
   resolveProfile: (role, ref) => resolveRoleBoundRuntimeProfile(role, ref),
+  resolvePlatformProfile: (role) => resolvePlatformRuntimeProfile(role),
   resolveAdapter: resolveAdapterForProfile,
   execute: runGovernedProviderExecution,
 };
@@ -383,7 +456,7 @@ async function evaluateSmoke(
   operation: LiveProviderSmokeOperation,
   deps: LiveProviderSmokeDeps,
 ): Promise<LiveProviderSmokeEvidence> {
-  const plan = LIVE_PROVIDER_SMOKE_PLANS[operation];
+  const plan: SmokePlan = LIVE_PROVIDER_SMOKE_PLANS[operation];
   const base = {
     operation,
     surface: plan.surface,
@@ -393,7 +466,10 @@ async function evaluateSmoke(
     modelId: plan.modelId,
   };
 
-  const profile = deps.resolveProfile(plan.role, plan.profileRef);
+  const profile =
+    plan.profilePlane === "PLATFORM"
+      ? deps.resolvePlatformProfile(plan.role)
+      : deps.resolveProfile(plan.role, plan.profileRef);
   if (!profile || !profileMatchesPlan(profile, plan)) {
     return {
       ...base,
@@ -411,6 +487,7 @@ async function evaluateSmoke(
       withinEnvelope: true,
       examiner: null,
       lab: null,
+      operationsEngineer: null,
       verdict: "FAIL",
       verdictReason: "PROFILE_MISMATCH",
     };
@@ -449,6 +526,7 @@ async function evaluateSmoke(
     withinEnvelope: inEnvelope,
     examiner: null,
     lab: null,
+    operationsEngineer: null,
     verdict: "FAIL",
     verdictReason: `RUNTIME_${result.outcome}`,
   };
@@ -510,9 +588,19 @@ async function evaluateSmoke(
 
   // The production adapter's bounded parser already accepted this text
   // (non-empty, at most 20,000 characters); only its length is recorded.
+  // For the Operations Engineer this PASS proves transport/runtime/model
+  // accessibility only -- never diagnostic, coding or remediation quality.
+  const outputLength = result.response.outputText.length;
+  if (operation === "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE")
+    return {
+      ...evidence,
+      operationsEngineer: { outputLength },
+      verdict: "PASS",
+      verdictReason: "OPERATIONS_ENGINEER_OUTPUT_ACCEPTED",
+    };
   return {
     ...evidence,
-    lab: { outputLength: result.response.outputText.length },
+    lab: { outputLength },
     verdict: "PASS",
     verdictReason: "LAB_OUTPUT_ACCEPTED",
   };

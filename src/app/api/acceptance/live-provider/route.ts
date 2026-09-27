@@ -12,7 +12,7 @@ import {
 // acceptance condition holds) and scripts/acceptance/live-provider.mjs for
 // its only caller.
 //
-// The caller chooses exactly one of two fixed operations and nothing else.
+// The caller chooses exactly one of three fixed operations and nothing else.
 // The strict schema rejects any other field -- provider, model, profile,
 // endpoint, key, budget, context, role, capability, prompt/instructions --
 // with 400 before any provider work. The response carries safe metadata
