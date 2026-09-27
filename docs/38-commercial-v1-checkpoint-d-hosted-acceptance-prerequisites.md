@@ -2,15 +2,20 @@
 
 ## Current status
 
-Checkpoints A–C (`f407526`, `e1f6f0d`, `12fd7f5`, `8cc82fc` on `commercial-v1-grading-completion`) are locally implemented and tested. Checkpoint D is currently:
+Checkpoint D is no longer blocked by the absence of a hosted acceptance environment. A dedicated non-production Supabase/PostgreSQL acceptance environment and synthetic identities have been used for hosted acceptance work, and the migration chain is current through migration 042.
 
-**BLOCKED_BY_ENVIRONMENT**
+Evidence reconciled on 2026-09-27:
 
-This is not an architectural blocker in the grading/recovery/completion chain — every authority Checkpoints A–C compose was already reviewed and locally proven. The current local environment does not provide hosted infrastructure credentials or tooling sufficient to truthfully prove production-like acceptance. No hosted or billable operation is claimed until the prerequisites below are satisfied.
+- hosted JWT/PostgREST acceptance: **HOSTED-TESTED / PASS**;
+- real-application Examiner `GRADING`, `INITIAL_RECOVERY` and `REGRADE`: **HOSTED-TESTED / PASS** using the deterministic loopback provider stub, not a live model;
+- true PostgreSQL concurrency harness: **4 PASS / 0 FAIL / 0 BLOCKED / 2 NOT_RUN**. The two distinct races intentionally still not executed are `LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE` and `REGRADE_VS_COMPLETION`;
+- `LIVE_PROVIDER:OPENAI_EXAMINER`: **LIVE-PROVIDER-TESTED / PASS**;
+- `LIVE_PROVIDER:ANTHROPIC_LAB`: **LIVE-PROVIDER-TESTED / PASS**;
+- `LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER`: **LIVE-PROVIDER-TESTED / PASS** on the exact tree merged by PR #34.
 
-Verified directly in this environment (not assumed): `.env.local` holds only `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `APP_URL`, `AUTH_GOOGLE_ENABLED`, `AUTH_LINKEDIN_ENABLED`, and in this session's sandbox those are present but empty placeholders, not real values. No hosted PostgreSQL connection string, no Supabase service-role credential, no `ACADEMIC_PROVIDER_BASE_URL`/`ACADEMIC_PROVIDER_API_KEY`, no `ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, no `STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`/`COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`, no SMTP configuration. No `supabase` CLI on PATH. No linked project reference (`supabase/.temp/project-ref` absent).
+None of those statuses means **PRODUCTION-PROVEN**. Stripe test-mode acceptance, launch email-delivery confirmation, monitoring/alerts, backup/restore evidence, the full staged customer journey and production operational acceptance remain open. Hosted RLS/ACL and the complete result/progress/completion matrix are not upgraded by this reconciliation beyond evidence actually recorded below.
 
-**Executable acceptance harness (Checkpoint E2/E3):** this document is now an acceptance _contract_, not the only artifact — `scripts/acceptance/*.mjs` is the executable runner that proves each surface below against real hosted infrastructure once it exists.
+**Executable acceptance harness (Checkpoint E2/E3):** this document is now an acceptance _contract_, not the only artifact — `scripts/acceptance/*.mjs` is the executable runner used to prove each surface below against the dedicated hosted acceptance infrastructure when that surface's own prerequisites are configured.
 
 - `npm run acceptance:preflight` — reports configured/missing/malformed for every variable named in this document, and nothing else; never prints a value.
 - `npm run acceptance:hosted` — runs every surface in the matrix below (HOSTED_DATABASE, MIGRATIONS, RLS_ACL, JWT_POSTGREST, GRADING, INITIAL_RECOVERY, REGRADE, RESULT_PROGRESS_COMPLETION, STRIPE_TEST_MODE, SUPABASE_AUTH_EMAIL, LIVE_PROVIDER, MONITORING, BACKUP_RESTORE, FULL_CUSTOMER_JOURNEY) and prints a PASS/FAIL/BLOCKED/NOT_RUN matrix. A missing prerequisite is always BLOCKED, never a false PASS.
@@ -35,19 +40,19 @@ A new acceptance-tooling-only variable, `ACCEPTANCE_DATABASE_URL` (a direct, pri
 
 ## 1. Hosted Supabase / PostgreSQL
 
-**Blocker:** no hosted PostgreSQL connection string, no Supabase service-role credential, no Supabase CLI, no linked project. Cannot independently verify hosted migration application, real PostgreSQL behaviour, real hosted RPC execution, hosted RLS/ACL behaviour, hosted JWT/PostgREST behaviour, or true multi-connection concurrency.
+**Current evidence:** the dedicated hosted acceptance Supabase/PostgreSQL environment now exists and has been used for real hosted acceptance. The migration chain is current through 042, hosted JWT/PostgREST has passed, the real-application Examiner acceptance driver has passed its three named surfaces, and the true-PostgreSQL concurrency harness has run with the scoped result recorded in Section 2. This reconciliation does not silently promote any hosted RLS/ACL or full result/progress/completion claim that lacks its own recorded acceptance result.
 
 **Prerequisites:** a dedicated non-production acceptance Supabase project, with `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, hosted PostgreSQL connection information suitable for migration/concurrency testing, and — only where a reviewed administrative acceptance operation genuinely requires it — a service-role credential; note this repository's application code has no service-role credential anywhere in its runtime architecture today (deliberate RLS/RPC-only design), so any service-role use here is CLI/acceptance-tooling only, never application code. Supabase CLI and project reference if CLI-based migration/status verification is used. A PostgreSQL client capable of opening at least two genuinely independent connections. Secrets stay outside source control, are never logged, never embedded in test fixtures, never returned to browser code.
 
-**Acceptance required:** migrations 001–040 apply in order; no historical migration requires rewriting; all expected Commercial V1 RPCs/functions exist; RLS is enabled where expected; authenticated learner access is correctly scoped; foreign-learner reads/writes are denied; anon access is denied where required; service-role access does not bypass reviewed authority through public application surfaces; assessment writer behaviour matches local acceptance; Examiner initial grading, initial-grade recovery, and result/progress/completion all work under hosted PostgreSQL.
+**Acceptance required:** migrations 001–042 apply in order; no historical migration requires rewriting; all expected Commercial V1 RPCs/functions exist; RLS is enabled where expected; authenticated learner access is correctly scoped; foreign-learner reads/writes are denied; anon access is denied where required; service-role access does not bypass reviewed authority through public application surfaces; assessment writer behaviour matches local acceptance; Examiner initial grading, initial-grade recovery, and result/progress/completion all work under hosted PostgreSQL.
 
-Status until proven: **HOSTED DATABASE MIGRATIONS — BLOCKED**, **HOSTED RLS/ACL — BLOCKED**, **HOSTED JWT/POSTGREST — BLOCKED**.
+Current reconciled status: **HOSTED DATABASE MIGRATIONS — HOSTED-TESTED through 042**; **HOSTED JWT/POSTGREST — HOSTED-TESTED / PASS**; **HOSTED RLS/ACL — acceptance environment available, but no stronger row-level status is asserted here without a separately recorded dedicated result**.
 
 ---
 
 ## 2. True PostgreSQL concurrency
 
-**Blocker:** PGlite is single-connection for the relevant repository tests. Strong deterministic/sequential coverage, but cannot prove real PostgreSQL blocking/race behaviour across concurrent sessions. Status: **NOT RUN**.
+**Current evidence:** the real hosted PostgreSQL concurrency harness has now run. Four scenarios passed with no FAIL or BLOCKED result: initial-vs-initial, recovery-vs-recovery, the two-connection revision-1 uniqueness race, and governed completion-vs-completion. Two distinct scenarios remain deliberately **NOT_RUN** rather than being inferred from lower-level invariants: `LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE` and `REGRADE_VS_COMPLETION`. Current scoped result: **4 PASS / 0 FAIL / 0 BLOCKED / 2 NOT_RUN**.
 
 **Prerequisite:** a real PostgreSQL environment permitting multiple simultaneous connections — prefer the dedicated hosted acceptance database over production.
 
@@ -60,25 +65,25 @@ Status until proven: **HOSTED DATABASE MIGRATIONS — BLOCKED**, **HOSTED RLS/AC
 - **Regrade vs completion:** where the current authority permits the operation, current result revision and completion remain transactionally consistent; completion cannot silently use a superseded revision.
 - **Duplicate course completion:** two simultaneous completion attempts on the same enrolment → one durable completion result/receipt, deterministic idempotent replay, no duplicate institutional completion record. This directly exercises `attemptCommercialV1CourseCompletion`'s replay guarantee under real concurrent contention, not just PGlite's sequential proof from Checkpoint C's own tests.
 
-Successful acceptance permits: **TRUE POSTGRES CONCURRENCY — PASS**.
+The harness therefore establishes **HOSTED-TESTED** evidence for the four scenarios it actually executed. It does **not** establish a blanket TRUE POSTGRES CONCURRENCY PASS while the two named distinct races remain NOT_RUN.
 
 ---
 
 ## 3. Hosted Auth / JWT / PostgREST
 
-**Blocker:** no hosted authenticated acceptance session has been exercised. Local tests emulate/verify the authority model but do not prove the complete Supabase Auth → JWT → PostgREST → RLS path.
+**Current evidence:** hosted authenticated acceptance has now exercised the real Supabase Auth → JWT → PostgREST authority path with the required synthetic identities. The dedicated `JWT_POSTGREST` acceptance surface passed. This is **HOSTED-TESTED** evidence for that named surface, not a blanket production claim.
 
 **Prerequisites:** a hosted acceptance project with Supabase Auth enabled, at least one isolated synthetic test learner, at least one authorized institutional admin, (independent-review finding 3: no longer optional) a second, unrelated synthetic learner for foreign-principal denial tests, (JWT_POSTGREST completion pass: no longer optional) a third, unrelated non-admin institutional staff identity for the recovery role-gate denial test, and (JWT_POSTGREST completion pass) a genuinely expired, previously valid synthetic learner JWT — a malformed token alone is never evidence that expiry enforcement itself works. `scripts/acceptance/surfaces.mjs`'s `checkJwtPostgrest` BLOCKS rather than PASSes if any of these is absent or incomplete, and independently re-verifies the unrelated-staff identity against the real hosted role model rather than trusting how it is labelled, so this surface can never PASS without actually proving foreign-learner isolation, the institutional recovery role gate, and genuine JWT expiry.
 
 **Acceptance required:** learner JWT resolves to the correct authenticated identity; learner cannot override actor/student IDs; learner sees only owned enrolment/work/results; learner cannot invoke admin recovery; an authorized `ACADEMIC_ADMIN`/`PLATFORM_ADMIN` reaches past the recovery role gate to the HMAC-attestation boundary — this proves JWT/role authority only and is **not** proof of successful recovery, which remains the separate, still-BLOCKED-by-design surface in Section 4/`INITIAL_RECOVERY` (real HMAC attestation against provisioned key material, driven through the actual application server, never reimplemented by this harness); unrelated non-admin staff roles cannot cross the recovery role gate; expired/invalid JWT fails closed against the real hosted Supabase/PostgREST endpoint, never a local decoder standing in for it; PostgREST/RPC calls enforce the same DB authority as local tests; no protected assessment data crosses the learner API boundary.
 
-Successful acceptance permits: **HOSTED JWT/POSTGREST — PASS**.
+Current status: **HOSTED JWT/POSTGREST — PASS / HOSTED-TESTED**.
 
 ---
 
 ## 4. Examiner controller/HMAC provisioning
 
-**Blocker:** Checkpoint A reuses Ducelio's reviewed controller HMAC trust root, but production/hosted controller keys have not been provisioned or accepted.
+**Current evidence:** matching controller HMAC material was provisioned in the dedicated hosted acceptance environment sufficiently for the real-application Examiner driver to complete its GRADING, INITIAL_RECOVERY and REGRADE paths through the existing application authority modules. This proves the exercised hosted happy paths. The adversarial hosted cases listed below (tampered/expired/wrong operation/actor/target and cross-protocol misuse) have not been separately promoted from their existing local/PGlite evidence.
 
 **Prerequisites:** provision matching server-side and database-side controller key material per the existing `academic_execution_private.controller_keys` design. Confirmed exact environment variable names already used by this repository's source (`src/server/academic-provider-execution/authority.ts`, `src/server/commercial-v1-examiner-{grading,regrade,recovery}/authority.ts`, `src/server/tutor-lab-execution/authority.ts`, `src/server/academic-execution/authority.ts`): `ACADEMIC_EXECUTION_KEY_ID`, `ACADEMIC_EXECUTION_HMAC_KEY_HEX`. This single key pair is shared across every governance surface (initial grading, regrade, recovery, tutor/lab, Professor execution); each surface's own distinct canonical-message protocol tag is what keeps one attestation from authorizing another surface's transition, not a separate key.
 
@@ -96,6 +101,8 @@ Successful acceptance permits: **HOSTED JWT/POSTGREST — PASS**.
 - **Evidence boundary:** a successful run establishes only the named hosted application surfaces `EXAMINER_APP:GRADING`, `EXAMINER_APP:INITIAL_RECOVERY` and `EXAMINER_APP:REGRADE`. It is never LIVE_PROVIDER evidence, and it does not execute section 4's adversarial MAC cases (tampered, expired, wrong operation/actor/target, cross-protocol); those remain the existing local PGlite evidence until separately exercised against the hosted key.
 - **Fixtures:** two permanent run-id-tagged courses (`<runId>-examiner-grade`, `<runId>-examiner-recovery`) via `seedAcceptanceCourse` with the EXAMINER role enabled; the recoverable execution is produced by the real grading path (stub HTTP 503 → FAILED/PROVIDER_UNAVAILABLE), never written directly.
 - **Operator prerequisites for the hosted run:** everything `acceptance:concurrency` needs (`ACCEPTANCE_DATABASE_URL`, `ACCEPTANCE_WRITE_ENABLED=true`, `ACCEPTANCE_ENVIRONMENT_ID` + marker row + hosted RPC, admin/learner identities), plus `ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX` (64 lowercase hex) with the SAME key installed and unrevoked in the hosted `academic_execution_private.controller_keys` (the driver checks presence read-only and never provisions keys). No other `next dev` may be running in the same checkout.
+
+**Current hosted result (2026-09-27 reconciliation):** `EXAMINER_APP:GRADING`, `EXAMINER_APP:INITIAL_RECOVERY` and `EXAMINER_APP:REGRADE` each passed against the dedicated hosted acceptance environment. The provider leg was the deterministic loopback stub described above, so these are **HOSTED-TESTED**, not LIVE-PROVIDER-TESTED, results.
 
 ---
 
@@ -135,12 +142,15 @@ One authorized invocation makes at most one provider request: the selected surfa
 - **Child secret minimisation:** the child receives the per-run gate settings, a loopback `APP_URL` and only the provider key for the single selected, key-present surface (for either Anthropic surface, only `ANTHROPIC_API_KEY`; `OPENAI_API_KEY` stays blank). The acceptance database URL and write flag, acceptance identities, `ACADEMIC_EXECUTION_*`, `STRIPE_*`, `COMMERCE_CONTROLLER_*`, the legacy `ACADEMIC_PROVIDER_*` pair, Supabase URL/keys, `NODE_OPTIONS`, any other inherited credential-shaped name and every name defined in any `.env*` file Next.js could load are forced to empty strings (which Next.js's `.env` loader never overrides). Name enumeration fails closed: if such a file exists but cannot be read or decoded as UTF-8, the authorized run is `BLOCKED` (`ENV_FILE_NOT_INSPECTABLE`, naming only the file) before the app starts, with zero provider requests. Child output is never forwarded; keys are never written to any file.
 - **Evidence (metadata only):** provider family, adapter kind, profile ref, model id, runtime outcome and bounded detail code, parsed Examiner outcome (`GRADED`/`ESCALATE`), strict-parse and marks-validation booleans, Lab output length, Operations Engineer output length (its own `operationsEngineer` evidence field, never the Lab field), `providerCalls`, `attempts`, input/output tokens, estimated cost (micro-USD, production tariff), elapsed ms, and whether usage fits the exact production profile envelope. The driver re-validates every field against a closed vocabulary before printing and reports the total provider requests made. Raw model output, provider request/response bodies, the synthetic expected answer/marking guidance, parsed marks, headers and keys are never returned, printed or stored. **No raw provider or model content is acceptance evidence.**
 
-A successful run establishes **LIVE-PROVIDER-TESTED** for the named surface(s) only — one authorized request through the current production adapter/runtime returned a result that passed the existing strict parsing/validation inside the production budget envelope. It never establishes **PRODUCTION-PROVEN**, production readiness, or any claim about grading or instructional quality. A future PASS of `LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER` would establish LIVE-PROVIDER-TESTED for `OPERATIONS_ENGINEER_PLATFORM_V1` / `claude-opus-5-5` only; it would not prove production readiness, coding or diagnostic quality, autonomous remediation, deployment capability or product quality. The Operations Engineer still has no production tool-execution plane: this smoke gives it no shell, database, service-role, secret, GitHub, merge, deploy or production-mutation access.
+A successful run establishes **LIVE-PROVIDER-TESTED** for the named surface only — one authorized request through the current production adapter/runtime returned a result that passed the existing strict parsing/validation inside the production budget envelope. It never establishes **PRODUCTION-PROVEN**, production readiness, or any claim about grading or instructional quality. The Operations Engineer live PASS establishes LIVE-PROVIDER-TESTED for `OPERATIONS_ENGINEER_PLATFORM_V1` / `claude-opus-5-5` only; it does not prove coding or diagnostic quality, autonomous remediation, deployment capability or product quality. The Operations Engineer still has no production tool-execution plane: this smoke gives it no shell, database, service-role, secret, GitHub, merge, deploy or production-mutation access.
 
-Current status:
+Current status (2026-09-27 reconciliation):
 
-- `LIVE_PROVIDER:OPENAI_EXAMINER` and `LIVE_PROVIDER:ANTHROPIC_LAB`: the operator reports these have been manually live-provider-tested outside this repository. No run record, output or evidence from those runs is stored here, and this document does not reproduce one.
-- `LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER`: **IMPLEMENTED, PENDING AUTHORIZATION** — the surface exists and is locally tested with zero provider requests; no authorized paid run has been performed.
+- `LIVE_PROVIDER:OPENAI_EXAMINER`: **LIVE-PROVIDER-TESTED / PASS**. The manual authorized run used `EXAMINER_COMMERCIAL_V1` / `OPENAI_RESPONSES` / `gpt-5.6-luna`, made exactly one provider call and one attempt, and passed the Examiner strict parse/marks validation. The run reported 352 input tokens, 47 output tokens, 127 micro-USD estimated cost and 2,938 ms elapsed. It pre-dates PR #34's single-surface selector but exercised an unchanged Examiner production profile/adapter path; it is not re-labelled as evidence for any other OpenAI role.
+- `LIVE_PROVIDER:ANTHROPIC_LAB`: **LIVE-PROVIDER-TESTED / PASS**. The manual authorized run used `LAB_INSTRUCTOR_COMMERCIAL_V1` / `ANTHROPIC_MESSAGES` / `claude-sonnet-5`, made exactly one provider call and one attempt, and returned a production-parser-accepted bounded Lab result. It reported 370 input tokens, 206 output tokens, 2,800 micro-USD estimated cost and 4,301 ms elapsed. It pre-dates PR #34's selector but exercised the unchanged Lab production profile/adapter path; it is not Opus evidence.
+- `LIVE_PROVIDER:ANTHROPIC_OPERATIONS_ENGINEER`: **LIVE-PROVIDER-TESTED / PASS** on the exact tree merged by PR #34. The explicitly selected run used `OPERATIONS_ENGINEER_PLATFORM_V1` / `ANTHROPIC_MESSAGES` / `claude-opus-5-5`, made exactly one provider call and one attempt, returned `SUCCEEDED`, reported 321 input tokens, 179 output tokens, 4,864 micro-USD estimated cost and 3,837 ms elapsed, and remained inside the pinned profile envelope. The other two surfaces were `NOT_RUN / NOT_SELECTED`, and the invocation reported exactly one provider request.
+
+No raw provider/model response is stored as acceptance evidence. The provider keys used for the manual acceptance runs were cleared from the operator shell after use.
 
 ---
 
@@ -172,7 +182,7 @@ Successful acceptance: **SMTP — PASS**, scoped to whichever of the two paths a
 
 ## 8. Monitoring and operational visibility
 
-**Blocker:** no hosted target exists from which to prove production monitoring.
+**Blocker:** a hosted acceptance target now exists, but production-grade application/provider/payment/job monitoring and alert delivery have not yet been configured and acceptance-tested.
 
 **Prerequisites:** application error monitoring; hosted database health visibility; provider failure/error-rate visibility; Examiner execution failure/timeout visibility; payment/webhook failure visibility; background/operational job visibility where applicable; usage/cost observation; a named alert destination/owner.
 
@@ -184,7 +194,7 @@ Successful acceptance: **SMTP — PASS**, scoped to whichever of the two paths a
 
 ## 9. Backup and restore
 
-**Blocker:** no hosted database target exists in the present environment.
+**Blocker:** the hosted acceptance database now exists, but a backup/restore procedure has not yet been acceptance-tested by restoring into an isolated environment and verifying critical Ducelio records.
 
 **Prerequisites:** for the intended production Supabase/PostgreSQL environment — backup policy, retention, restore procedure, a responsible operator, secret/private-schema protection.
 
@@ -196,24 +206,20 @@ Successful evidence: **BACKUP/RESTORE — PASS**.
 
 ## 10. Required hosted acceptance environment
 
-A dedicated Ducelio staging/acceptance environment, never production learner records, with: a separate hosted Supabase project/database; synthetic users; current migrations 001–040; dedicated controller/HMAC keys (`ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, `COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`); native provider credentials (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`) plus explicit double authorization for the provider smoke test (section 5); Stripe test-mode credentials (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`); a confirmed email-delivery path (Supabase Auth's own, or a built custom SMTP integration); monitoring enabled.
+A dedicated Ducelio staging/acceptance environment, never production learner records, with: a separate hosted Supabase project/database; synthetic users; current migrations 001–042; dedicated controller/HMAC keys (`ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX`, `COMMERCE_CONTROLLER_KEY_ID`/`COMMERCE_CONTROLLER_HMAC_KEY_HEX`); native provider credentials (`OPENAI_API_KEY`/`ANTHROPIC_API_KEY`) plus explicit double authorization for the provider smoke test (section 5); Stripe test-mode credentials (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET`); a confirmed email-delivery path (Supabase Auth's own, or a built custom SMTP integration); monitoring enabled.
 
 ---
 
 ## 11. Recommended execution order
 
-1. Provision hosted Supabase/PostgreSQL.
-2. Apply/verify migrations 001–040.
-3. Verify RLS/ACL and JWT/PostgREST.
-4. Provision controller/HMAC trust (`ACADEMIC_EXECUTION_*`).
-5. Run real multi-connection PostgreSQL concurrency tests (Section 2).
-6. Run hosted grading/recovery/result/completion acceptance using mocked/no-provider execution first.
-7. Perform explicitly authorized bounded live-provider smoke tests, one surface per invocation (`npm run acceptance:live-provider -- --authorize-live-provider --surface=<OPENAI_EXAMINER|ANTHROPIC_LAB|ANTHROPIC_OPERATIONS_ENGINEER>` with `ACCEPTANCE_LIVE_PROVIDER_OPT_IN=true`).
-8. Run Stripe test-mode acceptance.
-9. Confirm the email-delivery path.
-10. Verify monitoring.
-11. Verify backup/restore procedure.
-12. Run the complete staged customer journey (Section 12).
+1. Reconcile and preserve the hosted/live-provider evidence already completed (this checkpoint).
+2. Run Stripe test-mode acceptance.
+3. Confirm and acceptance-test the launch email-delivery path.
+4. Configure and verify monitoring/alerts.
+5. Verify the backup/restore procedure with isolated restore evidence.
+6. Implement and execute the two distinct concurrency races still marked NOT_RUN if full Level-1 concurrency closure is required for launch.
+7. Run the complete staged customer journey (Section 12), including the required negative/replay paths.
+8. Perform production deployment/configuration and a final launch audit without promoting any acceptance-only result to PRODUCTION-PROVEN automatically.
 
 Do not skip deterministic/database acceptance merely because a provider smoke test succeeds.
 
@@ -241,18 +247,19 @@ Never infer a stronger status from a weaker one.
 
 ## Current Checkpoint D matrix
 
-| Surface                     | Current status                                                                                                       | Requirement to unblock                                                                              |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Hosted DB migrations        | BLOCKED                                                                                                              | Hosted DB + migration access                                                                        |
-| Hosted RLS/ACL              | BLOCKED                                                                                                              | Hosted Supabase/PostgreSQL                                                                          |
-| Hosted JWT/PostgREST        | BLOCKED                                                                                                              | Hosted Auth + synthetic identities                                                                  |
-| True PostgreSQL concurrency | NOT RUN                                                                                                              | Multiple real DB connections                                                                        |
-| Hosted grading/recovery     | BLOCKED                                                                                                              | DB + controller key provisioning, then `npm run acceptance:examiner-app`                            |
-| Hosted result/completion    | BLOCKED                                                                                                              | Hosted DB/auth acceptance                                                                           |
-| Live provider               | Examiner/Lab: operator-reported external manual runs (no in-repo record); Operations Engineer: PENDING AUTHORIZATION | `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` + explicit double authorization + one `--surface=` (section 5) |
-| Stripe                      | BLOCKED                                                                                                              | `STRIPE_*`/`COMMERCE_CONTROLLER_*` test-mode keys/webhook                                           |
-| SMTP / email delivery       | BLOCKED (or N/A if Supabase Auth's built-in email is the accepted path — confirm which)                              | Mail provider configuration, or acceptance test of Supabase Auth's own delivery                     |
-| Monitoring                  | BLOCKED                                                                                                              | Hosted deployment + monitoring                                                                      |
-| Backup/restore              | BLOCKED                                                                                                              | Hosted DB + backup/restore procedure                                                                |
+| Surface                     | Current status                                                                                                              | Remaining work / limitation                                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Hosted DB migrations        | **HOSTED-TESTED through 042**                                                                                               | Production deployment remains separate from acceptance                                                               |
+| Hosted RLS/ACL              | Acceptance environment available; no stronger dedicated row-level status asserted by this reconciliation                    | Preserve/obtain explicit dedicated hosted RLS/ACL evidence before a blanket PASS claim                               |
+| Hosted JWT/PostgREST        | **HOSTED-TESTED / PASS**                                                                                                    | Production environment still requires its own operational acceptance                                                 |
+| True PostgreSQL concurrency | **4 PASS / 0 FAIL / 0 BLOCKED / 2 NOT_RUN**                                                                                 | Execute `LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE` and `REGRADE_VS_COMPLETION` for full distinct-race closure     |
+| Hosted grading/recovery     | **HOSTED-TESTED / PASS** for GRADING, INITIAL_RECOVERY and REGRADE via real app + deterministic provider stub               | Stubbed provider leg is not live-provider evidence; hosted adversarial HMAC cases remain separate                    |
+| Hosted result/completion    | Completion-vs-completion hosted concurrency path passed; no blanket full RESULT_PROGRESS_COMPLETION status is promoted here | Reconcile or execute the remaining named result/progress/completion acceptance surface before claiming full row PASS |
+| Live provider               | **LIVE-PROVIDER-TESTED / PASS** for OpenAI Examiner, Anthropic Lab and Anthropic Operations Engineer / Opus 5.5             | Named surfaces only; not production readiness, not model-quality proof                                               |
+| Stripe                      | **BLOCKED / NOT ACCEPTED**                                                                                                  | `STRIPE_*` / `COMMERCE_CONTROLLER_*` test-mode credentials, webhook, entitlement and replay/idempotency acceptance   |
+| SMTP / email delivery       | **BLOCKED / NOT ACCEPTED** (or N/A for custom SMTP if Supabase Auth email is the chosen launch path)                        | Confirm one launch path and prove signup/verification/reset delivery + failure behaviour                             |
+| Monitoring                  | **BLOCKED / NOT ACCEPTED**                                                                                                  | Configure error/provider/payment/job/cost visibility and prove actionable alert delivery                             |
+| Backup/restore              | **BLOCKED / NOT ACCEPTED**                                                                                                  | Isolated restore proof with coherent critical Ducelio records                                                        |
+| Full customer journey       | **NOT RUN**                                                                                                                 | Complete staged positive and negative/replay journey from catalogue/payment through completion receipt               |
 
-Checkpoint D becomes complete only when the required rows are supported by actual acceptance evidence, never configuration assumptions.
+Checkpoint D becomes complete only when the required rows are supported by actual acceptance evidence, never configuration assumptions. **PRODUCTION-PROVEN remains false until production deployment and operational acceptance are independently completed.**
