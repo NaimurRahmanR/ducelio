@@ -236,6 +236,23 @@ export async function changeAssessmentStatus(input: unknown) {
   return z.uuid().parse(data);
 }
 
+const studentVersionSnapshotSchema = z.object({
+  label: z.string(),
+  title_snapshot: z.string().nullable(),
+});
+const studentAssessmentRowSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  instructions: z.string(),
+  opens_at: z.string(),
+  closes_at: z.string(),
+  duration_minutes: z.number(),
+  attempts_allowed: z.number(),
+  status: z.enum(["PUBLISHED", "CLOSED"]),
+  programme_version_id: z.uuid(),
+  lessons: z.object({ title: z.string() }),
+});
+
 export async function getStudentAssessments() {
   await requireActor("student");
   const scope = await getMyCourseworkScope();
@@ -267,11 +284,17 @@ export async function getStudentAssessments() {
   // do not render a possibly stale lifecycle.
   const finalized = await client.rpc("finalize_expired_commercial_v1_attempts");
   if (finalized.error) throw new Error("Your assessments could not be loaded.");
+  // `assessments` has composite foreign keys to cohorts and lessons but NO
+  // foreign key to programme_versions, so PostgREST cannot embed
+  // programme_versions from it (hosted PostgREST answers HTTP 400 PGRST200
+  // for that select, which made this whole projection fail). The version
+  // snapshot is therefore read separately below, under the learner's own
+  // RLS, by the programme_version_id each visible assessment carries.
   const [assessments, attempts, responses, activity] = await Promise.all([
     client
       .from("assessments")
       .select(
-        "id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,lessons(title),programme_versions(label,title_snapshot)",
+        "id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,programme_version_id,lessons(title)",
       )
       .in("cohort_id", scope.cohortIds)
       .in("status", ["PUBLISHED", "CLOSED"])
@@ -297,7 +320,44 @@ export async function getStudentAssessments() {
   if (assessments.error || attempts.error || responses.error || activity.error)
     throw new Error("Your assessments could not be loaded.");
 
+  const assessmentRows = z
+    .array(studentAssessmentRowSchema)
+    .parse(assessments.data);
+  const versionIds = [
+    ...new Set(assessmentRows.map((row) => row.programme_version_id)),
+  ];
+  const versions = new Map<
+    string,
+    z.infer<typeof studentVersionSnapshotSchema>
+  >();
+  if (versionIds.length) {
+    const { data, error } = await client
+      .from("programme_versions")
+      .select("id,label,title_snapshot")
+      .in("id", versionIds);
+    if (error) throw new Error("Your assessments could not be loaded.");
+    for (const version of z
+      .array(studentVersionSnapshotSchema.extend({ id: z.uuid() }))
+      .parse(data))
+      versions.set(version.id, {
+        label: version.label,
+        title_snapshot: version.title_snapshot,
+      });
+  }
+  // Fail closed: never render an assessment without the version snapshot
+  // the learner is entitled to see for it.
+  const visibleAssessments = assessmentRows.map(
+    ({ programme_version_id, ...row }) => {
+      const version = versions.get(programme_version_id);
+      if (!version) throw new Error("Your assessments could not be loaded.");
+      return { ...row, programme_versions: version };
+    },
+  );
+
   const parsedAttempts = z.array(attemptSchema).parse(attempts.data);
+  const activityState = z
+    .enum(["NORMAL", "CONTROLLED_ASSESSMENT_ACTIVE"])
+    .parse(activity.data);
   const activeAttempt = parsedAttempts.find(
     (attempt) => attempt.state === "ACTIVE",
   );
@@ -310,33 +370,23 @@ export async function getStudentAssessments() {
       },
     );
     if (!error) activeQuestions = z.array(questionSchema).parse(data);
+    // While the server itself reports a live controlled attempt, the
+    // learner UI renders that attempt's protected-content shell and its
+    // Submit button (src/components/student-assessments.tsx). Silently
+    // returning no questions there would present a submittable attempt with
+    // nothing to answer -- attempts are single-use -- so a protected-question
+    // read failure in that state fails closed instead. Outside it (e.g. an
+    // expired attempt the activity state already reports NORMAL) the shell is
+    // not rendered and no questions are the honest projection.
+    else if (activityState === "CONTROLLED_ASSESSMENT_ACTIVE")
+      throw new Error("Your assessments could not be loaded.");
   }
 
   return {
-    assessments: z
-      .array(
-        z.object({
-          id: z.uuid(),
-          title: z.string(),
-          instructions: z.string(),
-          opens_at: z.string(),
-          closes_at: z.string(),
-          duration_minutes: z.number(),
-          attempts_allowed: z.number(),
-          status: z.enum(["PUBLISHED", "CLOSED"]),
-          lessons: z.object({ title: z.string() }),
-          programme_versions: z.object({
-            label: z.string(),
-            title_snapshot: z.string().nullable(),
-          }),
-        }),
-      )
-      .parse(assessments.data),
+    assessments: visibleAssessments,
     attempts: parsedAttempts,
     responses: z.array(responseSchema).parse(responses.data),
-    activityState: z
-      .enum(["NORMAL", "CONTROLLED_ASSESSMENT_ACTIVE"])
-      .parse(activity.data),
+    activityState,
     activeQuestions,
   };
 }

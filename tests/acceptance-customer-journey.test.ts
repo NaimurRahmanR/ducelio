@@ -2117,3 +2117,390 @@ describe("customer journey: Tutor handoff objective and foreign-probe isolation 
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hosted run 1790635594309-jz55ep: a failed GET_ACTIVE_QUESTIONS (HTTP 500
+// OPERATION_FAILED from the route) was mislabelled as a protected-question
+// release, and every post-start mismatch collapsed into one sentence.
+// ---------------------------------------------------------------------------
+describe("customer journey: GET_ACTIVE_QUESTIONS evidence is classified truthfully", () => {
+  const ATTEMPT = "10000000-0000-4000-8000-0000000000a1";
+  const ASSESSMENT = "10000000-0000-4000-8000-0000000000a2";
+  const QUESTION = "10000000-0000-4000-8000-0000000000a3";
+  const ok = (result: Record<string, unknown>) => ({
+    status: 200,
+    body: { ok: true, result },
+    text: "",
+  });
+  const routeFailed = {
+    status: 500,
+    body: { error: "OPERATION_FAILED" },
+    text: "",
+  };
+  const idle = ok({
+    activityState: "NORMAL",
+    activeAttemptId: null,
+    activeAssessmentId: null,
+    questions: [],
+  });
+  const live = (overrides: Record<string, unknown> = {}) =>
+    ok({
+      activityState: "CONTROLLED_ASSESSMENT_ACTIVE",
+      activeAttemptId: ATTEMPT,
+      activeAssessmentId: ASSESSMENT,
+      questions: [{ id: QUESTION, maxMarks: 10 }],
+      ...overrides,
+    });
+  const expected = {
+    attemptId: ATTEMPT,
+    assessmentId: ASSESSMENT,
+    questionCount: 1,
+  };
+
+  it("1. a route/HTTP failure before start is reported as a failed operation, NEVER as a question release", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    const problems = preStartQuestionReleaseProblems(routeFailed);
+    expect(problems).toEqual([
+      "GET_ACTIVE_QUESTIONS failed before attempt start (HTTP 500, OPERATION_FAILED).",
+    ]);
+    expect(problems.join(" ")).not.toMatch(/released/i);
+    // No response at all (transport failure) is equally not a release.
+    expect(preStartQuestionReleaseProblems(null)).toEqual([
+      "GET_ACTIVE_QUESTIONS failed before attempt start (HTTP none, no error code).",
+    ]);
+  });
+
+  it("2. a successful pre-start response that actually carries question identifiers IS protected-content-release evidence", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      preStartQuestionReleaseProblems(
+        ok({
+          activityState: "NORMAL",
+          activeAttemptId: null,
+          activeAssessmentId: null,
+          questions: [{ id: QUESTION, maxMarks: 10 }],
+        }),
+      ),
+    ).toEqual([
+      "Questions were released before the learner started an attempt (1 question identifier(s)).",
+    ]);
+    expect(
+      preStartQuestionReleaseProblems(
+        ok({
+          activityState: "CONTROLLED_ASSESSMENT_ACTIVE",
+          activeAttemptId: ATTEMPT,
+          activeAssessmentId: ASSESSMENT,
+          questions: [],
+        }),
+      ),
+    ).toEqual([
+      "GET_ACTIVE_QUESTIONS reported an active attempt before the learner started one.",
+    ]);
+    // The expected idle state is clean.
+    expect(preStartQuestionReleaseProblems(idle)).toEqual([]);
+  });
+
+  it("3. a post-start HTTP failure gets its own accurate diagnostic (and nothing else)", async () => {
+    const { postStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      postStartQuestionReleaseProblems(routeFailed, expected, "QUIZ_1"),
+    ).toEqual([
+      "QUIZ_1: GET_ACTIVE_QUESTIONS failed after attempt start (HTTP 500, OPERATION_FAILED).",
+    ]);
+  });
+
+  it("4. an activeAttemptId mismatch gets its own diagnostic", async () => {
+    const { postStartQuestionReleaseProblems } = await journeyModule();
+    const other = "10000000-0000-4000-8000-0000000000a9";
+    expect(
+      postStartQuestionReleaseProblems(
+        live({ activeAttemptId: other }),
+        expected,
+        "QUIZ_1",
+      ),
+    ).toEqual([
+      `QUIZ_1: the reported active attempt (${other}) is not the attempt just started (${ATTEMPT}).`,
+    ]);
+  });
+
+  it("5. an activeAssessmentId mismatch gets its own diagnostic", async () => {
+    const { postStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      postStartQuestionReleaseProblems(
+        live({ activeAssessmentId: null }),
+        expected,
+        "QUIZ_1",
+      ),
+    ).toEqual([
+      `QUIZ_1: the reported active assessment (none) is not the component's assessment (${ASSESSMENT}).`,
+    ]);
+  });
+
+  it("6. an activityState mismatch gets its own diagnostic", async () => {
+    const { postStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      postStartQuestionReleaseProblems(
+        live({ activityState: "NORMAL" }),
+        expected,
+        "QUIZ_1",
+      ),
+    ).toEqual([
+      "QUIZ_1: the activity state was NORMAL, expected CONTROLLED_ASSESSMENT_ACTIVE.",
+    ]);
+  });
+
+  it("7. a released question-count mismatch gets its own diagnostic", async () => {
+    const { postStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      postStartQuestionReleaseProblems(
+        live({ questions: [] }),
+        expected,
+        "QUIZ_1",
+      ),
+    ).toEqual(["QUIZ_1: 0 question identifier(s) were released; expected 1."]);
+  });
+
+  it("8. a coherent post-start response PASSes; several mismatches are each reported separately", async () => {
+    const { postStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      postStartQuestionReleaseProblems(live(), expected, "QUIZ_1"),
+    ).toEqual([]);
+    expect(
+      postStartQuestionReleaseProblems(
+        live({ activityState: "NORMAL", questions: [] }),
+        expected,
+        "QUIZ_1",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("reports only a bounded status and top-level route code, never message or exception text", async () => {
+    const { routeFailure, preStartQuestionReleaseProblems } =
+      await journeyModule();
+    expect(routeFailure(idle)).toBeNull();
+    const noisy = {
+      status: 500,
+      body: {
+        error: "internal: relation programme_versions secret-sentinel",
+        message: "stack trace secret-sentinel",
+      },
+      text: "secret-sentinel",
+    };
+    expect(routeFailure(noisy)).toBe("HTTP 500, no error code");
+    expect(
+      JSON.stringify(preStartQuestionReleaseProblems(noisy)),
+    ).not.toContain("secret-sentinel");
+    expect(
+      routeFailure({
+        status: 200,
+        body: { ok: false, error: "DELIVERY_DENIED" },
+        text: "",
+      }),
+    ).toBe("HTTP 200, DELIVERY_DENIED");
+  });
+});
+
+describe("customer journey: the hosted ASSESSMENTS failure shape (run 1790635594309-jz55ep)", () => {
+  it("GET_ACTIVE_QUESTIONS HTTP 500 before and after start => ASSESSMENTS FAIL with two accurate route-failure diagnostics and no question-release claim", async () => {
+    const { stageAssessments, createNegativeLedger, JOURNEY_SURFACES } =
+      await journeyModule();
+    const ATTEMPT = "10000000-0000-4000-8000-0000000000b1";
+    const FOREIGN_ATTEMPT = "10000000-0000-4000-8000-0000000000b2";
+    const assessmentIdsByComponent = Object.fromEntries(
+      ["QUIZ_1", "QUIZ_2", "MIDTERM", "QUIZ_3", "QUIZ_4", "FINAL"].map(
+        (c, i) => [c, `10000000-0000-4000-8000-00000000c0${i}0`],
+      ),
+    );
+    const windows = Object.fromEntries(
+      Object.keys(assessmentIdsByComponent).map((c) => [
+        c,
+        { opensAt: 0, latestStartAt: 10 * 60_000 },
+      ]),
+    );
+    const calls: Record<string, unknown>[] = [];
+    const client = {
+      call: async (jar: { id: string }, payload: Record<string, unknown>) => {
+        calls.push({ who: jar.id, ...payload });
+        if (payload.operation === "GET_ACTIVE_QUESTIONS")
+          return {
+            status: 500,
+            body: { error: "OPERATION_FAILED" },
+            text: '{"error":"OPERATION_FAILED"}',
+          };
+        if (payload.operation === "START_ASSESSMENT")
+          return {
+            status: 200,
+            body: {
+              ok: true,
+              result: {
+                attemptId: jar.id === "learner" ? ATTEMPT : FOREIGN_ATTEMPT,
+              },
+            },
+            text: "",
+          };
+        return { status: 500, body: { error: "OPERATION_FAILED" }, text: "" };
+      },
+    };
+    const ctx = {
+      runId: "1790000000000-abcdef",
+      jars: { learner: { id: "learner" }, foreign: { id: "foreign" } },
+      journey: client,
+      app: client,
+      stub: {
+        calls: [],
+        clearPlans: vi.fn(),
+        planZeroMarks: vi.fn(),
+        planFailure: vi.fn(),
+      },
+      negatives: createNegativeLedger(),
+      query: async (sql: string) =>
+        sql.includes("from assessment_questions") ? [{ n: 1 }] : [],
+      log: () => {},
+      sleep: async () => {},
+      dbNowMs: async () => 60_000,
+    };
+    const s = {
+      enrolmentId: "E",
+      learnerId: "L",
+      windows,
+      course: { assessmentIdsByComponent },
+    } as Record<string, unknown>;
+    const result = await stageAssessments(ctx, s);
+    expect(result.surface).toBe(JOURNEY_SURFACES.ASSESSMENTS);
+    expect(result.status).toBe("FAIL");
+    const details = (result.details ?? []).join("\n");
+    expect(details).toContain(
+      "GET_ACTIVE_QUESTIONS failed before attempt start (HTTP 500, OPERATION_FAILED).",
+    );
+    expect(details).toContain(
+      "QUIZ_1: GET_ACTIVE_QUESTIONS failed after attempt start (HTTP 500, OPERATION_FAILED).",
+    );
+    expect(details).not.toMatch(
+      /released before|question release does not match/i,
+    );
+    // The stage stopped at the first component: no response was recorded
+    // and nothing was submitted or graded.
+    expect(
+      calls.some((c) =>
+        ["RECORD_RESPONSE", "SUBMIT_AND_GRADE_ASSESSMENT"].includes(
+          c.operation as string,
+        ),
+      ),
+    ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Independent review v2: a successful-looking but structurally incomplete
+// pre-start projection is its own bounded evidence failure -- never a clean
+// idle state, and never "questions released".
+// ---------------------------------------------------------------------------
+describe("customer journey: pre-start GET_ACTIVE_QUESTIONS projection must be complete", () => {
+  const QUESTION = "10000000-0000-4000-8000-0000000000d4";
+  const INCOMPLETE =
+    "GET_ACTIVE_QUESTIONS returned an incomplete projection before attempt start.";
+  const ok = (result: Record<string, unknown>) => ({
+    status: 200,
+    body: { ok: true, result },
+    text: "",
+  });
+  const cleanResult = {
+    activityState: "NORMAL",
+    activeAttemptId: null,
+    activeAssessmentId: null,
+    questions: [],
+  };
+  const without = (key: string) =>
+    Object.fromEntries(
+      Object.entries(cleanResult).filter(([name]) => name !== key),
+    );
+
+  it("HTTP 200 / ok=true / result missing `questions` => incomplete projection, NEVER 'Questions were released'", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    const problems = preStartQuestionReleaseProblems(ok(without("questions")));
+    expect(problems).toEqual([INCOMPLETE]);
+    expect(problems.join(" ")).not.toMatch(/released/i);
+  });
+
+  it("HTTP 200 / ok=true / activeAttemptId missing => incomplete projection", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    const problems = preStartQuestionReleaseProblems(
+      ok(without("activeAttemptId")),
+    );
+    expect(problems).toEqual([INCOMPLETE]);
+    expect(problems.join(" ")).not.toMatch(/released|active attempt/i);
+  });
+
+  it("a coherent clean pre-start response PASSes", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    expect(preStartQuestionReleaseProblems(ok({ ...cleanResult }))).toEqual([]);
+  });
+
+  it.each([
+    ["activeAssessmentId missing", without("activeAssessmentId")],
+    ["activityState missing", without("activityState")],
+    [
+      "activityState not a known state",
+      { ...cleanResult, activityState: "SOMETHING" },
+    ],
+    ["questions not an array", { ...cleanResult, questions: "none" }],
+    [
+      "activeAttemptId of the wrong type",
+      { ...cleanResult, activeAttemptId: 7 },
+    ],
+    ["an empty result object", {}],
+    // Review v3: an empty id is neither "no attempt" nor a real identifier.
+    [
+      'activeAttemptId: "" (empty string)',
+      { ...cleanResult, activeAttemptId: "" },
+    ],
+    [
+      'activeAssessmentId: "" (empty string)',
+      { ...cleanResult, activeAssessmentId: "" },
+    ],
+  ])("%s => incomplete projection, not a release", async (_label, result) => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    const problems = preStartQuestionReleaseProblems(ok(result));
+    expect(problems).toEqual([INCOMPLETE]);
+    expect(problems.join(" ")).not.toMatch(/released/i);
+  });
+
+  it("question entries without identifiers are an incomplete projection, not released question identifiers", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    const problems = preStartQuestionReleaseProblems(
+      ok({ ...cleanResult, questions: [{ maxMarks: 10 }] }),
+    );
+    expect(problems).toEqual([INCOMPLETE]);
+  });
+
+  it("genuine release evidence is still reported even alongside an incomplete projection", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      preStartQuestionReleaseProblems(
+        ok({
+          activeAttemptId: null,
+          questions: [{ id: QUESTION, maxMarks: 10 }],
+        }),
+      ),
+    ).toEqual([
+      "Questions were released before the learner started an attempt (1 question identifier(s)).",
+      INCOMPLETE,
+    ]);
+  });
+
+  it("with no attempt reported, a non-idle assessment id or activity state gets its own bounded diagnostic", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      preStartQuestionReleaseProblems(
+        ok({
+          ...cleanResult,
+          activityState: "CONTROLLED_ASSESSMENT_ACTIVE",
+          activeAssessmentId: "10000000-0000-4000-8000-0000000000d5",
+        }),
+      ),
+    ).toEqual([
+      "GET_ACTIVE_QUESTIONS reported an active assessment before the learner started an attempt.",
+      "GET_ACTIVE_QUESTIONS reported activity state CONTROLLED_ASSESSMENT_ACTIVE before the learner started an attempt.",
+    ]);
+  });
+});

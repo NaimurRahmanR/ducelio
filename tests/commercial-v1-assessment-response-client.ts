@@ -42,10 +42,17 @@ export type AssessmentClientState = CapabilityDbState & {
   rpcLog: string[];
   rpcArgs: { name: string; args: Record<string, unknown> }[];
   failRpc?: string;
+  // Every table read's requested PostgREST select string, in order, so a
+  // test can check each embedded relation against the real migrated FK
+  // graph (this adapter itself does not resolve embeds the way PostgREST
+  // does -- see TABLE_FIELDS).
+  selects: { table: string; select: string }[];
+  // A table whose read should fail as a PostgREST error would.
+  failTableRead?: string;
 };
 
 export function newAssessmentClientState(): AssessmentClientState {
-  return { authUser: null, calls: [], rpcLog: [], rpcArgs: [] };
+  return { authUser: null, calls: [], rpcLog: [], rpcArgs: [], selects: [] };
 }
 
 export async function actAs(
@@ -62,7 +69,8 @@ export async function actAs(
 
 const TABLE_FIELDS: Record<string, string> = {
   assessments:
-    "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,json_build_object('title',l.title) as lessons,json_build_object('label',v.label,'title_snapshot',v.title_snapshot) as programme_versions",
+    "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
+  programme_versions: "t.id,t.label,t.title_snapshot",
   assessment_attempts:
     "t.id,t.assessment_id,t.attempt_number,t.state,t.started_at,t.expires_at,t.submitted_at",
   assessment_responses:
@@ -110,11 +118,12 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
       const params: unknown[] = [];
       let limit = 1000;
       const query = {
-        select() {
+        select(value: string) {
+          state.selects?.push({ table, select: value });
           return query;
         },
         in(col: string, values: unknown[]) {
-          if (!["cohort_id", "status"].includes(col))
+          if (!["cohort_id", "status", "id"].includes(col))
             throw new Error("Unsupported filter");
           if (values.length === 0) throw new Error("Unsafe empty .in() filter");
           params.push(values);
@@ -138,9 +147,14 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
           resolve: (v: unknown) => unknown,
           reject: (e: unknown) => unknown,
         ) {
+          if (state.failTableRead === table)
+            return Promise.resolve({
+              data: null,
+              error: { message: "PostgREST read failure sentinel" },
+            }).then(resolve, reject);
           const join =
             table === "assessments"
-              ? " join public.lessons l on l.id=t.lesson_id join public.programme_versions v on v.id=t.programme_version_id"
+              ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
               : "";
           return db
             .query<{ data: unknown }>(

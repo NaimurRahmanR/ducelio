@@ -395,6 +395,123 @@ export function foreignTutorProbeProblems({ status, before, after, ownerId }) {
   return problems;
 }
 
+// A bounded description of a failed acceptance-route response, or null when
+// the operation succeeded. Only the HTTP status and the route's own
+// top-level error code are ever reported -- never a body, message or
+// exception text (the route never returns one).
+const ROUTE_ERROR_CODE = /^[A-Z][A-Z_]{0,63}$/;
+export function routeFailure(response) {
+  if (
+    response?.status === 200 &&
+    response.body?.ok === true &&
+    response.body.result
+  )
+    return null;
+  const raw = response?.body?.error ?? response?.body?.code;
+  const code =
+    typeof raw === "string" && ROUTE_ERROR_CODE.test(raw)
+      ? raw
+      : "no error code";
+  return `HTTP ${response?.status ?? "none"}, ${code}`;
+}
+
+// Before any attempt exists. A failed operation is reported as exactly that
+// -- never as a question release. "Released" is claimed only when a
+// successful response actually carried a non-null active attempt id or
+// question identifiers; a structurally incomplete projection is its own
+// bounded evidence failure, never silently read as a clean idle state.
+const ACTIVITY_STATES = new Set(["NORMAL", "CONTROLLED_ASSESSMENT_ACTIVE"]);
+// null, or a NON-EMPTY string: an empty id is neither "no attempt" nor a
+// real identifier, so it can never pass as a clean idle projection.
+const isNullOrNonEmptyString = (value) =>
+  value === null || (typeof value === "string" && value.length > 0);
+export function preStartQuestionReleaseProblems(response) {
+  const failure = routeFailure(response);
+  if (failure)
+    return [`GET_ACTIVE_QUESTIONS failed before attempt start (${failure}).`];
+  const result = response.body.result;
+  const problems = [];
+  const attemptReported =
+    typeof result.activeAttemptId === "string" &&
+    result.activeAttemptId.length > 0;
+  if (attemptReported)
+    problems.push(
+      "GET_ACTIVE_QUESTIONS reported an active attempt before the learner started one.",
+    );
+  const questionIds = Array.isArray(result.questions)
+    ? result.questions.filter(
+        (q) => typeof q?.id === "string" && q.id.length > 0,
+      ).length
+    : 0;
+  if (questionIds > 0)
+    problems.push(
+      `Questions were released before the learner started an attempt (${questionIds} question identifier(s)).`,
+    );
+  const complete =
+    Object.hasOwn(result, "activeAttemptId") &&
+    isNullOrNonEmptyString(result.activeAttemptId) &&
+    Object.hasOwn(result, "activeAssessmentId") &&
+    isNullOrNonEmptyString(result.activeAssessmentId) &&
+    ACTIVITY_STATES.has(result.activityState) &&
+    Array.isArray(result.questions) &&
+    questionIds === result.questions.length;
+  if (!complete) {
+    problems.push(
+      "GET_ACTIVE_QUESTIONS returned an incomplete projection before attempt start.",
+    );
+    return problems;
+  }
+  // A reported attempt already explains any assessment id / controlled
+  // state; with no attempt, both must describe the idle state.
+  if (!attemptReported) {
+    if (result.activeAssessmentId !== null)
+      problems.push(
+        "GET_ACTIVE_QUESTIONS reported an active assessment before the learner started an attempt.",
+      );
+    if (result.activityState !== "NORMAL")
+      problems.push(
+        `GET_ACTIVE_QUESTIONS reported activity state ${result.activityState} before the learner started an attempt.`,
+      );
+  }
+  return problems;
+}
+
+// After the learner's own start. Each mismatch is reported on its own;
+// identifiers and counts only, never question text.
+export function postStartQuestionReleaseProblems(
+  response,
+  expected,
+  component,
+) {
+  const failure = routeFailure(response);
+  if (failure)
+    return [
+      `${component}: GET_ACTIVE_QUESTIONS failed after attempt start (${failure}).`,
+    ];
+  const result = response.body.result;
+  const problems = [];
+  if (result.activeAttemptId !== expected.attemptId)
+    problems.push(
+      `${component}: the reported active attempt (${result.activeAttemptId ?? "none"}) is not the attempt just started (${expected.attemptId}).`,
+    );
+  if (result.activeAssessmentId !== expected.assessmentId)
+    problems.push(
+      `${component}: the reported active assessment (${result.activeAssessmentId ?? "none"}) is not the component's assessment (${expected.assessmentId}).`,
+    );
+  if (result.activityState !== "CONTROLLED_ASSESSMENT_ACTIVE")
+    problems.push(
+      `${component}: the activity state was ${typeof result.activityState === "string" ? result.activityState : "missing"}, expected CONTROLLED_ASSESSMENT_ACTIVE.`,
+    );
+  const released = Array.isArray(result.questions)
+    ? result.questions.length
+    : -1;
+  if (released !== expected.questionCount)
+    problems.push(
+      `${component}: ${released < 0 ? "no question list was" : `${released} question identifier(s) were`} released; expected ${expected.questionCount ?? "unknown"}.`,
+    );
+  return problems;
+}
+
 // Durable completion state, checked independently.
 export function completionProblems(state, expected, label) {
   const problems = [];
@@ -1224,12 +1341,12 @@ async function start(ctx, jar, assessmentId, responses) {
   return resultOf(response)?.attemptId ?? null;
 }
 
-async function activeQuestions(ctx, jar, responses) {
+async function activeQuestionsResponse(ctx, jar, responses) {
   const response = await ctx.journey.call(jar, {
     operation: "GET_ACTIVE_QUESTIONS",
   });
   responses.push(response);
-  return resultOf(response);
+  return response;
 }
 
 async function answer(ctx, jar, attemptId, questions, responses, tag) {
@@ -1355,13 +1472,12 @@ export async function stageAssessments(ctx, s) {
       throw new JourneyBlocked(
         `The ${component} assessment window passed its latest start before the journey reached it (setup ran long); rerun.`,
       );
-    if (component === "QUIZ_1") {
-      const idle = await activeQuestions(ctx, ctx.jars.learner, responses);
-      if (idle?.activeAttemptId !== null || idle.questions.length !== 0)
-        problems.push(
-          "Questions were released before the learner started an attempt.",
-        );
-    }
+    if (component === "QUIZ_1")
+      problems.push(
+        ...preStartQuestionReleaseProblems(
+          await activeQuestionsResponse(ctx, ctx.jars.learner, responses),
+        ),
+      );
     await sleepUntilDb(
       ctx,
       window.opensAt + JOURNEY_SCHEDULE.startMarginMs,
@@ -1390,20 +1506,23 @@ export async function stageAssessments(ctx, s) {
       s.foreignProblems.push(
         `${component}: the foreign learner could not start.`,
       );
-    const released = await activeQuestions(ctx, ctx.jars.learner, responses);
+    const releasedResponse = await activeQuestionsResponse(
+      ctx,
+      ctx.jars.learner,
+      responses,
+    );
     const questionCount = (await ctx.query(Q.questionCount, [assessmentId]))[0]
       ?.n;
-    if (
-      released?.activeAttemptId !== attemptId ||
-      released.activeAssessmentId !== assessmentId ||
-      released.activityState !== "CONTROLLED_ASSESSMENT_ACTIVE" ||
-      released.questions.length !== questionCount
-    ) {
-      problems.push(
-        `${component}: the learner-safe question release does not match the active attempt.`,
-      );
+    const releaseProblems = postStartQuestionReleaseProblems(
+      releasedResponse,
+      { attemptId, assessmentId, questionCount },
+      component,
+    );
+    if (releaseProblems.length) {
+      problems.push(...releaseProblems);
       break;
     }
+    const released = resultOf(releasedResponse);
     if (component === "QUIZ_1") {
       const firewall = resultOf(
         await ctx.journey.call(ctx.jars.learner, {
@@ -1592,11 +1711,17 @@ export async function stageAssessments(ctx, s) {
     // Foreign learner: its own attempt, graded zero through production
     // grading (deterministic stub control), for the below-pass-mark path.
     if (foreignAttemptId) {
-      const foreignQuestions = await activeQuestions(
+      const foreignQuestionsResponse = await activeQuestionsResponse(
         ctx,
         ctx.jars.foreign,
         responses,
       );
+      const foreignQuestionsFailure = routeFailure(foreignQuestionsResponse);
+      if (foreignQuestionsFailure)
+        s.foreignProblems.push(
+          `${component}: the foreign learner's GET_ACTIVE_QUESTIONS failed after attempt start (${foreignQuestionsFailure}).`,
+        );
+      const foreignQuestions = resultOf(foreignQuestionsResponse);
       const foreignRecorded = await answer(
         ctx,
         ctx.jars.foreign,
