@@ -59,7 +59,7 @@ import {
   acceptanceIdentitiesConfigured,
   unrelatedStaffIdentityConfigured,
 } from "./supabase.mjs";
-import { seedAcceptanceCourse } from "./fixtures.mjs";
+import { seedAcceptanceCourse, seedAcceptanceResults } from "./fixtures.mjs";
 import { startProviderStub, stubMarks } from "./examiner-provider-stub.mjs";
 import {
   printResult,
@@ -222,13 +222,18 @@ const WITHHELD_FROM_APP = [
 
 const PER_RUN_TOKEN = /^[0-9a-f]{64}$/;
 
+// `contextHold` is passed ONLY by the concurrency driver
+// (concurrency-app-races.mjs): the stub's context-read control endpoint and
+// its own per-run token. Otherwise both variables are forced empty, so a
+// stray parent value can never enable the hold in an examiner-app child.
 export function buildAppChildEnv(
   parentEnv,
-  { port, token, redirectToken, stub },
+  { port, token, redirectToken, stub, contextHold = null },
 ) {
   if (
     !PER_RUN_TOKEN.test(token ?? "") ||
-    !PER_RUN_TOKEN.test(redirectToken ?? "")
+    !PER_RUN_TOKEN.test(redirectToken ?? "") ||
+    (contextHold && !PER_RUN_TOKEN.test(contextHold.token ?? ""))
   )
     throw new Error(
       "Per-run acceptance tokens must be 64 lowercase hex characters.",
@@ -244,6 +249,8 @@ export function buildAppChildEnv(
     ACCEPTANCE_APP_DRIVER_TOKEN: token,
     ACCEPTANCE_PROVIDER_STUB_URL: stub.url,
     ACCEPTANCE_PROVIDER_REDIRECT_TOKEN: redirectToken,
+    ACCEPTANCE_CONTEXT_HOLD_URL: contextHold?.url ?? "",
+    ACCEPTANCE_CONTEXT_HOLD_TOKEN: contextHold?.token ?? "",
     OPENAI_API_KEY: stub.apiKey,
     APP_URL: `http://127.0.0.1:${port}`,
     NODE_OPTIONS: `--import=${pathToFileURL(PRELOAD).href}`,
@@ -333,7 +340,7 @@ async function waitForAppReady(app, child, timeoutMs = 240_000) {
 // ---------------------------------------------------------------------------
 // Scenario helpers.
 // ---------------------------------------------------------------------------
-const Q = {
+export const Q = {
   initialExecutions: `select e.id, e.state, e.reason_code, e.student_id, e.enrolment_id, e.activation_id,
       e.capability, e.runtime_profile_ref, e.grade_digest, e.result_revision_id, u.provider_calls
     from commercial_v1_examiner_executions e
@@ -370,7 +377,7 @@ export function leakedProtectedContent(texts) {
   );
 }
 
-function stubCallsFor(stub, attemptId) {
+export function stubCallsFor(stub, attemptId) {
   return stub.calls.filter((c) => c.attemptId === attemptId);
 }
 
@@ -384,7 +391,7 @@ async function rpcData(client, name, args) {
 // learner's own authenticated hosted session (RLS/grants apply). Protected
 // question content is never read (get_active_assessment_questions returns
 // no answer key) and never logged.
-async function answerQuiz1(ctx, course) {
+export async function answerQuiz1(ctx, course) {
   const attemptId = await rpcData(
     ctx.learnerClient,
     "start_assessment_attempt",
@@ -419,7 +426,7 @@ async function answerQuiz1(ctx, course) {
 }
 
 // Marks the deterministic stub rule implies for a revision's real rows.
-async function marksFollowRule(ctx, revisionId, capability) {
+export async function marksFollowRule(ctx, revisionId, capability) {
   const rows = await ctx.query(Q.marks, [revisionId]);
   const expected = stubMarks(
     capability,
@@ -432,8 +439,8 @@ async function marksFollowRule(ctx, revisionId, capability) {
   return { rows: rows.length, matches, earned };
 }
 
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const recordLeaks = (problems, responses) => {
+export const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+export const recordLeaks = (problems, responses) => {
   const leaked = leakedProtectedContent(responses.map((r) => r.text));
   if (leaked.length)
     problems.push(
@@ -952,42 +959,66 @@ async function signInThroughApp(app, jar, emailVar, passwordVar) {
   return response.status === 200 && response.body?.ok === true && jar.size > 0;
 }
 
+// ---------------------------------------------------------------------------
+// The shared real-application session: prerequisite checks, the local
+// provider stub, the fail-closed app child, readiness and genuine app
+// sign-ins. Used by runExaminerAppAcceptance below and by the concurrency
+// driver's application races (concurrency-app-races.mjs), so this
+// security-relevant startup exists exactly once.
+//
+// Always returns `close` (idempotent) plus either a `refusal`
+// ({reason, details} -- the caller reports BLOCKED) or a `session`. Throws
+// only for an unexpected error, after closing everything it opened.
 // `startApp` exists only so tests can observe the child environment the
-// driver generates without spawning Next.js.
-export async function runExaminerAppAcceptance({
+// driver generates without spawning Next.js. `contextHold` enables the
+// concurrency driver's context-read delivery hold in the child; it is never
+// set by runExaminerAppAcceptance.
+// ---------------------------------------------------------------------------
+export async function openExaminerAppSession({
   startApp = startAppServer,
+  contextHold = false,
 } = {}) {
+  let stub;
+  let child;
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await stopAppServer(child);
+    await stub?.close();
+  };
+  const refuse = (reason, details = []) => ({
+    refusal: { reason, details },
+    close,
+  });
+
   const missing = examinerAppPrerequisites();
   if (missing.length)
-    return blockedAll(
+    return refuse(
       "Examiner app acceptance prerequisites are missing or malformed.",
       missing.map((name) => `${name} is missing or malformed.`),
     );
   const keyId = process.env.ACADEMIC_EXECUTION_KEY_ID.trim();
   try {
     if (!(await controllerKeyInstalled(keyId)))
-      return blockedAll(
+      return refuse(
         "No active hosted controller key matches ACADEMIC_EXECUTION_KEY_ID.",
         [
           "Operator prerequisite: install the matching key with academic_execution_private.install_controller_key (docs/38). This driver never provisions keys.",
         ],
       );
   } catch {
-    return blockedAll(
+    return refuse(
       "Could not verify the hosted controller key (read-only check failed).",
     );
   }
 
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  let stub;
-  let child;
   try {
     try {
       stub = await startProviderStub();
     } catch {
-      return blockedAll(
-        "The local deterministic provider stub could not start.",
-      );
+      return refuse("The local deterministic provider stub could not start.");
     }
     const port = await freePort();
     const token = randomBytes(32).toString("hex");
@@ -995,7 +1026,13 @@ export async function runExaminerAppAcceptance({
     // redirect wrapper carries in the child process. Never printed.
     const redirectToken = randomBytes(32).toString("hex");
     child = startApp(
-      buildAppChildEnv(process.env, { port, token, redirectToken, stub }),
+      buildAppChildEnv(process.env, {
+        port,
+        token,
+        redirectToken,
+        stub,
+        contextHold: contextHold ? stub.contextHoldControl : null,
+      }),
       port,
     );
     const app = createAppDriverClient({
@@ -1004,7 +1041,7 @@ export async function runExaminerAppAcceptance({
     });
     const readiness = await waitForAppReady(app, child);
     if (readiness !== "READY")
-      return blockedAll(
+      return refuse(
         `The local Ducelio app server did not become ready (${readiness}).`,
         [
           "GATE_REFUSED means the acceptance route's fail-closed gate refused this driver: APP_URL/Host must be loopback, ACCEPTANCE_ENVIRONMENT_ID must be a UUID, and the provider redirect must be attested live in the app's request process (if not, no provider request can have been made). EXITED/TIMEOUT: run `npm run dev` manually to diagnose; stop any other dev server using this checkout first.",
@@ -1026,7 +1063,7 @@ export async function runExaminerAppAcceptance({
         "ACCEPTANCE_ADMIN_PASSWORD",
       ))
     )
-      return blockedAll(
+      return refuse(
         "Real app sign-in failed for the acceptance learner/admin, or the hosted project did not report ACCEPTANCE_ENVIRONMENT_ID.",
       );
     if (unrelatedStaffIdentityConfigured()) {
@@ -1047,19 +1084,10 @@ export async function runExaminerAppAcceptance({
     const { data: learnerUser, error: learnerUserError } =
       await learnerClient.auth.getUser();
     if (learnerUserError || !learnerUser?.user?.id)
-      return blockedAll(
+      return refuse(
         "Could not resolve the acceptance learner's hosted Auth user id.",
       );
-    const seed = (label) =>
-      seedAcceptanceCourse(
-        adminClient,
-        `${runId}-${label}`,
-        learnerUser.user.id,
-        {
-          examinerEnabled: true,
-        },
-      );
-    const ctx = {
+    const session = {
       runId,
       app,
       jars,
@@ -1068,7 +1096,34 @@ export async function runExaminerAppAcceptance({
       learnerClient,
       query: (sql, params) =>
         withConnection((c) => c.query(sql, params)).then((r) => r.rows),
+      seed: (label) =>
+        seedAcceptanceCourse(
+          adminClient,
+          `${runId}-${label}`,
+          learnerUser.user.id,
+          {
+            examinerEnabled: true,
+          },
+        ),
+      // Gated like every fixture write (concurrency-app-races.mjs only).
+      seedResults: seedAcceptanceResults,
     };
+    return { session, close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
+}
+
+export async function runExaminerAppAcceptance({
+  startApp = startAppServer,
+} = {}) {
+  let opened = null;
+  try {
+    opened = await openExaminerAppSession({ startApp });
+    if (opened.refusal)
+      return blockedAll(opened.refusal.reason, opened.refusal.details);
+    const ctx = opened.session;
 
     // Each surface is guarded on its own: one surface's unexpected error
     // is that surface's FAIL (or BLOCKED for a write-gate refusal), never
@@ -1077,7 +1132,7 @@ export async function runExaminerAppAcceptance({
     let gradingCourse = null;
     let graded = null;
     const grading = await guardScenario(SURFACES.GRADING, async () => {
-      gradingCourse = await seed("examiner-grade");
+      gradingCourse = await ctx.seed("examiner-grade");
       graded = await scenarioGrading(ctx, gradingCourse);
       return graded.result;
     });
@@ -1085,7 +1140,7 @@ export async function runExaminerAppAcceptance({
       scenarioRegrade(ctx, gradingCourse, graded),
     );
     const recovery = await guardScenario(SURFACES.INITIAL_RECOVERY, async () =>
-      scenarioInitialRecovery(ctx, await seed("examiner-recovery")),
+      scenarioInitialRecovery(ctx, await ctx.seed("examiner-recovery")),
     );
     return [grading, recovery, regrade];
   } catch (error) {
@@ -1097,8 +1152,7 @@ export async function runExaminerAppAcceptance({
       ]),
     );
   } finally {
-    await stopAppServer(child);
-    await stub?.close();
+    await opened?.close();
   }
 }
 

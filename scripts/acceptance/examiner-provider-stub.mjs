@@ -105,6 +105,98 @@ function parseGovernedRequest(raw) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Acceptance-only synchronization holds (scripts/acceptance/
+// concurrency-app-races.mjs). Entirely in THIS (driver) process; nothing
+// about them is reachable from a browser or from the app's HTTP surface.
+// With no hold armed, every request is answered exactly as before.
+//
+// A hold is one-shot: it captures exactly the NEXT matching request after it
+// is armed, reports that the request has arrived (`arrived`), and keeps it
+// parked until the driver calls release() -- an explicit barrier, never a
+// sleep. `settled` reports what finally happened to the parked request:
+// RESPONDED (released and answered), CLIENT_ABORTED (the caller gave up
+// first, e.g. the app runtime's own provider deadline fired) or CANCELLED
+// (teardown). close() cancels every outstanding hold before the server
+// stops, so a failed scenario can never leave a request -- or the driver --
+// hanging.
+// ---------------------------------------------------------------------------
+export const CONTEXT_HOLD_PATH = "/v1/acceptance-holds/context-read";
+
+function createHold(kind) {
+  let signalArrival;
+  let rejectArrival;
+  let signalRelease;
+  let signalSettled;
+  const hold = {
+    kind,
+    state: "ARMED",
+    arrival: null,
+    arrived: new Promise((resolve, reject) => {
+      signalArrival = resolve;
+      rejectArrival = reject;
+    }),
+    released: new Promise((resolve) => {
+      signalRelease = resolve;
+    }),
+    settled: new Promise((resolve) => {
+      signalSettled = resolve;
+    }),
+    release() {
+      if (hold.state === "ARMED" || hold.state === "HELD") signalRelease(true);
+    },
+    arrive(arrival) {
+      hold.state = "HELD";
+      hold.arrival = arrival;
+      signalArrival(arrival);
+    },
+    settle(outcome) {
+      if (hold.state === "SETTLED") return;
+      hold.state = "SETTLED";
+      signalSettled(outcome);
+    },
+    cancel() {
+      if (hold.state === "ARMED") {
+        rejectArrival(
+          new Error(
+            `The ${kind} hold was cancelled before any request arrived.`,
+          ),
+        );
+        hold.settle("CANCELLED");
+      }
+      // A parked request is released with `false`: its handler answers a
+      // refusal instead of the governed response, then settles CANCELLED.
+      signalRelease(false);
+    },
+  };
+  // A cancelled, never-awaited arrival must not surface as an unhandled
+  // rejection in the driver process.
+  hold.arrived.catch(() => {});
+  return hold;
+}
+
+// The oldest still-armed hold; a hold cancelled before any request arrived
+// is discarded, never allowed to capture a later, unrelated request.
+function nextHold(queue) {
+  while (queue.length && queue[0].state === "SETTLED") queue.shift();
+  return queue.shift() ?? null;
+}
+
+// Resolves true when released, false when cancelled or when the waiting
+// request's own connection closes first.
+function awaitRelease(hold, res) {
+  return new Promise((resolve) => {
+    const onClose = () => {
+      if (!res.writableFinished) resolve(false);
+    };
+    res.once("close", onClose);
+    hold.released.then((released) => {
+      res.off("close", onClose);
+      resolve(released);
+    });
+  });
+}
+
 /**
  * Starts the stub on an ephemeral 127.0.0.1 port. Every request must carry
  * the per-run bearer key this function generated (handed to the child app
@@ -112,16 +204,50 @@ function parseGovernedRequest(raw) {
  * makes exactly the NEXT accepted request answer HTTP 503, which the real
  * adapter maps to PROVIDER_UNAVAILABLE -- how the driver creates a
  * genuinely recoverable initial execution through production code.
+ *
+ * `holdNextProviderResponse()` / `holdNextContextRead()` arm the one-shot
+ * acceptance holds described above. The context-read control endpoint is
+ * authenticated by its own per-run token (`contextHoldControl.token`),
+ * distinct from the provider key, and is only ever handed to an app child
+ * the concurrency driver explicitly configures for it.
  */
 export async function startProviderStub() {
   const apiKey = `acceptance-stub-${randomBytes(24).toString("hex")}`;
+  const contextHoldToken = randomBytes(32).toString("hex");
   const calls = [];
+  const providerHolds = [];
+  const contextHolds = [];
+  const everyHold = [];
   let failNext = false;
+  const arm = (queue, kind) => {
+    const hold = createHold(kind);
+    queue.push(hold);
+    everyHold.push(hold);
+    return hold;
+  };
   const server = http.createServer(async (req, res) => {
     const reply = (status, body) => {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(JSON.stringify(body));
     };
+    if (req.method === "POST" && req.url === CONTEXT_HOLD_PATH) {
+      if (
+        !sameSecret(
+          req.headers.authorization ?? "",
+          `Bearer ${contextHoldToken}`,
+        )
+      )
+        return reply(401, { error: "unauthorized" });
+      const hold = nextHold(contextHolds);
+      if (!hold) return reply(200, { held: false });
+      hold.arrive({ kind: "CONTEXT_READ" });
+      const released = await awaitRelease(hold, res);
+      hold.settle(
+        released ? "RESPONDED" : res.destroyed ? "CLIENT_ABORTED" : "CANCELLED",
+      );
+      if (res.writableEnded || res.destroyed) return;
+      return reply(200, { held: true, released });
+    }
     if (req.method !== "POST" || req.url !== STUB_PATH)
       return reply(404, { error: "not_found" });
     if (!sameSecret(req.headers.authorization ?? "", `Bearer ${apiKey}`))
@@ -136,14 +262,41 @@ export async function startProviderStub() {
       calls.push({ capability: null, attemptId: null, outcome: "REJECTED" });
       return reply(400, { error: "unexpected_request" });
     }
+    const hold = nextHold(providerHolds);
+    if (hold) {
+      hold.arrive({
+        capability: request.capability,
+        attemptId: request.attemptId,
+      });
+      const released = await awaitRelease(hold, res);
+      if (!released) {
+        const aborted = !res.writableEnded && res.destroyed;
+        hold.settle(aborted ? "CLIENT_ABORTED" : "CANCELLED");
+        calls.push({
+          capability: request.capability,
+          attemptId: request.attemptId,
+          outcome: aborted ? "CLIENT_ABORTED" : "HOLD_CANCELLED",
+          held: true,
+        });
+        if (!res.writableEnded && !res.destroyed)
+          reply(503, { error: "acceptance_hold_cancelled" });
+        return;
+      }
+    }
+    // Only a released hold marks its call; unheld calls keep their exact
+    // previous shape.
+    const heldMark = hold ? { held: true } : {};
     if (failNext) {
       failNext = false;
       calls.push({
         capability: request.capability,
         attemptId: request.attemptId,
         outcome: "PROVIDER_UNAVAILABLE",
+        ...heldMark,
       });
-      return reply(503, { error: "acceptance_stub_unavailable" });
+      reply(503, { error: "acceptance_stub_unavailable" });
+      hold?.settle("RESPONDED");
+      return;
     }
     const text = JSON.stringify({
       outcome: "GRADED",
@@ -153,6 +306,7 @@ export async function startProviderStub() {
       capability: request.capability,
       attemptId: request.attemptId,
       outcome: "GRADED",
+      ...heldMark,
     });
     reply(200, {
       status: "completed",
@@ -162,6 +316,7 @@ export async function startProviderStub() {
         output_tokens: Math.min(Math.ceil(text.length / 4), 200),
       },
     });
+    hold?.settle("RESPONDED");
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -175,7 +330,21 @@ export async function startProviderStub() {
     planFailure() {
       failNext = true;
     },
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    holdNextProviderResponse: () => arm(providerHolds, "provider"),
+    holdNextContextRead: () => arm(contextHolds, "context-read"),
+    contextHoldControl: Object.freeze({
+      url: `http://127.0.0.1:${port}${CONTEXT_HOLD_PATH}`,
+      token: contextHoldToken,
+    }),
+    close: () => {
+      for (const hold of everyHold) hold.cancel();
+      providerHolds.length = 0;
+      contextHolds.length = 0;
+      return new Promise((resolve) => {
+        server.close(() => resolve());
+        server.closeIdleConnections?.();
+      });
+    },
   };
 }
 
@@ -215,6 +384,56 @@ function requestUrl(input) {
       : input?.url;
 }
 
+// The one protected-context RPC whose already-served RESPONSE the
+// concurrency driver may ask the app process to hold before handing it back
+// to the (unmodified) initial-grading orchestrator. Why a second hold point
+// exists at all: the EXAMINER_COMMERCIAL_V1 runtime profile's provider
+// deadline (15 s) is shorter than migration 031's DB-owned execution lease
+// (20 s), so a provider-only hold can never keep the original invocation
+// alive past the lease -- the runtime would abort and FINALIZE FAILED while
+// the lease was still live. Holding delivery of this response keeps the
+// original request genuinely in flight past its lease without touching the
+// lease, the attestation, the request or the response bytes.
+export const CONTEXT_HOLD_RPC_PATH =
+  "/rest/v1/rpc/get_commercial_v1_examiner_assessment_context";
+const HOLD_TOKEN = /^[0-9a-f]{64}$/;
+
+function validContextHold(contextHold) {
+  if (contextHold == null) return null;
+  const control = new URL(contextHold.url ?? "");
+  const supabase = new URL(contextHold.supabaseUrl ?? "");
+  if (
+    control.protocol !== "http:" ||
+    control.hostname !== "127.0.0.1" ||
+    control.pathname !== CONTEXT_HOLD_PATH ||
+    control.username ||
+    control.password ||
+    !HOLD_TOKEN.test(contextHold.token ?? "") ||
+    !/^https?:$/.test(supabase.protocol)
+  )
+    throw new Error(
+      "The acceptance context-read hold needs a loopback control URL, a 64-hex control token and the Supabase URL.",
+    );
+  return {
+    controlUrl: control.href,
+    token: contextHold.token,
+    supabaseOrigin: supabase.origin,
+  };
+}
+
+function isContextReadRpc(url, supabaseOrigin) {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.origin === supabaseOrigin &&
+      parsed.pathname === CONTEXT_HOLD_RPC_PATH
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Wraps `baseFetch` so that ONLY the exact OpenAI Responses URL the real
  * adapter calls is sent to the loopback stub, and every other request to a
@@ -223,8 +442,19 @@ function requestUrl(input) {
  * untouched. The returned function is marked with `redirectToken` (see
  * PROVIDER_REDIRECT_MARKER above) and answers the in-process attestation
  * sentinel with it.
+ *
+ * `contextHold` (concurrency driver only; absent for examiner-app) makes the
+ * wrapper, AFTER the context-read RPC has completed against the database,
+ * ask the driver's loopback control endpoint whether to park the response;
+ * the endpoint answers immediately unless the driver armed a hold. The
+ * response is never read, copied, logged or altered here.
  */
-export function createProviderRedirectFetch(baseFetch, stubUrl, redirectToken) {
+export function createProviderRedirectFetch(
+  baseFetch,
+  stubUrl,
+  redirectToken,
+  contextHold = null,
+) {
   const target = new URL(stubUrl);
   if (
     target.protocol !== "http:" ||
@@ -240,6 +470,7 @@ export function createProviderRedirectFetch(baseFetch, stubUrl, redirectToken) {
     throw new Error(
       "The acceptance provider redirect token must be 64 lowercase hex characters.",
     );
+  const hold = validContextHold(contextHold);
   async function acceptanceProviderFetch(input, init) {
     const url = requestUrl(input);
     if (
@@ -262,6 +493,20 @@ export function createProviderRedirectFetch(baseFetch, stubUrl, redirectToken) {
       throw new TypeError(
         "Acceptance app driver: real AI provider access is disabled in this process.",
       );
+    if (hold && isContextReadRpc(url, hold.supabaseOrigin)) {
+      const response = await baseFetch(input, init);
+      // Fail-open for the HOLD only: if the control endpoint is unreachable
+      // the response is delivered unheld, and the driver -- which waits for
+      // an explicit arrival -- reports the race as not reached (FAIL),
+      // never as a PASS.
+      await baseFetch(hold.controlUrl, {
+        method: "POST",
+        headers: { authorization: `Bearer ${hold.token}` },
+      })
+        .then((control) => control.arrayBuffer())
+        .catch(() => {});
+      return response;
+    }
     return baseFetch(input, init);
   }
   Object.defineProperty(acceptanceProviderFetch, PROVIDER_REDIRECT_MARKER, {

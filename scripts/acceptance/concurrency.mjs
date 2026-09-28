@@ -18,10 +18,18 @@
 //   governed public.attempt_commercial_v1_course_completion RPC itself,
 //   from two independently signed-in learner Supabase clients, against a
 //   separate completion-ready course (see scenarioCompletionVsCompletion).
+// - LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE and REGRADE_VS_COMPLETION
+//   are real-APPLICATION races (concurrency-app-races.mjs): they start the
+//   real Ducelio app server through examiner-app.mjs's shared session and
+//   drive the unmodified grading/recovery/regrade entrypoints, whose
+//   attestations are produced only by the production authority modules.
+//   They additionally need the examiner-app prerequisites (controller key,
+//   ACADEMIC_EXECUTION_* settings); without them both report BLOCKED.
 //
-// Start discipline (V7): NEVER_TWO_REVISION_ONES and
-// COMPLETION_VS_COMPLETION release both contenders from one in-process
-// start gate (createStartGate) once both are fully prepared.
+// Start discipline (V7): NEVER_TWO_REVISION_ONES,
+// COMPLETION_VS_COMPLETION and both application races release both
+// contenders from one in-process start gate (createStartGate) once both
+// are fully prepared.
 // INITIAL_VS_INITIAL/RECOVERY_VS_RECOVERY dispatch both statements from
 // the same synchronous Promise.allSettled call. In every case this proves
 // both requests were dispatched together from the client side -- never
@@ -129,8 +137,15 @@ import {
   pass,
   fail,
   blocked,
-  notRun,
 } from "./report.mjs";
+import {
+  createStartGate,
+  runAppRaceScenarios,
+} from "./concurrency-app-races.mjs";
+
+// createStartGate lives with the application races (which also need it)
+// and is re-exported here, where the DB-level races and tests use it.
+export { createStartGate };
 
 const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -164,27 +179,6 @@ function classifyRace(settled) {
       s.reason instanceof Error ? s.reason.message : String(s.reason),
     );
   return { fulfilled, uniqueRejected, otherRejections };
-}
-
-// V7: the smallest explicit start barrier. Each contender calls arrive()
-// exactly once, when it is fully prepared (connection open and transaction
-// begun, or client signed in); every arrive() promise resolves together
-// only after all `parties` have arrived. This proves both contenders were
-// released from the same client-side point -- not that the server executed
-// them at the same instant.
-export function createStartGate(parties) {
-  let arrived = 0;
-  let release;
-  const released = new Promise((resolve) => {
-    release = resolve;
-  });
-  return {
-    arrive() {
-      arrived += 1;
-      if (arrived >= parties) release();
-      return released;
-    },
-  };
 }
 
 // Builds the minimal, real-shaped owning chain (course/activation/cohort/
@@ -836,29 +830,17 @@ export async function scenarioCompletionVsCompletion(chain) {
   );
 }
 
-// Independent-review finding 4: these two scenarios previously returned a
-// synthetic PASS without ever executing the named race -- a Level-1
-// truthfulness violation (architecture/MVCC reasoning is not empirical
-// evidence). Neither is implemented as its own distinct race: both would
-// exercise the SAME unique(enrolment_id,component,revision_number) write
-// path NEVER_TWO_REVISION_ONES already drives under genuine two-connection
-// concurrency, so a second insert-race under a different name would not be
-// a second, independent proof -- it would be the identical statement
-// re-run with cosmetic renaming. Rather than fabricate that, or reuse
-// NEVER_TWO_REVISION_ONES's own outcome as a second PASS, both honestly
-// report NOT_RUN and name exactly which lower-level invariant was actually
-// proven, by which scenario, and what remains genuinely untested.
-function scenarioLateInitialVsRecoveryNotRun() {
-  return notRun(
-    "POSTGRES_CONCURRENCY:LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE",
-    "COVERED_BY_INVARIANT, not independently executed: a late-initial FINALIZE and a recovery FINALIZE both write through the identical unique(enrolment_id,component,revision_number) insert that POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES already races under genuine two-connection concurrency in this same run. This scenario's own distinct race (an in-flight initial FINALIZE transaction against a concurrent recovery AUTHORIZE/FINALIZE sequence) has not been executed.",
-  );
-}
-function scenarioRegradeVsCompletionNotRun() {
-  return notRun(
-    "POSTGRES_CONCURRENCY:REGRADE_VS_COMPLETION",
-    "COVERED_BY_INVARIANT, not independently executed: the write-side uniqueness a regrade depends on is the same unique(enrolment_id,component,revision_number) constraint POSTGRES_CONCURRENCY:NEVER_TWO_REVISION_ONES already races under genuine concurrency. Whether a concurrent get_commercial_v1_course_progress/attempt_commercial_v1_course_completion read against an in-flight regrade transaction ever observes a torn/partial result is a real, distinct question this harness does not yet exercise -- it is not proven merely by MVCC snapshot-isolation reasoning, and is not claimed as PASS.",
-  );
+// LATE_INITIAL_FINALIZE_VS_RECOVERY_AUTHORIZE and REGRADE_VS_COMPLETION
+// used to be honest NOT_RUN placeholders (COVERED_BY_INVARIANT). They are
+// now executed as distinct real-application races -- see
+// concurrency-app-races.mjs for why neither is a renamed repeat of
+// NEVER_TWO_REVISION_ONES. Until a hosted operator run actually executes
+// them, their last recorded hosted evidence remains NOT_RUN (docs/38).
+
+// Both application races share one real-app session (never the owning
+// chain: each seeds its own course) and return one result per surface.
+function scenarioApplicationRaces() {
+  return runAppRaceScenarios();
 }
 
 async function main() {
@@ -908,19 +890,20 @@ async function main() {
       scenarioInitialVsInitial,
       scenarioRecoveryVsRecovery,
       scenarioNeverTwoRevisionOnes,
-      scenarioLateInitialVsRecoveryNotRun,
-      scenarioRegradeVsCompletionNotRun,
+      scenarioApplicationRaces,
       scenarioCompletionVsCompletion,
     ]) {
-      const r = await Promise.resolve(scenario(chain)).catch((error) =>
+      const outcome = await Promise.resolve(scenario(chain)).catch((error) =>
         error instanceof AcceptanceWriteNotAuthorizedError
           ? blocked(scenario.name, error.message)
           : fail(scenario.name, "Scenario threw unexpectedly.", [
               error instanceof Error ? error.message : String(error),
             ]),
       );
-      results.push(r);
-      printResult(r);
+      for (const r of [outcome].flat()) {
+        results.push(r);
+        printResult(r);
+      }
     }
   } catch (error) {
     const r =
