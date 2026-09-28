@@ -4258,23 +4258,94 @@ describe("acceptance harness: live-provider gating", () => {
   });
 });
 
-describe("acceptance harness: Stripe test-mode surface refuses live-looking credentials", () => {
-  it("BLOCKED, not FAIL or PASS, when the key looks live-mode", async () => {
+describe("acceptance harness: the broad STRIPE_TEST_MODE surface never calls Stripe (K)", () => {
+  async function checkWithSpies() {
+    const fetchSpy = vi.fn();
+    const stripeConstructed = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    vi.doMock("stripe", () => ({ default: stripeConstructed }));
+    vi.resetModules();
+    try {
+      const { checkStripeTestMode } =
+        await import("../scripts/acceptance/surfaces.mjs");
+      return {
+        result: await checkStripeTestMode(),
+        fetchSpy,
+        stripeConstructed,
+      };
+    } finally {
+      vi.doUnmock("stripe");
+      vi.unstubAllGlobals();
+    }
+  }
+
+  it("fully configured and opted in: still BLOCKED (never a connectivity-only PASS) and points at the dedicated command", async () => {
+    clearAcceptanceVars();
+    process.env.STRIPE_SECRET_KEY = "sk_test_stripe-sentinel";
+    process.env.STRIPE_WEBHOOK_SECRET = "whsec_webhook-sentinel";
+    process.env.COMMERCE_CONTROLLER_KEY_ID =
+      "b0000000-0000-4000-8000-000000000003";
+    process.env.COMMERCE_CONTROLLER_HMAC_KEY_HEX = "d".repeat(64);
+    process.env.ACCEPTANCE_STRIPE_TEST_OPT_IN = "true";
+    const { result, fetchSpy, stripeConstructed } = await checkWithSpies();
+    expect(result.status).toBe("BLOCKED");
+    expect(result.reason).toContain(
+      "npm run acceptance:stripe -- --authorize-stripe-test",
+    );
+    expect(result.details).toContain(
+      "STRIPE_SECRET_KEY: sk_test_ prefix detected; the dedicated command performs strict test-key validation",
+    );
+    expect(result.details).toContain("STRIPE_WEBHOOK_SECRET: configured");
+    expect(result.details).toContain(
+      "ACCEPTANCE_STRIPE_TEST_OPT_IN: exactly 'true'",
+    );
+    expect(JSON.stringify(result)).not.toMatch(/sentinel|d{64}/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(stripeConstructed).not.toHaveBeenCalled();
+  });
+
+  it("BLOCKED, never FAIL or PASS, and labels a live-mode key shape without calling Stripe", async () => {
     clearAcceptanceVars();
     process.env.STRIPE_SECRET_KEY = "sk_live_abcdef";
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_abcdef";
-    const { checkStripeTestMode } =
-      await import("../scripts/acceptance/surfaces.mjs");
-    const result = await checkStripeTestMode();
+    const { result, fetchSpy, stripeConstructed } = await checkWithSpies();
     expect(result.status).toBe("BLOCKED");
-    expect(result.reason.toLowerCase()).toContain("live");
+    expect(result.details.join(" ")).toContain(
+      "sk_live_ prefix detected (LIVE mode)",
+    );
+    expect(JSON.stringify(result)).not.toContain("test-mode shape");
+    expect(JSON.stringify(result)).not.toContain("sk_live_abcdef");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(stripeConstructed).not.toHaveBeenCalled();
   });
+
   it("BLOCKED when Stripe credentials are absent entirely", async () => {
     clearAcceptanceVars();
-    const { checkStripeTestMode } =
-      await import("../scripts/acceptance/surfaces.mjs");
-    const result = await checkStripeTestMode();
+    const { result } = await checkWithSpies();
     expect(result.status).toBe("BLOCKED");
+    expect(result.details).toContain("STRIPE_SECRET_KEY: missing or malformed");
+  });
+
+  it("the surface source no longer imports or constructs the Stripe SDK", async () => {
+    const source = await readFile(
+      new URL("../scripts/acceptance/surfaces.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(source).not.toMatch(/import\(["']stripe["']\)|from ["']stripe["']/);
+    expect(source).not.toContain("balance.retrieve");
+  });
+
+  it("ACCEPTANCE_STRIPE_TEST_OPT_IN is a known acceptance variable and must be exactly 'true'", async () => {
+    clearAcceptanceVars();
+    const { statusOf, stripeTestOptedIn } =
+      await import("../scripts/acceptance/env.mjs");
+    process.env.ACCEPTANCE_STRIPE_TEST_OPT_IN = "yes";
+    expect(statusOf("ACCEPTANCE_STRIPE_TEST_OPT_IN")).toBe("malformed");
+    expect(stripeTestOptedIn()).toBe(false);
+    process.env.ACCEPTANCE_STRIPE_LIVE_OPT_IN = "true";
+    expect(stripeTestOptedIn()).toBe(false);
+    process.env.ACCEPTANCE_STRIPE_TEST_OPT_IN = "true";
+    expect(stripeTestOptedIn()).toBe(true);
   });
 });
 

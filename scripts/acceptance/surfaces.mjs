@@ -4,7 +4,12 @@
 // silently skipped.
 import { randomUUID } from "node:crypto";
 import { pass, fail, blocked, notRun } from "./report.mjs";
-import { isConfigured, stripeLooksLive, liveProviderOptedIn } from "./env.mjs";
+import {
+  isConfigured,
+  stripeLooksLive,
+  stripeTestOptedIn,
+  liveProviderOptedIn,
+} from "./env.mjs";
 import {
   acceptanceDbConfigured,
   withConnection,
@@ -1098,48 +1103,36 @@ export async function checkResultProgressCompletion() {
 }
 
 // ---------------------------------------------------------------------------
-// STRIPE_TEST_MODE
+// STRIPE_TEST_MODE -- this broad hosted matrix NEVER calls Stripe, creates a
+// Checkout Session or takes a payment, whatever is configured. API
+// connectivity alone is not Commercial V1 Stripe acceptance. The dedicated,
+// double-authorized, operator-attended `npm run acceptance:stripe`
+// (scripts/acceptance/stripe.mjs) owns that and reports its own
+// STRIPE_TEST:* surfaces. Configuration presence and key PREFIX only (the
+// shared preflight validator checks only sk_test_/sk_live_; the dedicated
+// command applies its own strict test-key shape); no value is ever read
+// into a message.
 // ---------------------------------------------------------------------------
 export async function checkStripeTestMode() {
-  if (
-    !isConfigured("STRIPE_SECRET_KEY") ||
-    !isConfigured("STRIPE_WEBHOOK_SECRET")
-  )
-    return blocked(
-      "STRIPE_TEST_MODE",
-      "STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET are not configured.",
-    );
-  if (stripeLooksLive())
-    return blocked(
-      "STRIPE_TEST_MODE",
-      "STRIPE_SECRET_KEY is shaped like a LIVE-mode key (sk_live_...). Refusing to run against it.",
-      [
-        "Set ACCEPTANCE_STRIPE_LIVE_OPT_IN=true only for a separate, later, explicitly-authorized production acceptance phase.",
-      ],
-    );
-  try {
-    const { default: Stripe } = await import("stripe");
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const balance = await stripe.balance.retrieve();
-    if (balance.livemode)
-      return fail(
-        "STRIPE_TEST_MODE",
-        "Stripe account reports livemode=true despite an sk_test_ key.",
-      );
-    return pass(
-      "STRIPE_TEST_MODE",
-      "Test-mode API connectivity only (balance retrieval) -- NOT full Commercial V1 Stripe acceptance.",
-      [
-        "Does not yet prove: server-owned checkout amount/currency, a signed test webhook, duplicate-webhook idempotency, entitlement creation, redirect-is-not-payment-proof, or the REVIEWER_COMPLIMENTARY non-payment path (docs/38 section 6). Wiring those requires this harness to run alongside the application's own commerce Server Actions -- not yet implemented here.",
-      ],
-    );
-  } catch (error) {
-    return fail(
-      "STRIPE_TEST_MODE",
-      "Stripe test-mode connectivity check failed.",
-      [error instanceof Error ? error.message : String(error)],
-    );
-  }
+  const configured = (name) =>
+    `${name}: ${isConfigured(name) ? "configured" : "missing or malformed"}`;
+  const keyShape = !isConfigured("STRIPE_SECRET_KEY")
+    ? "missing or malformed"
+    : stripeLooksLive()
+      ? "sk_live_ prefix detected (LIVE mode) -- the dedicated command refuses it"
+      : "sk_test_ prefix detected; the dedicated command performs strict test-key validation";
+  return blocked(
+    "STRIPE_TEST_MODE",
+    "Run separately: `npm run acceptance:stripe -- --authorize-stripe-test` (explicitly authorized and operator-attended; this matrix never calls Stripe).",
+    [
+      `STRIPE_SECRET_KEY: ${keyShape}`,
+      configured("STRIPE_WEBHOOK_SECRET"),
+      configured("COMMERCE_CONTROLLER_KEY_ID"),
+      configured("COMMERCE_CONTROLLER_HMAC_KEY_HEX"),
+      `ACCEPTANCE_STRIPE_TEST_OPT_IN: ${stripeTestOptedIn() ? "exactly 'true'" : "not 'true'"}`,
+      "Stripe API connectivity alone is not Commercial V1 Stripe acceptance. The dedicated command additionally requires ACCEPTANCE_STRIPE_TEST_OPT_IN=true AND --authorize-stripe-test; a configured key is never itself permission, and ACCEPTANCE_STRIPE_LIVE_OPT_IN never authorizes it.",
+    ],
+  );
 }
 
 // ---------------------------------------------------------------------------
