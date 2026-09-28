@@ -57,6 +57,7 @@ import {
   hostedSupabaseConfigured,
   acceptanceIdentities,
   acceptanceIdentitiesConfigured,
+  foreignLearnerIdentityConfigured,
   unrelatedStaffIdentityConfigured,
 } from "./supabase.mjs";
 import { seedAcceptanceCourse, seedAcceptanceResults } from "./fixtures.mjs";
@@ -170,10 +171,18 @@ export function createCookieJar() {
   };
 }
 
-export function createAppDriverClient({ baseUrl, token, fetchImpl = fetch }) {
+// `routePath` defaults to the examiner-app route; the customer-journey
+// driver binds a second client, with the same per-run token, to its own
+// acceptance route (see openExaminerAppSession's routeClient).
+export function createAppDriverClient({
+  baseUrl,
+  token,
+  fetchImpl = fetch,
+  routePath = ROUTE_PATH,
+}) {
   return {
     async call(jar, payload) {
-      const response = await fetchImpl(`${baseUrl}${ROUTE_PATH}`, {
+      const response = await fetchImpl(`${baseUrl}${routePath}`, {
         method: "POST",
         redirect: "manual",
         headers: {
@@ -226,9 +235,16 @@ const PER_RUN_TOKEN = /^[0-9a-f]{64}$/;
 // (concurrency-app-races.mjs): the stub's context-read control endpoint and
 // its own per-run token. Otherwise both variables are forced empty, so a
 // stray parent value can never enable the hold in an examiner-app child.
+//
+// `journey` is passed ONLY by the customer-journey driver
+// (customer-journey.mjs): it enables that driver's own acceptance route
+// (ACCEPTANCE_JOURNEY_DRIVER_ENABLED), redirects the Lab Instructor's
+// Anthropic Messages adapter to the SAME loopback stub (journey mode) and
+// hands that adapter the per-run stub key. Otherwise all three are forced
+// empty, exactly like the other withheld names.
 export function buildAppChildEnv(
   parentEnv,
-  { port, token, redirectToken, stub, contextHold = null },
+  { port, token, redirectToken, stub, contextHold = null, journey = false },
 ) {
   if (
     !PER_RUN_TOKEN.test(token ?? "") ||
@@ -237,6 +253,10 @@ export function buildAppChildEnv(
   )
     throw new Error(
       "Per-run acceptance tokens must be 64 lowercase hex characters.",
+    );
+  if (journey && !stub.anthropicUrl)
+    throw new Error(
+      "The customer-journey child needs a journey-mode provider stub.",
     );
   const env = { ...parentEnv };
   for (const name of Object.keys(env))
@@ -251,6 +271,10 @@ export function buildAppChildEnv(
     ACCEPTANCE_PROVIDER_REDIRECT_TOKEN: redirectToken,
     ACCEPTANCE_CONTEXT_HOLD_URL: contextHold?.url ?? "",
     ACCEPTANCE_CONTEXT_HOLD_TOKEN: contextHold?.token ?? "",
+    ACCEPTANCE_JOURNEY_DRIVER_ENABLED: journey ? "true" : "",
+    ACCEPTANCE_PROVIDER_ANTHROPIC_STUB_URL: journey ? stub.anthropicUrl : "",
+    // WITHHELD_FROM_APP already forced the real key empty above.
+    ANTHROPIC_API_KEY: journey ? stub.apiKey : "",
     OPENAI_API_KEY: stub.apiKey,
     APP_URL: `http://127.0.0.1:${port}`,
     NODE_OPTIONS: `--import=${pathToFileURL(PRELOAD).href}`,
@@ -972,11 +996,15 @@ async function signInThroughApp(app, jar, emailVar, passwordVar) {
 // `startApp` exists only so tests can observe the child environment the
 // driver generates without spawning Next.js. `contextHold` enables the
 // concurrency driver's context-read delivery hold in the child; it is never
-// set by runExaminerAppAcceptance.
+// set by runExaminerAppAcceptance. `journey` (customer-journey.mjs only)
+// starts the stub in journey mode, builds the journey child environment
+// (buildAppChildEnv), additionally requires and signs in the synthetic
+// FOREIGN learner, and exposes both learners' hosted Auth user ids.
 // ---------------------------------------------------------------------------
 export async function openExaminerAppSession({
   startApp = startAppServer,
   contextHold = false,
+  journey = false,
 } = {}) {
   let stub;
   let child;
@@ -993,6 +1021,8 @@ export async function openExaminerAppSession({
   });
 
   const missing = examinerAppPrerequisites();
+  if (journey && !foreignLearnerIdentityConfigured())
+    missing.push("ACCEPTANCE_FOREIGN_LEARNER_EMAIL/PASSWORD");
   if (missing.length)
     return refuse(
       "Examiner app acceptance prerequisites are missing or malformed.",
@@ -1016,7 +1046,7 @@ export async function openExaminerAppSession({
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     try {
-      stub = await startProviderStub();
+      stub = await startProviderStub({ journey });
     } catch {
       return refuse("The local deterministic provider stub could not start.");
     }
@@ -1032,6 +1062,7 @@ export async function openExaminerAppSession({
         redirectToken,
         stub,
         contextHold: contextHold ? stub.contextHoldControl : null,
+        journey,
       }),
       port,
     );
@@ -1066,6 +1097,21 @@ export async function openExaminerAppSession({
       return refuse(
         "Real app sign-in failed for the acceptance learner/admin, or the hosted project did not report ACCEPTANCE_ENVIRONMENT_ID.",
       );
+    if (journey) {
+      const foreign = createCookieJar();
+      if (
+        !(await signInThroughApp(
+          app,
+          foreign,
+          "ACCEPTANCE_FOREIGN_LEARNER_EMAIL",
+          "ACCEPTANCE_FOREIGN_LEARNER_PASSWORD",
+        ))
+      )
+        return refuse(
+          "Real app sign-in failed for the acceptance foreign learner.",
+        );
+      jars.foreign = foreign;
+    }
     if (unrelatedStaffIdentityConfigured()) {
       const staff = createCookieJar();
       if (
@@ -1087,13 +1133,35 @@ export async function openExaminerAppSession({
       return refuse(
         "Could not resolve the acceptance learner's hosted Auth user id.",
       );
+    let foreignAuthUserId = null;
+    if (journey) {
+      const { data: foreignUser, error: foreignUserError } = await (
+        await acceptanceIdentities.foreignLearner()
+      ).auth.getUser();
+      foreignAuthUserId = foreignUserError ? null : foreignUser?.user?.id;
+      if (!foreignAuthUserId || foreignAuthUserId === learnerUser.user.id)
+        return refuse(
+          "The acceptance learner and foreign learner must be two distinct, real hosted Auth users.",
+        );
+    }
     const session = {
       runId,
       app,
+      baseUrl: `http://127.0.0.1:${port}`,
+      // Another acceptance route in the SAME child, with the same per-run
+      // token -- the token itself is never exposed on the session.
+      routeClient: (routePath) =>
+        createAppDriverClient({
+          baseUrl: `http://127.0.0.1:${port}`,
+          token,
+          routePath,
+        }),
       jars,
       stub,
       adminClient,
       learnerClient,
+      learnerAuthUserId: learnerUser.user.id,
+      foreignAuthUserId,
       query: (sql, params) =>
         withConnection((c) => c.query(sql, params)).then((r) => r.rows),
       seed: (label) =>

@@ -22,7 +22,8 @@
     "acceptance:concurrency": "node --env-file-if-exists=.env.local scripts/acceptance/concurrency.mjs",
     "acceptance:examiner-app": "node --env-file-if-exists=.env.local scripts/acceptance/examiner-app.mjs",
     "acceptance:live-provider": "node --env-file-if-exists=.env.local scripts/acceptance/live-provider.mjs",
-    "acceptance:stripe": "node --env-file-if-exists=.env.local scripts/acceptance/stripe.mjs"
+    "acceptance:stripe": "node --env-file-if-exists=.env.local scripts/acceptance/stripe.mjs",
+    "acceptance:journey": "node --env-file-if-exists=.env.local scripts/acceptance/customer-journey.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",

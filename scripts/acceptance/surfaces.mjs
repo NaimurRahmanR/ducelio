@@ -1205,31 +1205,20 @@ export async function checkBackupRestore() {
 }
 
 // ---------------------------------------------------------------------------
-// FULL_CUSTOMER_JOURNEY -- orchestration placeholder. Composes the surfaces
-// above; BLOCKED as a whole while GRADING (its middle step) is itself
-// BLOCKED by design. Never claims a journey ran that did not.
+// FULL_CUSTOMER_JOURNEY -- this broad matrix NEVER runs the mutating staged
+// journey and never infers it from other surfaces' statuses (a set of
+// component PASSes is not a journey). The dedicated, explicitly
+// operator-run `npm run acceptance:journey` (scripts/acceptance/
+// customer-journey.mjs) owns it and reports its own FULL_JOURNEY:* surfaces
+// plus the FULL_CUSTOMER_JOURNEY aggregate; this invocation has no persisted
+// journey evidence of its own, so it is always NOT_RUN here.
 // ---------------------------------------------------------------------------
-export async function checkFullCustomerJourney(allResults) {
-  const byName = Object.fromEntries(allResults.map((r) => [r.surface, r]));
-  const required = [
-    "HOSTED_DATABASE",
-    "MIGRATIONS",
-    "RLS_ACL",
-    "JWT_POSTGREST",
-    "GRADING",
-    "INITIAL_RECOVERY",
-    "RESULT_PROGRESS_COMPLETION",
-    "STRIPE_TEST_MODE",
-  ];
-  const notPassed = required.filter((name) => byName[name]?.status !== "PASS");
-  if (notPassed.length)
-    return blocked(
-      "FULL_CUSTOMER_JOURNEY",
-      `${notPassed.length} prerequisite surface(s) have not PASSed.`,
-      notPassed.map((n) => `${n}: ${byName[n]?.status ?? "NOT_RUN"}`),
-    );
+export async function checkFullCustomerJourney() {
   return notRun(
     "FULL_CUSTOMER_JOURNEY",
-    "All prerequisite surfaces PASS, but the full public-course-through-completion browser/HTTP journey itself has not been run by this invocation.",
+    "Not run by this matrix. Run separately: `npm run acceptance:journey` (explicit, mutating, operator-run hosted staged journey; see docs/38 section 12).",
+    [
+      "This invocation holds no journey evidence of its own; component surface PASSes are never combined into a journey claim.",
+    ],
   );
 }

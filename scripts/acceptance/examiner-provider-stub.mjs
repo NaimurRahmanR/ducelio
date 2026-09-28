@@ -18,16 +18,36 @@
 // governed context is each answered question's id and maxMarks. Expected
 // answers, prompts and learner responses are never stored, logged or
 // returned.
+//
+// Journey mode (`startProviderStub({ journey: true })`, used ONLY by
+// scripts/acceptance/customer-journey.mjs) additionally answers the other
+// production capabilities a staged learner journey reaches -- the Professor
+// classroom read (get_lesson_context), Tutor support (tutor_lab_support over
+// OpenAI Responses), Lab Instructor support (tutor_lab_support over the
+// Anthropic Messages contract, on its own loopback path) and Examiner lab
+// grading (grade_practical_lab) -- with fixed deterministic output. Without
+// that flag every one of those is refused exactly as before.
 import http from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+export const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const STUB_PATH = "/v1/responses";
+const ANTHROPIC_STUB_PATH = "/v1/messages";
 const MAX_REQUEST_BYTES = 256 * 1024;
 const GRADING_CAPABILITIES = new Set([
   "grade_controlled_assessment",
   "regrade_controlled_assessment",
 ]);
+const MODEL_ID = /^[A-Za-z0-9_.:-]{1,120}$/;
+
+// Journey mode only: the fixed learner-facing text each conversational role
+// returns. Never derived from request content.
+export const JOURNEY_STUB_TEXT = Object.freeze({
+  PROFESSOR: "Synthetic acceptance Professor response.",
+  TUTOR: "Synthetic acceptance Tutor response.",
+  LAB_INSTRUCTOR: "Synthetic acceptance Lab Instructor response.",
+});
 
 // Deterministic rule: initial grading/recovery award each answered
 // question its full maxMarks; a regrade awards one mark less (never below
@@ -66,7 +86,7 @@ function readBody(req) {
   });
 }
 
-function parseGovernedRequest(raw) {
+function parseGovernedRequest(raw, journey = false) {
   const body = JSON.parse(raw);
   if (
     typeof body?.model !== "string" ||
@@ -78,6 +98,8 @@ function parseGovernedRequest(raw) {
     return null;
   const input = JSON.parse(body.input);
   const capability = input?.capability;
+  if (journey && !GRADING_CAPABILITIES.has(capability))
+    return parseJourneyInput(input, raw, "OPENAI", body.model);
   const questions = input?.context?.questions;
   if (!GRADING_CAPABILITIES.has(capability) || !Array.isArray(questions))
     return null;
@@ -103,6 +125,68 @@ function parseGovernedRequest(raw) {
     questions: bounded,
     requestBytes: Buffer.byteLength(raw),
   };
+}
+
+// Journey mode only. Reads nothing from the governed context beyond the
+// bounded identifiers/limits it needs to answer deterministically (the lab
+// submission id and maxMarks; the conversational role); lesson content,
+// learner messages, submission bodies and grading guidance are never read,
+// stored or returned.
+const TEXT_ROLES = Object.freeze({
+  OPENAI: new Set(["TUTOR"]),
+  ANTHROPIC: new Set(["LAB_INSTRUCTOR"]),
+});
+function parseJourneyInput(input, raw, transport, model) {
+  const capability = input?.capability;
+  const context = input?.context;
+  const common = {
+    capability,
+    transport,
+    model: MODEL_ID.test(model ?? "") ? model : null,
+    requestBytes: Buffer.byteLength(raw),
+  };
+  if (transport === "OPENAI" && capability === "grade_practical_lab") {
+    if (
+      typeof context?.submissionId !== "string" ||
+      !Number.isInteger(context.maxMarks) ||
+      context.maxMarks < 0
+    )
+      return null;
+    return {
+      ...common,
+      kind: "LAB_GRADING",
+      submissionId: context.submissionId,
+      maxMarks: context.maxMarks,
+    };
+  }
+  if (transport === "OPENAI" && capability === "get_lesson_context")
+    return { ...common, kind: "TEXT", role: "PROFESSOR" };
+  if (
+    capability === "tutor_lab_support" &&
+    TEXT_ROLES[transport].has(context?.role)
+  )
+    return { ...common, kind: "TEXT", role: context.role };
+  return null;
+}
+
+function parseAnthropicRequest(raw) {
+  const body = JSON.parse(raw);
+  if (
+    typeof body?.model !== "string" ||
+    typeof body.system !== "string" ||
+    !Number.isInteger(body.max_tokens) ||
+    !Array.isArray(body.messages) ||
+    body.messages.length !== 1 ||
+    body.messages[0]?.role !== "user" ||
+    typeof body.messages[0].content !== "string"
+  )
+    return null;
+  return parseJourneyInput(
+    JSON.parse(body.messages[0].content),
+    raw,
+    "ANTHROPIC",
+    body.model,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +295,15 @@ function awaitRelease(hold, res) {
  * distinct from the provider key, and is only ever handed to an app child
  * the concurrency driver explicitly configures for it.
  */
-export async function startProviderStub() {
+//
+// `journey: true` (customer-journey.mjs only) additionally answers the
+// journey capabilities described in the module header, the Anthropic
+// Messages path (authenticated by the same per-run key as `x-api-key`), and
+// arms `planZeroMarks()`: exactly the NEXT graded Examiner request (initial,
+// recovery, regrade or lab) awards zero marks -- how the journey produces a
+// genuine below-pass-mark result through production grading. Journey call
+// records also carry the transport, model id, role and lab submission id.
+export async function startProviderStub({ journey = false } = {}) {
   const apiKey = `acceptance-stub-${randomBytes(24).toString("hex")}`;
   const contextHoldToken = randomBytes(32).toString("hex");
   const calls = [];
@@ -219,6 +311,25 @@ export async function startProviderStub() {
   const contextHolds = [];
   const everyHold = [];
   let failNext = false;
+  let zeroNext = false;
+  const record = (request, outcome, extra = {}) =>
+    journey
+      ? {
+          capability: request?.capability ?? null,
+          attemptId: request?.attemptId ?? null,
+          submissionId: request?.submissionId ?? null,
+          transport: request?.transport ?? null,
+          role: request?.role ?? null,
+          model: request?.model ?? null,
+          outcome,
+          ...extra,
+        }
+      : {
+          capability: request?.capability ?? null,
+          attemptId: request?.attemptId ?? null,
+          outcome,
+          ...extra,
+        };
   const arm = (queue, kind) => {
     const hold = createHold(kind);
     queue.push(hold);
@@ -248,20 +359,33 @@ export async function startProviderStub() {
       if (res.writableEnded || res.destroyed) return;
       return reply(200, { held: true, released });
     }
-    if (req.method !== "POST" || req.url !== STUB_PATH)
+    const anthropic = journey && req.url === ANTHROPIC_STUB_PATH;
+    if (req.method !== "POST" || (req.url !== STUB_PATH && !anthropic))
       return reply(404, { error: "not_found" });
-    if (!sameSecret(req.headers.authorization ?? "", `Bearer ${apiKey}`))
+    const presented = anthropic
+      ? String(req.headers["x-api-key"] ?? "")
+      : String(req.headers.authorization ?? "");
+    if (!sameSecret(presented, anthropic ? apiKey : `Bearer ${apiKey}`))
       return reply(401, { error: "unauthorized" });
     let request;
     try {
-      request = parseGovernedRequest(await readBody(req));
+      const raw = await readBody(req);
+      request = anthropic
+        ? parseAnthropicRequest(raw)
+        : parseGovernedRequest(raw, journey);
     } catch {
       request = null;
     }
     if (!request) {
-      calls.push({ capability: null, attemptId: null, outcome: "REJECTED" });
+      calls.push(record(null, "REJECTED"));
       return reply(400, { error: "unexpected_request" });
     }
+    if (journey && !request.kind)
+      Object.assign(request, {
+        kind: "ASSESSMENT_GRADING",
+        transport: "OPENAI",
+        model: null,
+      });
     const hold = nextHold(providerHolds);
     if (hold) {
       hold.arrive({
@@ -272,12 +396,11 @@ export async function startProviderStub() {
       if (!released) {
         const aborted = !res.writableEnded && res.destroyed;
         hold.settle(aborted ? "CLIENT_ABORTED" : "CANCELLED");
-        calls.push({
-          capability: request.capability,
-          attemptId: request.attemptId,
-          outcome: aborted ? "CLIENT_ABORTED" : "HOLD_CANCELLED",
-          held: true,
-        });
+        calls.push(
+          record(request, aborted ? "CLIENT_ABORTED" : "HOLD_CANCELLED", {
+            held: true,
+          }),
+        );
         if (!res.writableEnded && !res.destroyed)
           reply(503, { error: "acceptance_hold_cancelled" });
         return;
@@ -288,34 +411,57 @@ export async function startProviderStub() {
     const heldMark = hold ? { held: true } : {};
     if (failNext) {
       failNext = false;
-      calls.push({
-        capability: request.capability,
-        attemptId: request.attemptId,
-        outcome: "PROVIDER_UNAVAILABLE",
-        ...heldMark,
-      });
+      calls.push(record(request, "PROVIDER_UNAVAILABLE", heldMark));
       reply(503, { error: "acceptance_stub_unavailable" });
       hold?.settle("RESPONDED");
       return;
     }
-    const text = JSON.stringify({
-      outcome: "GRADED",
-      marks: stubMarks(request.capability, request.questions),
-    });
-    calls.push({
-      capability: request.capability,
-      attemptId: request.attemptId,
-      outcome: "GRADED",
-      ...heldMark,
-    });
-    reply(200, {
-      status: "completed",
-      output: [{ type: "message", content: [{ type: "output_text", text }] }],
-      usage: {
-        input_tokens: Math.min(Math.ceil(request.requestBytes / 4), 100_000),
-        output_tokens: Math.min(Math.ceil(text.length / 4), 200),
-      },
-    });
+    const graded =
+      request.kind === undefined ||
+      request.kind === "ASSESSMENT_GRADING" ||
+      request.kind === "LAB_GRADING";
+    const zero = journey && graded && zeroNext;
+    if (zero) zeroNext = false;
+    let text;
+    if (request.kind === "TEXT") text = JOURNEY_STUB_TEXT[request.role];
+    else if (request.kind === "LAB_GRADING")
+      text = JSON.stringify({
+        outcome: "GRADED",
+        marksAwarded: zero ? 0 : request.maxMarks,
+      });
+    else
+      text = JSON.stringify({
+        outcome: "GRADED",
+        marks: stubMarks(request.capability, request.questions).map((m) =>
+          zero ? { ...m, marksAwarded: 0 } : m,
+        ),
+      });
+    calls.push(
+      record(
+        request,
+        request.kind === "TEXT" ? "ANSWERED" : "GRADED",
+        journey ? { ...heldMark, zeroMarks: zero } : heldMark,
+      ),
+    );
+    const inputTokens = Math.min(Math.ceil(request.requestBytes / 4), 100_000);
+    const outputTokens = Math.min(Math.ceil(text.length / 4), 200);
+    reply(
+      200,
+      anthropic
+        ? {
+            type: "message",
+            stop_reason: "end_turn",
+            content: [{ type: "text", text }],
+            usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+          }
+        : {
+            status: "completed",
+            output: [
+              { type: "message", content: [{ type: "output_text", text }] },
+            ],
+            usage: { input_tokens: inputTokens, output_tokens: outputTokens },
+          },
+    );
     hold?.settle("RESPONDED");
   });
   await new Promise((resolve, reject) => {
@@ -325,10 +471,26 @@ export async function startProviderStub() {
   const { port } = server.address();
   return {
     url: `http://127.0.0.1:${port}${STUB_PATH}`,
+    // Journey mode only; null otherwise (the Anthropic path answers 404).
+    anthropicUrl: journey
+      ? `http://127.0.0.1:${port}${ANTHROPIC_STUB_PATH}`
+      : null,
     apiKey,
     calls,
     planFailure() {
       failNext = true;
+    },
+    planZeroMarks() {
+      if (!journey)
+        throw new Error("planZeroMarks is available in journey mode only.");
+      zeroNext = true;
+    },
+    // Disarms any one-shot control a caller armed but never used (e.g. the
+    // production path refused admission before any provider call), so it
+    // can never capture a later, unrelated request.
+    clearPlans() {
+      failNext = false;
+      zeroNext = false;
     },
     holdNextProviderResponse: () => arm(providerHolds, "provider"),
     holdNextContextRead: () => arm(contextHolds, "context-read"),
@@ -434,6 +596,26 @@ function isContextReadRpc(url, supabaseOrigin) {
   }
 }
 
+// Journey mode only: the Anthropic stub path must be on the SAME loopback
+// stub origin as the OpenAI path. Absent (null), Anthropic stays refused.
+function validAnthropicStub(anthropicStubUrl, openAITarget) {
+  if (anthropicStubUrl == null) return null;
+  const target = new URL(anthropicStubUrl);
+  if (
+    target.protocol !== "http:" ||
+    target.hostname !== "127.0.0.1" ||
+    target.pathname !== ANTHROPIC_STUB_PATH ||
+    target.username ||
+    target.password ||
+    target.search ||
+    target.origin !== openAITarget.origin
+  )
+    throw new Error(
+      "The acceptance Anthropic stub URL must be http://127.0.0.1:<stub port>/v1/messages.",
+    );
+  return target;
+}
+
 /**
  * Wraps `baseFetch` so that ONLY the exact OpenAI Responses URL the real
  * adapter calls is sent to the loopback stub, and every other request to a
@@ -454,6 +636,7 @@ export function createProviderRedirectFetch(
   stubUrl,
   redirectToken,
   contextHold = null,
+  { anthropicStubUrl = null } = {},
 ) {
   const target = new URL(stubUrl);
   if (
@@ -471,6 +654,7 @@ export function createProviderRedirectFetch(
       "The acceptance provider redirect token must be 64 lowercase hex characters.",
     );
   const hold = validContextHold(contextHold);
+  const anthropicTarget = validAnthropicStub(anthropicStubUrl, target);
   async function acceptanceProviderFetch(input, init) {
     const url = requestUrl(input);
     if (
@@ -486,6 +670,15 @@ export function createProviderRedirectFetch(
       });
     if (url === OPENAI_RESPONSES_URL && !(input instanceof Request))
       return baseFetch(target.href, init);
+    // Journey driver only: the exact Anthropic Messages URL the real Lab
+    // Instructor adapter calls goes to the SAME loopback stub (its own
+    // path). Without anthropicStubUrl it is refused below, as before.
+    if (
+      anthropicTarget &&
+      url === ANTHROPIC_MESSAGES_URL &&
+      !(input instanceof Request)
+    )
+      return baseFetch(anthropicTarget.href, init);
     if (
       typeof url === "string" &&
       /^https?:\/\/([^/]*\.)?(openai|anthropic)\.com(?=[:/]|$)/i.test(url)

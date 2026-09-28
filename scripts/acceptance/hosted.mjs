@@ -51,7 +51,8 @@ await run(surfaces.checkSupabaseAuthEmail);
 await run(surfaces.checkLiveProvider);
 await run(surfaces.checkMonitoring);
 await run(surfaces.checkBackupRestore);
-await run(surfaces.checkFullCustomerJourney, results);
+// Never run here: `npm run acceptance:journey` owns the mutating journey.
+await run(surfaces.checkFullCustomerJourney);
 
 printSummary(results, "Commercial V1 hosted acceptance matrix");
 process.exit(exitCodeFor(results));
