@@ -136,6 +136,7 @@ function client() {
           "assessments",
           "assessment_attempts",
           "assessment_responses",
+          "programme_versions",
         ].includes(table)
       )
         return base.from(table);
@@ -146,7 +147,8 @@ function client() {
         assignments:
           "t.id,t.title,t.instructions,t.opens_at,t.due_at,t.status,json_build_object('title',l.title) as lessons,json_build_object('label',v.label,'title_snapshot',v.title_snapshot) as programme_versions",
         assessments:
-          "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,json_build_object('title',l.title) as lessons,json_build_object('label',v.label,'title_snapshot',v.title_snapshot) as programme_versions",
+          "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
+        programme_versions: "t.id,t.label,t.title_snapshot",
         assignment_submissions:
           "t.id,t.assignment_id,t.attempt_number,t.submitted_at",
         assessment_attempts:
@@ -159,7 +161,7 @@ function client() {
           return query;
         },
         in(col: string, values: unknown[]) {
-          if (!["cohort_id", "status"].includes(col))
+          if (!["cohort_id", "status", "id"].includes(col))
             throw new Error("Unsupported filter");
           // Regression guard (Blocker 2 correction): real Supabase/PostgREST
           // does not guarantee an empty `.in()` array behaves like PGlite's
@@ -192,9 +194,11 @@ function client() {
           reject: (e: unknown) => unknown,
         ) {
           const join =
-            table === "assignments" || table === "assessments"
+            table === "assignments"
               ? " join public.lessons l on l.id=t.lesson_id join public.programme_versions v on v.id=t.programme_version_id"
-              : "";
+              : table === "assessments"
+                ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
+                : "";
           return f.db
             .query<{ data: unknown }>(
               "select row_to_json(q) as data from (select " +

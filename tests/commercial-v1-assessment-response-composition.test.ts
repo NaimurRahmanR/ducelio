@@ -661,3 +661,124 @@ describe("Non-governed (legacy) assessment responses keep the legacy writer", ()
     expect(await responseCount(attemptId)).toBe(0);
   });
 });
+
+// =============================================================================
+// Hosted journey run 1790635594309-jz55ep: hosted PostgREST refused
+// getStudentAssessments' former select with HTTP 400 PGRST200 ("Could not
+// find a relationship between 'assessments' and 'programme_versions'"),
+// because assessments has no foreign key to programme_versions. This
+// adapter (like every local test double) never resolved embeds the way
+// PostgREST does, which is why no local test caught it. These tests check the
+// requested selects against the REAL migrated FK graph instead.
+// =============================================================================
+describe("getStudentAssessments: PostgREST-resolvable reads and fail-closed protected questions", () => {
+  beforeEach(async () => {
+    f = await buildAssessmentPolicyFixture({ withLabs: false });
+    state.rpcLog.length = 0;
+    state.rpcArgs.length = 0;
+    state.selects.length = 0;
+    state.failRpc = undefined;
+    state.failTableRead = undefined;
+    mocks.client.mockImplementation(async () => assessmentClient(f.db, state));
+  });
+  afterEach(async () => f.db.close());
+
+  async function startCommitted(assessmentId: string) {
+    await f.db.exec("begin");
+    try {
+      return await start(assessmentId);
+    } finally {
+      await f.db.exec("commit");
+    }
+  }
+  async function beginRead() {
+    await f.db.exec("begin");
+    await actAs(f.db, state, 1);
+  }
+  // PostgREST embeds a relation only through a foreign key between the two
+  // tables (this schema defines no views or computed relationships for
+  // them), in either direction.
+  async function foreignKeyCount(from: string, to: string) {
+    return scalar<number>(
+      `select count(*)::int as v from pg_constraint
+        where contype='f'
+          and ((conrelid=to_regclass('public.'||$1) and confrelid=to_regclass('public.'||$2))
+            or (conrelid=to_regclass('public.'||$2) and confrelid=to_regclass('public.'||$1)))`,
+      [from, to],
+    );
+  }
+  function embeddedRelations(select: string) {
+    return [...select.matchAll(/([a-z_]+)(?:!inner)?\(/g)].map((m) => m[1]);
+  }
+
+  it("every relation embedded by getStudentAssessments resolves through a real foreign key in the migrated schema", async () => {
+    await beginRead();
+    await getStudentAssessments();
+    const checked: string[] = [];
+    for (const { table, select } of state.selects)
+      for (const relation of embeddedRelations(select)) {
+        expect(
+          await foreignKeyCount(table, relation),
+          `${table} -> ${relation} has no foreign key PostgREST could embed through`,
+        ).toBeGreaterThan(0);
+        checked.push(`${table}->${relation}`);
+      }
+    expect(checked).toContain("assessments->lessons");
+    expect(
+      state.selects.some(
+        (s) =>
+          s.table === "assessments" &&
+          embeddedRelations(s.select).includes("programme_versions"),
+      ),
+    ).toBe(false);
+  });
+
+  it("documents the defect: assessments has no foreign key to programme_versions, so the former embed was unresolvable", async () => {
+    expect(await foreignKeyCount("assessments", "programme_versions")).toBe(0);
+    expect(await foreignKeyCount("assessments", "lessons")).toBeGreaterThan(0);
+  });
+
+  it("keeps the learner-facing shape: each assessment carries its visible programme version snapshot and no internal id", async () => {
+    await beginRead();
+    const view = await getStudentAssessments();
+    expect(view.assessments.length).toBeGreaterThan(0);
+    for (const assessment of view.assessments) {
+      expect(assessment.programme_versions).toEqual({
+        label: expect.any(String),
+        title_snapshot: expect.toBeOneOf([expect.any(String), null]),
+      });
+      expect(assessment).not.toHaveProperty("programme_version_id");
+      expect(assessment.lessons).toEqual({ title: expect.any(String) });
+    }
+    expect(
+      state.selects.find((s) => s.table === "programme_versions")?.select,
+    ).toBe("id,label,title_snapshot");
+  });
+
+  it("fails closed when the programme version snapshot cannot be read", async () => {
+    await beginRead();
+    state.failTableRead = "programme_versions";
+    await expect(getStudentAssessments()).rejects.toThrow(
+      "Your assessments could not be loaded.",
+    );
+  });
+
+  it("fails closed -- never an empty question list -- when a LIVE controlled attempt's protected-question read errors", async () => {
+    await startCommitted(f.assessmentIds.QUIZ_1);
+    await beginRead();
+    state.failRpc = "get_active_assessment_questions";
+    await expect(getStudentAssessments()).rejects.toThrow(
+      "Your assessments could not be loaded.",
+    );
+    expect(state.rpcLog).toContain("get_active_assessment_questions");
+  });
+
+  it("control: the same live attempt without a read error releases its questions", async () => {
+    await startCommitted(f.assessmentIds.QUIZ_1);
+    await beginRead();
+    const view = await getStudentAssessments();
+    expect(view.activityState).toBe("CONTROLLED_ASSESSMENT_ACTIVE");
+    expect(view.activeQuestions).toHaveLength(1);
+    expect(JSON.stringify(view)).not.toMatch(PROTECTED);
+  });
+});
