@@ -37,6 +37,19 @@ if (Boolean(holdUrl) !== Boolean(holdToken))
     "examiner-provider-redirect.mjs: the acceptance context-read hold must be configured completely or not at all.",
   );
 
+// ACCEPTANCE_PROVIDER_ANTHROPIC_STUB_URL is set only by the customer-journey
+// driver's app child (scripts/acceptance/customer-journey.mjs), together with
+// ACCEPTANCE_JOURNEY_DRIVER_ENABLED. Otherwise Anthropic stays refused.
+const anthropicStubUrl =
+  process.env.ACCEPTANCE_PROVIDER_ANTHROPIC_STUB_URL ?? "";
+if (
+  anthropicStubUrl &&
+  process.env.ACCEPTANCE_JOURNEY_DRIVER_ENABLED !== "true"
+)
+  throw new Error(
+    "examiner-provider-redirect.mjs: the Anthropic stub redirect is available to the customer-journey driver only.",
+  );
+
 globalThis.fetch = createProviderRedirectFetch(
   globalThis.fetch.bind(globalThis),
   process.env.ACCEPTANCE_PROVIDER_STUB_URL,
@@ -48,4 +61,5 @@ globalThis.fetch = createProviderRedirectFetch(
         supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
       }
     : null,
+  { anthropicStubUrl: anthropicStubUrl || null },
 );

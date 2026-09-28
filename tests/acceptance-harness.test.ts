@@ -4391,13 +4391,34 @@ describe("acceptance harness: hosted-only surfaces block honestly without a data
     expect((await surfaces.checkMonitoring()).status).toBe("BLOCKED");
     expect((await surfaces.checkBackupRestore()).status).toBe("BLOCKED");
   });
-  it("FULL_CUSTOMER_JOURNEY is BLOCKED when any prerequisite surface has not PASSed", async () => {
+  it("FULL_CUSTOMER_JOURNEY is always NOT_RUN in the broad matrix, pointing to acceptance:journey -- never inferred from other surfaces", async () => {
     clearAcceptanceVars();
     const surfaces = await import("../scripts/acceptance/surfaces.mjs");
-    const result = await surfaces.checkFullCustomerJourney([
-      { surface: "HOSTED_DATABASE", status: "BLOCKED", reason: "x" },
-    ]);
-    expect(result.status).toBe("BLOCKED");
+    const result = await surfaces.checkFullCustomerJourney();
+    expect(result.status).toBe("NOT_RUN");
+    expect(result.reason).toContain("npm run acceptance:journey");
+    // Even an all-PASS prerequisite set cannot turn it into a journey claim.
+    const allPass = [
+      "HOSTED_DATABASE",
+      "MIGRATIONS",
+      "GRADING",
+      "RESULT_PROGRESS_COMPLETION",
+      "STRIPE_TEST_MODE",
+    ].map((surface) => ({ surface, status: "PASS", reason: "x" }));
+    expect(
+      (
+        await (
+          surfaces.checkFullCustomerJourney as (
+            r?: unknown,
+          ) => Promise<{ status: string }>
+        )(allPass)
+      ).status,
+    ).toBe("NOT_RUN");
+    const hosted = await readFile(
+      new URL("../scripts/acceptance/hosted.mjs", import.meta.url),
+      "utf8",
+    );
+    expect(hosted).not.toMatch(/customer-journey/);
   });
 });
 

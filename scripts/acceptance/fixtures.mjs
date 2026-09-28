@@ -84,12 +84,111 @@ const EXAMINER_ACCEPTANCE_ROLE = Object.freeze({
   escalationPolicy: "NONE",
 });
 
+// Customer-journey acceptance (scripts/acceptance/customer-journey.mjs)
+// only: the reviewed role configurations a real course author could publish
+// for a course whose learner journey reaches the Professor classroom, Tutor
+// and Lab Instructor support and Examiner assessment + lab grading. Each
+// role names ONLY its own single allowed runtime profile
+// (ROLE_RUNTIME_PROFILE_POLICY) and only capabilities from its code-owned
+// catalogue (roleCapabilityCatalogue / SQL role_capability_allowlist), with
+// no ACADEMIC_REVIEW escalation. COUNSELLOR stays disabled.
+export const JOURNEY_ACCEPTANCE_ROLES = Object.freeze({
+  PROFESSOR: Object.freeze({
+    enabled: true,
+    modelProfileRef: "PROFESSOR_COMMERCIAL_V1",
+    instructionalNotes: null,
+    capabilities: Object.freeze([
+      "get_current_learner_context",
+      "get_lesson_context",
+      "get_lesson_objectives",
+    ]),
+    escalationPolicy: "NONE",
+  }),
+  TUTOR: Object.freeze({
+    enabled: true,
+    modelProfileRef: "TUTOR_COMMERCIAL_V1",
+    instructionalNotes: null,
+    capabilities: Object.freeze([
+      "get_lesson_context",
+      "get_lesson_objectives",
+      "get_learning_resources",
+    ]),
+    escalationPolicy: "NONE",
+  }),
+  LAB_INSTRUCTOR: Object.freeze({
+    enabled: true,
+    modelProfileRef: "LAB_INSTRUCTOR_COMMERCIAL_V1",
+    instructionalNotes: null,
+    capabilities: Object.freeze([
+      "get_lesson_context",
+      "get_lesson_objectives",
+    ]),
+    escalationPolicy: "NONE",
+  }),
+  EXAMINER: Object.freeze({
+    enabled: true,
+    modelProfileRef: "EXAMINER_COMMERCIAL_V1",
+    instructionalNotes: null,
+    capabilities: Object.freeze([
+      "grade_controlled_assessment",
+      "grade_practical_lab",
+    ]),
+    escalationPolicy: "NONE",
+  }),
+});
+
+function roleConfig(options, role) {
+  if (options.journeyAgents && JOURNEY_ACCEPTANCE_ROLES[role]) {
+    const reviewed = JOURNEY_ACCEPTANCE_ROLES[role];
+    return { ...reviewed, capabilities: [...reviewed.capabilities] };
+  }
+  if (role === "EXAMINER" && options.examinerEnabled)
+    return {
+      ...EXAMINER_ACCEPTANCE_ROLE,
+      capabilities: [...EXAMINER_ACCEPTANCE_ROLE.capabilities],
+    };
+  return disabledRole();
+}
+
+// Customer-journey acceptance only: { firstOpensAt (epoch ms),
+// windowMinutes } -> six strictly sequential, non-overlapping windows, each
+// opening exactly at the previous one's close.
+export function journeyAssessmentWindows({ firstOpensAt, windowMinutes }) {
+  if (
+    !Number.isFinite(firstOpensAt) ||
+    !Number.isInteger(windowMinutes) ||
+    windowMinutes < 1 ||
+    windowMinutes > 120
+  )
+    throw new Error("assessmentSchedule is malformed.");
+  return COMPONENTS.map((c, index) => ({
+    templateKey: c.toLowerCase(),
+    opensAt: new Date(
+      firstOpensAt + index * windowMinutes * 60_000,
+    ).toISOString(),
+    closesAt: new Date(
+      firstOpensAt + (index + 1) * windowMinutes * 60_000,
+    ).toISOString(),
+  }));
+}
+
 /**
  * A minimal, real COURSE_PACKAGE_V1 package: six formal components + one lab.
  * `options.examinerEnabled` enables only the EXAMINER role (see
  * EXAMINER_ACCEPTANCE_ROLE); it is false for every existing caller.
+ * `options.journeyAgents` (customer-journey.mjs only) enables exactly the
+ * JOURNEY_ACCEPTANCE_ROLES configurations; `options.assessmentDurationMinutes`
+ * (customer-journey.mjs only; 1..30, default 30) shortens every component's
+ * duration so six strictly sequential windows fit one attended run.
  */
 export function buildAcceptancePackage(runId, options = {}) {
+  const durationMinutes = options.assessmentDurationMinutes ?? 30;
+  if (
+    !Number.isInteger(durationMinutes) ||
+    durationMinutes < 1 ||
+    durationMinutes > 30
+  )
+    throw new Error("assessmentDurationMinutes must be an integer 1..30.");
   return {
     schemaVersion: "COURSE_PACKAGE_V1",
     packageKey: `acceptance-${runId}`,
@@ -147,7 +246,7 @@ export function buildAcceptancePackage(runId, options = {}) {
       title: `${component} acceptance checkpoint`,
       instructions: "Answer under acceptance conditions.",
       lessonRef: "lesson-1",
-      durationMinutes: 30,
+      durationMinutes,
       attemptsAllowed: 1,
       questions: [
         {
@@ -166,15 +265,10 @@ export function buildAcceptancePackage(runId, options = {}) {
       timezone: "Europe/London",
     },
     agentConfiguration: {
-      PROFESSOR: disabledRole(),
-      TUTOR: disabledRole(),
-      LAB_INSTRUCTOR: disabledRole(),
-      EXAMINER: options.examinerEnabled
-        ? {
-            ...EXAMINER_ACCEPTANCE_ROLE,
-            capabilities: [...EXAMINER_ACCEPTANCE_ROLE.capabilities],
-          }
-        : disabledRole(),
+      PROFESSOR: roleConfig(options, "PROFESSOR"),
+      TUTOR: roleConfig(options, "TUTOR"),
+      LAB_INSTRUCTOR: roleConfig(options, "LAB_INSTRUCTOR"),
+      EXAMINER: roleConfig(options, "EXAMINER"),
       COUNSELLOR: disabledRole(),
     },
     reason: `Acceptance run ${runId}`,
@@ -484,12 +578,21 @@ export async function seedAcceptanceCourse(
     ).toISOString(),
   }));
 
+  // `options.assessmentSchedule` (customer-journey.mjs only) replaces the
+  // default windows above with journeyAssessmentWindows' -- the SAME
+  // strictly sequential arithmetic from one captured base -- so the journey
+  // can sit every component through the real learner path in one run. The
+  // governed RPCs enforce the same sequence/duration rules either way.
+  const assessments = options.assessmentSchedule
+    ? journeyAssessmentWindows(options.assessmentSchedule)
+    : p_assessments;
+
   const activationId = await call("activate_course_package", {
     p_import_id: importId,
     p_cohort_id: cohortId,
     p_instructor_id: instructorId,
     p_assignments: [],
-    p_assessments,
+    p_assessments: assessments,
     p_reason: "Acceptance course activation",
   });
 
@@ -572,6 +675,15 @@ export async function seedAcceptanceCourse(
     // second, separate direct-DB read for the same data.
     quiz1AssessmentId: bindings.find((b) => b.template_key === "quiz_1")
       ?.assessment_id,
+    // Every bound component's assessment id, from the same read (the
+    // customer-journey driver sits all six).
+    assessmentIdsByComponent: Object.fromEntries(
+      COMPONENTS.map((component) => [
+        component,
+        bindings.find((b) => b.template_key === component.toLowerCase())
+          ?.assessment_id ?? null,
+      ]),
+    ),
   };
 }
 
