@@ -11,7 +11,8 @@
 //   ACCEPTANCE_DATABASE_URL, ACCEPTANCE_WRITE_ENABLED,
 //   ACCEPTANCE_ENVIRONMENT_ID, ACCEPTANCE_DATABASE_INSECURE_TLS,
 //   ACCEPTANCE_*_EMAIL, ACCEPTANCE_*_PASSWORD,
-//   ACCEPTANCE_LIVE_PROVIDER_OPT_IN, ACCEPTANCE_STRIPE_LIVE_OPT_IN.
+//   ACCEPTANCE_LIVE_PROVIDER_OPT_IN, ACCEPTANCE_STRIPE_TEST_OPT_IN,
+//   ACCEPTANCE_STRIPE_LIVE_OPT_IN.
 // These exist ONLY for this acceptance harness and are never imported by
 // src/**. In particular there is intentionally no application-runtime
 // SUPABASE_SERVICE_ROLE_KEY anywhere in this codebase (a deliberate RLS/
@@ -130,7 +131,7 @@ const KNOWN_VARS = [
     name: "STRIPE_SECRET_KEY",
     scope: "app",
     validate: (v) => /^sk_(test|live)_/.test(v),
-    note: "Stripe secret key. This harness refuses to run Stripe acceptance against an sk_live_ key.",
+    note: "Stripe secret key. `npm run acceptance:stripe` requires a TEST-mode sk_test_ key and refuses an sk_live_ key regardless of any flag.",
   },
   {
     name: "STRIPE_WEBHOOK_SECRET",
@@ -228,10 +229,16 @@ const KNOWN_VARS = [
     note: "Must be exactly the string 'true' AND `npm run acceptance:live-provider` must be given --authorize-live-provider and exactly one --surface=<SELECTOR> before any billable provider request is made -- a key existing is never itself permission. See docs/38 section 5.",
   },
   {
+    name: "ACCEPTANCE_STRIPE_TEST_OPT_IN",
+    scope: "acceptance",
+    validate: (v) => v === "true",
+    note: "Must be exactly the string 'true' AND `npm run acceptance:stripe` must be given --authorize-stripe-test before any Stripe TEST-mode acceptance request, fixture write or sandbox payment prompt -- a configured Stripe key is never itself permission. See docs/38 section 6.",
+  },
+  {
     name: "ACCEPTANCE_STRIPE_LIVE_OPT_IN",
     scope: "acceptance",
     validate: (v) => v === "true",
-    note: "Reserved for a separate, later production Stripe acceptance phase. Never used to authorize a live charge from this harness.",
+    note: "Reserved for a separate, later production Stripe acceptance phase. Never used to authorize a live charge from this harness, and never authorizes `npm run acceptance:stripe`.",
   },
 ];
 
@@ -275,6 +282,14 @@ export function stripeLooksLive() {
 // live-provider.mjs). Provider keys play no part in opting in.
 export function liveProviderOptedIn() {
   return process.env.ACCEPTANCE_LIVE_PROVIDER_OPT_IN === "true";
+}
+
+// True only when the Stripe TEST-mode opt-in is exactly "true". Never
+// sufficient on its own: `npm run acceptance:stripe` additionally requires
+// --authorize-stripe-test (scripts/acceptance/stripe.mjs). Stripe keys and
+// ACCEPTANCE_STRIPE_LIVE_OPT_IN play no part in opting in.
+export function stripeTestOptedIn() {
+  return process.env.ACCEPTANCE_STRIPE_TEST_OPT_IN === "true";
 }
 
 export { KNOWN_VARS };
