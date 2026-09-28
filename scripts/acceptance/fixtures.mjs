@@ -752,12 +752,26 @@ export async function seedAcceptanceLabSubmission(client, params) {
  * entirely -- `course.studentId` (resolved once, correctly, by
  * seedAcceptanceCourse) is now the single source of truth, so no call
  * site can pass a mismatched id.
+ *
+ * `options.excludeComponents` (concurrency-app-races.mjs's
+ * REGRADE_VS_COMPLETION only) skips components whose result the caller has
+ * ALREADY produced through the real application (answered responses plus
+ * the real Examiner FINALIZE), so a regrade target is never one of this
+ * function's response-less seeded attempts. Only known component names are
+ * accepted; the lab is always seeded.
  */
-export async function seedAcceptanceResults(course, allCorrect) {
+export async function seedAcceptanceResults(
+  course,
+  allCorrect,
+  { excludeComponents = [] } = {},
+) {
+  if (excludeComponents.some((c) => !COMPONENTS.includes(c)))
+    throw new Error("excludeComponents names an unknown component.");
   await withAcceptanceWriteConnection(async (client) => {
     await client.query("begin");
     try {
       for (const component of COMPONENTS) {
+        if (excludeComponents.includes(component)) continue;
         const { rows: bindingRows } = await client.query(
           `select a.id as assessment_id from commercial_v1_component_bindings cb
            join assessments a on a.id=cb.assessment_id

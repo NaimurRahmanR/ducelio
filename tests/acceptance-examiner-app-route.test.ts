@@ -359,6 +359,18 @@ describe("acceptance examiner-app route: bounded input -- the caller can never s
     { operation: "SIGN_IN", email: "a@b.test", password: PASSWORD, roles: [] },
     { operation: "GRADE_PRACTICAL_LAB", submissionId: ATTEMPT },
     { operation: "SUBMIT_AND_GRADE_ASSESSMENT", attemptId: "not-a-uuid" },
+    // Concurrency-race controls live only in the driver process; no
+    // browser-supplied field can arm a hold, pick an execution/enrolment
+    // or reach completion through this route.
+    {
+      operation: "SUBMIT_AND_GRADE_ASSESSMENT",
+      attemptId: ATTEMPT,
+      hold: true,
+    },
+    { ...recover, executionId: ATTEMPT },
+    { ...regrade, enrolmentId: ATTEMPT },
+    { operation: "HOLD_PROVIDER_RESPONSE" },
+    { operation: "ATTEMPT_COURSE_COMPLETION", enrolmentId: ATTEMPT },
   ];
   it.each(smuggled)(
     "rejects %j with 400 before any server function or Supabase client runs",

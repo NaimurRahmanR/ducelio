@@ -12,6 +12,12 @@
 // serving each acceptance request, that the CURRENT globalThis.fetch routes
 // through this marked wrapper before any operation runs. See
 // examiner-provider-stub.mjs's PROVIDER_REDIRECT_MARKER comment.
+//
+// ACCEPTANCE_CONTEXT_HOLD_URL/_TOKEN are set only by the concurrency
+// driver's app child (scripts/acceptance/concurrency-app-races.mjs) and
+// enable the context-read delivery hold described in
+// examiner-provider-stub.mjs. Both or neither: a half-configured hold
+// refuses to load rather than silently running without it.
 import { createProviderRedirectFetch } from "./examiner-provider-stub.mjs";
 
 const redirectToken = process.env.ACCEPTANCE_PROVIDER_REDIRECT_TOKEN ?? "";
@@ -24,8 +30,22 @@ if (
     "examiner-provider-redirect.mjs may only be loaded by the examiner app acceptance driver.",
   );
 
+const holdUrl = process.env.ACCEPTANCE_CONTEXT_HOLD_URL ?? "";
+const holdToken = process.env.ACCEPTANCE_CONTEXT_HOLD_TOKEN ?? "";
+if (Boolean(holdUrl) !== Boolean(holdToken))
+  throw new Error(
+    "examiner-provider-redirect.mjs: the acceptance context-read hold must be configured completely or not at all.",
+  );
+
 globalThis.fetch = createProviderRedirectFetch(
   globalThis.fetch.bind(globalThis),
   process.env.ACCEPTANCE_PROVIDER_STUB_URL,
   redirectToken,
+  holdUrl
+    ? {
+        url: holdUrl,
+        token: holdToken,
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      }
+    : null,
 );
