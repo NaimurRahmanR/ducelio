@@ -21,6 +21,7 @@ import {
 } from "./execution-fixture";
 import {
   counsellorRequestAllowed,
+  handoffInput,
   optionalProspectProfileSchema,
 } from "@/domain/delivery";
 const mocks = vi.hoisted(() => ({ client: vi.fn() }));
@@ -421,6 +422,120 @@ describe("real server delivery boundary", () => {
     state.failRpc = "close_academic_content_release";
     await expect(getProfessorDeliveryContext(request())).rejects.toMatchObject({
       code: "SERVICE_UNAVAILABLE",
+    });
+  });
+});
+
+describe("OBJECTIVE_REINFORCEMENT requires an objective (domain + server boundary)", () => {
+  const ENROLMENT = "10000000-0000-4000-8000-0000000000e1";
+  const LESSON = "10000000-0000-4000-8000-0000000000e2";
+  const OBJECTIVE = "10000000-0000-4000-8000-0000000000e3";
+
+  it.each([
+    ["missing", {}],
+    ["null", { objectiveId: null }],
+  ])(
+    "handoffInput rejects OBJECTIVE_REINFORCEMENT with a %s objectiveId",
+    (_label, objective) => {
+      expect(
+        handoffInput.safeParse({
+          enrolmentId: ENROLMENT,
+          lessonId: LESSON,
+          reasonCode: "OBJECTIVE_REINFORCEMENT",
+          ...objective,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("handoffInput accepts OBJECTIVE_REINFORCEMENT with a valid objectiveId", () => {
+    expect(
+      handoffInput.safeParse({
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+        objectiveId: OBJECTIVE,
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    "MISSED_LESSON_PRACTICE",
+    "PRACTICAL_PREREQUISITE",
+    "PRACTICAL_HELP",
+  ])(
+    "handoffInput still accepts %s without an objectiveId (missing or null)",
+    (reasonCode) => {
+      for (const objective of [{}, { objectiveId: null }])
+        expect(
+          handoffInput.safeParse({
+            enrolmentId: ENROLMENT,
+            lessonId: LESSON,
+            reasonCode,
+            ...objective,
+          }).success,
+        ).toBe(true);
+    },
+  );
+
+  it("handoffInput keeps rejecting a malformed objectiveId and unknown fields", () => {
+    expect(
+      handoffInput.safeParse({
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+        objectiveId: "not-a-uuid",
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+      }).success,
+    ).toBe(false);
+    expect(
+      handoffInput.safeParse({
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+        objectiveId: OBJECTIVE,
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+        role: "TUTOR",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requestDeliveryHandoff refuses OBJECTIVE_REINFORCEMENT without an objective as INVALID_INPUT before any RPC", async () => {
+    expect(() =>
+      requestDeliveryHandoff({
+        ...request(),
+        lessonId: enrolledLesson,
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+      }),
+    ).toThrow("INVALID_INPUT");
+    expect(
+      state.calls.some(
+        (c) => (c as { rpc?: string }).rpc === "request_delivery_handoff",
+      ),
+    ).toBe(false);
+  });
+
+  it("requestDeliveryHandoff accepts OBJECTIVE_REINFORCEMENT with an objectiveId and forwards it unchanged to the authoritative RPC", async () => {
+    // Published curriculum is immutable, so this fixture lesson has no
+    // objective of its own: the RPC's unchanged ownership validation then
+    // refuses the unknown objective. What this proves is the boundary: the
+    // domain accepted the shape and forwarded the exact objective id.
+    // Acceptance with a real owned objective is proven against the migrated
+    // schema in tests/delivery-workflow.test.ts (migration 043).
+    await expect(
+      requestDeliveryHandoff({
+        ...request(),
+        lessonId: enrolledLesson,
+        objectiveId: OBJECTIVE,
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+      }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND_OR_FORBIDDEN" });
+    const call = state.calls.find(
+      (c) => (c as { rpc?: string }).rpc === "request_delivery_handoff",
+    ) as { args: Record<string, unknown> } | undefined;
+    expect(call?.args).toMatchObject({
+      p_enrolment_id: f.enrolmentId,
+      p_lesson_id: enrolledLesson,
+      p_objective_id: OBJECTIVE,
+      p_reason_code: "OBJECTIVE_REINFORCEMENT",
     });
   });
 });

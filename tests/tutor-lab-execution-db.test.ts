@@ -147,18 +147,32 @@ describe("Tutor/Lab handoff ownership and role routing", () => {
 });
 
 describe("Tutor/Lab reason-code selector requirements fail closed", () => {
-  // Migration 023's request_delivery_handoff (historical, unmodified) itself
-  // permits an OBJECTIVE_REINFORCEMENT handoff with a null objective -- the
-  // selector requirement this checkpoint adds is enforced one layer later,
-  // at execution time (begin_tutor_lab_content_release), so an already-
-  // created such handoff must still fail closed there rather than ever
-  // reaching an executable release.
-  it("OBJECTIVE_REINFORCEMENT with no objective opens as a handoff but is rejected at execution time", async () => {
+  // Migration 023's request_delivery_handoff permitted an
+  // OBJECTIVE_REINFORCEMENT handoff with a null objective, which this
+  // checkpoint's execution-time rule (begin_tutor_lab_content_release) can
+  // never consume. Migration 043 closes the creation side: the RPC now
+  // refuses that shape before any handoff row exists. Rows of that shape
+  // created earlier are immutable history and must STILL fail closed at
+  // execution time rather than ever reaching an executable release.
+  it("OBJECTIVE_REINFORCEMENT with no objective can no longer be created (migration 043)", async () => {
     await user(1);
+    await denied(
+      "select public.request_delivery_handoff($1,$2,null,'OBJECTIVE_REINFORCEMENT',$3)",
+      [f.learnerEnrolmentId, f.lessonId, randomUUID()],
+      "INVALID_INPUT",
+    );
+  });
+  it("a historical OBJECTIVE_REINFORCEMENT handoff with no objective is still rejected at execution time", async () => {
+    await owner();
+    // Models a row an earlier deployment could persist (inserted as the
+    // table owner only because the RPC now refuses to create it).
     const handoffId = await value(
-      "select public.request_delivery_handoff($1,$2,null,'OBJECTIVE_REINFORCEMENT',$3) as v",
+      `insert into public.delivery_handoffs(enrolment_id,requested_by,request_id,destination_profile,reason_code,lesson_id,objective_id,summary)
+       select e.id, e.student_id, $3, 'TUTOR', 'OBJECTIVE_REINFORCEMENT', $2, null, 'Learner requests objective reinforcement.'
+       from public.enrolments e where e.id=$1 returning id as v`,
       [f.learnerEnrolmentId, f.lessonId, randomUUID()],
     );
+    await user(1);
     const result = await open(handoffId);
     expect(result).toMatchObject({ ok: false, code: "INVALID_INPUT" });
   });

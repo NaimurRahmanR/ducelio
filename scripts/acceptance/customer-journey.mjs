@@ -359,6 +359,42 @@ export function foreignDeliveryDenialProblems(response) {
       ];
 }
 
+// FOREIGN_TUTOR_LAB_DENIED: judged only from the foreign probe itself --
+// its own response status and what it added to the owner's handoff. Every
+// problem names the evidence actually observed.
+export function foreignTutorProbeProblems({ status, before, after, ownerId }) {
+  const problems = [];
+  if (status === "SUCCEEDED" || status === "DUPLICATE")
+    problems.push(
+      `The foreign learner's Tutor support probe on another learner's handoff returned ${status}.`,
+    );
+  const reservationKey = (r) => `${r.student_id}:${r.idempotency_key}`;
+  const knownReservations = new Set(before.reservations.map(reservationKey));
+  const addedReservations = after.reservations.filter(
+    (r) => !knownReservations.has(reservationKey(r)),
+  );
+  if (addedReservations.length)
+    problems.push(
+      `The foreign probe added ${addedReservations.length} interaction reservation(s) to another learner's Tutor handoff.`,
+    );
+  const knownExecutions = new Set(before.executions.map((e) => e.id));
+  const addedExecutions = after.executions.filter(
+    (e) => !knownExecutions.has(e.id),
+  );
+  if (addedExecutions.length)
+    problems.push(
+      `The foreign probe added ${addedExecutions.length} provider execution(s) to another learner's Tutor handoff.`,
+    );
+  const nonOwner = [...after.reservations, ...after.executions].filter(
+    (row) => row.student_id !== ownerId,
+  );
+  if (nonOwner.length)
+    problems.push(
+      `${nonOwner.length} reservation/execution row(s) on the learner's Tutor handoff are owned by another learner.`,
+    );
+  return problems;
+}
+
 // Durable completion state, checked independently.
 export function completionProblems(state, expected, label) {
   const problems = [];
@@ -391,6 +427,9 @@ export const JQ = Object.freeze({
   dbNow: `select (extract(epoch from clock_timestamp()) * 1000)::float8 as ms,
       clock_timestamp() as ts`,
   lessons: "select id from lessons where programme_version_id=$1 order by id",
+  // Bounded, read-only: the fixture lesson's own objective ids (never prose).
+  lessonObjectives: `select id from lesson_objectives
+    where lesson_id=$1 and programme_version_id=$2 order by id limit 2`,
   entitlements: `select id, learner_id, offer_id, activation_id, order_id, enrolment_id, source, campaign_redemption_id, state
     from commercial_v1_entitlements where learner_id=$1 and activation_id=$2`,
   enrolments: `select id, status, student_id, programme_version_id from enrolments where student_id=$1 and cohort_id=$2`,
@@ -408,7 +447,7 @@ export const JQ = Object.freeze({
   professorExecutions: `select e.id, e.state, e.reason_code, u.provider_calls
     from academic_provider_executions e left join academic_provider_execution_usage u on u.execution_id=e.id
     where e.student_id=$1 and e.created_at >= $2::timestamptz order by e.created_at`,
-  handoff: `select id, enrolment_id, requested_by, destination_profile, reason_code, lesson_id
+  handoff: `select id, enrolment_id, requested_by, destination_profile, reason_code, lesson_id, objective_id
     from delivery_handoffs where id=$1`,
   tutorLabExecutions: `select e.id, e.state, e.reason_code, e.agent_profile, e.student_id, u.provider_calls
     from tutor_lab_provider_executions e
@@ -417,7 +456,7 @@ export const JQ = Object.freeze({
     where r.handoff_id=$1`,
   tutorLabRateLimited: `select count(*)::int as n from tutor_lab_provider_executions
     where student_id=$1 and created_at >= $2::timestamptz and state='BLOCKED' and reason_code='RATE_LIMITED'`,
-  tutorLabReservations: `select student_id from tutor_lab_interaction_reservations where handoff_id=$1`,
+  tutorLabReservations: `select student_id, idempotency_key from tutor_lab_interaction_reservations where handoff_id=$1`,
   attempt: `select id, state, student_id, enrolment_id, assessment_id from assessment_attempts where id=$1`,
   responses: `select question_id, count(*)::int as n from assessment_responses where attempt_id=$1 group by question_id`,
   componentRevisions: `select r.id, r.revision_number, r.attempt_id, r.earned_marks_total, r.max_marks_total,
@@ -520,6 +559,17 @@ async function setupFixtures(ctx, s) {
         "The acceptance programme did not have exactly one lesson.",
       );
     s.lessonId = lessons[0].id;
+    // OBJECTIVE_REINFORCEMENT needs the lesson's REAL objective (domain
+    // handoffInput + migration 043). The fixture has exactly one.
+    const objectives = await ctx.query(JQ.lessonObjectives, [
+      s.lessonId,
+      s.course.programmeVersionId,
+    ]);
+    if (objectives.length !== 1)
+      throw new Error(
+        "The acceptance lesson did not have exactly one objective.",
+      );
+    s.objectiveId = objectives[0].id;
 
     s.offer = {
       slug: `acceptance-journey-${ctx.runId}`,
@@ -996,6 +1046,7 @@ export async function stageTutorLab(ctx, s) {
       operation: "REQUEST_TUTOR_HANDOFF",
       enrolmentId: s.enrolmentId,
       lessonId: s.lessonId,
+      objectiveId: s.objectiveId,
     }),
   )?.handoffId;
   const labHandoff = resultOf(
@@ -1012,6 +1063,8 @@ export async function stageTutorLab(ctx, s) {
       "The learner could not open Tutor/Lab handoffs through the governed paths.",
     );
 
+  // [role, handoff, transport, model, reason, expected objective]: practical
+  // support is lesson-level (request_practical_support passes no objective).
   const cases = [
     [
       "TUTOR",
@@ -1019,6 +1072,7 @@ export async function stageTutorLab(ctx, s) {
       "OPENAI",
       "gpt-5.6-luna",
       "OBJECTIVE_REINFORCEMENT",
+      s.objectiveId,
     ],
     [
       "LAB_INSTRUCTOR",
@@ -1026,10 +1080,18 @@ export async function stageTutorLab(ctx, s) {
       "ANTHROPIC",
       "claude-sonnet-5",
       "PRACTICAL_HELP",
+      null,
     ],
   ];
   const replayProblems = [];
-  for (const [role, handoffId, transport, model, reason] of cases) {
+  for (const [
+    role,
+    handoffId,
+    transport,
+    model,
+    reason,
+    objectiveId,
+  ] of cases) {
     const key = randomUUID();
     const payload = {
       operation: "TUTOR_LAB_SUPPORT",
@@ -1062,10 +1124,12 @@ export async function stageTutorLab(ctx, s) {
       handoff?.enrolment_id !== s.enrolmentId ||
       handoff.requested_by !== s.learnerId ||
       handoff.destination_profile !== role ||
-      handoff.reason_code !== reason
+      handoff.reason_code !== reason ||
+      handoff.lesson_id !== s.lessonId ||
+      handoff.objective_id !== objectiveId
     )
       problems.push(
-        `The ${role} handoff is not learner-owned with a server-derived ${role} destination.`,
+        `The ${role} handoff is not a learner-owned ${reason} handoff for the fixture lesson${objectiveId ? " and objective" : ""} with a server-derived ${role} destination.`,
       );
     if (
       executions.length !== 1 ||
@@ -1092,6 +1156,15 @@ export async function stageTutorLab(ctx, s) {
   }
   ctx.negatives.record("TUTOR_LAB_INTERACTION_REPLAY", replayProblems);
 
+  // Foreign probe, measured ONLY by what the probe itself did: a snapshot of
+  // the handoff's reservations/executions before and after. The owner's own
+  // execution count is the positive path's invariant (checked above), never
+  // re-labelled here as a foreign isolation breach.
+  const snapshot = async () => ({
+    reservations: await ctx.query(JQ.tutorLabReservations, [tutorHandoff]),
+    executions: await ctx.query(JQ.tutorLabExecutions, [tutorHandoff]),
+  });
+  const beforeProbe = await snapshot();
   const foreign = resultOf(
     await call(ctx.jars.foreign, {
       operation: "TUTOR_LAB_SUPPORT",
@@ -1100,17 +1173,14 @@ export async function stageTutorLab(ctx, s) {
       idempotencyKey: randomUUID(),
     }),
   );
-  const reservations = await ctx.query(JQ.tutorLabReservations, [tutorHandoff]);
-  const tutorExecutions = await ctx.query(JQ.tutorLabExecutions, [
-    tutorHandoff,
-  ]);
+  const afterProbe = await snapshot();
   // The SAME problems gate this surface, whose PASS claims the refusal.
-  const foreignProblems =
-    ["SUCCEEDED", "DUPLICATE"].includes(foreign?.status) ||
-    reservations.some((r) => r.student_id !== s.learnerId) ||
-    tutorExecutions.length !== 1
-      ? ["The foreign learner reached another learner's Tutor handoff."]
-      : [];
+  const foreignProblems = foreignTutorProbeProblems({
+    status: foreign?.status ?? null,
+    before: beforeProbe,
+    after: afterProbe,
+    ownerId: s.learnerId,
+  });
   ctx.negatives.record("FOREIGN_TUTOR_LAB_DENIED", foreignProblems);
   recordLeaks(problems, responses);
 

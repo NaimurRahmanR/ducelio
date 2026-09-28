@@ -1369,3 +1369,122 @@ describe("delivery effective ACL acceptance", () => {
     );
   });
 });
+
+describe("migration 043: OBJECTIVE_REINFORCEMENT handoffs require an objective", () => {
+  async function handoffCount() {
+    await owner();
+    const n = await scalar<number>(
+      "select count(*)::int as value from public.delivery_handoffs where enrolment_id=$1",
+      [enrolment],
+    );
+    await user();
+    return n;
+  }
+
+  it("refuses OBJECTIVE_REINFORCEMENT without an objective with INVALID_INPUT, before creating any handoff row", async () => {
+    const before = await handoffCount();
+    await denied(
+      "select public.request_delivery_handoff($1,$2,null,'OBJECTIVE_REINFORCEMENT',$3)",
+      [enrolment, lessons[0], randomUUID()],
+      "INVALID_INPUT",
+    );
+    expect(await handoffCount()).toBe(before);
+  });
+
+  it("accepts OBJECTIVE_REINFORCEMENT with the lesson's own objective and still derives the TUTOR route", async () => {
+    const id = await scalar(
+      "select public.request_delivery_handoff($1,$2,$3,'OBJECTIVE_REINFORCEMENT',$4) as value",
+      [enrolment, lessons[0], objectives[0], randomUUID()],
+    );
+    await owner();
+    const row = (
+      await db.query<Record<string, unknown>>(
+        "select destination_profile, reason_code, objective_id from public.delivery_handoffs where id=$1",
+        [id],
+      )
+    ).rows[0];
+    expect(row).toEqual({
+      destination_profile: "TUTOR",
+      reason_code: "OBJECTIVE_REINFORCEMENT",
+      objective_id: objectives[0],
+    });
+  });
+
+  it("still refuses a neighbouring lesson's objective for OBJECTIVE_REINFORCEMENT", async () => {
+    await denied(
+      "select public.request_delivery_handoff($1,$2,$3,'OBJECTIVE_REINFORCEMENT',$4)",
+      [enrolment, lessons[0], objectives[1], randomUUID()],
+      "NOT_FOUND_OR_FORBIDDEN",
+    );
+  });
+
+  it.each([
+    ["MISSED_LESSON_PRACTICE", "TUTOR"],
+    ["PRACTICAL_PREREQUISITE", "TUTOR"],
+    ["PRACTICAL_HELP", "LAB_INSTRUCTOR"],
+  ])(
+    "keeps accepting %s without an objective (unchanged semantics)",
+    async (reason, destination) => {
+      const request = randomUUID();
+      const args = [enrolment, lessons[0], reason, request];
+      const id = await scalar(
+        "select public.request_delivery_handoff($1,$2,null,$3,$4) as value",
+        args,
+      );
+      // Idempotent replay of the same identity is unchanged.
+      expect(
+        await scalar(
+          "select public.request_delivery_handoff($1,$2,null,$3,$4) as value",
+          args,
+        ),
+      ).toBe(id);
+      await owner();
+      expect(
+        await scalar(
+          "select destination_profile as value from public.delivery_handoffs where id=$1",
+          [id],
+        ),
+      ).toBe(destination);
+    },
+  );
+
+  it("leaves a pre-existing historical objective-less row untouched (no table CHECK) and never replays into it", async () => {
+    const request = randomUUID();
+    await owner();
+    // The immutable shape an earlier deployment could persist (e.g. the
+    // hosted acceptance run that exposed this defect). Inserted directly as
+    // the table owner purely to model existing history.
+    const historical = await scalar(
+      "insert into public.delivery_handoffs(enrolment_id,requested_by,request_id,destination_profile,reason_code,lesson_id,objective_id,summary) values($1,$2,$3,'TUTOR','OBJECTIVE_REINFORCEMENT',$4,null,'Learner requests objective reinforcement.') returning id as value",
+      [enrolment, learner, request, lessons[0]],
+    );
+    await user();
+    await denied(
+      "select public.request_delivery_handoff($1,$2,null,'OBJECTIVE_REINFORCEMENT',$3)",
+      [enrolment, lessons[0], request],
+      "INVALID_INPUT",
+    );
+    await owner();
+    expect(
+      await scalar<number>(
+        "select count(*)::int as value from public.delivery_handoffs where id=$1 and objective_id is null",
+        [historical],
+      ),
+    ).toBe(1);
+  });
+
+  it("keeps request_delivery_handoff executable by authenticated only", async () => {
+    await owner();
+    const rows = (
+      await db.query<{ role: string; allowed: boolean }>(
+        `select r as role, has_function_privilege(r, 'public.request_delivery_handoff(uuid,uuid,uuid,text,uuid)', 'EXECUTE') as allowed
+         from unnest(array['anon','authenticated','service_role']) r`,
+      )
+    ).rows;
+    expect(Object.fromEntries(rows.map((r) => [r.role, r.allowed]))).toEqual({
+      anon: false,
+      authenticated: true,
+      service_role: false,
+    });
+  });
+});

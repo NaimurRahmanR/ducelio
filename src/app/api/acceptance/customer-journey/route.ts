@@ -127,6 +127,9 @@ const requestSchema = z.discriminatedUnion("operation", [
     operation: z.literal("REQUEST_TUTOR_HANDOFF"),
     enrolmentId: uuid,
     lessonId: uuid,
+    // OBJECTIVE_REINFORCEMENT is objective-specific (domain handoffInput and
+    // migration 043); the id alone is relayed, never objective prose.
+    objectiveId: uuid,
   }),
   z.strictObject({
     operation: z.literal("REQUEST_PRACTICAL_SUPPORT"),
@@ -292,6 +295,7 @@ async function run(command: Command) {
         handoffId: await requestDeliveryHandoff({
           enrolmentId: command.enrolmentId,
           lessonId: command.lessonId,
+          objectiveId: command.objectiveId,
           reasonCode: "OBJECTIVE_REINFORCEMENT",
         }),
       });
