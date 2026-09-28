@@ -181,11 +181,23 @@ export const handoffReason = z.enum([
   "PRACTICAL_PREREQUISITE",
   "PRACTICAL_HELP",
 ]);
-export const handoffInput = enrolmentInput.extend({
-  lessonId: z.uuid(),
-  objectiveId: z.uuid().nullable().optional(),
-  reasonCode: handoffReason,
-});
+// OBJECTIVE_REINFORCEMENT is objective-specific: the Tutor execution
+// authority (migration 028's begin_tutor_lab_content_release) refuses such a
+// handoff without an objective, so it must never be created without one
+// (enforced identically by request_delivery_handoff, migration 043).
+export const handoffInput = enrolmentInput
+  .extend({
+    lessonId: z.uuid(),
+    objectiveId: z.uuid().nullable().optional(),
+    reasonCode: handoffReason,
+  })
+  .refine(
+    (h) => h.reasonCode !== "OBJECTIVE_REINFORCEMENT" || h.objectiveId != null,
+    {
+      message: "OBJECTIVE_REINFORCEMENT requires an objective.",
+      path: ["objectiveId"],
+    },
+  );
 const handoffRoutes = {
   MISSED_LESSON_PRACTICE: [
     "TUTOR",

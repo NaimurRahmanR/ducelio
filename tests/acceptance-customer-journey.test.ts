@@ -1626,13 +1626,30 @@ function classroomWorld(replayStatus: "DUPLICATE" | "SUCCEEDED") {
   return { ...world, s };
 }
 
-function tutorLabWorld(foreignReaches: boolean) {
+type TutorLabWorldOptions = {
+  // Foreign probe returns SUCCEEDED (and a non-owner reservation exists).
+  foreignReaches?: boolean;
+  // Foreign probe returns UNAVAILABLE but ADDS a reservation and execution.
+  foreignAddsRows?: boolean;
+  // The first hosted failure shape: the OWNER's Tutor support fails
+  // (UNAVAILABLE, no provider execution, no provider call).
+  ownerTutorFails?: boolean;
+};
+
+function tutorLabWorld(options: TutorLabWorldOptions | boolean = {}) {
+  const {
+    foreignReaches = false,
+    foreignAddsRows = false,
+    ownerTutorFails = false,
+  } = typeof options === "boolean" ? { foreignReaches: options } : options;
   const T = "10000000-0000-4000-8000-0000000000f1";
   const LH = "10000000-0000-4000-8000-0000000000f2";
+  const OBJ = "10000000-0000-4000-8000-0000000000f3";
   const s = {
     enrolmentId: "E",
     learnerId: "L",
     lessonId: "LS",
+    objectiveId: OBJ,
     course: { practicalId: "P" },
   };
   const roleOf: Record<string, string> = {
@@ -1641,16 +1658,21 @@ function tutorLabWorld(foreignReaches: boolean) {
   };
   const answered = new Set<string>();
   const stubCalls: Record<string, unknown>[] = [];
+  const handoffRequests: Record<string, unknown>[] = [];
+  let foreignProbed = false;
   const world = fakeCtx(
     (jar, payload) => {
       const who = (jar as { id: string }).id;
-      if (payload.operation === "REQUEST_TUTOR_HANDOFF")
+      if (payload.operation === "REQUEST_TUTOR_HANDOFF") {
+        handoffRequests.push(payload);
         return { ok: true, result: { handoffId: T } };
+      }
       if (payload.operation === "REQUEST_PRACTICAL_SUPPORT")
         return { ok: true, result: { ok: true, handoffId: LH } };
       if (payload.operation !== "TUTOR_LAB_SUPPORT") return null;
       const handoffId = payload.handoffId as string;
-      if (who === "foreign")
+      if (who === "foreign") {
+        foreignProbed = true;
         return foreignReaches
           ? {
               ok: true,
@@ -1664,7 +1686,13 @@ function tutorLabWorld(foreignReaches: boolean) {
               ok: true,
               result: { status: "UNAVAILABLE", role: null, text: null },
             };
+      }
       const role = roleOf[handoffId];
+      if (role === "TUTOR" && ownerTutorFails)
+        return {
+          ok: true,
+          result: { status: "UNAVAILABLE", role: null, text: null },
+        };
       if (answered.has(handoffId))
         return {
           ok: true,
@@ -1704,29 +1732,50 @@ function tutorLabWorld(foreignReaches: boolean) {
             reason_code:
               id === T ? "OBJECTIVE_REINFORCEMENT" : "PRACTICAL_HELP",
             lesson_id: "LS",
+            objective_id: id === T ? OBJ : null,
           },
         ];
       }
-      if (sql.includes("from tutor_lab_interaction_reservations"))
-        return foreignReaches
-          ? [{ student_id: "L" }, { student_id: "FOREIGN" }]
-          : [{ student_id: "L" }];
-      if (sql.includes("from tutor_lab_provider_executions e"))
-        return [
-          {
-            id: `X-${params[0]}`,
-            state: "SUCCEEDED",
-            reason_code: null,
-            agent_profile: roleOf[params[0] as string],
-            student_id: "L",
-            provider_calls: 1,
-          },
-        ];
+      if (sql.includes("from tutor_lab_interaction_reservations")) {
+        const rows = [{ student_id: "L", idempotency_key: "owner-key" }];
+        if (foreignReaches)
+          rows.push({ student_id: "FOREIGN", idempotency_key: "old-key" });
+        if (foreignAddsRows && foreignProbed)
+          rows.push({ student_id: "FOREIGN", idempotency_key: "probe-key" });
+        return rows;
+      }
+      if (sql.includes("from tutor_lab_provider_executions e")) {
+        const id = params[0] as string;
+        const role = roleOf[id];
+        const rows: Record<string, unknown>[] =
+          role === "TUTOR" && ownerTutorFails
+            ? []
+            : [
+                {
+                  id: `X-${id}`,
+                  state: "SUCCEEDED",
+                  reason_code: null,
+                  agent_profile: role,
+                  student_id: "L",
+                  provider_calls: 1,
+                },
+              ];
+        if (id === T && foreignAddsRows && foreignProbed)
+          rows.push({
+            id: "X-foreign-probe",
+            state: "ABSTAINED",
+            reason_code: "POLICY_BLOCKED",
+            agent_profile: "TUTOR",
+            student_id: "FOREIGN",
+            provider_calls: 0,
+          });
+        return rows;
+      }
       return [];
     },
   );
   world.stub.calls = stubCalls;
-  return { ...world, s };
+  return { ...world, s, handoffRequests, T, OBJ };
 }
 
 function labWorld({
@@ -1867,8 +1916,11 @@ describe("customer journey (review V3): each surface's own PASS includes the neg
     const recorded = (ctx.negatives as Ledger).get(
       "FOREIGN_TUTOR_LAB_DENIED",
     )?.problems;
-    expect(recorded).toHaveLength(1);
-    expect(result.details).toContain(recorded![0]);
+    // Evidence-specific: the SUCCEEDED status and the non-owner row are
+    // reported separately; every recorded problem gates the stage.
+    expect(recorded?.length).toBeGreaterThan(0);
+    for (const problem of recorded ?? [])
+      expect(result.details).toContain(problem);
   });
 
   it("LAB: a coherent world PASSes (control) and runs the foreign learner's own zero-mark lab", async () => {
@@ -1931,5 +1983,137 @@ describe("customer journey (review V3): each surface's own PASS includes the neg
         expect(status[key]).toBe("BLOCKED");
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hosted run 1790630225143-vf2w0i regressions: the Tutor handoff carries the
+// fixture's REAL objective, and the foreign-Tutor negative check measures
+// only the foreign probe.
+// ---------------------------------------------------------------------------
+describe("customer journey: Tutor handoff objective and foreign-probe isolation (hosted run 1790630225143-vf2w0i)", () => {
+  it("requests the Tutor handoff as OBJECTIVE_REINFORCEMENT with the fixture's real objective id and asserts it on the durable handoff", async () => {
+    const { stageTutorLab, createNegativeLedger } = await journeyModule();
+    const { ctx, s, handoffRequests, OBJ } = tutorLabWorld();
+    ctx.negatives = createNegativeLedger();
+    const result = await stageTutorLab(ctx, s);
+    expect(result.status).toBe("PASS");
+    expect(handoffRequests).toEqual([
+      {
+        operation: "REQUEST_TUTOR_HANDOFF",
+        enrolmentId: "E",
+        lessonId: "LS",
+        objectiveId: OBJ,
+      },
+    ]);
+  });
+
+  it("FAILs the Tutor path when the durable Tutor handoff does not carry the exact fixture objective", async () => {
+    const { stageTutorLab, createNegativeLedger } = await journeyModule();
+    const { ctx, s } = tutorLabWorld();
+    ctx.negatives = createNegativeLedger();
+    const result = await stageTutorLab(ctx, {
+      ...s,
+      objectiveId: "10000000-0000-4000-8000-0000000000f9",
+    });
+    expect(result.status).toBe("FAIL");
+    expect(result.details?.join(" ")).toContain(
+      "OBJECTIVE_REINFORCEMENT handoff for the fixture lesson and objective",
+    );
+  });
+
+  it("the actual hosted failure shape: the OWNER Tutor path fails (UNAVAILABLE, 0 executions, 0 provider calls) and the foreign probe is refused without side effects => TUTOR_LAB FAIL for the owner path, FOREIGN_TUTOR_LAB_DENIED PASS, no foreign-breach claim", async () => {
+    const { stageTutorLab, createNegativeLedger } = await journeyModule();
+    const { ctx, s } = tutorLabWorld({ ownerTutorFails: true });
+    ctx.negatives = createNegativeLedger();
+    const result = await stageTutorLab(ctx, s);
+    expect(result.status).toBe("FAIL");
+    const details = result.details?.join(" ") ?? "";
+    expect(details).toContain(
+      "TUTOR support did not return SUCCEEDED from the governed path (UNAVAILABLE)",
+    );
+    expect(details).toContain(
+      "Expected exactly one SUCCEEDED TUTOR execution for its handoff; found 0",
+    );
+    const ledger = ctx.negatives as {
+      get: (n: string) => { problems: string[] } | null;
+    };
+    expect(ledger.get("FOREIGN_TUTOR_LAB_DENIED")?.problems).toEqual([]);
+    expect(details).not.toMatch(/foreign/i);
+  });
+
+  it.each([
+    [
+      "returns SUCCEEDED on another learner's handoff",
+      { foreignReaches: true },
+    ],
+    [
+      "adds a reservation and an execution to another learner's handoff",
+      { foreignAddsRows: true },
+    ],
+  ])(
+    "a true foreign fault -- the probe %s -- FAILs FOREIGN_TUTOR_LAB_DENIED and the stage",
+    async (_label, options) => {
+      const { stageTutorLab, createNegativeLedger } = await journeyModule();
+      const { ctx, s } = tutorLabWorld(options);
+      ctx.negatives = createNegativeLedger();
+      const result = await stageTutorLab(ctx, s);
+      expect(result.status).toBe("FAIL");
+      const recorded = (
+        ctx.negatives as { get: (n: string) => { problems: string[] } | null }
+      ).get("FOREIGN_TUTOR_LAB_DENIED")?.problems;
+      expect(recorded?.length).toBeGreaterThan(0);
+      for (const problem of recorded ?? [])
+        expect(result.details).toContain(problem);
+    },
+  );
+
+  it("foreignTutorProbeProblems judges only the probe and names the observed evidence", async () => {
+    const { foreignTutorProbeProblems } = await journeyModule();
+    const owner = { student_id: "L", idempotency_key: "k1" };
+    const ownerExec = { id: "X1", student_id: "L" };
+    // Owner path produced nothing (hosted failure shape): not a foreign breach.
+    expect(
+      foreignTutorProbeProblems({
+        status: "UNAVAILABLE",
+        before: { reservations: [owner], executions: [] },
+        after: { reservations: [owner], executions: [] },
+        ownerId: "L",
+      }),
+    ).toEqual([]);
+    // Owner path fine; probe refused and inert.
+    expect(
+      foreignTutorProbeProblems({
+        status: "UNAVAILABLE",
+        before: { reservations: [owner], executions: [ownerExec] },
+        after: { reservations: [owner], executions: [ownerExec] },
+        ownerId: "L",
+      }),
+    ).toEqual([]);
+    expect(
+      foreignTutorProbeProblems({
+        status: "DUPLICATE",
+        before: { reservations: [], executions: [] },
+        after: { reservations: [], executions: [] },
+        ownerId: "L",
+      }),
+    ).toEqual([
+      "The foreign learner's Tutor support probe on another learner's handoff returned DUPLICATE.",
+    ]);
+    expect(
+      foreignTutorProbeProblems({
+        status: "UNAVAILABLE",
+        before: { reservations: [owner], executions: [ownerExec] },
+        after: {
+          reservations: [owner, { student_id: "F", idempotency_key: "k2" }],
+          executions: [ownerExec, { id: "X2", student_id: "F" }],
+        },
+        ownerId: "L",
+      }),
+    ).toEqual([
+      "The foreign probe added 1 interaction reservation(s) to another learner's Tutor handoff.",
+      "The foreign probe added 1 provider execution(s) to another learner's Tutor handoff.",
+      "2 reservation/execution row(s) on the learner's Tutor handoff are owned by another learner.",
+    ]);
   });
 });

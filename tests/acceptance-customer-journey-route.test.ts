@@ -478,3 +478,77 @@ describe("customer-journey route: thin hops into the production entrypoints", ()
     expect(await failed.text()).not.toContain("internal detail sentinel");
   });
 });
+
+describe("customer-journey route: REQUEST_TUTOR_HANDOFF carries the real objective", () => {
+  const LESSON = "10000000-0000-4000-8000-0000000000c1";
+  const OBJECTIVE = "10000000-0000-4000-8000-0000000000c2";
+  const HANDOFF = "10000000-0000-4000-8000-0000000000c3";
+
+  it.each([
+    [
+      "without objectiveId",
+      {
+        operation: "REQUEST_TUTOR_HANDOFF",
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+      },
+    ],
+    [
+      "with a null objectiveId",
+      {
+        operation: "REQUEST_TUTOR_HANDOFF",
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+        objectiveId: null,
+      },
+    ],
+    [
+      "with a caller-chosen reason",
+      {
+        operation: "REQUEST_TUTOR_HANDOFF",
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+        objectiveId: OBJECTIVE,
+        reasonCode: "MISSED_LESSON_PRACTICE",
+      },
+    ],
+  ])(
+    "rejects REQUEST_TUTOR_HANDOFF %s with 400 before any Supabase client exists",
+    async (_label, body) => {
+      enableDriver();
+      fakeSupabase();
+      const response = await POST(request(body));
+      expect(response.status).toBe(400);
+      expect(state.createSupabase).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes objectiveId with OBJECTIVE_REINFORCEMENT to the production request_delivery_handoff and returns only the handoff id", async () => {
+    enableDriver();
+    const { rpcCalls } = fakeSupabase({
+      rpc: (name) =>
+        name === "request_delivery_handoff"
+          ? { data: HANDOFF, error: null }
+          : undefined,
+    });
+    const response = await POST(
+      request({
+        operation: "REQUEST_TUTOR_HANDOFF",
+        enrolmentId: ENROLMENT,
+        lessonId: LESSON,
+        objectiveId: OBJECTIVE,
+      }),
+    );
+    expect(await response.json()).toEqual({
+      ok: true,
+      result: { handoffId: HANDOFF },
+    });
+    const call = rpcCalls.find((c) => c.name === "request_delivery_handoff");
+    expect(call?.args).toMatchObject({
+      p_enrolment_id: ENROLMENT,
+      p_lesson_id: LESSON,
+      p_objective_id: OBJECTIVE,
+      p_reason_code: "OBJECTIVE_REINFORCEMENT",
+    });
+  });
+});
