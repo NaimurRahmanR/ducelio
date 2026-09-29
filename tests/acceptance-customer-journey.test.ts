@@ -2504,3 +2504,124 @@ describe("customer journey: pre-start GET_ACTIVE_QUESTIONS projection must be co
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Bounded assessment read-stage diagnostic (hosted journey run #3): the
+// route may add a fixed assessmentReadStage to OPERATION_FAILED; the
+// harness reports it only when it is exactly one of the six known codes.
+// ---------------------------------------------------------------------------
+describe("customer journey: bounded assessmentReadStage in route-failure diagnostics", () => {
+  const STAGES = [
+    "FINALIZE",
+    "READ_ASSESSMENTS",
+    "READ_ATTEMPTS",
+    "READ_RESPONSES",
+    "ACTIVITY",
+    "READ_VERSIONS",
+  ];
+  const failed = (body: Record<string, unknown>) => ({
+    status: 500,
+    body,
+    text: JSON.stringify(body),
+  });
+
+  it("the harness whitelist is exactly the production stage list", async () => {
+    const { ASSESSMENT_READ_STAGES } = await journeyModule();
+    expect([...ASSESSMENT_READ_STAGES]).toEqual(STAGES);
+    // Pinned against src/server/assessments.ts's own list (scripts never
+    // import src/**, so the source text is compared).
+    const source = await readRepo("src/server/assessments.ts");
+    const declared = /STUDENT_ASSESSMENT_READ_STAGES = \[([^\]]*)\]/.exec(
+      source,
+    )?.[1];
+    expect(
+      [...(declared ?? "").matchAll(/"([A-Z_]+)"/g)].map((m) => m[1]),
+    ).toEqual(STAGES);
+  });
+
+  it("a known FINALIZE stage appears in the bounded pre-start failure diagnostic", async () => {
+    const { preStartQuestionReleaseProblems } = await journeyModule();
+    expect(
+      preStartQuestionReleaseProblems(
+        failed({ error: "OPERATION_FAILED", assessmentReadStage: "FINALIZE" }),
+      ),
+    ).toEqual([
+      "GET_ACTIVE_QUESTIONS failed before attempt start (HTTP 500, OPERATION_FAILED, assessment stage FINALIZE).",
+    ]);
+  });
+
+  it.each(STAGES)(
+    "stage %s is represented safely in route failures",
+    async (stage) => {
+      const { routeFailure, postStartQuestionReleaseProblems } =
+        await journeyModule();
+      const response = failed({
+        error: "OPERATION_FAILED",
+        assessmentReadStage: stage,
+      });
+      expect(routeFailure(response)).toBe(
+        `HTTP 500, OPERATION_FAILED, assessment stage ${stage}`,
+      );
+      expect(
+        postStartQuestionReleaseProblems(
+          response,
+          { attemptId: "a", assessmentId: "b", questionCount: 1 },
+          "QUIZ_1",
+        ),
+      ).toEqual([
+        `QUIZ_1: GET_ACTIVE_QUESTIONS failed after attempt start (HTTP 500, OPERATION_FAILED, assessment stage ${stage}).`,
+      ]);
+    },
+  );
+
+  it.each([
+    ["an unknown code", "SOMETHING_UNEXPECTED"],
+    ["a lower-case look-alike", "finalize"],
+    ["injected text", "FINALIZE; drop table secret"],
+    ["a number", 7],
+    ["an object", { stage: "FINALIZE" }],
+    ["an array", ["FINALIZE"]],
+  ])(
+    "an unknown or malformed assessmentReadStage (%s) is ignored",
+    async (_label, value) => {
+      const { routeFailure } = await journeyModule();
+      const out = routeFailure(
+        failed({ error: "OPERATION_FAILED", assessmentReadStage: value }),
+      );
+      expect(out).toBe("HTTP 500, OPERATION_FAILED");
+      expect(out).not.toMatch(/assessment stage|drop|SOMETHING|finalize/);
+    },
+  );
+
+  it("absence of assessmentReadStage preserves the existing diagnostic exactly", async () => {
+    const { routeFailure, preStartQuestionReleaseProblems } =
+      await journeyModule();
+    const response = failed({ error: "OPERATION_FAILED" });
+    expect(routeFailure(response)).toBe("HTTP 500, OPERATION_FAILED");
+    expect(preStartQuestionReleaseProblems(response)).toEqual([
+      "GET_ACTIVE_QUESTIONS failed before attempt start (HTTP 500, OPERATION_FAILED).",
+    ]);
+  });
+
+  it("never prints the raw response body or upstream exception text", async () => {
+    const { routeFailure, preStartQuestionReleaseProblems } =
+      await journeyModule();
+    const response = {
+      status: 500,
+      body: {
+        error: "OPERATION_FAILED",
+        assessmentReadStage: "READ_VERSIONS",
+        message: "raw upstream secret-sentinel relation",
+        details: "secret-sentinel details",
+        stack: "Error: secret-sentinel\n    at x (y.ts:1:1)",
+      },
+      text: "raw secret-sentinel body",
+    };
+    const out = [
+      routeFailure(response),
+      ...preStartQuestionReleaseProblems(response),
+    ].join("\n");
+    expect(out).toContain("assessment stage READ_VERSIONS");
+    expect(out).not.toMatch(/secret-sentinel|relation|details|stack|at x/);
+  });
+});

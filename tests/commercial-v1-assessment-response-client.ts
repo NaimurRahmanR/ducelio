@@ -49,7 +49,24 @@ export type AssessmentClientState = CapabilityDbState & {
   selects: { table: string; select: string }[];
   // A table whose read should fail as a PostgREST error would.
   failTableRead?: string;
+  // An RPC that EXECUTES normally (its database effects are applied) but
+  // whose client-visible result is an error -- database effects are applied
+  // before the client-visible error, the shape hosted journey run #3 proved
+  // possible for the finalizer. Test adapter only.
+  errorAfterRpc?: string;
 };
+
+// Every simulated upstream error carries sentinel text in each field a real
+// Supabase/PostgREST error has, so a test can prove none of it escapes.
+export const UPSTREAM_ERROR_SENTINEL = "UPSTREAM-SENTINEL";
+function upstreamError(label: string) {
+  return {
+    message: `${label} ${UPSTREAM_ERROR_SENTINEL} relation "secret" SQL select 1`,
+    details: `${UPSTREAM_ERROR_SENTINEL} details`,
+    hint: `${UPSTREAM_ERROR_SENTINEL} hint`,
+    code: "XX000",
+  };
+}
 
 export function newAssessmentClientState(): AssessmentClientState {
   return { authUser: null, calls: [], rpcLog: [], rpcArgs: [], selects: [] };
@@ -86,7 +103,7 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
       state.rpcLog.push(name);
       state.rpcArgs.push({ name, args });
       if (state.failRpc === name)
-        return { data: null, error: { message: "SQL credential sentinel" } };
+        return { data: null, error: upstreamError("SQL credential sentinel") };
       await db.exec("savepoint assessment_rpc");
       try {
         const params = ASSESSMENT_RPC_PARAMS[name].map((k) => args[k]);
@@ -99,6 +116,11 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
           params,
         );
         await db.exec("release savepoint assessment_rpc");
+        if (state.errorAfterRpc === name)
+          return {
+            data: null,
+            error: upstreamError("Response lost after state transition"),
+          };
         return {
           data: table
             ? result.rows.map((r) => r.data)
@@ -150,7 +172,7 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
           if (state.failTableRead === table)
             return Promise.resolve({
               data: null,
-              error: { message: "PostgREST read failure sentinel" },
+              error: upstreamError("PostgREST read failure sentinel"),
             }).then(resolve, reject);
           const join =
             table === "assessments"

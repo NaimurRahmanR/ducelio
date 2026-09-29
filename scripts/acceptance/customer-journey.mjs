@@ -412,8 +412,26 @@ export function routeFailure(response) {
     typeof raw === "string" && ROUTE_ERROR_CODE.test(raw)
       ? raw
       : "no error code";
-  return `HTTP ${response?.status ?? "none"}, ${code}`;
+  // The route's bounded getStudentAssessments request stage, reported only
+  // when it is exactly one of the six known codes; anything else is ignored.
+  const stage = response?.body?.assessmentReadStage;
+  const stageText =
+    typeof stage === "string" && ASSESSMENT_READ_STAGES.includes(stage)
+      ? `, assessment stage ${stage}`
+      : "";
+  return `HTTP ${response?.status ?? "none"}, ${code}${stageText}`;
 }
+
+// Mirrors src/server/assessments.ts's STUDENT_ASSESSMENT_READ_STAGES
+// (scripts never import src/**); a test pins the two lists equal.
+export const ASSESSMENT_READ_STAGES = Object.freeze([
+  "FINALIZE",
+  "READ_ASSESSMENTS",
+  "READ_ATTEMPTS",
+  "READ_RESPONSES",
+  "ACTIVITY",
+  "READ_VERSIONS",
+]);
 
 // Before any attempt exists. A failed operation is reported as exactly that
 // -- never as a question release. "Released" is claimed only when a

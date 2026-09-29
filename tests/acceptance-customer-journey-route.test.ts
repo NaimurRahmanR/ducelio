@@ -552,3 +552,39 @@ describe("customer-journey route: REQUEST_TUTOR_HANDOFF carries the real objecti
     });
   });
 });
+
+describe("customer-journey route: bounded assessment read-stage diagnostic (real getStudentAssessments)", () => {
+  const COHORT = "10000000-0000-4000-8000-0000000000d7";
+  it("a finalizer error result surfaces as HTTP 500 OPERATION_FAILED with assessmentReadStage FINALIZE and nothing else", async () => {
+    enableDriver();
+    const { rpcCalls } = fakeSupabase({
+      rpc: (name) => {
+        if (name === "my_coursework_scope")
+          return { data: { actorId: ACTOR, cohortIds: [COHORT] }, error: null };
+        if (name === "finalize_expired_commercial_v1_attempts")
+          return {
+            data: null,
+            error: {
+              message: 'raw postgres secret-sentinel relation "x"',
+              details: "secret-sentinel details",
+              hint: "secret-sentinel hint",
+              code: "XX000",
+            },
+          };
+        return undefined;
+      },
+    });
+    const response = await POST(request({ operation: "GET_ACTIVE_QUESTIONS" }));
+    expect(response.status).toBe(500);
+    const text = await response.text();
+    expect(JSON.parse(text)).toEqual({
+      error: "OPERATION_FAILED",
+      assessmentReadStage: "FINALIZE",
+    });
+    expect(text).not.toMatch(/secret-sentinel|XX000|relation|details|hint/);
+    // It stopped at FINALIZE: no projection RPC ran after it.
+    expect(rpcCalls.map((c) => c.name)).not.toContain(
+      "current_academic_activity_state",
+    );
+  });
+});
