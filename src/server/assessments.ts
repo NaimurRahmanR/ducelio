@@ -236,6 +236,33 @@ export async function changeAssessmentStatus(input: unknown) {
   return z.uuid().parse(data);
 }
 
+// Bounded diagnostic for getStudentAssessments: WHICH Supabase request
+// returned an error result. Only these six fixed stage codes exist; the
+// message is the same generic learner-facing text as before and the
+// upstream Supabase/PostgREST error (message, details, hint, SQL) is never
+// copied into it. Zod failures, fail-closed invariants and unexpected
+// exceptions are NOT wrapped in this class.
+export const STUDENT_ASSESSMENT_READ_STAGES = [
+  "FINALIZE",
+  "READ_ASSESSMENTS",
+  "READ_ATTEMPTS",
+  "READ_RESPONSES",
+  "ACTIVITY",
+  "READ_VERSIONS",
+] as const;
+export type StudentAssessmentReadStage =
+  (typeof STUDENT_ASSESSMENT_READ_STAGES)[number];
+
+export class StudentAssessmentReadFailure extends Error {
+  readonly stage: StudentAssessmentReadStage;
+  constructor(stage: StudentAssessmentReadStage) {
+    super("Your assessments could not be loaded.");
+    this.name = "StudentAssessmentReadFailure";
+    this.stage = stage;
+    Object.setPrototypeOf(this, new.target.prototype);
+  }
+}
+
 const studentVersionSnapshotSchema = z.object({
   label: z.string(),
   title_snapshot: z.string().nullable(),
@@ -283,7 +310,7 @@ export async function getStudentAssessments() {
   // database clock only. Fail closed: if finalisation cannot be established,
   // do not render a possibly stale lifecycle.
   const finalized = await client.rpc("finalize_expired_commercial_v1_attempts");
-  if (finalized.error) throw new Error("Your assessments could not be loaded.");
+  if (finalized.error) throw new StudentAssessmentReadFailure("FINALIZE");
   // `assessments` has composite foreign keys to cohorts and lessons but NO
   // foreign key to programme_versions, so PostgREST cannot embed
   // programme_versions from it (hosted PostgREST answers HTTP 400 PGRST200
@@ -317,8 +344,13 @@ export async function getStudentAssessments() {
     client.rpc("current_academic_activity_state"),
   ]);
 
-  if (assessments.error || attempts.error || responses.error || activity.error)
-    throw new Error("Your assessments could not be loaded.");
+  // Each request's error result is attributed to its own fixed stage (the
+  // first failing one in this fixed order when several fail).
+  if (assessments.error)
+    throw new StudentAssessmentReadFailure("READ_ASSESSMENTS");
+  if (attempts.error) throw new StudentAssessmentReadFailure("READ_ATTEMPTS");
+  if (responses.error) throw new StudentAssessmentReadFailure("READ_RESPONSES");
+  if (activity.error) throw new StudentAssessmentReadFailure("ACTIVITY");
 
   const assessmentRows = z
     .array(studentAssessmentRowSchema)
@@ -335,7 +367,7 @@ export async function getStudentAssessments() {
       .from("programme_versions")
       .select("id,label,title_snapshot")
       .in("id", versionIds);
-    if (error) throw new Error("Your assessments could not be loaded.");
+    if (error) throw new StudentAssessmentReadFailure("READ_VERSIONS");
     for (const version of z
       .array(studentVersionSnapshotSchema.extend({ id: z.uuid() }))
       .parse(data))

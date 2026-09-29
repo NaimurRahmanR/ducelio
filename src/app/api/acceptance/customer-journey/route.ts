@@ -21,6 +21,8 @@ import {
   getStudentAssessments,
   recordAssessmentResponse,
   startAssessmentAttempt,
+  STUDENT_ASSESSMENT_READ_STAGES,
+  StudentAssessmentReadFailure,
 } from "@/server/assessments";
 import { submitPracticalLabWorkAndGrade } from "@/server/commercial-v1-submission-grading";
 import {
@@ -433,6 +435,18 @@ export async function POST(request: Request) {
         ok: false,
         error: "CLASSROOM_DENIED",
         code: error.code,
+      });
+    // Bounded diagnostic only: WHICH getStudentAssessments Supabase request
+    // stage failed, as one fixed, whitelisted code. Never its message.
+    if (
+      error instanceof StudentAssessmentReadFailure &&
+      (STUDENT_ASSESSMENT_READ_STAGES as readonly string[]).includes(
+        error.stage,
+      )
+    )
+      return json(500, {
+        error: "OPERATION_FAILED",
+        assessmentReadStage: error.stage,
       });
     return json(500, { error: "OPERATION_FAILED" });
   }

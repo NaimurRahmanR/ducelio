@@ -18,6 +18,7 @@ import {
   assessmentClient,
   forceExpire,
   newAssessmentClientState,
+  UPSTREAM_ERROR_SENTINEL,
 } from "./commercial-v1-assessment-response-client";
 
 const mocks = vi.hoisted(() => ({
@@ -33,6 +34,8 @@ import {
   recordAssessmentResponse,
   startAssessmentAttempt,
   submitAssessmentAttempt,
+  STUDENT_ASSESSMENT_READ_STAGES,
+  StudentAssessmentReadFailure,
 } from "@/server/assessments";
 import { saveControlledAssessmentResponse } from "@/app/student/actions";
 
@@ -780,5 +783,169 @@ describe("getStudentAssessments: PostgREST-resolvable reads and fail-closed prot
     expect(view.activityState).toBe("CONTROLLED_ASSESSMENT_ACTIVE");
     expect(view.activeQuestions).toHaveLength(1);
     expect(JSON.stringify(view)).not.toMatch(PROTECTED);
+  });
+});
+
+// =============================================================================
+// Bounded read-stage diagnostic (hosted journey run #3): one getStudentAssessments
+// Supabase request returned an error and the route could only say
+// OPERATION_FAILED. Each request's error result now carries exactly one fixed
+// stage code; nothing from the upstream error ever leaves the server.
+// =============================================================================
+describe("getStudentAssessments: bounded read-stage diagnostic", () => {
+  beforeEach(async () => {
+    f = await buildAssessmentPolicyFixture({ withLabs: false });
+    state.rpcLog.length = 0;
+    state.rpcArgs.length = 0;
+    state.selects.length = 0;
+    state.failRpc = undefined;
+    state.failTableRead = undefined;
+    state.errorAfterRpc = undefined;
+    mocks.client.mockImplementation(async () => assessmentClient(f.db, state));
+  });
+  afterEach(async () => {
+    state.errorAfterRpc = undefined;
+    await f.db.close();
+  });
+
+  async function beginRead() {
+    await f.db.exec("begin");
+    await actAs(f.db, state, 1);
+  }
+  async function readFailure(): Promise<StudentAssessmentReadFailure> {
+    const error = await getStudentAssessments().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(StudentAssessmentReadFailure);
+    expect(error).toBeInstanceOf(Error);
+    return error as StudentAssessmentReadFailure;
+  }
+  function expectBounded(error: StudentAssessmentReadFailure) {
+    expect(error.message).toBe("Your assessments could not be loaded.");
+    expect(error.name).toBe("StudentAssessmentReadFailure");
+    // Nothing from the upstream error: no message, details, hint, code or SQL.
+    const surfaces = [
+      error.message,
+      String(error),
+      error.stack ?? "",
+      JSON.stringify(error),
+      JSON.stringify(Object.getOwnPropertyNames(error)),
+    ].join("\n");
+    expect(surfaces).not.toContain(UPSTREAM_ERROR_SENTINEL);
+    expect(surfaces).not.toMatch(
+      /relation "secret"|select 1|XX000|details|hint/,
+    );
+    expect(Object.keys(error).sort()).toEqual(["name", "stage"]);
+  }
+
+  it("exposes exactly the six fixed stage codes", () => {
+    expect([...STUDENT_ASSESSMENT_READ_STAGES]).toEqual([
+      "FINALIZE",
+      "READ_ASSESSMENTS",
+      "READ_ATTEMPTS",
+      "READ_RESPONSES",
+      "ACTIVITY",
+      "READ_VERSIONS",
+    ]);
+  });
+
+  it.each([
+    ["FINALIZE", { failRpc: "finalize_expired_commercial_v1_attempts" }],
+    ["READ_ASSESSMENTS", { failTableRead: "assessments" }],
+    ["READ_ATTEMPTS", { failTableRead: "assessment_attempts" }],
+    ["READ_RESPONSES", { failTableRead: "assessment_responses" }],
+    ["ACTIVITY", { failRpc: "current_academic_activity_state" }],
+    ["READ_VERSIONS", { failTableRead: "programme_versions" }],
+  ] as const)(
+    "an error result from the %s request maps to exactly that stage, with a generic message and no upstream text",
+    async (stage, seam) => {
+      await beginRead();
+      Object.assign(state, seam);
+      const error = await readFailure();
+      expect(error.stage).toBe(stage);
+      expectBounded(error);
+    },
+  );
+
+  it("does not wrap non-request failures: a missing version snapshot stays a plain generic Error", async () => {
+    await beginRead();
+    // The versions read succeeds but returns nothing: an invariant failure,
+    // not a Supabase request error, so it carries no stage code.
+    const client = assessmentClient(f.db, state);
+    mocks.client.mockImplementation(async () => ({
+      ...client,
+      from(table: string) {
+        if (table !== "programme_versions") return client.from(table);
+        const empty = {
+          select: () => empty,
+          in: () => empty,
+          then: (resolve: (v: unknown) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(resolve),
+        };
+        return empty;
+      },
+    }));
+    const error = await getStudentAssessments().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(StudentAssessmentReadFailure);
+    expect((error as Error).message).toBe(
+      "Your assessments could not be loaded.",
+    );
+  });
+
+  it("run #3 regression: a stale expired governed attempt is finalised AUTO_TIMEOUT even though the finalizer's response is an error => FINALIZE, and no later read is used", async () => {
+    // An earlier run's attempt, started and committed, then past its deadline
+    // and still ACTIVE because nothing has read or finalised it since.
+    await f.db.exec("begin");
+    let attemptId: string;
+    try {
+      attemptId = await start(f.assessmentIds.QUIZ_1);
+    } finally {
+      await f.db.exec("commit");
+    }
+    await forceExpire(f.db, attemptId);
+    await beginRead();
+    // The finalizer's database effect is applied, but the client receives
+    // an error result (adapter seam only; production finalisation unchanged).
+    state.errorAfterRpc = "finalize_expired_commercial_v1_attempts";
+
+    const error = await readFailure();
+    expect(error.stage).toBe("FINALIZE");
+    expectBounded(error);
+
+    // The state transition nevertheless happened.
+    expect(await attemptRow(attemptId)).toMatchObject({
+      state: "SUBMITTED",
+      submission_provenance: "AUTO_TIMEOUT",
+    });
+    // And the call stopped at FINALIZE: no projection read or later RPC ran,
+    // so nothing from this call is presented as successful evidence.
+    expect(state.rpcLog).toEqual([
+      "my_coursework_scope",
+      "finalize_expired_commercial_v1_attempts",
+    ]);
+    expect(state.selects).toEqual([]);
+  });
+
+  it("control: with no failure the same stale-attempt read succeeds exactly as before (NORMAL, finalised, no questions)", async () => {
+    await f.db.exec("begin");
+    let attemptId: string;
+    try {
+      attemptId = await start(f.assessmentIds.QUIZ_1);
+    } finally {
+      await f.db.exec("commit");
+    }
+    await forceExpire(f.db, attemptId);
+    await beginRead();
+    const view = await getStudentAssessments();
+    expect(view.activityState).toBe("NORMAL");
+    expect(view.activeQuestions).toEqual([]);
+    expect(view.attempts.find((a) => a.id === attemptId)?.state).toBe(
+      "SUBMITTED",
+    );
   });
 });
