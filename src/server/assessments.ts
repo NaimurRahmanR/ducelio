@@ -317,7 +317,7 @@ export async function getStudentAssessments() {
   // for that select, which made this whole projection fail). The version
   // snapshot is therefore read separately below, under the learner's own
   // RLS, by the programme_version_id each visible assessment carries.
-  const [assessments, attempts, responses, activity] = await Promise.all([
+  const [assessments, attempts, responses, firstActivity] = await Promise.all([
     client
       .from("assessments")
       .select(
@@ -350,6 +350,18 @@ export async function getStudentAssessments() {
     throw new StudentAssessmentReadFailure("READ_ASSESSMENTS");
   if (attempts.error) throw new StudentAssessmentReadFailure("READ_ATTEMPTS");
   if (responses.error) throw new StudentAssessmentReadFailure("READ_RESPONSES");
+  // current_academic_activity_state is a STABLE, side-effect-free read. The
+  // client sends every .rpc() as a POST, which postgrest-js does not
+  // automatically retry, unlike eligible GET table reads. A client-side
+  // failure represented without a usable HTTP response (status 0) is therefore
+  // retried exactly once here, with no delay. Hosted journey run #4 was one
+  // concrete pre-edge instance: no activity request reached the API gateway.
+  // Any nonzero HTTP/PostgREST/database/auth error result is not retried here.
+  // No other request receives an additional application-level retry here.
+  const activity =
+    firstActivity.error && firstActivity.status === 0
+      ? await client.rpc("current_academic_activity_state")
+      : firstActivity;
   if (activity.error) throw new StudentAssessmentReadFailure("ACTIVITY");
 
   const assessmentRows = z

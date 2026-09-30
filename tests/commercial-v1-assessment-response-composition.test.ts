@@ -10,7 +10,9 @@ import {
   vi,
 } from "vitest";
 import {
+  asPolicyUser,
   buildAssessmentPolicyFixture,
+  foreignLearner,
   type AssessmentPolicyFixture,
 } from "./commercial-v1-assessment-policy-fixture";
 import {
@@ -897,7 +899,7 @@ describe("getStudentAssessments: bounded read-stage diagnostic", () => {
     );
   });
 
-  it("run #3 regression: a stale expired governed attempt is finalised AUTO_TIMEOUT even though the finalizer's response is an error => FINALIZE, and no later read is used", async () => {
+  it("a stale expired governed attempt is finalised AUTO_TIMEOUT even though the finalizer's response is an error => FINALIZE, and no later read is used", async () => {
     // An earlier run's attempt, started and committed, then past its deadline
     // and still ACTIVE because nothing has read or finalised it since.
     await f.db.exec("begin");
@@ -947,5 +949,284 @@ describe("getStudentAssessments: bounded read-stage diagnostic", () => {
     expect(view.attempts.find((a) => a.id === attemptId)?.state).toBe(
       "SUBMITTED",
     );
+  });
+});
+
+// =============================================================================
+// Hosted journey run #4: the foreign learner's current_academic_activity_state
+// request never reached the Supabase API gateway (the edge logs show the
+// finalizer and all three concurrent table reads of that call, and no
+// activity request), so the read failed as ACTIVITY. postgrest-js already
+// retries GET table reads on a rejected fetch but never a POST .rpc(). The
+// read-only activity RPC alone is now retried exactly once, and only when the
+// first result has no HTTP status at all (status 0).
+// =============================================================================
+describe("getStudentAssessments: one bounded retry of a transport-failed ACTIVITY read", () => {
+  const ACTIVITY = "current_academic_activity_state";
+  const QUESTIONS = "get_active_assessment_questions";
+
+  beforeEach(async () => {
+    f = await buildAssessmentPolicyFixture({ withLabs: false });
+    state.rpcLog.length = 0;
+    state.rpcArgs.length = 0;
+    state.selects.length = 0;
+    state.failRpc = undefined;
+    state.failTableRead = undefined;
+    state.errorAfterRpc = undefined;
+    state.transportFail = undefined;
+    mocks.client.mockImplementation(async () => assessmentClient(f.db, state));
+    // Learner B (policy user 3) is enrolled in the same cohort as learner A.
+    await asPolicyUser(f.db, 2);
+    await f.db.query(
+      "select public.create_enrolment($1,$2,'Policy fixture foreign enrolment')",
+      [foreignLearner, f.cohortId],
+    );
+    await f.db.exec("reset role");
+  });
+  afterEach(async () => {
+    state.transportFail = undefined;
+    await f.db.close();
+  });
+
+  async function startCommittedAs(n: number, assessmentId: string) {
+    await f.db.exec("begin");
+    try {
+      await actAs(f.db, state, n);
+      return await startAssessmentAttempt(assessmentId);
+    } finally {
+      await f.db.exec("commit");
+      state.rpcLog.length = 0;
+      state.rpcArgs.length = 0;
+      state.selects.length = 0;
+    }
+  }
+  async function beginReadAs(n: number) {
+    await f.db.exec("begin");
+    await actAs(f.db, state, n);
+    state.rpcLog.length = 0;
+    state.selects.length = 0;
+  }
+  const calls = (name: string) =>
+    state.rpcLog.filter((logged) => logged === name).length;
+  const reads = (table: string) =>
+    state.selects.filter((s) => s.table === table).length;
+  async function readFailure() {
+    const error = await getStudentAssessments().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(StudentAssessmentReadFailure);
+    const failure = error as StudentAssessmentReadFailure;
+    expect(failure.message).toBe("Your assessments could not be loaded.");
+    expect(Object.keys(failure).sort()).toEqual(["name", "stage"]);
+    expect(
+      [String(failure), failure.stack ?? "", JSON.stringify(failure)].join(
+        "\n",
+      ),
+    ).not.toMatch(/UPSTREAM-SENTINEL|fetch failed|details/);
+    return failure;
+  }
+
+  it("1. a first ACTIVITY transport failure (status 0) is retried once; the retry's result is used and the read succeeds exactly as without the failure", async () => {
+    await beginReadAs(1);
+    const expected = await getStudentAssessments();
+    state.rpcLog.length = 0;
+    state.selects.length = 0;
+    state.transportFail = { name: ACTIVITY, times: 1 };
+
+    const view = await getStudentAssessments();
+
+    expect(view).toEqual(expected);
+    expect(view.activityState).toBe("NORMAL");
+    expect(calls(ACTIVITY)).toBe(2);
+    expect(state.transportFail.times).toBe(0);
+    expect(state.rpcLog).toEqual([
+      "my_coursework_scope",
+      "finalize_expired_commercial_v1_attempts",
+      ACTIVITY,
+      ACTIVITY,
+    ]);
+    // The table reads ran once each; only the activity RPC was repeated.
+    expect(reads("assessments")).toBe(1);
+    expect(reads("assessment_attempts")).toBe(1);
+    expect(reads("assessment_responses")).toBe(1);
+  });
+
+  it("2. ACTIVITY transport failures on both calls => exactly two calls, then StudentAssessmentReadFailure(ACTIVITY); never a loop", async () => {
+    await beginReadAs(1);
+    state.transportFail = { name: ACTIVITY, times: 5 };
+
+    const failure = await readFailure();
+
+    expect(failure.stage).toBe("ACTIVITY");
+    expect(calls(ACTIVITY)).toBe(2);
+    expect(state.transportFail.times).toBe(3);
+    expect(calls(QUESTIONS)).toBe(0);
+    expect(reads("programme_versions")).toBe(0);
+  });
+
+  it("3. an ordinary ACTIVITY error result (the adapter's PostgREST error, HTTP 400) is not retried", async () => {
+    await beginReadAs(1);
+    state.failRpc = ACTIVITY;
+
+    const failure = await readFailure();
+
+    expect(failure.stage).toBe("ACTIVITY");
+    expect(calls(ACTIVITY)).toBe(1);
+  });
+
+  it.each([400, 401, 403, 404, 500, 502, 503, 504, 520])(
+    "3b. an ACTIVITY error result with HTTP status %i is not retried",
+    async (status) => {
+      await beginReadAs(1);
+      const client = assessmentClient(f.db, state);
+      mocks.client.mockImplementation(async () => ({
+        ...client,
+        async rpc(name: string, args?: Record<string, unknown>) {
+          if (name !== ACTIVITY) return client.rpc(name, args);
+          state.rpcLog.push(name);
+          return {
+            data: null,
+            error: {
+              message: "UPSTREAM-SENTINEL",
+              details: "",
+              hint: "",
+              code: "",
+            },
+            status,
+            statusText: "",
+          };
+        },
+      }));
+
+      const failure = await readFailure();
+
+      expect(failure.stage).toBe("ACTIVITY");
+      expect(calls(ACTIVITY)).toBe(1);
+    },
+  );
+
+  it.each([
+    ["FINALIZE", "finalize_expired_commercial_v1_attempts"],
+    ["READ_ASSESSMENTS", "assessments"],
+    ["READ_ATTEMPTS", "assessment_attempts"],
+    ["READ_RESPONSES", "assessment_responses"],
+    ["READ_VERSIONS", "programme_versions"],
+  ] as const)(
+    "4. a transport failure (status 0) of the %s request is never retried",
+    async (stage, name) => {
+      await beginReadAs(1);
+      state.transportFail = { name, times: 1 };
+
+      const failure = await readFailure();
+
+      expect(failure.stage).toBe(stage);
+      if (stage === "FINALIZE") {
+        expect(calls(name)).toBe(1);
+        expect(state.rpcLog).toEqual(["my_coursework_scope", name]);
+        expect(state.selects).toEqual([]);
+      } else {
+        expect(reads(name)).toBe(1);
+        // The activity read itself succeeded, so it ran once.
+        expect(calls(ACTIVITY)).toBe(1);
+      }
+    },
+  );
+
+  it("4b. a transport failure of the protected-question read is not retried and still fails closed for a live attempt", async () => {
+    await startCommittedAs(1, f.assessmentIds.QUIZ_1);
+    await beginReadAs(1);
+    state.transportFail = { name: QUESTIONS, times: 1 };
+
+    const error = await getStudentAssessments().then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(StudentAssessmentReadFailure);
+    expect((error as Error).message).toBe(
+      "Your assessments could not be loaded.",
+    );
+    expect(calls(QUESTIONS)).toBe(1);
+    expect(calls(ACTIVITY)).toBe(1);
+  });
+
+  it("4c. write RPCs are never retried: a transport-failed start or submit is attempted once and reported as a failure", async () => {
+    await f.db.exec("begin");
+    await actAs(f.db, state, 1);
+    state.transportFail = { name: "start_assessment_attempt", times: 1 };
+    await expect(
+      startAssessmentAttempt(f.assessmentIds.QUIZ_1),
+    ).rejects.toThrow("Assessment attempt could not be started.");
+    expect(calls("start_assessment_attempt")).toBe(1);
+    expect(
+      await scalar<number>(
+        "select count(*)::int as v from public.assessment_attempts where assessment_id=$1",
+        [f.assessmentIds.QUIZ_1],
+      ),
+    ).toBe(0);
+
+    await actAs(f.db, state, 1);
+    const attemptId = await startAssessmentAttempt(f.assessmentIds.QUIZ_1);
+    state.transportFail = { name: "submit_assessment_attempt", times: 1 };
+    await expect(submitAssessmentAttempt(attemptId)).rejects.toThrow(
+      "Assessment attempt could not be submitted.",
+    );
+    expect(calls("submit_assessment_attempt")).toBe(1);
+    expect(await attemptRow(attemptId)).toMatchObject({ state: "ACTIVE" });
+    await f.db.exec("rollback");
+  });
+
+  it("5. learner B with its own ACTIVE controlled attempt gets CONTROLLED_ASSESSMENT_ACTIVE after one transport failure and one retry; learner A stays isolated", async () => {
+    const attemptB = await startCommittedAs(3, f.assessmentIds.QUIZ_1);
+
+    await beginReadAs(3);
+    state.transportFail = { name: ACTIVITY, times: 1 };
+    const viewB = await getStudentAssessments();
+    await f.db.exec("rollback");
+
+    expect(calls(ACTIVITY)).toBe(2);
+    expect(viewB.activityState).toBe("CONTROLLED_ASSESSMENT_ACTIVE");
+    expect(viewB.attempts.map((a) => a.id)).toEqual([attemptB]);
+    expect(viewB.attempts[0].state).toBe("ACTIVE");
+    expect(viewB.activeQuestions).toHaveLength(1);
+    expect(state.rpcArgs.find((c) => c.name === QUESTIONS)?.args).toEqual({
+      p_assessment_id: f.assessmentIds.QUIZ_1,
+    });
+
+    // Learner A has no attempt of its own: the same transport failure and
+    // retry yields A's own NORMAL state, none of B's attempt and no questions.
+    await beginReadAs(1);
+    state.rpcArgs.length = 0;
+    state.transportFail = { name: ACTIVITY, times: 1 };
+    const viewA = await getStudentAssessments();
+    await f.db.exec("rollback");
+
+    expect(calls(ACTIVITY)).toBe(2);
+    expect(viewA.activityState).toBe("NORMAL");
+    expect(viewA.attempts).toEqual([]);
+    expect(viewA.responses).toEqual([]);
+    expect(viewA.activeQuestions).toEqual([]);
+    expect(calls(QUESTIONS)).toBe(0);
+  });
+
+  it("6. the retry never bypasses own-attempt checks: no protected question content is released to a learner without its own ACTIVE attempt, and none is ever exposed", async () => {
+    await startCommittedAs(3, f.assessmentIds.QUIZ_1);
+
+    await beginReadAs(1);
+    state.transportFail = { name: ACTIVITY, times: 1 };
+    const viewA = await getStudentAssessments();
+    await f.db.exec("rollback");
+    expect(calls(ACTIVITY)).toBe(2);
+    expect(viewA.activeQuestions).toEqual([]);
+    expect(calls(QUESTIONS)).toBe(0);
+    expect(JSON.stringify(viewA)).not.toMatch(PROTECTED);
+
+    await beginReadAs(3);
+    state.transportFail = { name: ACTIVITY, times: 1 };
+    const viewB = await getStudentAssessments();
+    expect(viewB.activeQuestions).toHaveLength(1);
+    expect(JSON.stringify(viewB)).not.toMatch(PROTECTED);
   });
 });
