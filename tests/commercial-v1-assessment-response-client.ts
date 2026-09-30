@@ -49,11 +49,13 @@ export type AssessmentClientState = CapabilityDbState & {
   selects: { table: string; select: string }[];
   // A table whose read should fail as a PostgREST error would.
   failTableRead?: string;
-  // An RPC that EXECUTES normally (its database effects are applied) but
-  // whose client-visible result is an error -- database effects are applied
-  // before the client-visible error, the shape hosted journey run #3 proved
-  // possible for the finalizer. Test adapter only.
+  // An RPC that executes normally (its database effects are applied) but
+  // whose client-visible result is an error. Test adapter only.
   errorAfterRpc?: string;
+  // An RPC or table read whose next `times` requests fail before any HTTP
+  // response exists, exactly as postgrest-js reports a rejected fetch
+  // (status 0). Nothing executes in the database for those requests.
+  transportFail?: { name: string; times: number };
 };
 
 // Every simulated upstream error carries sentinel text in each field a real
@@ -65,6 +67,24 @@ function upstreamError(label: string) {
     details: `${UPSTREAM_ERROR_SENTINEL} details`,
     hint: `${UPSTREAM_ERROR_SENTINEL} hint`,
     code: "XX000",
+  };
+}
+
+// postgrest-js's result for a request whose fetch rejected: no HTTP status.
+function transportFailure(state: AssessmentClientState, name: string) {
+  if (state.transportFail?.name !== name || state.transportFail.times <= 0)
+    return null;
+  state.transportFail.times -= 1;
+  return {
+    data: null,
+    error: {
+      message: `TypeError: fetch failed ${UPSTREAM_ERROR_SENTINEL}`,
+      details: `${UPSTREAM_ERROR_SENTINEL} details`,
+      hint: "",
+      code: "",
+    },
+    status: 0,
+    statusText: "",
   };
 }
 
@@ -102,8 +122,15 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
       if (!(name in ASSESSMENT_RPC_PARAMS)) return base.rpc(name, args);
       state.rpcLog.push(name);
       state.rpcArgs.push({ name, args });
+      const transport = transportFailure(state, name);
+      if (transport) return transport;
       if (state.failRpc === name)
-        return { data: null, error: upstreamError("SQL credential sentinel") };
+        return {
+          data: null,
+          error: upstreamError("SQL credential sentinel"),
+          status: 400,
+          statusText: "Bad Request",
+        };
       await db.exec("savepoint assessment_rpc");
       try {
         const params = ASSESSMENT_RPC_PARAMS[name].map((k) => args[k]);
@@ -169,6 +196,9 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
           resolve: (v: unknown) => unknown,
           reject: (e: unknown) => unknown,
         ) {
+          const transport = transportFailure(state, table);
+          if (transport)
+            return Promise.resolve(transport).then(resolve, reject);
           if (state.failTableRead === table)
             return Promise.resolve({
               data: null,
