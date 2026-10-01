@@ -64,7 +64,7 @@ export async function getObjectiveMasteryWorkspace() {
     client
       .from("objective_mastery")
       .select(
-        "id,enrolment_id,student_id,objective_id,lesson_id,programme_version_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position),lessons(title)",
+        "id,enrolment_id,student_id,objective_id,lesson_id,programme_version_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position,lessons(title))",
       )
       .order("evaluated_at", { ascending: false })
       .limit(1000),
@@ -80,8 +80,27 @@ export async function getObjectiveMasteryWorkspace() {
   if (mastery.error || history.error)
     throw new Error("Objective mastery workspace could not be loaded.");
 
+  // objective_mastery has no foreign key to lessons; it reaches the lesson
+  // through lesson_objectives, so the lesson title is embedded there and
+  // lifted back out to keep the workspace shape.
+  const masteryRows = z
+    .array(
+      adminMasterySchema.omit({ lessons: true }).extend({
+        lesson_objectives: adminMasterySchema.shape.lesson_objectives.extend({
+          lessons: adminMasterySchema.shape.lessons,
+        }),
+      }),
+    )
+    .parse(mastery.data);
+
   return {
-    mastery: z.array(adminMasterySchema).parse(mastery.data),
+    mastery: masteryRows.map(
+      ({ lesson_objectives: { lessons, ...objective }, ...row }) => ({
+        ...row,
+        lesson_objectives: objective,
+        lessons,
+      }),
+    ),
     history: z.array(historySchema).parse(history.data),
   };
 }
