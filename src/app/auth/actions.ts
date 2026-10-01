@@ -1,7 +1,12 @@
 "use server";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { config } from "@/lib/env";
 import { createSupabase } from "@/server/supabase";
+import {
+  logOAuthStart,
+  oauthDiagnosticsEnabled,
+} from "@/server/oauth-diagnostics";
 import {
   emailSchema,
   passwordSchema,
@@ -161,6 +166,17 @@ export async function oauth(data: FormData) {
         : {}),
     },
   });
+  if (oauthDiagnosticsEnabled()) {
+    const [headerList, jar] = await Promise.all([headers(), cookies()]);
+    logOAuthStart({
+      provider,
+      requestHost: headerList.get("host"),
+      appUrl: env.appUrl,
+      cookieNames: jar.getAll().map((cookie) => cookie.name),
+      authorizeUrlReturned: Boolean(result.url),
+      error,
+    });
+  }
   if (error || !result.url) redirect("/login?error=auth-failed");
   redirect(result.url);
 }
