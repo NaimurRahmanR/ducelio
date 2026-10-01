@@ -145,7 +145,7 @@ function client() {
       let limit = 1000;
       const fields: Record<string, string> = {
         assignments:
-          "t.id,t.title,t.instructions,t.opens_at,t.due_at,t.status,json_build_object('title',l.title) as lessons,json_build_object('label',v.label,'title_snapshot',v.title_snapshot) as programme_versions",
+          "t.id,t.title,t.instructions,t.opens_at,t.due_at,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
         assessments:
           "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
         programme_versions: "t.id,t.label,t.title_snapshot",
@@ -194,11 +194,9 @@ function client() {
           reject: (e: unknown) => unknown,
         ) {
           const join =
-            table === "assignments"
-              ? " join public.lessons l on l.id=t.lesson_id join public.programme_versions v on v.id=t.programme_version_id"
-              : table === "assessments"
-                ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
-                : "";
+            table === "assignments" || table === "assessments"
+              ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
+              : "";
           return f.db
             .query<{ data: unknown }>(
               "select row_to_json(q) as data from (select " +
