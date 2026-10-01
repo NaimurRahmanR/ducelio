@@ -41,6 +41,34 @@ const submissionSchema = z.object({
   submitted_at: z.string(),
 });
 
+const versionSnapshotSchema = assignmentSchema.shape.programme_versions;
+
+// `assignments` has composite foreign keys to cohorts and lessons but NO
+// foreign key to programme_versions, so PostgREST cannot embed
+// programme_versions from it (hosted PostgREST answers HTTP 400 PGRST200).
+// The snapshots are therefore read separately, under the caller's own RLS, by
+// the programme_version_id each visible assignment carries.
+async function readVersionSnapshots(
+  client: Awaited<ReturnType<typeof createSupabase>>,
+  rows: { programme_version_id: string }[],
+  failure: string,
+) {
+  const versionIds = [...new Set(rows.map((row) => row.programme_version_id))];
+  const versions = new Map<string, z.infer<typeof versionSnapshotSchema>>();
+  if (versionIds.length) {
+    const { data, error } = await client
+      .from("programme_versions")
+      .select("id,label,title_snapshot")
+      .in("id", versionIds);
+    if (error) throw new Error(failure);
+    for (const { id, ...version } of z
+      .array(versionSnapshotSchema.extend({ id: z.uuid() }))
+      .parse(data))
+      versions.set(id, version);
+  }
+  return versions;
+}
+
 export async function getAssignmentWorkspace() {
   await requireActor("admin");
   const client = await createSupabase();
@@ -49,7 +77,7 @@ export async function getAssignmentWorkspace() {
       client
         .from("assignments")
         .select(
-          "id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,due_at,status,created_at,published_at,closed_at,cohorts(title),lessons(title),programme_versions(label,title_snapshot)",
+          "id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,due_at,status,created_at,published_at,closed_at,cohorts(title),lessons(title)",
         )
         .order("created_at", { ascending: false })
         .limit(500),
@@ -82,8 +110,23 @@ export async function getAssignmentWorkspace() {
   )
     throw new Error("Assignment workspace could not be loaded.");
 
+  const assignmentRows = z
+    .array(assignmentSchema.omit({ programme_versions: true }))
+    .parse(assignments.data);
+  const versions = await readVersionSnapshots(
+    client,
+    assignmentRows,
+    "Assignment workspace could not be loaded.",
+  );
+  // Fail closed: never render an assignment without its version snapshot.
+  const parsedAssignments = assignmentRows.map((row) => {
+    const version = versions.get(row.programme_version_id);
+    if (!version) throw new Error("Assignment workspace could not be loaded.");
+    return { ...row, programme_versions: version };
+  });
+
   return {
-    assignments: z.array(assignmentSchema).parse(assignments.data),
+    assignments: parsedAssignments,
     submissions: z.array(submissionSchema).parse(submissions.data),
     cohorts: z
       .array(
@@ -176,7 +219,7 @@ export async function getStudentAssignments() {
     client
       .from("assignments")
       .select(
-        "id,title,instructions,opens_at,due_at,status,lessons(title),programme_versions(label,title_snapshot)",
+        "id,title,instructions,opens_at,due_at,status,programme_version_id,lessons(title)",
       )
       .in("cohort_id", scope.cohortIds)
       .in("status", ["PUBLISHED", "CLOSED"])
@@ -191,24 +234,36 @@ export async function getStudentAssignments() {
   ]);
   if (assignments.error || submissions.error)
     throw new Error("Your assignments could not be loaded.");
+  const assignmentRows = z
+    .array(
+      z.object({
+        id: z.uuid(),
+        title: z.string(),
+        instructions: z.string(),
+        opens_at: z.string(),
+        due_at: z.string(),
+        status: z.enum(["PUBLISHED", "CLOSED"]),
+        programme_version_id: z.uuid(),
+        lessons: z.object({ title: z.string() }),
+      }),
+    )
+    .parse(assignments.data);
+  const versions = await readVersionSnapshots(
+    client,
+    assignmentRows,
+    "Your assignments could not be loaded.",
+  );
+  // Fail closed: never render an assignment without the version snapshot the
+  // learner is entitled to see for it. programme_version_id stays internal.
+  const visibleAssignments = assignmentRows.map(
+    ({ programme_version_id, ...row }) => {
+      const version = versions.get(programme_version_id);
+      if (!version) throw new Error("Your assignments could not be loaded.");
+      return { ...row, programme_versions: version };
+    },
+  );
   return {
-    assignments: z
-      .array(
-        z.object({
-          id: z.uuid(),
-          title: z.string(),
-          instructions: z.string(),
-          opens_at: z.string(),
-          due_at: z.string(),
-          status: z.enum(["PUBLISHED", "CLOSED"]),
-          lessons: z.object({ title: z.string() }),
-          programme_versions: z.object({
-            label: z.string(),
-            title_snapshot: z.string().nullable(),
-          }),
-        }),
-      )
-      .parse(assignments.data),
+    assignments: visibleAssignments,
     submissions: z
       .array(
         submissionSchema.pick({
