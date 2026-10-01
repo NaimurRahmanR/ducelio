@@ -138,14 +138,14 @@ export async function getStudentLessonProgress() {
   const { data, error } = await client
     .from("lesson_progress")
     .select(
-      "id,lesson_id,segment_id,status,updated_at,lesson_segments(title,position),lessons(title)",
+      "id,lesson_id,segment_id,status,updated_at,lesson_segments(title,position,lessons(title))",
     )
     .order("updated_at", { ascending: false })
     .limit(500);
 
   if (error) throw new Error("Your lesson progress could not be loaded.");
 
-  return z
+  const rows = z
     .array(
       z.object({
         id: z.uuid(),
@@ -153,9 +153,21 @@ export async function getStudentLessonProgress() {
         segment_id: z.uuid(),
         status: z.enum(["IN_PROGRESS", "COMPLETED"]),
         updated_at: z.string(),
-        lesson_segments: z.object({ title: z.string(), position: z.number() }),
-        lessons: z.object({ title: z.string() }),
+        lesson_segments: z.object({
+          title: z.string(),
+          position: z.number(),
+          lessons: z.object({ title: z.string() }),
+        }),
       }),
     )
     .parse(data);
+
+  return rows.map(({ lesson_segments, ...row }) => ({
+    ...row,
+    lesson_segments: {
+      title: lesson_segments.title,
+      position: lesson_segments.position,
+    },
+    lessons: lesson_segments.lessons,
+  }));
 }

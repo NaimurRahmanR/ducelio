@@ -92,14 +92,14 @@ export async function getStudentObjectiveMastery() {
   const { data, error } = await client
     .from("objective_mastery")
     .select(
-      "id,objective_id,lesson_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position),lessons(title)",
+      "id,objective_id,lesson_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position,lessons(title))",
     )
     .order("evaluated_at", { ascending: false })
     .limit(500);
 
   if (error) throw new Error("Your objective mastery could not be loaded.");
 
-  return z
+  const rows = z
     .array(
       z.object({
         id: z.uuid(),
@@ -115,11 +115,20 @@ export async function getStudentObjectiveMastery() {
         lesson_objectives: z.object({
           description: z.string(),
           position: z.number(),
+          lessons: z.object({ title: z.string() }),
         }),
-        lessons: z.object({ title: z.string() }),
       }),
     )
     .parse(data);
+
+  return rows.map(({ lesson_objectives, ...row }) => ({
+    ...row,
+    lesson_objectives: {
+      description: lesson_objectives.description,
+      position: lesson_objectives.position,
+    },
+    lessons: lesson_objectives.lessons,
+  }));
 }
 
 export async function getStudentLessonMastery(input: unknown) {
