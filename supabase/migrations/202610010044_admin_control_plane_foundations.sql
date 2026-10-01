@@ -20,7 +20,10 @@
 --    their app_users row; this migration only manages existing identities.
 --    STUDENT is provisioned by identity and is not grantable/revocable here.
 -- 3. Last-PLATFORM_ADMIN and self-lockout protection, serialized by one
---    transaction-scoped advisory lock across every people mutation.
+--    transaction-scoped advisory lock across every people mutation;
+--    COUNSELLOR/INSTRUCTOR revocation refused while live relationships
+--    still need that person; DEACTIVATED accounts can never become new
+--    teaching or counselling targets (existing relationships are kept).
 -- 4. Cohort lifecycle (OPEN -> CLOSED -> COMPLETED, CLOSED -> OPEN reopen),
 --    optional ends_on and seat capacity, governed create/edit/status RPCs
 --    (ACADEMIC_ADMIN or PLATFORM_ADMIN; REGISTRAR correction authority is
@@ -200,6 +203,12 @@ begin
     end if;
     if p_user_id=actor then raise exception 'SELF_LOCKOUT'; end if;
   end if;
+  -- Live delivery needs its instructor's authority: an activation of a
+  -- not-yet-COMPLETED cohort, or a still-SCHEDULED class session of one.
+  -- Completed/cancelled history never blocks revocation.
+  if wanted='INSTRUCTOR' and admin_control_private.live_teaching(p_user_id)>0 then
+    raise exception 'ACTIVE_TEACHING_ASSIGNMENTS';
+  end if;
   -- An active counselling relationship needs its counsellor's authority;
   -- reassign learners first (counsellor assignment workflow).
   if wanted='COUNSELLOR' and exists(
@@ -261,6 +270,8 @@ begin
         'staffTitle',(select s.title from public.staff_profiles s where s.user_id=u.id),
         'isStudent',exists(select 1 from public.student_profiles p where p.user_id=u.id),
         'roles',(select coalesce(jsonb_agg(g.role::text order by g.role::text),'[]') from public.role_grants g where g.user_id=u.id),
+        'liveTeaching',admin_control_private.live_teaching(u.id),
+        'activeCounselling',(select count(*) from public.counsellor_assignments ca where ca.counsellor_id=u.id and ca.ended_at is null),
         'createdAt',u.created_at) item
       from public.app_users u join auth.users a on a.id=u.auth_user_id
       where not u.is_demo and (
@@ -283,6 +294,15 @@ alter table public.cohorts
   add column capacity integer
     constraint cohorts_capacity_check check (capacity is null or capacity between 1 and 10000),
   add constraint cohorts_ends_after_start check (ends_on is null or ends_on>=starts_on);
+
+-- Live delivery relationships that still need this instructor.
+create function admin_control_private.live_teaching(p_user_id uuid) returns bigint
+language sql stable security definer set search_path='' as $$
+  select (select count(*) from public.course_activations a join public.cohorts c on c.id=a.cohort_id
+          where a.instructor_id=p_user_id and c.status<>'COMPLETED')
+       + (select count(*) from public.class_sessions s join public.cohorts c on c.id=s.cohort_id
+          where s.instructor_id=p_user_id and s.status='SCHEDULED' and c.status<>'COMPLETED')
+$$;
 
 -- Applies to every writer, including privileged ones: identity and
 -- curriculum version never move, lifecycle only moves forward (plus an
@@ -307,14 +327,39 @@ end $$;
 create trigger guard_cohort_lifecycle before update on public.cohorts
 for each row execute function admin_control_private.guard_cohort();
 
--- New enrolments need an OPEN cohort with a free seat. A learner's still-
--- PENDING commercial order is honoured: orders can only be created while
--- the cohort was OPEN with a free seat (guard below), and refusing a paid
--- fulfilment would roll back its payment evidence. An idempotent replay of
--- an existing enrolment is left to the caller's ON CONFLICT handling.
+-- Verified paid fulfilment marker. fulfill_commercial_v1_order (migration
+-- 034) is the ONLY writer of commercial_v1_payment_events, and it writes a
+-- row only after its signed (HMAC) payment claim verified and the session,
+-- amount and currency matched the order -- and before its enrolment insert.
+-- This AFTER trigger turns that verified PAID evidence into a transaction-
+-- local marker naming the order. A failed or duplicate insert never fires
+-- it, and the marker ends with the transaction, so an ordinary admin
+-- enrolment (its own transaction) can never carry it. Any later change to
+-- fulfill_commercial_v1_order must keep recording PAID evidence before the
+-- enrolment insert (tests/admin-control-plane-db.test.ts enforces this).
+create function admin_control_private.mark_verified_paid_order() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if NEW.status='PAID' then
+    perform set_config('admin_control.verified_paid_order',NEW.order_id::text,true);
+  end if;
+  return NEW;
+end $$;
+create trigger mark_verified_paid_order after insert on public.commercial_v1_payment_events
+for each row execute function admin_control_private.mark_verified_paid_order();
+
+-- New enrolments need an OPEN cohort with a free seat. The only exception
+-- is verified paid fulfilment of an order that began while the cohort was
+-- OPEN with a free seat (orders cannot be created otherwise, guard below):
+-- refusing it would roll back the verified payment evidence. The exception
+-- requires BOTH this transaction's verified-payment marker for an order of
+-- this exact learner, cohort and version AND durable PAID evidence matching
+-- that order's session, amount and currency. A pending, unpaid checkout
+-- grants nothing. An idempotent replay of an existing enrolment is left to
+-- the caller's ON CONFLICT handling.
 create function admin_control_private.guard_cohort_enrolment() returns trigger
 language plpgsql security definer set search_path='' as $$
-declare c public.cohorts; seats bigint;
+declare c public.cohorts; seats bigint; marker text;
 begin
   if exists(select 1 from public.enrolments where student_id=NEW.student_id and cohort_id=NEW.cohort_id) then
     return NEW;
@@ -324,8 +369,15 @@ begin
   select * into c from public.cohorts where id=NEW.cohort_id for share;
   if not found then return NEW; end if;
   perform pg_advisory_xact_lock(44,hashtext(NEW.cohort_id::text));
-  if exists(select 1 from public.commercial_v1_orders o
-    where o.learner_id=NEW.student_id and o.cohort_id=NEW.cohort_id and o.state='PENDING') then
+  marker := current_setting('admin_control.verified_paid_order',true);
+  if marker ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' and exists(
+    select 1 from public.commercial_v1_orders o
+    where o.id=marker::uuid and o.learner_id=NEW.student_id and o.cohort_id=NEW.cohort_id
+      and o.programme_version_id=NEW.programme_version_id and o.state='PENDING'
+      and exists(select 1 from public.commercial_v1_payment_events pe
+        where pe.order_id=o.id and pe.status='PAID' and pe.session_id=o.provider_session_id
+          and pe.amount_minor=o.amount_minor and pe.currency=o.currency)
+  ) then
     return NEW;
   end if;
   if c.status<>'OPEN' then raise exception 'COHORT_NOT_OPEN'; end if;
@@ -388,6 +440,80 @@ begin
     raise exception 'INVALID_INPUT';
   end if;
   return trim(p_title);
+end $$;
+
+-- A DEACTIVATED account keeps its grants for history and reactivation but
+-- must never become a NEW teaching or counselling target. Applies to every
+-- writer. Existing relationships are never rewritten by deactivation; they
+-- stay intact and are surfaced on the People page for reassignment.
+create function admin_control_private.guard_active_staff_target() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare target uuid := (to_jsonb(NEW)->>TG_ARGV[0])::uuid;
+begin
+  if TG_OP='UPDATE' and target is not distinct from (to_jsonb(OLD)->>TG_ARGV[0])::uuid then
+    return NEW;
+  end if;
+  if exists(select 1 from public.app_users where id=target and account_status<>'ACTIVE') then
+    raise exception 'STAFF_DEACTIVATED';
+  end if;
+  return NEW;
+end $$;
+create trigger guard_active_instructor before insert or update of instructor_id on public.course_activations
+for each row execute function admin_control_private.guard_active_staff_target('instructor_id');
+create trigger guard_active_instructor before insert or update of instructor_id on public.class_sessions
+for each row execute function admin_control_private.guard_active_staff_target('instructor_id');
+create trigger guard_active_instructor before insert or update of instructor_id on public.assignments
+for each row execute function admin_control_private.guard_active_staff_target('instructor_id');
+create trigger guard_active_instructor before insert or update of instructor_id on public.assessments
+for each row execute function admin_control_private.guard_active_staff_target('instructor_id');
+create trigger guard_active_counsellor before insert or update of counsellor_id on public.counsellor_assignments
+for each row execute function admin_control_private.guard_active_staff_target('counsellor_id');
+
+-- Bounded pickers used by existing admin workflows offer ACTIVE staff only
+-- (same signatures, authority and ordering as migrations 008/009/027).
+create or replace function public.list_assignable_counsellors()
+returns table(user_id uuid, display_name text, title text)
+language sql stable security definer set search_path='' as $$
+  select s.user_id, u.display_name, s.title
+  from public.staff_profiles s
+  join public.app_users u on u.id = s.user_id
+  join public.role_grants r on r.user_id = s.user_id and r.role = 'COUNSELLOR'
+  where public.current_app_user() is not null
+    and (
+      public.has_role('ACADEMIC_ADMIN') or
+      public.has_role('PLATFORM_ADMIN')
+    )
+    and u.account_status = 'ACTIVE'
+  order by u.display_name, s.user_id
+$$;
+
+create or replace function public.list_assignable_instructors()
+returns table(user_id uuid, display_name text, title text)
+language sql stable security definer set search_path='' as $$
+  select s.user_id, u.display_name, s.title
+  from public.staff_profiles s
+  join public.app_users u on u.id = s.user_id
+  join public.role_grants r on r.user_id = s.user_id and r.role = 'INSTRUCTOR'
+  where public.current_app_user() is not null
+    and public.is_academic_admin()
+    and u.account_status = 'ACTIVE'
+  order by u.display_name, s.user_id
+$$;
+
+-- Also omits COMPLETED cohorts, which refuse activation.
+create or replace function public.get_course_activation_options(p_import_id uuid default null) returns jsonb language plpgsql security definer set search_path='' as $$
+declare imp public.course_package_imports; begin
+ perform course_activation_private.require_admin();
+ if p_import_id is not null then
+  select * into imp from public.course_package_imports where id=p_import_id and status in ('APPLIED','PUBLISHED') and exists(select 1 from public.programme_versions v where v.id=programme_version_id and v.status='PUBLISHED');
+  if not found then raise exception 'NOT_FOUND_OR_FORBIDDEN'; end if;
+ end if;
+ return jsonb_build_object(
+ 'packages',(select coalesce(jsonb_agg(v.item),'[]') from (select jsonb_build_object('id',i.id,'key',i.package_key,'revision',i.package_revision) item from public.course_package_imports i join public.programme_versions p on p.id=i.programme_version_id where i.status in ('APPLIED','PUBLISHED') and p.status='PUBLISHED' order by i.created_at desc,i.id limit 100) v),
+ 'cohorts',(select coalesce(jsonb_agg(v.item),'[]') from (select jsonb_build_object('id',c.id,'title',c.title) item from public.cohorts c where programme_version_id=imp.programme_version_id and c.status<>'COMPLETED' order by c.starts_on,c.id limit 200) v),
+ 'instructors',(select coalesce(jsonb_agg(v.item),'[]') from (select jsonb_build_object('id',s.user_id,'name',u.display_name) item from public.staff_profiles s join public.app_users u on u.id=s.user_id where exists(select 1 from public.role_grants g where g.user_id=s.user_id and g.role='INSTRUCTOR') and u.account_status='ACTIVE' order by u.display_name,s.user_id limit 200) v),
+ 'assignments',(select coalesce(jsonb_agg(jsonb_build_object('templateKey',x->>'key','title',x->>'title') order by x->>'key'),'[]') from jsonb_array_elements(imp.raw_package->'assignmentTemplates') x),
+ 'assessments',(select coalesce(jsonb_agg(jsonb_build_object('templateKey',x->>'key','title',x->>'title') order by x->>'key'),'[]') from jsonb_array_elements(imp.raw_package->'assessmentTemplates') x));
 end $$;
 
 -- ==========================================================================

@@ -97,6 +97,8 @@ function person(overrides: Partial<Person>): Person {
     staffTitle: "Instructor",
     isStudent: true,
     roles: ["STUDENT", "INSTRUCTOR"],
+    liveTeaching: 0,
+    activeCounselling: 0,
     createdAt: "2026-09-01T10:00:00+00:00",
     ...overrides,
   };
@@ -212,6 +214,23 @@ describe("People Server Actions surface governed outcomes", () => {
       p_reason: "Stepping down",
     });
     expect(state).toEqual({ error: adminRefusalMessages.LAST_PLATFORM_ADMIN });
+    expect(mocks.refresh).not.toHaveBeenCalled();
+  });
+
+  it("explains an INSTRUCTOR revocation refused for live delivery", async () => {
+    mocks.rpc.mockResolvedValue(rpcRefused("ACTIVE_TEACHING_ASSIGNMENTS"));
+    const state = await revokeRoleAction(
+      {},
+      form({ userId: STAFF, role: "INSTRUCTOR", reason: "Leaving teaching" }),
+    );
+    expect(mocks.rpc).toHaveBeenCalledWith("admin_revoke_role", {
+      p_user_id: STAFF,
+      p_role: "INSTRUCTOR",
+      p_reason: "Leaving teaching",
+    });
+    expect(state).toEqual({
+      error: adminRefusalMessages.ACTIVE_TEACHING_ASSIGNMENTS,
+    });
     expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
@@ -390,6 +409,29 @@ describe("People page and controls", () => {
     const revoke = html.slice(html.indexOf("Revoke a staff role"));
     expect(revoke).toContain('value="INSTRUCTOR"');
     expect(revoke).not.toContain('value="PLATFORM_ADMIN"');
+  });
+
+  it("surfaces a deactivated account's kept relationships for reassignment", () => {
+    const html = renderToStaticMarkup(
+      createElement(PersonControls, {
+        person: person({
+          accountStatus: "DEACTIVATED",
+          liveTeaching: 2,
+          activeCounselling: 1,
+        }),
+        isSelf: false,
+      }),
+    );
+    expect(html).toContain("2 live");
+    expect(html).toContain("1 active counselling");
+    expect(html).toContain("reassign them");
+    const active = renderToStaticMarkup(
+      createElement(PersonControls, {
+        person: person({ liveTeaching: 2 }),
+        isSelf: false,
+      }),
+    );
+    expect(active).not.toContain("reassign them");
   });
 
   it("offers reactivation, and nothing else, for a deactivated account", () => {

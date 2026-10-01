@@ -210,8 +210,17 @@ export function PersonControls({
   const revocable = held.filter(
     (role) => !(isSelf && role === "PLATFORM_ADMIN"),
   );
+  const dependants = person.liveTeaching + person.activeCounselling;
   return (
     <div className="admin-person-controls">
+      {!active && dependants > 0 && (
+        <p className="notice error" role="status">
+          This deactivated account still has {person.liveTeaching} live teaching
+          and {person.activeCounselling} active counselling relationship
+          {dependants === 1 ? "" : "s"}. They are kept intact; reassign them
+          through the class session and counsellor workflows.
+        </p>
+      )}
       {active ? (
         <StaffProfileForm person={person} />
       ) : (

@@ -51,6 +51,12 @@ export const personSchema = z.strictObject({
   staffTitle: z.string().nullable(),
   isStudent: z.boolean(),
   roles: z.array(roleSchema),
+  // Live relationships that still depend on this person: activations of
+  // not-completed cohorts plus scheduled class sessions, and active
+  // counsellor assignments. Surfaced so a deactivated person's existing
+  // relationships can be reassigned; deactivation never rewrites them.
+  liveTeaching: z.number().int().nonnegative(),
+  activeCounselling: z.number().int().nonnegative(),
   createdAt: z.string(),
 });
 export type Person = z.infer<typeof personSchema>;
@@ -180,6 +186,10 @@ export const adminRefusalMessages = {
     "Refused: you cannot remove your own platform administration or deactivate your own account. Ask another platform administrator.",
   ACTIVE_COUNSELLOR_ASSIGNMENTS:
     "Refused: this counsellor still has assigned learners. Reassign them before revoking the role.",
+  ACTIVE_TEACHING_ASSIGNMENTS:
+    "Refused: this instructor still teaches live delivery (an activated cohort that is not completed, or a scheduled class session). Reassign the sessions or complete the cohort first.",
+  STAFF_DEACTIVATED:
+    "Refused: a deactivated account cannot be given new teaching or counselling assignments.",
   VERSION_NOT_FOUND: "That programme version does not exist.",
   VERSION_NOT_PUBLISHED:
     "Cohorts can only be created for a published programme version.",

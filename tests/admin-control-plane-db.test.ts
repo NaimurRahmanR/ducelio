@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
 import { testDatabase } from "./db-helper";
@@ -925,7 +925,9 @@ describe("governed cohort lifecycle (migration 044)", () => {
   });
 });
 
-describe("cohort lifecycle against real commerce and activation (migration 044)", () => {
+describe("cohort guards against real commerce: only verified paid fulfilment may enter a closed or full cohort (migration 044)", () => {
+  const publish =
+    "select public.publish_commercial_v1_offer($1,$2,19900,'GBP','Introductory offer','Publish the cohort offer') as v";
   async function cohortStatus(cohortId: string, next: string, reason: string) {
     await asPolicyUser(db, 2);
     const result = await value<Record<string, unknown>>(
@@ -935,14 +937,92 @@ describe("cohort lifecycle against real commerce and activation (migration 044)"
     await owner();
     return result;
   }
-  const publish =
-    "select public.publish_commercial_v1_offer($1,$2,19900,'GBP','Introductory offer','Publish the cohort offer') as v";
+  async function installKey() {
+    await owner();
+    const keyId = randomUUID();
+    const key = randomBytes(32);
+    await db.query(
+      "select commercial_v1_commerce_private.install_controller_key($1,$2::bytea)",
+      [keyId, key],
+    );
+    return { keyId, key };
+  }
+  // The signed fulfilment claim exactly as the Stripe webhook / success-page
+  // reconciliation sends it (canonical HMAC protocol of migration 034).
+  function claim(
+    k: { keyId: string; key: Buffer },
+    orderId: string,
+    status: "PAID" | "UNPAID",
+    sessionId: string,
+    eventId = "evt_test_" + randomUUID(),
+  ) {
+    const now = Math.floor(Date.now() / 1000);
+    const canonical = [
+      "DUCELIO_COMMERCE_FULFILLMENT_HMAC_SHA256_V1",
+      "COMMERCIAL_V1_COMMERCE_V1",
+      k.keyId.toLowerCase(),
+      "STRIPE",
+      orderId.toLowerCase(),
+      sessionId,
+      eventId,
+      "19900",
+      "GBP",
+      status,
+      String(now),
+      String(now + 60),
+    ].join("\n");
+    return [
+      k.keyId,
+      orderId,
+      "STRIPE",
+      sessionId,
+      eventId,
+      19900,
+      "GBP",
+      status,
+      now,
+      now + 60,
+      createHmac("sha256", k.key).update(canonical, "utf8").digest("hex"),
+    ];
+  }
+  async function fulfil(args: unknown[]) {
+    await owner();
+    await db.query("select set_config('request.jwt.claim.sub','',false)");
+    await db.exec("set role anon");
+    const result = await value<Record<string, unknown>>(
+      "select public.fulfill_commercial_v1_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) as v",
+      args,
+    );
+    await owner();
+    return result;
+  }
+  async function order(slug: string) {
+    await asPolicyUser(db, 1);
+    const result = await value<{ ok: boolean; orderId: string }>(
+      "select public.create_commercial_v1_order($1) as v",
+      [slug],
+    );
+    await owner();
+    expect(result!.ok).toBe(true);
+    return result!.orderId;
+  }
+  async function enrolmentCount(cohortId: string) {
+    await owner();
+    return value<number>(
+      "select count(*)::int as v from public.enrolments where cohort_id=$1",
+      [cohortId],
+    );
+  }
+  const adminEnrol =
+    "select public.create_enrolment($1,$2,'Approved learner registration') as v";
+  const directEnrol =
+    "insert into public.enrolments(student_id,cohort_id,programme_version_id) values($1,$2,$3)";
 
   afterAll(async () => {
     await db?.close();
   });
 
-  it("closing archives the published offer, refuses new orders and offers, and honours a pending order", async () => {
+  it("closing archives the published offer, refuses new orders and offers, and a pending unpaid order grants nothing", async () => {
     const f = await buildCommerceFixture({ throughMigration: 9999 });
     db = f.db;
     await asPolicyUser(db, 2);
@@ -950,20 +1030,10 @@ describe("cohort lifecycle against real commerce and activation (migration 044)"
       f.activationId,
       "cohort-close-offer",
     ]);
-    // A learner starts checkout while the cohort is OPEN.
-    await asPolicyUser(db, 1);
-    const pending = await value<{ ok: boolean; orderId: string }>(
-      "select public.create_commercial_v1_order('cohort-close-offer') as v",
-    );
-    expect(pending!.ok).toBe(true);
-    await owner();
-
-    const closed = await cohortStatus(f.cohortId, "CLOSED", "Intake closed");
-    expect(closed).toMatchObject({
-      status: "CLOSED",
-      archivedOfferIds: [offerId],
-    });
-    await owner();
+    const pendingOrder = await order("cohort-close-offer");
+    expect(
+      await cohortStatus(f.cohortId, "CLOSED", "Intake closed"),
+    ).toMatchObject({ status: "CLOSED", archivedOfferIds: [offerId] });
     expect(
       await value(
         "select state as v from public.commercial_v1_offers where id=$1",
@@ -976,8 +1046,6 @@ describe("cohort lifecycle against real commerce and activation (migration 044)"
         [offerId],
       ),
     ).toBe(1);
-
-    // No new offer or order for a closed cohort, even with privileged writes.
     await asPolicyUser(db, 2);
     await refused(
       publish,
@@ -997,32 +1065,132 @@ describe("cohort lifecycle against real commerce and activation (migration 044)"
         ],
       ),
     ).rejects.toThrow("COHORT_NOT_OPEN");
-    // Without a pending order, a new enrolment is refused...
-    await expect(
-      db.query(
-        "insert into public.enrolments(student_id,cohort_id,programme_version_id) values($1,$2,$3)",
-        [commerceForeignLearner, f.cohortId, f.programmeVersionId],
-      ),
-    ).rejects.toThrow("COHORT_NOT_OPEN");
-    // ...but the learner whose checkout began while OPEN is still honoured
-    // (the fulfilment path's enrolment insert), so paid evidence never rolls back.
-    await db.query(
-      "insert into public.enrolments(student_id,cohort_id,programme_version_id) values($1,$2,$3)",
-      [commerceLearner, f.cohortId, f.programmeVersionId],
-    );
 
-    // A CLOSED cohort is completed; a completed cohort refuses activation.
-    await cohortStatus(f.cohortId, "COMPLETED", "Course delivered");
+    // PENDING unpaid order + CLOSED cohort: the ordinary admin enrolment is
+    // refused, and so is any privileged direct insert.
+    await asPolicyUser(db, 2);
+    await refused(adminEnrol, [commerceLearner, f.cohortId], "COHORT_NOT_OPEN");
+    await owner();
+    await expect(
+      db.query(directEnrol, [
+        commerceLearner,
+        f.cohortId,
+        f.programmeVersionId,
+      ]),
+    ).rejects.toThrow("COHORT_NOT_OPEN");
+
+    // The marker alone is worthless without durable verified PAID evidence.
+    await db.exec("begin");
+    await db.query(
+      "select set_config('admin_control.verified_paid_order',$1,true)",
+      [pendingOrder],
+    );
+    await expect(
+      db.query(directEnrol, [
+        commerceLearner,
+        f.cohortId,
+        f.programmeVersionId,
+      ]),
+    ).rejects.toThrow("COHORT_NOT_OPEN");
+    await db.exec("rollback");
+
+    // A verified but UNPAID claim records evidence and still grants nothing.
+    const k = await installKey();
     expect(
-      await value(
-        "select count(*)::int as v from public.enrolments where cohort_id=$1",
-        [f.cohortId],
-      ),
-    ).toBe(1);
-    expect(administrator).toBeTruthy();
+      await fulfil(claim(k, pendingOrder, "UNPAID", "cs_test_" + randomUUID())),
+    ).toMatchObject({ ok: true, fulfilled: false, code: "NOT_PAID" });
+    await asPolicyUser(db, 2);
+    await refused(adminEnrol, [commerceLearner, f.cohortId], "COHORT_NOT_OPEN");
+    expect(await enrolmentCount(f.cohortId)).toBe(0);
   });
 
-  it("a completed cohort refuses a new activation", async () => {
+  it("verified PAID fulfilment of an order begun while OPEN completes after close, idempotently, and grants nobody else", async () => {
+    await owner();
+    const pending = (
+      await db.query<{
+        id: string;
+        provider_session_id: string;
+        cohort_id: string;
+        programme_version_id: string;
+      }>(
+        "select id,provider_session_id,cohort_id,programme_version_id from public.commercial_v1_orders where learner_id=$1 and state='PENDING'",
+        [commerceLearner],
+      )
+    ).rows[0];
+    const k = await installKey();
+    const paid = claim(k, pending.id, "PAID", pending.provider_session_id);
+    const first = await fulfil(paid);
+    expect(first).toMatchObject({ ok: true, fulfilled: true, replay: false });
+    expect(await enrolmentCount(pending.cohort_id)).toBe(1);
+    expect(
+      await value(
+        "select count(*)::int as v from public.commercial_v1_entitlements where order_id=$1",
+        [pending.id],
+      ),
+    ).toBe(1);
+    // Idempotent replay of the same verified event.
+    expect(await fulfil(paid)).toMatchObject({
+      ok: true,
+      fulfilled: true,
+      replay: true,
+      enrolmentId: first!.enrolmentId,
+    });
+    expect(await enrolmentCount(pending.cohort_id)).toBe(1);
+    // A verified order never transfers to an unrelated learner.
+    await owner();
+    await db.exec("begin");
+    await db.query(
+      "select set_config('admin_control.verified_paid_order',$1,true)",
+      [pending.id],
+    );
+    await expect(
+      db.query(directEnrol, [
+        commerceForeignLearner,
+        pending.cohort_id,
+        pending.programme_version_id,
+      ]),
+    ).rejects.toThrow("COHORT_NOT_OPEN");
+    await db.exec("rollback");
+    // The marker is transaction-local: nothing lingers for a later admin call.
+    await asPolicyUser(db, 2);
+    await refused(
+      adminEnrol,
+      [commerceForeignLearner, pending.cohort_id],
+      "COHORT_NOT_OPEN",
+    );
+    await cohortStatus(pending.cohort_id, "COMPLETED", "Course delivered");
+    expect(await enrolmentCount(pending.cohort_id)).toBe(1);
+  });
+
+  it("a full cohort refuses an unpaid learner but honours verified paid fulfilment begun with a free seat", async () => {
+    await db.close();
+    const f = await buildCommerceFixture({ throughMigration: 9999 });
+    db = f.db;
+    const cohort = (
+      await db.query<{ title: string; starts_on: string }>(
+        "select title,starts_on::text from public.cohorts where id=$1",
+        [f.cohortId],
+      )
+    ).rows[0];
+    await asPolicyUser(db, 2);
+    await value(
+      "select public.admin_update_cohort($1,$2,$3::date,null,1,'One seat only') as v",
+      [f.cohortId, cohort.title, cohort.starts_on],
+    );
+    await value(publish, [f.activationId, "one-seat-offer"]);
+    const pendingOrder = await order("one-seat-offer");
+    // The one seat is taken by another learner after checkout began.
+    await asPolicyUser(db, 2);
+    await value(adminEnrol, [commerceForeignLearner, f.cohortId]);
+    await refused(adminEnrol, [commerceLearner, f.cohortId], "COHORT_FULL");
+    const k = await installKey();
+    expect(
+      await fulfil(claim(k, pendingOrder, "PAID", "cs_test_" + randomUUID())),
+    ).toMatchObject({ ok: true, fulfilled: true });
+    expect(await enrolmentCount(f.cohortId)).toBe(2);
+  });
+
+  it("a completed cohort refuses a new activation and is omitted from activation options", async () => {
     await owner();
     const cohort = await value<string>(
       "insert into public.cohorts(programme_version_id,title,starts_on) select programme_version_id,'Completed before activation',current_date from public.course_activations limit 1 returning id as v",
@@ -1039,6 +1207,237 @@ describe("cohort lifecycle against real commerce and activation (migration 044)"
         [cohort],
       ),
     ).rejects.toThrow("COHORT_COMPLETED");
+    const importId = await value<string>(
+      "select import_id as v from public.course_activations limit 1",
+    );
+    await asPolicyUser(db, 2);
+    const options = await value<{ cohorts: Array<{ id: string }> }>(
+      "select public.get_course_activation_options($1) as v",
+      [importId],
+    );
+    expect(options!.cohorts.map((c) => c.id)).not.toContain(cohort);
+  });
+});
+
+describe("deactivated staff are never new targets, and INSTRUCTOR revocation keeps live delivery (migration 044)", () => {
+  let f: Awaited<ReturnType<typeof buildCommerceFixture>>;
+  let platform: { auth: string; id: string };
+  let teacher: { auth: string; id: string };
+  let supporter: { auth: string; id: string };
+  let lessonId: string;
+  let sessionId: string;
+  const day = 24 * 3600_000;
+  const createSession =
+    "select public.create_class_session($1,$2,$3,$4::timestamptz,$5::timestamptz,'Scheduled lesson') as v";
+  const assign =
+    "select public.assign_counsellor($1,$2,'Counsellor assignment') as v";
+  const instructors =
+    "select coalesce(jsonb_agg(user_id),'[]') as v from public.list_assignable_instructors()";
+  const counsellors =
+    "select coalesce(jsonb_agg(user_id),'[]') as v from public.list_assignable_counsellors()";
+  function slot(n: number) {
+    const start = Date.now() + (n + 2) * day;
+    return [
+      new Date(start).toISOString(),
+      new Date(start + 3600_000).toISOString(),
+    ];
+  }
+  async function asAcademic() {
+    await asPolicyUser(db, 2);
+  }
+
+  beforeAll(async () => {
+    f = await buildCommerceFixture({ throughMigration: 9999 });
+    db = f.db;
+    platform = await signUp("Pia Platform");
+    teacher = await signUp("Theo Teacher");
+    supporter = await signUp("Sol Supporter");
+    await owner();
+    await db.query("insert into public.staff_profiles values($1,'Owner')", [
+      platform.id,
+    ]);
+    await db.query(
+      "insert into public.role_grants values($1,'PLATFORM_ADMIN')",
+      [platform.id],
+    );
+    await as(platform.auth);
+    for (const [who, role] of [
+      [teacher, "INSTRUCTOR"],
+      [supporter, "COUNSELLOR"],
+    ] as const) {
+      await value(profile, [who.id, role, "Staff appointment"]);
+      await value(grant, [who.id, role, "Staff appointment"]);
+    }
+    await owner();
+    lessonId = (await value<string>(
+      "select id as v from public.lessons where programme_version_id=$1 order by position limit 1",
+      [f.programmeVersionId],
+    ))!;
+  });
+  afterAll(async () => {
+    await db?.close();
+  });
+
+  it("accepts an ACTIVE qualified instructor and counsellor, and offers them in pickers", async () => {
+    await asAcademic();
+    sessionId = (await value<string>(createSession, [
+      f.cohortId,
+      lessonId,
+      teacher.id,
+      ...slot(0),
+    ]))!;
+    expect(sessionId).toBeTruthy();
+    expect(await value(assign, [commerceLearner, supporter.id])).toBeTruthy();
+    expect(await value(instructors)).toContain(teacher.id);
+    expect(await value(counsellors)).toContain(supporter.id);
+  });
+
+  it("refuses a DEACTIVATED instructor or counsellor as a new target while keeping existing relationships", async () => {
+    await as(platform.auth);
+    for (const who of [teacher, supporter])
+      await value(status, [who.id, "DEACTIVATED", "Emergency deactivation"]);
+    await owner();
+    // Existing relationships survive untouched.
+    expect(
+      (
+        await db.query(
+          "select instructor_id,status from public.class_sessions where id=$1",
+          [sessionId],
+        )
+      ).rows[0],
+    ).toEqual({ instructor_id: teacher.id, status: "SCHEDULED" });
+    expect(
+      await value(
+        "select count(*)::int as v from public.counsellor_assignments where counsellor_id=$1 and ended_at is null",
+        [supporter.id],
+      ),
+    ).toBe(1);
+    // New targets are refused by the database through the governed RPCs...
+    await asAcademic();
+    await refused(
+      createSession,
+      [f.cohortId, lessonId, teacher.id, ...slot(1)],
+      "STAFF_DEACTIVATED",
+    );
+    await refused(
+      assign,
+      [commerceForeignLearner, supporter.id],
+      "STAFF_DEACTIVATED",
+    );
+    // ...and for every writer, including a new course activation.
+    await owner();
+    const spare = await value<string>(
+      "insert into public.cohorts(programme_version_id,title,starts_on) values($1,'Spare cohort',current_date+30) returning id as v",
+      [f.programmeVersionId],
+    );
+    await expect(
+      db.query(
+        "insert into public.course_activations(import_id,programme_version_id,cohort_id,instructor_id,request_hash,created_by) select import_id,programme_version_id,$1,$2,repeat('b',64),created_by from public.course_activations limit 1",
+        [spare, teacher.id],
+      ),
+    ).rejects.toThrow("STAFF_DEACTIVATED");
+    // Pickers no longer offer them.
+    await asAcademic();
+    expect(await value(instructors)).not.toContain(teacher.id);
+    expect(await value(counsellors)).not.toContain(supporter.id);
+    const options = await value<{ instructors: Array<{ id: string }> }>(
+      "select public.get_course_activation_options($1) as v",
+      [f.importId],
+    );
+    expect(options!.instructors.map((i) => i.id)).not.toContain(teacher.id);
+    // The People directory surfaces what needs reassignment.
+    await as(platform.auth);
+    const people = await value<{
+      people: Array<{
+        id: string;
+        liveTeaching: number;
+        activeCounselling: number;
+      }>;
+    }>("select public.admin_list_people(null) as v");
+    expect(people!.people.find((p) => p.id === teacher.id)).toMatchObject({
+      liveTeaching: 1,
+    });
+    expect(people!.people.find((p) => p.id === supporter.id)).toMatchObject({
+      activeCounselling: 1,
+    });
+  });
+
+  it("reactivation restores eligibility", async () => {
+    await as(platform.auth);
+    for (const who of [teacher, supporter])
+      await value(status, [who.id, "ACTIVE", "Returned to duty"]);
+    await asAcademic();
+    expect(
+      await value(createSession, [
+        f.cohortId,
+        lessonId,
+        teacher.id,
+        ...slot(2),
+      ]),
+    ).toBeTruthy();
+    expect(
+      await value(assign, [commerceForeignLearner, supporter.id]),
+    ).toBeTruthy();
+    expect(await value(instructors)).toContain(teacher.id);
+    expect(await value(counsellors)).toContain(supporter.id);
+  });
+
+  it("refuses INSTRUCTOR revocation while live delivery needs the instructor, without writing audit", async () => {
+    await owner();
+    const auditBefore = await value<number>(
+      "select count(*)::int as v from public.audit_events",
+    );
+    await as(platform.auth);
+    // Scheduled class sessions.
+    await refused(
+      revoke,
+      [teacher.id, "INSTRUCTOR", "Leaving teaching"],
+      "ACTIVE_TEACHING_ASSIGNMENTS",
+    );
+    // The activation instructor of a not-yet-completed cohort.
+    await refused(
+      revoke,
+      [administrator, "INSTRUCTOR", "Leaving teaching"],
+      "ACTIVE_TEACHING_ASSIGNMENTS",
+    );
+    await owner();
+    expect(
+      await value<number>("select count(*)::int as v from public.audit_events"),
+    ).toBe(auditBefore);
+    expect(
+      await value(
+        "select count(*)::int as v from public.role_grants where user_id = any($1) and role='INSTRUCTOR'",
+        [[teacher.id, administrator]],
+      ),
+    ).toBe(2);
+  });
+
+  it("permits INSTRUCTOR revocation once the delivery is completed history, and audits it", async () => {
+    await asAcademic();
+    for (const next of ["CLOSED", "COMPLETED"])
+      await value(
+        "select public.admin_change_cohort_status($1,$2,'Delivery finished') as v",
+        [f.cohortId, next],
+      );
+    await as(platform.auth);
+    for (const who of [teacher.id, administrator])
+      expect(
+        await value(revoke, [who, "INSTRUCTOR", "Teaching appointment ended"]),
+      ).toMatchObject({ changed: true });
+    await owner();
+    expect(
+      await value(
+        "select count(*)::int as v from public.audit_events where target_type='role_grants' and action='DELETE' and target_id = any($1) and reason='Teaching appointment ended'",
+        [[teacher.id, administrator]],
+      ),
+    ).toBe(2);
+    // Teaching history stays intact.
+    expect(
+      await value(
+        "select count(*)::int as v from public.class_sessions where instructor_id=$1",
+        [teacher.id],
+      ),
+    ).toBe(2);
   });
 });
 

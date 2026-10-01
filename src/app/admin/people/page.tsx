@@ -104,6 +104,10 @@ export default async function Page({
                     {person.roles.length
                       ? person.roles.map(roleName).join(", ")
                       : "No roles"}
+                    {person.liveTeaching > 0 &&
+                      ` · ${person.liveTeaching} live teaching`}
+                    {person.activeCounselling > 0 &&
+                      ` · ${person.activeCounselling} assigned learners`}
                   </div>
                 </summary>
                 <PersonControls
