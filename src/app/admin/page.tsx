@@ -83,6 +83,7 @@ export default async function Page({
       name={data.actor.displayName}
       section={section}
       sections={sections}
+      roles={data.actor.roles}
     >
       <AdminWorkspace
         section={section}

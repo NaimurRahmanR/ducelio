@@ -3,13 +3,11 @@
 //
 //   seedAcceptanceCourse()  -- builds a real course through the SAME
 //     governed, non-HMAC RPCs the application itself calls (import/
-//     validate/apply/test/publish/activate/enrol/bind/publish policy).
-//     A cohort row is the one exception (see that function's own header
-//     comment): no migration through 2609250042 grants `authenticated`
-//     INSERT on public.cohorts, so a real hosted ACCEPTANCE_ADMIN cannot
-//     create one via PostgREST at all -- it is created directly, gated,
-//     through the same privileged acceptance-only connection every other
-//     direct mutation in this harness uses, never a production grant.
+//     validate/apply/test/publish/activate/enrol/bind/publish policy),
+//     including the cohort itself: migration 202610010044's governed
+//     admin_create_cohort RPC (ACADEMIC_ADMIN/PLATFORM_ADMIN) replaced the
+//     earlier privileged direct-SQL cohort insert that existed only
+//     because no product cohort-creation authority did.
 //
 
 //   seedAcceptanceResult()  -- a DEDICATED, explicitly-labelled acceptance
@@ -307,14 +305,16 @@ export function buildAcceptancePackage(runId, options = {}) {
  * resolving the correct id internally, once, from the one identifier every
  * caller actually already has.
  *
- * Independent-review finding (this pass, blocker): cohorts, and the
- * course_practicals/course_assessment_bindings tables read further below,
- * cannot be reached this way at all by a real hosted ACCEPTANCE_ADMIN
+ * Cohort creation: public.cohorts grants `authenticated` SELECT only, so a
+ * direct `.from("cohorts").insert(...)` is (correctly) rejected. Migration
+ * 202610010044 added the governed admin_create_cohort RPC -- the same
+ * authority the /admin/cohorts product surface uses -- so the cohort is now
+ * created through it as the acceptance admin, with no privileged SQL.
+ *
+ * Independent-review finding (this pass, blocker): the
+ * course_practicals/course_assessment_bindings tables read further below
+ * cannot be reached through PostgREST by a real hosted ACCEPTANCE_ADMIN
  * using the publishable-key authenticated client:
- *   - public.cohorts: migration 2609080001 revokes all access from
- *     `authenticated`; migration 2609080003 grants only SELECT, with only
- *     a SELECT policy -- no later migration through 2609250042 grants
- *     INSERT. A direct `.from("cohorts").insert(...)` would be rejected.
  *   - public.course_practicals / public.course_assessment_bindings:
  *     migration 2609140027 is stricter still -- its own self-verifying DO
  *     block explicitly revokes EVERY privilege (including column-level)
@@ -323,16 +323,9 @@ export function buildAcceptancePackage(runId, options = {}) {
  *     PostgREST.
  * None of that may be worked around with a production grant or a weaker
  * RLS policy (this harness never weakens production constraints to make
- * acceptance pass). Since this IS acceptance-fixture setup, the cohort is
- * instead created through the SAME privileged, gated, acceptance-only
- * direct PostgreSQL path every other direct mutation in this harness uses
- * (withAcceptanceWriteConnection -- both the direct-database gate and,
- * because assertAcceptanceSupabaseWriteAuthorized above already ran first,
- * the Supabase same-environment gate are proven before this or any other
- * write), narrowly scoped to exactly one cohort row for this run, under
- * the governed programme version apply_course_package already returned.
- * course_practicals/course_assessment_bindings are read back the same
- * way -- a plain read needs no gate, only ACCEPTANCE_DATABASE_URL.
+ * acceptance pass). course_practicals/course_assessment_bindings are
+ * therefore read back through the acceptance-only direct PostgreSQL
+ * connection -- a plain read needs no gate, only ACCEPTANCE_DATABASE_URL.
  *
  * Independent-review finding (this pass): instructor discovery previously
  * used `.from("staff_profiles").select("user_id, role_grants!inner(role)")`
@@ -534,18 +527,17 @@ export async function seedAcceptanceCourse(
     p_reason: "Acceptance course publish",
   });
 
-  // Direct, gated, acceptance-only insert -- see the function header for
-  // why cohorts cannot be created via PostgREST here. Narrowly scoped to
-  // exactly one cohort row for this run, under the governed programme
-  // version apply_course_package just returned.
-  const cohortId = await withAcceptanceWriteConnection(async (client) => {
-    const id = randomUUID();
-    await client.query(
-      `insert into cohorts(id, programme_version_id, title, starts_on)
-       values($1, $2, $3, current_date)`,
-      [id, programmeVersionId, `Acceptance cohort ${runId}`],
-    );
-    return id;
+  // The governed product authority (migration 202610010044), exactly as
+  // /admin/cohorts calls it: one OPEN cohort for this run, starting today
+  // (UTC), under the governed programme version apply_course_package just
+  // returned. No privileged SQL.
+  const cohortId = await call("admin_create_cohort", {
+    p_programme_version_id: programmeVersionId,
+    p_title: `Acceptance cohort ${runId}`,
+    p_starts_on: new Date().toISOString().slice(0, 10),
+    p_ends_on: null,
+    p_capacity: null,
+    p_reason: "Acceptance cohort creation",
   });
 
   // Independent-review finding (v4, this pass): every one of the six

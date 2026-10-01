@@ -5,19 +5,20 @@ import { logout } from "@/app/auth/actions";
 import type { ReactNode } from "react";
 import type { Role } from "@/domain/academy";
 
+// Workspace sections rendered inside /admin?section=. Cohorts and
+// Announcements were placeholders; Cohorts is now the real /admin/cohorts
+// control plane and Announcements is not implemented, so neither appears.
 export const adminSections = [
   "Overview",
   "Programmes",
   "Resources",
   "Students",
-  "Cohorts",
   "Counsellors",
   "Sessions",
   "Evidence",
   "Assignments",
   "Assessments",
   "Notifications",
-  "Announcements",
   "Registry",
   "Audit",
 ] as const;
@@ -36,6 +37,53 @@ export function adminSectionsForRoles(roles: Role[]) {
   return adminSections.filter((section) => allowed.has(section));
 }
 
+// Commercial V1 control-plane routes. Each entry is a real, implemented
+// route whose page enforces the same roles server-side (and whose database
+// RPCs enforce them again); the menu only aids discovery.
+export const adminControlRoutes = [
+  { label: "People", href: "/admin/people", roles: ["PLATFORM_ADMIN"] },
+  {
+    label: "Cohorts",
+    href: "/admin/cohorts",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    label: "Course Engineering",
+    href: "/admin/course-engineering",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    label: "Activation",
+    href: "/admin/activation",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    label: "Policy setup",
+    href: "/admin/activation/policy",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    label: "Grade recovery",
+    href: "/admin/activation/recovery",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
+    label: "Commerce",
+    href: "/admin/commerce",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+] as const satisfies readonly {
+  label: string;
+  href: string;
+  roles: readonly Role[];
+}[];
+
+export function adminControlRoutesForRoles(roles: Role[]) {
+  return adminControlRoutes.filter((route) =>
+    route.roles.some((role) => roles.includes(role)),
+  );
+}
+
 export function StaffShell({
   children,
   kind,
@@ -43,6 +91,7 @@ export function StaffShell({
   name,
   section = "Overview",
   sections = adminSections,
+  roles = [],
 }: {
   children: ReactNode;
   kind: "admin" | "counsellor";
@@ -50,7 +99,9 @@ export function StaffShell({
   name: string;
   section?: string;
   sections?: readonly string[];
+  roles?: Role[];
 }) {
+  const controlRoutes = demo ? [] : adminControlRoutesForRoles(roles);
   const base = demo ? "/demo/admin" : "/admin";
   return (
     <div className="staff-app">
@@ -104,20 +155,44 @@ export function StaffShell({
           </div>
         )}
         {kind === "admin" && (
-          <nav className="staff-tabs" aria-label="Administration sections">
-            {sections.map((s) => (
-              <Link
-                key={s}
-                href={
-                  base + (s === "Overview" ? "" : "?section=" + s.toLowerCase())
-                }
-                className={s === section ? "selected" : ""}
-                aria-current={s === section ? "page" : undefined}
+          <div className="staff-nav">
+            <nav className="staff-tabs" aria-label="Administration sections">
+              {controlRoutes.length > 0 && (
+                <span className="staff-tabs-label">Academy records</span>
+              )}
+              {sections.map((s) => (
+                <Link
+                  key={s}
+                  href={
+                    base +
+                    (s === "Overview" ? "" : "?section=" + s.toLowerCase())
+                  }
+                  className={s === section ? "selected" : ""}
+                  aria-current={s === section ? "page" : undefined}
+                >
+                  {s}
+                </Link>
+              ))}
+            </nav>
+            {controlRoutes.length > 0 && (
+              <nav
+                className="staff-tabs"
+                aria-label="Commercial V1 control plane"
               >
-                {s}
-              </Link>
-            ))}
-          </nav>
+                <span className="staff-tabs-label">Control plane</span>
+                {controlRoutes.map((route) => (
+                  <Link
+                    key={route.href}
+                    href={route.href}
+                    className={route.label === section ? "selected" : ""}
+                    aria-current={route.label === section ? "page" : undefined}
+                  >
+                    {route.label}
+                  </Link>
+                ))}
+              </nav>
+            )}
+          </div>
         )}
         {children}
         <footer className="staff-footer">

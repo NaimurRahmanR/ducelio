@@ -1724,7 +1724,6 @@ describe("acceptance harness: seedAcceptanceCourse configures all five agent rol
             return { rows: [{ x: 1 }] };
           if (sql.includes("select 1 from public.staff_profiles"))
             return { rows: [{ x: 1 }] };
-          if (sql.includes("insert into cohorts(")) return { rows: [] };
           if (
             sql.includes(
               "select assessment_id, template_key from course_assessment_bindings",
@@ -1762,6 +1761,7 @@ describe("acceptance harness: seedAcceptanceCourse configures all five agent rol
         error: null,
       }),
       publish_course_package: () => ({ data: "import-1", error: null }),
+      admin_create_cohort: () => ({ data: "cohort-1", error: null }),
       activate_course_package: () => ({ data: "activation-1", error: null }),
       create_enrolment: () => ({ data: "enrolment-1", error: null }),
       bind_commercial_v1_assessment_component: () => ({
@@ -1966,91 +1966,121 @@ describe("acceptance harness: seedAcceptanceCourse configures all five agent rol
   });
 });
 
-describe("acceptance harness: hosted admin cannot write cohorts through PostgREST (independent-review finding 2, this pass, BLOCKER)", () => {
-  it('seedAcceptanceCourse no longer calls .from("cohorts").insert(...) through the authenticated client', async () => {
-    // Independent-review finding: migration 2609080001 revokes all
-    // cohorts access from `authenticated`; migration 2609080003 grants
-    // only SELECT with only a SELECT policy; no later migration through
-    // 2609250042 grants INSERT. A real hosted ACCEPTANCE_ADMIN cannot
-    // create a cohort via PostgREST.
+describe("acceptance harness: the cohort is created through the governed admin_create_cohort RPC, never privileged SQL (migration 202610010044)", () => {
+  afterEach(() => {
+    vi.doUnmock("pg");
+    vi.resetModules();
+  });
+
+  it("seedAcceptanceCourse issues no direct cohort write of any kind", async () => {
     const raw = await readFile(
       new URL("../scripts/acceptance/fixtures.mjs", import.meta.url),
       "utf8",
     );
-    // Strip block/line comments first -- the function's own JSDoc
-    // deliberately documents the OLD, rejected `.from("cohorts")` shape as
-    // prose explaining why it was removed, which would otherwise trip a
-    // naive substring check on the comment text itself, not the code.
+    // Comments are stripped: the header documents the removed shapes.
     const code = raw
       .replace(/\/\*[\s\S]*?\*\//g, "")
-      .split("\n")
+      .split(/\r?\n/)
       .filter((line) => !line.trim().startsWith("//"))
       .join("\n");
     expect(code).not.toContain('.from("cohorts")');
-    expect(code).not.toMatch(/from\("cohorts"\)\s*\.\s*insert/);
-    expect(code).toMatch(/insert into cohorts\(/);
-    expect(code).toContain("withAcceptanceWriteConnection(async (client) => {");
+    expect(code.toLowerCase()).not.toMatch(
+      /insert\s+into\s+(public\.)?cohorts/,
+    );
   });
 
-  it("the cohort insert runs on a connection gated by withAcceptanceWriteConnection, after the Supabase same-environment gate already ran", async () => {
-    const text = await readFile(
-      new URL("../scripts/acceptance/fixtures.mjs", import.meta.url),
-      "utf8",
-    );
-    const fnStart = text.indexOf("export async function seedAcceptanceCourse");
-    const cohortInsertIndex = text.indexOf("insert into cohorts(", fnStart);
-    const supabaseGateIndex = text.indexOf(
-      "assertAcceptanceSupabaseWriteAuthorized(admin)",
-      fnStart,
-    );
-    expect(cohortInsertIndex).toBeGreaterThan(-1);
-    expect(supabaseGateIndex).toBeGreaterThan(-1);
-    expect(supabaseGateIndex).toBeLessThan(cohortInsertIndex);
-    // The cohort insert's own enclosing call must be
-    // withAcceptanceWriteConnection, not a bare withConnection.
-    const precedingCall = text.slice(
-      cohortInsertIndex - 400,
-      cohortInsertIndex,
-    );
-    expect(precedingCall).toContain("withAcceptanceWriteConnection(");
-  });
-
-  it("behaviourally: the cohort insert is issued only on a client the direct-database gate has already authorized", async () => {
+  it("behaviourally: creates exactly one cohort through admin_create_cohort after publication and activates that cohort", async () => {
     clearAcceptanceVars();
     process.env.ACCEPTANCE_DATABASE_URL =
       "postgresql://acceptance:acceptance@localhost:5432/acceptance";
     process.env.ACCEPTANCE_WRITE_ENABLED = "true";
     process.env.ACCEPTANCE_ENVIRONMENT_ID = VALID_ENV_ID;
-    const calls: string[] = [];
+    const sql: string[] = [];
     function FakeClient() {
       return {
         connect: async () => {},
         end: async () => {},
-        query: async (sql: string) => {
-          calls.push(sql);
-          if (sql.includes("acceptance_marker"))
+        query: async (text: string) => {
+          sql.push(text);
+          if (text.includes("acceptance_marker"))
             return { rows: [{ marker: "x" }] };
+          if (text.includes("select id from public.app_users"))
+            return { rows: [{ id: "app-user-1" }] };
+          if (text.includes("select 1 from public.role_grants"))
+            return { rows: [{ x: 1 }] };
+          if (text.includes("select 1 from public.staff_profiles"))
+            return { rows: [{ x: 1 }] };
+          if (text.includes("from course_assessment_bindings"))
+            return {
+              rows: [
+                "QUIZ_1",
+                "QUIZ_2",
+                "MIDTERM",
+                "QUIZ_3",
+                "QUIZ_4",
+                "FINAL",
+              ].map((c, i) => ({
+                assessment_id: `assessment-${i}`,
+                template_key: c.toLowerCase(),
+              })),
+            };
+          if (text.includes("from course_practicals"))
+            return { rows: [{ id: "practical-1" }] };
           return { rows: [] };
         },
       };
     }
     vi.doMock("pg", () => ({ default: { Client: FakeClient } }));
     vi.resetModules();
-    const { withAcceptanceWriteConnection } =
-      await import("../scripts/acceptance/db.mjs");
-    await withAcceptanceWriteConnection(
-      (client: {
-        query: (sql: string, params: unknown[]) => Promise<unknown>;
-      }) =>
-        client.query(
-          "insert into cohorts(id, programme_version_id, title, starts_on) values($1,$2,$3,current_date)",
-          ["cohort-1", "version-1", "Acceptance cohort test"],
-        ),
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    const admin = {
+      auth: {
+        getUser: async () => ({
+          data: { user: { id: "admin-auth-id" } },
+          error: null,
+        }),
+      },
+      rpc: async (name: string, args: Record<string, unknown>) => {
+        calls.push({ name, args });
+        const data: Record<string, unknown> = {
+          get_ducelio_acceptance_environment_id: VALID_ENV_ID,
+          import_course_package: "import-1",
+          apply_course_package: "version-1",
+          run_course_package_test: [
+            { outcome: "PASS", failure_code: null, failed_roles: [] },
+          ],
+          admin_create_cohort: "governed-cohort-1",
+          activate_course_package: "activation-1",
+          create_enrolment: "enrolment-1",
+        };
+        return { data: data[name] ?? null, error: null };
+      },
+    };
+    const { seedAcceptanceCourse } =
+      await import("../scripts/acceptance/fixtures.mjs");
+    await seedAcceptanceCourse(admin, "governed-run", "learner-auth-id");
+    const names = calls.map((c) => c.name);
+    const create = calls.filter((c) => c.name === "admin_create_cohort");
+    expect(create).toHaveLength(1);
+    expect(create[0].args).toMatchObject({
+      p_programme_version_id: "version-1",
+      p_title: "Acceptance cohort governed-run",
+      p_ends_on: null,
+      p_capacity: null,
+    });
+    expect(create[0].args.p_starts_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(names.indexOf("publish_course_package")).toBeLessThan(
+      names.indexOf("admin_create_cohort"),
     );
-    vi.doUnmock("pg");
-    vi.resetModules();
-    expect(calls[0]).toContain("acceptance_marker");
-    expect(calls[1]).toContain("insert into cohorts");
+    expect(names.indexOf("admin_create_cohort")).toBeLessThan(
+      names.indexOf("activate_course_package"),
+    );
+    expect(
+      calls.find((c) => c.name === "activate_course_package")!.args.p_cohort_id,
+    ).toBe("governed-cohort-1");
+    expect(sql.some((text) => /insert\s+into\s+cohorts/i.test(text))).toBe(
+      false,
+    );
   });
 });
 

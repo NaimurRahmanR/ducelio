@@ -1,4 +1,4 @@
-import { Card, Badge, EmptyState, ButtonLink } from "./ui";
+import { Card, Badge, EmptyState } from "./ui";
 type Programme = {
   id: string;
   title: string;
@@ -27,12 +27,6 @@ export function AdminWorkspace({
   canAudit: boolean;
   demo?: boolean;
 }) {
-  const descriptions: Record<string, string> = {
-    Cohorts:
-      "Cohort operations will preserve each learner’s enrolled curriculum version.",
-    Announcements:
-      "Institutional announcement publishing remains a later operational milestone.",
-  };
   return (
     <div className="section-content">
       {section === "Overview" && (
@@ -161,18 +155,6 @@ export function AdminWorkspace({
             Support-note prose and large protected/learning-content bodies are
             excluded from the relevant audit payloads.
           </p>
-        </Card>
-      )}
-      {descriptions[section] && (
-        <Card>
-          <EmptyState title={section + " workspace"}>
-            {descriptions[section]}
-          </EmptyState>
-          {section === "Counsellors" && demo && (
-            <ButtonLink href="/demo/counsellor" secondary>
-              Explore the counsellor workspace
-            </ButtonLink>
-          )}
         </Card>
       )}
     </div>
