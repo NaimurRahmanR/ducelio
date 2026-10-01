@@ -98,7 +98,7 @@ export async function getStudentLearningResources() {
   const { data, error } = await client
     .from("learning_resources")
     .select(
-      "id,lesson_id,kind,title,body,url,position,lessons(title),programme_versions(label,title_snapshot)",
+      "id,lesson_id,programme_version_id,kind,title,body,url,position,lessons(title)",
     )
     .order("lesson_id")
     .order("position")
@@ -106,24 +106,55 @@ export async function getStudentLearningResources() {
 
   if (error) throw new Error("Your learning resources could not be loaded.");
 
-  return z
+  const rows = z
     .array(
       z.object({
         id: z.uuid(),
         lesson_id: z.uuid(),
+        programme_version_id: z.uuid(),
         kind: z.enum(["LECTURE_NOTE", "REFERENCE_LINK"]),
         title: z.string(),
         body: z.string().nullable(),
         url: z.string().nullable(),
         position: z.number(),
         lessons: z.object({ title: z.string() }),
-        programme_versions: z.object({
-          label: z.string(),
-          title_snapshot: z.string().nullable(),
-        }),
       }),
     )
     .parse(data);
+
+  const versionIds = [...new Set(rows.map((row) => row.programme_version_id))];
+  const versions = new Map<
+    string,
+    { label: string; title_snapshot: string | null }
+  >();
+  if (versionIds.length) {
+    const { data: versionData, error: versionError } = await client
+      .from("programme_versions")
+      .select("id,label,title_snapshot")
+      .in("id", versionIds);
+    if (versionError)
+      throw new Error("Your learning resources could not be loaded.");
+    for (const version of z
+      .array(
+        z.object({
+          id: z.uuid(),
+          label: z.string(),
+          title_snapshot: z.string().nullable(),
+        }),
+      )
+      .parse(versionData))
+      versions.set(version.id, {
+        label: version.label,
+        title_snapshot: version.title_snapshot,
+      });
+  }
+
+  return rows.map(({ programme_version_id, ...row }) => {
+    const version = versions.get(programme_version_id);
+    if (!version)
+      throw new Error("Your learning resources could not be loaded.");
+    return { ...row, programme_versions: version };
+  });
 }
 
 export async function getStudentLessonResources(input: unknown) {
