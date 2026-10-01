@@ -122,9 +122,7 @@ export async function getStudentLearningResources() {
     )
     .parse(data);
 
-  const versionIds = [
-    ...new Set(rows.map((row) => row.programme_version_id)),
-  ];
+  const versionIds = [...new Set(rows.map((row) => row.programme_version_id))];
   const versions = new Map<
     string,
     { label: string; title_snapshot: string | null }
