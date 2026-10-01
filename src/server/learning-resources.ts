@@ -13,17 +13,19 @@ import {
   RESOURCE_PAGE_SIZE,
 } from "@/domain/academic-reads";
 
+const workspaceVersionSchema = z.object({
+  label: z.string(),
+  status: z.enum(["DRAFT", "PUBLISHED"]),
+  title_snapshot: z.string().nullable(),
+});
+
 const lessonSchema = z.object({
   id: z.uuid(),
   programme_version_id: z.uuid(),
   title: z.string(),
   position: z.number(),
   modules: z.object({ title: z.string(), position: z.number() }),
-  programme_versions: z.object({
-    label: z.string(),
-    status: z.enum(["DRAFT", "PUBLISHED"]),
-    title_snapshot: z.string().nullable(),
-  }),
+  programme_versions: workspaceVersionSchema,
 });
 
 const resourceSchema = z.object({
@@ -36,29 +38,27 @@ const resourceSchema = z.object({
   url: z.string().nullable(),
   position: z.number(),
   lessons: z.object({ title: z.string() }),
-  programme_versions: z.object({
-    label: z.string(),
-    status: z.enum(["DRAFT", "PUBLISHED"]),
-    title_snapshot: z.string().nullable(),
-  }),
+  programme_versions: workspaceVersionSchema,
 });
 
 export async function getLearningResourceWorkspace() {
   await requireActor("admin");
   const client = await createSupabase();
+  // Neither `lessons` nor `learning_resources` has a foreign key to
+  // programme_versions (both reach it only through composite keys), so
+  // PostgREST cannot embed programme_versions from them. The version
+  // snapshots are read separately below by the visible version ids.
   const [lessons, resources] = await Promise.all([
     client
       .from("lessons")
-      .select(
-        "id,programme_version_id,title,position,modules(title,position),programme_versions(label,status,title_snapshot)",
-      )
+      .select("id,programme_version_id,title,position,modules(title,position)")
       .order("programme_version_id")
       .order("position")
       .limit(1000),
     client
       .from("learning_resources")
       .select(
-        "id,lesson_id,programme_version_id,kind,title,body,url,position,lessons(title),programme_versions(label,status,title_snapshot)",
+        "id,lesson_id,programme_version_id,kind,title,body,url,position,lessons(title)",
       )
       .order("programme_version_id")
       .order("lesson_id")
@@ -69,9 +69,47 @@ export async function getLearningResourceWorkspace() {
   if (lessons.error || resources.error)
     throw new Error("Learning resource workspace could not be loaded.");
 
+  const lessonRows = z
+    .array(lessonSchema.omit({ programme_versions: true }))
+    .parse(lessons.data);
+  const resourceRows = z
+    .array(resourceSchema.omit({ programme_versions: true }))
+    .parse(resources.data);
+  const versionIds = [
+    ...new Set(
+      [...lessonRows, ...resourceRows].map((row) => row.programme_version_id),
+    ),
+  ];
+  const versions = new Map<string, z.infer<typeof workspaceVersionSchema>>();
+  if (versionIds.length) {
+    const { data, error } = await client
+      .from("programme_versions")
+      .select("id,label,status,title_snapshot")
+      .in("id", versionIds);
+    if (error)
+      throw new Error("Learning resource workspace could not be loaded.");
+    for (const { id, ...version } of z
+      .array(workspaceVersionSchema.extend({ id: z.uuid() }))
+      .parse(data))
+      versions.set(id, version);
+  }
+  // Fail closed: never render a lesson or resource without its version.
+  const versionFor = (id: string) => {
+    const version = versions.get(id);
+    if (!version)
+      throw new Error("Learning resource workspace could not be loaded.");
+    return version;
+  };
+
   return {
-    lessons: z.array(lessonSchema).parse(lessons.data),
-    resources: z.array(resourceSchema).parse(resources.data),
+    lessons: lessonRows.map((row) => ({
+      ...row,
+      programme_versions: versionFor(row.programme_version_id),
+    })),
+    resources: resourceRows.map((row) => ({
+      ...row,
+      programme_versions: versionFor(row.programme_version_id),
+    })),
   };
 }
 

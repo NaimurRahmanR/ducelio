@@ -98,12 +98,14 @@ const responseSchema = z.object({
 export async function getAssessmentWorkspace() {
   await requireActor("admin");
   const client = await createSupabase();
+  // `assessments` has no foreign key to programme_versions (see
+  // getStudentAssessments), so the version snapshot is read separately below.
   const [assessments, attempts, cohorts, lessons, instructors] =
     await Promise.all([
       client
         .from("assessments")
         .select(
-          "id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,created_at,cohorts(title),lessons(title),programme_versions(label,title_snapshot)",
+          "id,cohort_id,programme_version_id,lesson_id,instructor_id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,created_at,cohorts(title),lessons(title)",
         )
         .order("created_at", { ascending: false })
         .limit(300),
@@ -136,7 +138,33 @@ export async function getAssessmentWorkspace() {
   )
     throw new Error("Assessment workspace could not be loaded.");
 
-  const parsedAssessments = z.array(assessmentSchema).parse(assessments.data);
+  const assessmentRows = z
+    .array(assessmentSchema.omit({ programme_versions: true }))
+    .parse(assessments.data);
+  const versionIds = [
+    ...new Set(assessmentRows.map((row) => row.programme_version_id)),
+  ];
+  const versions = new Map<
+    string,
+    z.infer<typeof assessmentSchema>["programme_versions"]
+  >();
+  if (versionIds.length) {
+    const { data, error } = await client
+      .from("programme_versions")
+      .select("id,label,title_snapshot")
+      .in("id", versionIds);
+    if (error) throw new Error("Assessment workspace could not be loaded.");
+    for (const { id, ...version } of z
+      .array(assessmentSchema.shape.programme_versions.extend({ id: z.uuid() }))
+      .parse(data))
+      versions.set(id, version);
+  }
+  // Fail closed: never render an assessment without its version snapshot.
+  const parsedAssessments = assessmentRows.map((row) => {
+    const version = versions.get(row.programme_version_id);
+    if (!version) throw new Error("Assessment workspace could not be loaded.");
+    return { ...row, programme_versions: version };
+  });
   const questionsByAssessment: Record<
     string,
     z.infer<typeof questionSchema>[]
