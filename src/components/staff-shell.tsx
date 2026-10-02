@@ -68,6 +68,11 @@ export const adminControlRoutes = [
     roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
   },
   {
+    label: "Academic review",
+    href: "/admin/academic-review",
+    roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
+  },
+  {
     label: "Commerce",
     href: "/admin/commerce",
     roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],

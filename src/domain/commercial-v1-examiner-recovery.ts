@@ -144,12 +144,16 @@ const recoveryClaimStateSchema = z.enum([
 // resolved to human review. RECOVERY_EXHAUSTED: the one claim terminated
 // (FAILED/BUDGET_BLOCKED/TIMEOUT/CANCELLED) without a result -- the ceiling
 // is used and no further automatic recovery is possible for this source.
+// RESOLVED_BY_ACADEMIC_REVIEW (migration 202610020047): an escalated or
+// exhausted recovery whose target later received its first result through
+// human academic review; the recovery execution itself is unchanged.
 export const recoveryTargetStatusSchema = z.enum([
   "ELIGIBLE",
   "RECOVERY_IN_PROGRESS",
   "RECOVERED",
   "RECOVERY_ESCALATED",
   "RECOVERY_EXHAUSTED",
+  "RESOLVED_BY_ACADEMIC_REVIEW",
 ]);
 export type RecoveryTargetStatus = z.infer<typeof recoveryTargetStatusSchema>;
 

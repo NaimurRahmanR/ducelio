@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAnyRole } from "@/server/identity";
 import { listRecoverableExaminerTargets } from "@/server/commercial-v1-examiner-recovery/operations";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
@@ -10,6 +11,7 @@ const STATUS_LABEL: Record<string, string> = {
   RECOVERED: "Recovered",
   RECOVERY_ESCALATED: "Escalated to academic review",
   RECOVERY_EXHAUSTED: "Recovery attempted, still stranded",
+  RESOLVED_BY_ACADEMIC_REVIEW: "Resolved by academic review",
 };
 
 // Independent-review Finding 1: the smallest usable admin surface making
@@ -61,6 +63,16 @@ export default async function Page() {
               {t.recoveryStatus === "ELIGIBLE" && (
                 <ExaminerRecoveryForm sourceExecutionId={t.sourceExecutionId} />
               )}
+              {(t.recoveryStatus === "RECOVERY_ESCALATED" ||
+                t.recoveryStatus === "RECOVERY_EXHAUSTED") &&
+                t.recoveryExecutionId && (
+                  <Link
+                    className="text-link"
+                    href={`/admin/academic-review?case=${t.recoveryExecutionId}`}
+                  >
+                    Open academic review
+                  </Link>
+                )}
             </Card>
           ))
         )}
