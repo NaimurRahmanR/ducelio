@@ -7,6 +7,7 @@ import type {
   CreateCheckoutResult,
   RetrievedCheckout,
   VerifiedWebhookEvent,
+  RetrievedPayment,
 } from "./provider";
 import type { PaymentStatus } from "@/domain/commercial-v1-commerce";
 
@@ -115,7 +116,63 @@ export class StripeCommerceProvider implements CommerceProvider {
     } catch {
       return null;
     }
-    if (event.type !== "checkout.session.completed") return null;
+    return this.#mapEvent(event);
+  }
+
+  async retrieveWebhookEvent(eventId: string): Promise<VerifiedWebhookEvent> {
+    return this.#mapEvent(await this.#stripe().events.retrieve(eventId));
+  }
+
+  #mapEvent(event: Stripe.Event): VerifiedWebhookEvent {
+    if (
+      event.type === "refund.updated" ||
+      event.type === "refund.created" ||
+      event.type === "refund.failed"
+    ) {
+      const refund = event.data.object as Stripe.Refund;
+      return {
+        eventId: event.id,
+        eventType: event.type,
+        subjectId:
+          typeof refund.charge === "string" ? refund.charge : refund.charge?.id,
+        paymentIntentId:
+          typeof refund.payment_intent === "string"
+            ? refund.payment_intent
+            : (refund.payment_intent?.id ?? null),
+        sessionId: "",
+        paymentStatus: "UNPAID",
+        amountMinor: null,
+        currency: null,
+        metadataOrderId: null,
+      };
+    }
+    if (event.type === "charge.refunded") {
+      const charge = event.data.object as Stripe.Charge;
+      return {
+        eventId: event.id,
+        eventType: event.type,
+        subjectId: charge.id,
+        paymentIntentId:
+          typeof charge.payment_intent === "string"
+            ? charge.payment_intent
+            : (charge.payment_intent?.id ?? null),
+        sessionId: "",
+        paymentStatus: "UNPAID",
+        amountMinor: null,
+        currency: null,
+        metadataOrderId: null,
+      };
+    }
+    if (event.type !== "checkout.session.completed")
+      return {
+        eventId: event.id,
+        eventType: event.type,
+        sessionId: "",
+        paymentStatus: "UNPAID",
+        amountMinor: null,
+        currency: null,
+        metadataOrderId: null,
+      };
     const session = event.data.object as Stripe.Checkout.Session;
     return {
       eventId: event.id,
@@ -126,5 +183,99 @@ export class StripeCommerceProvider implements CommerceProvider {
       metadataOrderId:
         session.metadata?.orderId ?? session.client_reference_id ?? null,
     };
+  }
+
+  async retrievePayment(sessionId: string): Promise<RetrievedPayment> {
+    const stripe = this.#stripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["payment_intent.latest_charge"],
+    });
+    const intent = session.payment_intent;
+    const charge =
+      intent && typeof intent !== "string" ? intent.latest_charge : null;
+    const verifiedCharge =
+      charge &&
+      typeof charge !== "string" &&
+      charge.paid &&
+      charge.captured &&
+      charge.currency === session.currency
+        ? charge
+        : null;
+    let refundedMinor: number | null = null;
+    let refundPending = false;
+    if (verifiedCharge) {
+      let cursor: string | undefined;
+      let total = 0;
+      for (let page = 0; page < 10; page++) {
+        const refunds = await stripe.refunds.list({
+          charge: verifiedCharge.id,
+          limit: 100,
+          ...(cursor ? { starting_after: cursor } : {}),
+        });
+        for (const refund of refunds.data) {
+          if (refund.currency !== session.currency)
+            throw new Error("REFUND_CURRENCY_MISMATCH");
+          if (refund.status === "succeeded") total += refund.amount;
+          else if (refund.status !== "failed" && refund.status !== "canceled")
+            refundPending = true;
+        }
+        if (!refunds.has_more) {
+          refundedMinor = total;
+          break;
+        }
+        cursor = refunds.data.at(-1)?.id;
+        if (!cursor) break;
+      }
+      if (refundedMinor === null) throw new Error("REFUND_SCAN_NOT_EXHAUSTED");
+    }
+    return {
+      sessionId: session.id,
+      paymentStatus: mapPaymentStatus(session.payment_status),
+      amountMinor: session.amount_total,
+      currency: session.currency?.toUpperCase() ?? null,
+      metadataOrderId:
+        session.metadata?.orderId ?? session.client_reference_id ?? null,
+      url: session.url,
+      chargeId: verifiedCharge?.id ?? null,
+      capturedMinor: verifiedCharge?.amount_captured ?? null,
+      refundedMinor,
+      refundPending,
+    };
+  }
+
+  async findCheckoutForPaymentIntent(
+    paymentIntentId: string,
+  ): Promise<string | null> {
+    const sessions = await this.#stripe().checkout.sessions.list({
+      payment_intent: paymentIntentId,
+      limit: 2,
+    });
+    return !sessions.has_more && sessions.data.length === 1
+      ? sessions.data[0].id
+      : null;
+  }
+
+  async findCheckoutForOrder(
+    orderId: string,
+    createdAt: string,
+  ): Promise<string | null> {
+    let cursor: string | undefined;
+    const matches: string[] = [];
+    for (let page = 0; page < 10; page++) {
+      const sessions = await this.#stripe().checkout.sessions.list({
+        limit: 100,
+        created: { gte: Math.floor(new Date(createdAt).getTime() / 1000) - 60 },
+        ...(cursor ? { starting_after: cursor } : {}),
+      });
+      for (const session of sessions.data)
+        if (
+          (session.metadata?.orderId ?? session.client_reference_id) === orderId
+        )
+          matches.push(session.id);
+      if (!sessions.has_more) return matches.length === 1 ? matches[0] : null;
+      cursor = sessions.data.at(-1)?.id;
+      if (!cursor) break;
+    }
+    throw new Error("SESSION_SCAN_NOT_EXHAUSTED");
   }
 }

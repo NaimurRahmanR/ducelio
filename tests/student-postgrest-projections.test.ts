@@ -22,13 +22,10 @@ const objectiveMastery = functionSource(
 );
 
 describe("hosted student PostgREST projection regressions", () => {
-  it("traverses lesson_progress to lessons through lesson_segments", () => {
-    expect(lessonProgress).toContain(
-      "lesson_segments(title,position,lessons(title))",
-    );
-    expect(lessonProgress).not.toContain(
-      "lesson_segments(title,position),lessons(title)",
-    );
+  it("reads retained progress labels through the bounded history RPC rather than RLS-sensitive embeds", () => {
+    expect(lessonProgress).toContain('"get_student_retained_learning_history"');
+    expect(lessonProgress).toContain('p_kind: "progress"');
+    expect(lessonProgress).not.toContain('.from("lesson_progress")');
   });
 
   it("reads learning-resource programme versions separately by their visible version ids", () => {
@@ -42,12 +39,11 @@ describe("hosted student PostgREST projection regressions", () => {
     expect(learningResources).toContain('.in("id", versionIds)');
   });
 
-  it("traverses objective_mastery to lessons through lesson_objectives", () => {
+  it("reads retained mastery labels through the bounded history RPC rather than RLS-sensitive embeds", () => {
     expect(objectiveMastery).toContain(
-      "lesson_objectives(description,position,lessons(title))",
+      '"get_student_retained_learning_history"',
     );
-    expect(objectiveMastery).not.toContain(
-      "lesson_objectives(description,position),lessons(title)",
-    );
+    expect(objectiveMastery).toContain('p_kind: "mastery"');
+    expect(objectiveMastery).not.toContain('.from("objective_mastery")');
   });
 });

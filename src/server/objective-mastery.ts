@@ -108,13 +108,10 @@ export async function getObjectiveMasteryWorkspace() {
 export async function getStudentObjectiveMastery() {
   await requireActor("student");
   const client = await createSupabase();
-  const { data, error } = await client
-    .from("objective_mastery")
-    .select(
-      "id,objective_id,lesson_id,state,evidence_count,correct_evidence_count,correct_session_count,correct_kind_count,policy_version,evaluated_at,lesson_objectives(description,position,lessons(title))",
-    )
-    .order("evaluated_at", { ascending: false })
-    .limit(500);
+  const { data, error } = await client.rpc(
+    "get_student_retained_learning_history",
+    { p_kind: "mastery" },
+  );
 
   if (error) throw new Error("Your objective mastery could not be loaded.");
 
@@ -138,6 +135,7 @@ export async function getStudentObjectiveMastery() {
         }),
       }),
     )
+    .max(500)
     .parse(data);
 
   return rows.map(({ lesson_objectives, ...row }) => ({

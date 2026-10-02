@@ -351,6 +351,10 @@ export async function reconcileCommercialV1Order(input: {
 
   const status = await getCommercialV1OrderStatus(orderId);
   if (!status.ok) return status;
+  if (status.order.accessRevoked)
+    return { ok: false as const, code: "ACCESS_REVOKED" as const };
+  if (status.order.orderRefunded)
+    return { ok: false as const, code: "ORDER_REFUNDED" as const };
   if (status.order.state === "FULFILLED") {
     // A webhook (or an earlier reconciliation) already fulfilled this
     // order -- distinct UI wording from a first-time confirmation.

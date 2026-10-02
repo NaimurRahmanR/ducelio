@@ -12,10 +12,18 @@ import {
   PublishOfferForm,
 } from "@/components/commerce-offer-forms";
 import { Card } from "@/components/ui";
+import {
+  CommerceOperationsConsole,
+  type CommerceSearchParams,
+} from "@/components/commerce-operations-console";
 
 export const dynamic = "force-dynamic";
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<CommerceSearchParams>;
+}) {
   const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
   const [activations, campaigns] = await Promise.all([
     listCommercialV1OfferActivations(),
@@ -33,6 +41,7 @@ export default async function Page() {
       sections={adminSectionsForRoles(actor.roles)}
       roles={actor.roles}
     >
+      <CommerceOperationsConsole params={(await searchParams) ?? {}} />
       <Card>
         <h2>Publish a commercial offer</h2>
         <p>

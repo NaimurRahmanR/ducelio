@@ -291,6 +291,35 @@ describe("action: startCheckout", () => {
 });
 
 describe("page: /checkout/success", () => {
+  it("refunded redundant payment is shown without claiming course access was revoked", async () => {
+    mocks.reconcileCommercialV1Order.mockResolvedValue({
+      ok: false,
+      code: "ORDER_REFUNDED",
+    });
+    const text = flatten(
+      await SuccessPage({
+        searchParams: Promise.resolve({ order: "order-b", session_id: "cs_b" }),
+      }),
+    );
+    expect(text).toContain("Payment refunded");
+    expect(text).toMatch(
+      /another purchase or an independent academic enrolment is unchanged/,
+    );
+    expect(text).not.toContain("Course access revoked");
+    expect(text).not.toContain("Payment confirmed");
+  });
+  it("actual course access revocation remains explicit", async () => {
+    mocks.reconcileCommercialV1Order.mockResolvedValue({
+      ok: false,
+      code: "ACCESS_REVOKED",
+    });
+    const text = flatten(
+      await SuccessPage({
+        searchParams: Promise.resolve({ order: "order-a", session_id: "cs_a" }),
+      }),
+    );
+    expect(text).toContain("Course access revoked");
+  });
   it("only claims payment confirmed when the server fulfillment result says fulfilled:true", async () => {
     mocks.reconcileCommercialV1Order.mockResolvedValue({
       ok: true,

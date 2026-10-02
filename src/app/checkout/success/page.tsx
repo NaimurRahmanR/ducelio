@@ -24,6 +24,8 @@ export default async function Page({
     | { kind: "fulfilled"; replay: boolean }
     | { kind: "not-paid" }
     | { kind: "requires-support" }
+    | { kind: "revoked" }
+    | { kind: "refunded" }
     | { kind: "denied" }
     | { kind: "unavailable" };
 
@@ -41,6 +43,10 @@ export default async function Page({
         state = { kind: "not-paid" };
       } else if (!result.ok && result.code === "CONFIGURATION_UNAVAILABLE") {
         state = { kind: "unavailable" };
+      } else if (!result.ok && result.code === "ACCESS_REVOKED") {
+        state = { kind: "revoked" };
+      } else if (!result.ok && result.code === "ORDER_REFUNDED") {
+        state = { kind: "refunded" };
       } else if (!result.ok && result.code === "ENROLMENT_NOT_ACTIVATABLE") {
         // Payment WAS verified but could not be applied automatically --
         // truthfully distinct from "we could not verify this payment".
@@ -72,6 +78,27 @@ export default async function Page({
               <ButtonLink href="/student/study-plan">
                 Go to your study plan <span aria-hidden="true">→</span>
               </ButtonLink>
+            </>
+          ) : state.kind === "refunded" ? (
+            <>
+              <h1>Payment refunded</h1>
+              <p role="status">
+                This payment has been refunded and this order grants no course
+                access. Any access granted by another purchase or an independent
+                academic enrolment is unchanged.
+              </p>
+              <ButtonLink href="/student/study-plan">
+                View your study plan
+              </ButtonLink>
+            </>
+          ) : state.kind === "revoked" ? (
+            <>
+              <h1>Course access revoked</h1>
+              <p role="alert">
+                This order or entitlement has been refunded or cancelled.
+                Historical records are retained. Contact support if you need
+                help.
+              </p>
             </>
           ) : state.kind === "not-paid" ? (
             <>

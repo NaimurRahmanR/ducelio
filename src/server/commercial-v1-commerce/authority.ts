@@ -23,7 +23,10 @@ export class CommerceFulfillmentUnavailable extends Error {
   }
 }
 
-export async function attestCommerceFulfillment(checkout: VerifiedCheckout) {
+export async function attestCommerceFulfillment(
+  checkout: VerifiedCheckout,
+  operatorReason?: string,
+) {
   const env = commerceConfig();
   const keyId = z.uuid().safeParse(env.controllerKeyId);
   if (!env.controllerConfigured || !keyId.success) {
@@ -50,19 +53,25 @@ export async function attestCommerceFulfillment(checkout: VerifiedCheckout) {
     .digest("hex");
 
   const client = await createSupabase();
-  const { data, error } = await client.rpc("fulfill_commercial_v1_order", {
-    p_key_id: keyId.data,
-    p_order_id: checkout.orderId,
-    p_provider: checkout.provider,
-    p_session_id: checkout.sessionId,
-    p_event_id: checkout.eventId,
-    p_amount: checkout.amountMinor,
-    p_currency: checkout.currency,
-    p_status: checkout.status,
-    p_issued_at: issuedAt,
-    p_expires_at: expiresAt,
-    p_mac: mac,
-  });
+  const { data, error } = await client.rpc(
+    operatorReason
+      ? "admin_reconcile_commercial_v1_order"
+      : "fulfill_commercial_v1_order",
+    {
+      p_key_id: keyId.data,
+      p_order_id: checkout.orderId,
+      p_provider: checkout.provider,
+      p_session_id: checkout.sessionId,
+      p_event_id: checkout.eventId,
+      p_amount: checkout.amountMinor,
+      p_currency: checkout.currency,
+      p_status: checkout.status,
+      p_issued_at: issuedAt,
+      p_expires_at: expiresAt,
+      p_mac: mac,
+      ...(operatorReason ? { p_reason: operatorReason } : {}),
+    },
+  );
   if (error) throw new CommerceFulfillmentUnavailable();
   return data as unknown;
 }

@@ -147,13 +147,10 @@ export async function recordLearningEvidence(input: unknown) {
 export async function getStudentLearningEvidence() {
   await requireActor("student");
   const client = await createSupabase();
-  const { data, error } = await client
-    .from("learning_evidence")
-    .select(
-      "id,objective_id,evidence_kind,result,evidence_reference,recorded_at,lesson_objectives(description,position),lessons(title)",
-    )
-    .order("recorded_at", { ascending: false })
-    .limit(500);
+  const { data, error } = await client.rpc(
+    "get_student_retained_learning_history",
+    { p_kind: "evidence" },
+  );
 
   if (error) throw new Error("Your learning evidence could not be loaded.");
 
@@ -178,6 +175,7 @@ export async function getStudentLearningEvidence() {
         lessons: z.object({ title: z.string() }),
       }),
     )
+    .max(500)
     .parse(data);
 }
 

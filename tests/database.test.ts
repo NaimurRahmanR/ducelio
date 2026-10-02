@@ -131,7 +131,7 @@ describe("final curriculum and migration audit", () => {
     from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.prosecdef and has_function_privilege('anon',p.oid,'EXECUTE')
   `;
-  it("does not grant anonymous execution of security-definer functions, except EXACTLY the three reviewed Commercial V1 PR13 signatures", async () => {
+  it("does not grant anonymous execution of security-definer functions, except the exact reviewed commerce signatures", async () => {
     const rows = await db.query<{ sig: string }>(anonSecdefSignatureSql);
     // PR13 deliberately introduces exactly three anon-callable surfaces,
     // each individually reviewed and bounded by its own exact argument
@@ -149,6 +149,9 @@ describe("final curriculum and migration audit", () => {
       "public.list_commercial_v1_offers()",
       "public.get_commercial_v1_offer(text)",
       "public.fulfill_commercial_v1_order(uuid,uuid,text,text,text,integer,text,text,bigint,bigint,text)",
+      // Migration 045: purpose-separated signed webhook receipt/refund envelope.
+      // No anonymous operator authority; all claims require the controller MAC.
+      "public.apply_commercial_v1_commerce_operation(uuid,text,bigint,bigint,text)",
     ]);
     expect(new Set(rows.rows.map((r) => r.sig))).toEqual(allowed);
   });
