@@ -683,6 +683,7 @@ describe("Commercial V1 admin navigation", () => {
       "Policy setup",
       "Grade recovery",
       "Academic review",
+      "Academic results",
       "Commerce",
     ]);
     expect(

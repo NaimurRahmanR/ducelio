@@ -2,9 +2,9 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in `phase-1-completion-report.md`, `phase-2-progress.md` and `phase-2-completion-report.md`.
 
-LAST COMPLETED CHECKPOINT: `main` is at `339b28e93c1112c24ded97d5d9e9fa70ee306be2` (merge of PR #50: hosted commerce-revocation acceptance tooling and migration `202610020046_reviewer_redemption_enrolment_provenance.sql`). PR #49 (Admin Commerce Operations, migration 045) and PR #48 (admin control-plane foundations, migration 044) are merged before it. This header does not re-verify hosted acceptance state; see each PR and the sections below.
+LAST COMPLETED CHECKPOINT: `main` is at `5179822728246cec23365e4b20e5dcf667e13e6e` (merge of PR #51: human academic review and manual first grading, migration `202610020047_commercial_v1_human_academic_review.sql`). PR #50 (migration 046), PR #49 (Admin Commerce Operations, migration 045) and PR #48 (admin control-plane foundations, migration 044) are merged before it. This header does not re-verify hosted acceptance state; see each PR and the sections below.
 
-CURRENT CHECKPOINT: P0 Academic Operations — human academic review and governed manual first grade, branch `feat/academic-review-operations` from `339b28e`. Migration `202610020047_commercial_v1_human_academic_review.sql` and `/admin/academic-review`. IMPLEMENTED / LOCAL-TESTED; hosted acceptance pending. See the section below and docs/40. The COMPLETED/INCOMPLETE ITEMS lines that follow describe the earlier commerce checkpoint and are left as recorded.
+CURRENT CHECKPOINT: Commercial V1 Academic Results Operations, branch `feat/academic-results-operations` from `5179822`. Migration `202610020048_commercial_v1_academic_results_operations.sql` and `/admin/academic-results`. IMPLEMENTED / LOCAL-TESTED; hosted acceptance pending. See the section below and docs/41. The COMPLETED/INCOMPLETE ITEMS lines that follow describe the earlier commerce checkpoint and are left as recorded.
 
 COMPLETED ITEMS: bounded Commerce orders, payment events, entitlements, learner/course/enrolment diagnosis, campaign redemptions, webhook issues and commerce audit views; server-verified Stripe payment/refund reconciliation; durable minimal webhook receipts; governed commercial entitlement cancellation; immutable refund evidence; separate order-refund and access-revocation state; immutable COMMERCE/ACADEMIC/UNKNOWN enrolment provenance; refunds withdraw only commerce-created ACTIVE/PAUSED enrolments while independently governed academic enrolments retain their status; bounded actor-owned historical evidence/mastery/progress projections; restrictive substantive curriculum RLS retained; terminal RESOLVED/IGNORED webhook receipts cannot be retried.
 
@@ -410,6 +410,57 @@ Branch `feat/academic-review-operations` from `main` `339b28e`. Migration `20261
 `npm run check`: lint, route/type generation, TypeScript and **3368/3368 tests across 137 files** passed. `npm run build` passed (no `.env.local`). `npm audit`: 0 vulnerabilities. `git diff --check` passed. `npm run format:check` flags only the same seven untouched CRLF-checkout files (`i/lf w/crlf`); every changed file passes.
 
 **Limitations.** Deterministic single-connection (PGlite) tests only; no multi-connection PostgreSQL race and no hosted acceptance of migration 047 was run. The review is not blind. No reviewer assignment, moderation or second-marker workflow exists. Corrections after the first grade use the existing regrade authority.
+
+## Commercial V1 Academic Results Operations (2026-10-02)
+
+Branch `feat/academic-results-operations` from `main` `5179822`. Migration `202610020048_commercial_v1_academic_results_operations.sql`, additive; migrations 001–047 unchanged. Design, authority, provenance, correction semantics and limitations: docs/41.
+
+**Implemented.** `/admin/academic-results`, for `ACADEMIC_ADMIN`/`PLATFORM_ADMIN` only, in the control-plane navigation after Academic review.
+
+- **Read RPCs (database-owned).** Bounded, server-filtered discovery of assessment and lab result revisions:
+  - 50 per page;
+  - filters: learner name/number, kind, cohort, programme version, component, practical, current vs historical, completion.
+  - Result detail: marks, score, weight, contribution, current/valid state, per-question marks (positions only), objective outcomes and remediation, revision history bounded to the newest 100 revisions (`historyHasMore`; older revisions remain in the paginated all-revisions listing), the revision's existing outgoing regrade claim (`regradeClaim`, bounded metadata only), and truthful provenance. Provenance covers human academic review (047), regrade (032), recovery (040), initial Examiner (031), or `UNATTRIBUTED` when no claim references the revision.
+  - Enrolment record with the completion receipt.
+  - The reads return no prompts, answer keys, guidance, responses, submission bodies, digests, MACs, budgets or audit JSON.
+- **Reused authorities.** Progress is the canonical `get_commercial_v1_course_progress`. Correction reuses the existing regrade (id + reason only; kind, current and valid state re-read from the database). Completion reuses the existing `attempt_commercial_v1_course_completion`.
+- **Prohibited operations.** Voiding or excluding a current result is prohibited: an invalid or excluded highest revision makes the target PENDING with no authority able to fill it. No correction-request table was added.
+- **Own record.** A learner-admin cannot see or act on their own record (`SELF_RECORD_FORBIDDEN`). A new insert guard refuses any regrade execution whose actor is the learner (`SELF_REGRADE_FORBIDDEN`), which tightens migration 032.
+- **Indexes.** Partial indexes on the three execution tables' `result_revision_id`.
+
+**Validation** (Node 24.19.0). Focused suites:
+
+- `tests/commercial-v1-academic-results-db.test.ts` (32), primary fixtures use real governed paths: recovery → revision 1, a real HMAC-attested regrade → revision 2, a 047 human review, and an initial-claim invalid revision. Covered:
+  - role ACL, including INSTRUCTOR/COUNSELLOR/REGISTRAR/STUDENT/learner/unauthenticated/deactivated admin, anon/service_role privileges and the closed private schema;
+  - every filter and bound, and malformed input;
+  - provenance for all four origins, revision history and current/historical state;
+  - an invalid current revision staying PENDING in canonical progress;
+  - protected-content non-leakage;
+  - append-only refusals for the owner and admin sessions;
+  - regrade replay and invalid-source refusal;
+  - learner-admin self-record and self-regrade refusal;
+  - independent-review correction: a 102-revision legitimate lab-chain stress fixture, constructed by the DB-owner test harness through the unchanged migration-030 result insert guards and objective derivation, returns exactly the newest 100 with `historyHasMore`; no guard or validator is disabled or weakened; the 100-revision boundary returns `historyHasMore=false`; revision 1 still loads; every revision stays listed, present and valid;
+  - outgoing regrade claims through the real regrade governance: none, SUCCEEDED (linked to the produced revision), RUNNING, terminal FAILED and terminal ESCALATED. Terminal claims stay visible after reload with bounded fields only, and a direct replay creates no second execution or revision;
+  - ACTIVE/PAUSED enrolment truth, and that a read never completes;
+  - admin completion refusal.
+- `tests/commercial-v1-academic-results-ui.test.ts` (29): page, actions and server layer through the real server code and the real progress/completion wrappers, with stubbed identity/transport/regrade orchestration. Covered:
+  - navigation;
+  - filter parsing;
+  - which controls render for current/historical/invalid/PAUSED/completed states;
+  - id-and-reason-only regrade posting, ignoring forged fields;
+  - assessment vs lab routing;
+  - refusals;
+  - completion delegation;
+  - strict-schema rejection of protected fields;
+  - static migration boundaries;
+  - truncated-history notice and refusal of an over-bound history payload;
+  - regrade form only when no claim exists; RUNNING, expired RUNNING, FAILED, ESCALATED and BUDGET_BLOCKED claims show durable state without a form or a false human-resolution path; SUCCEEDED links the produced revision; the action refuses an existing claim (`REGRADE_CLAIM_EXISTS`) without calling regrade;
+  - the `APPEND-ONLY RESULTS · GOVERNED OPERATIONS` label.
+- `tests/admin-control-plane-ui.test.ts`: navigation list updated.
+
+Focused total: 86/86. The existing regrade (74) and academic-review suites (DB 15, policy 3, UI 13) also pass with migration 048's regrade-table guard. `npm run check`: lint, route/type generation, TypeScript and **3429/3429 tests across 139 files** passed. `npm run build` passed (no `.env.local`), including `/admin/academic-results`. `npm audit`: 0 vulnerabilities. `git diff --check` passed, and the new untracked files have no trailing whitespace or CR line endings. `npm run format:check` flags only the same seven untouched CRLF-checkout files (`i/lf w/crlf`); every changed file passes.
+
+**Limitations.** Deterministic single-connection (PGlite) tests only. No multi-connection PostgreSQL concurrency acceptance and no hosted Supabase/PostgREST acceptance of migration 048 was run. Discovery is not load-tested. Regrade remains provider-backed and keeps its one-claim-per-source semantics: a current revision whose claim failed or escalated cannot be regraded again, and no authority resolves an escalated regrade (shown truthfully, not fixed here). Detail history is read-bounded to the newest 100 revisions. Operators see learner names (not blind).
 
 ## Current scope boundary
 

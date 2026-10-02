@@ -2166,3 +2166,31 @@ label {
 .engineering-checkbox input {
   width: auto;
 }
+.detail-list {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) 1fr;
+  gap: 0.4rem 1.5rem;
+  margin: 1rem 0;
+  overflow-wrap: anywhere;
+}
+.detail-list dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.detail-list dd {
+  margin: 0;
+}
+.pagination {
+  display: flex;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+@media (max-width: 640px) {
+  .detail-list {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+  .detail-list dd {
+    margin-bottom: 0.6rem;
+  }
+}
