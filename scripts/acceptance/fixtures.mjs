@@ -450,6 +450,32 @@ export async function seedAcceptanceCourse(
     p_reason: "Acceptance course apply",
   });
 
+  // `options.lessonSegment` (commerce-revocation.mjs only): COURSE_PACKAGE_V1
+  // materialises no lesson segments, and the governed create_lesson_segment
+  // (migration 2609090011) accepts only a DRAFT, unenrolled version -- so the
+  // one segment lesson progress needs is added here, before the
+  // pre-publication test (which compares modules/lessons/objectives only)
+  // and publication. A plain read locates the fixture's single lesson.
+  let lessonSegment = null;
+  if (options.lessonSegment) {
+    const lessonId = await withConnection((client) =>
+      client
+        .query(
+          "select id from lessons where programme_version_id=$1 order by id limit 1",
+          [programmeVersionId],
+        )
+        .then((r) => r.rows[0]?.id ?? null),
+    );
+    if (!lessonId) throw new Error("The acceptance programme has no lesson.");
+    const segmentId = await call("create_lesson_segment", {
+      p_lesson_id: lessonId,
+      p_title: `Acceptance segment ${runId}`,
+      p_position: 1,
+      p_reason: "Acceptance lesson segment",
+    });
+    lessonSegment = { lessonId, segmentId };
+  }
+
   // Independent-review finding (v6, this pass, BLOCKER -- confirmed by a
   // real hosted acceptance:concurrency run, acceptance run
   // 1790361944555-1nzbhw, whose persisted course_package_test_runs row
@@ -659,6 +685,8 @@ export async function seedAcceptanceCourse(
     studentId,
     instructorId,
     recoveryActorId,
+    // { lessonId, segmentId } only when options.lessonSegment was set.
+    lessonSegment,
     // Independent-review finding (JWT_POSTGREST completion, this pass):
     // surfaces.mjs's checkJwtPostgrest needs a real, bound assessment id
     // to prove the protected-content boundary (get_active_assessment_
