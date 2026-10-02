@@ -18,8 +18,9 @@ export default async function Page({
     <StaffShell
       kind="admin"
       name={actor.displayName}
-      section="Programmes"
+      section="Activation"
       sections={adminSectionsForRoles(actor.roles)}
+      roles={actor.roles}
     >
       <Card>
         <h2>Activate course delivery</h2>

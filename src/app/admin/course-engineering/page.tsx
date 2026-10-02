@@ -89,8 +89,9 @@ export default async function Page({
     <StaffShell
       kind="admin"
       name={actor.displayName}
-      section="Programmes"
+      section="Course Engineering"
       sections={adminSectionsForRoles(actor.roles)}
+      roles={actor.roles}
     >
       <Card>
         <h2>Course &amp; Agent Engineering</h2>

@@ -24,8 +24,9 @@ export default async function Page() {
     <StaffShell
       kind="admin"
       name={actor.displayName}
-      section="Programmes"
+      section="Grade recovery"
       sections={adminSectionsForRoles(actor.roles)}
+      roles={actor.roles}
     >
       <Card>
         <h2>Examiner initial-grade recovery</h2>

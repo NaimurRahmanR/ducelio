@@ -4,6 +4,7 @@
 
 All methods resolve to one Supabase user, then one stable Ducelio app_user. Backend getUser() validates the current session with the auth service; never trust getSession() or client roles. Credentials and provider secrets belong in Supabase configuration, not application code.
 Signup stores only a bounded display name in metadata. A database trigger creates a Ducelio identity/profile and STUDENT grant; it ignores client role metadata. Existing Supabase users must be backfilled with the migration's idempotent mapping.
+Ducelio never creates Auth users from the admin surface. Staff first sign up like anyone else; a PLATFORM_ADMIN then gives the existing identity a staff profile and staff roles (docs/39). Every app_user has an account status; a DEACTIVATED account's session resolves to no Ducelio identity at all (database and application), while its identity and history are preserved for reactivation.
 Use Supabase verified-email identity linking. Do not implement application merging by comparing email strings. Automatic linking of verified provider identities is delegated to Supabase; unresolved duplicates need a manual record-preserving institutional workflow. Manual cross-email linking is intentionally not exposed in Phase 1. Magic links are deferred.
 
 ## Setup

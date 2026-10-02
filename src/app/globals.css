@@ -1814,6 +1814,43 @@ label {
 .staff-tabs .selected:hover {
   background: #214967;
 }
+.staff-nav {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1.75rem 0;
+}
+.staff-nav .staff-tabs {
+  margin: 0;
+  align-items: center;
+}
+.admin-people-list {
+  display: grid;
+  gap: 0.75rem;
+}
+.admin-person {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+}
+.admin-person > summary {
+  cursor: pointer;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+.admin-person-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.staff-tabs-label {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

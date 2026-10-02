@@ -95,7 +95,9 @@ export function AuthPage({
                 ? "This sign-in link is invalid or has expired. Request a fresh link."
                 : error === "forbidden"
                   ? "Your account does not have access to this area."
-                  : "This sign-in option is currently unavailable."}
+                  : error === "account-inactive"
+                    ? "This academy account has been deactivated. Contact your academy administrator."
+                    : "This sign-in option is currently unavailable."}
             </div>
           )}
           {message === "password-updated" && (

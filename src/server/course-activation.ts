@@ -24,6 +24,8 @@ const codes = new Set([
   "ACTIVITY_BLOCKED",
   "LIMIT_EXCEEDED",
   "POLICY_BLOCKED",
+  "STAFF_DEACTIVATED",
+  "COHORT_COMPLETED",
 ]);
 async function rpc<T>(
   name: string,
