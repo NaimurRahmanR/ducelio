@@ -65,6 +65,9 @@ export async function buildAssessmentPolicyFixture(opts: {
   multiObjectiveQuestion?: boolean;
   additionalLab?: boolean;
   additionalQuizQuestion?: boolean;
+  // QUIZ_1 question count (default 1). The database package validator caps
+  // a template at 100 questions, so 100 is the largest valid assessment.
+  quiz1QuestionCount?: number;
   // PR16A: normal learner-initiated Examiner grading is now programme-
   // version config governed at AUTHORIZE (migration 036). By default this
   // fixture still saves EXAMINER explicitly disabled (unchanged pre-PR16A
@@ -209,6 +212,16 @@ export async function buildAssessmentPolicyFixture(opts: {
     ],
   }));
 
+  if (opts.quiz1QuestionCount && opts.quiz1QuestionCount > 1) {
+    const quiz = pkg.assessmentTemplates[0];
+    const template = quiz.questions[0];
+    for (let position = 2; position <= opts.quiz1QuestionCount; position++)
+      quiz.questions.push({
+        ...template,
+        position,
+        prompt: `QUIZ_1 question ${position}`,
+      });
+  }
   if (opts.additionalQuizQuestion) {
     const quiz = pkg.assessmentTemplates[0];
     quiz.questions.push({
