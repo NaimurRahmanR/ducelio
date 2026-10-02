@@ -1,4 +1,8 @@
 "use server";
+import {
+  SessionOperationError,
+  sessionRefusalMessages,
+} from "@/domain/session-operations";
 
 import { revalidatePath } from "next/cache";
 import { publishProgrammeVersion } from "@/server/programmes";
@@ -129,10 +133,12 @@ export async function addClassSession(
       scheduledEnd: form.get("scheduledEnd"),
       reason: form.get("reason"),
     });
-  } catch {
+  } catch (error) {
     return {
       error:
-        "Unable to schedule this class. Check the cohort, lesson, instructor, times and conflicts.",
+        error instanceof SessionOperationError
+          ? sessionRefusalMessages[error.code]
+          : "Unable to schedule this class. Check the cohort, lesson, instructor, times and conflicts.",
     };
   }
   revalidatePath("/admin");
