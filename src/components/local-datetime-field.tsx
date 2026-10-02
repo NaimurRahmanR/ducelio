@@ -6,10 +6,12 @@ export function LocalDateTimeField({
   id,
   name,
   label,
+  required = true,
 }: {
   id: string;
   name: string;
   label: string;
+  required?: boolean;
 }) {
   const hidden = useRef<HTMLInputElement>(null);
 
@@ -19,7 +21,7 @@ export function LocalDateTimeField({
       <input
         id={id}
         type="datetime-local"
-        required
+        required={required}
         onChange={(event) => {
           const raw = event.currentTarget.value;
           if (!hidden.current) return;

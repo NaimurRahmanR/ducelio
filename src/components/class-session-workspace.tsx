@@ -50,11 +50,13 @@ export function ClassSessionWorkspace({
   lessons,
   instructors,
   sessions,
+  showRegister = true,
 }: {
   cohorts: Cohort[];
   lessons: Lesson[];
   instructors: Instructor[];
   sessions: Session[];
+  showRegister?: boolean;
 }) {
   const [createState, createAction, createPending] = useActionState<
     ClassSessionActionState,
@@ -181,110 +183,114 @@ export function ClassSessionWorkspace({
         )}
       </Card>
 
-      <Card>
-        <div className="section-heading">
-          <h2>Class session register</h2>
-          <Badge tone="muted">AUDITED</Badge>
-        </div>
-        {statusState.error && (
-          <p className="notice error" role="alert">
-            {statusState.error}
-          </p>
-        )}
-        {statusState.message && (
-          <p className="notice" role="status">
-            {statusState.message}
-          </p>
-        )}
-        {sessions.length ? (
-          <div className="data-table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Class</th>
-                  <th>Instructor</th>
-                  <th>Schedule</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map((session) => (
-                  <tr key={session.id}>
-                    <td>
-                      <strong>{session.lesson_title}</strong>
-                      <div className="muted">
-                        {session.programme_title} · {session.cohort_title}
-                      </div>
-                    </td>
-                    <td>
-                      {session.instructor_name}
-                      <div className="muted">{session.instructor_title}</div>
-                    </td>
-                    <td>
-                      {new Date(session.scheduled_start).toLocaleString()}
-                      <div className="muted">
-                        to {new Date(session.scheduled_end).toLocaleString()}
-                      </div>
-                    </td>
-                    <td>
-                      <Badge
-                        tone={
-                          session.status === "SCHEDULED"
-                            ? "green"
-                            : session.status === "CANCELLED"
-                              ? "gold"
-                              : "muted"
-                        }
-                      >
-                        {session.status}
-                      </Badge>
-                    </td>
-                    <td>
-                      {session.status === "SCHEDULED" ? (
-                        <form action={statusAction} className="support-form">
-                          <input
-                            type="hidden"
-                            name="sessionId"
-                            value={session.id}
-                          />
-                          <select name="status" defaultValue="" required>
-                            <option value="" disabled>
-                              Select status
-                            </option>
-                            <option value="COMPLETED">COMPLETED</option>
-                            <option value="CANCELLED">CANCELLED</option>
-                          </select>
-                          <input
-                            name="reason"
-                            minLength={5}
-                            maxLength={300}
-                            placeholder="Reason"
-                            required
-                          />
-                          <button
-                            className="button secondary"
-                            disabled={statusPending}
-                          >
-                            {statusPending ? "Updating…" : "Update"}
-                          </button>
-                        </form>
-                      ) : (
-                        <span className="muted">Closed historical record</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {showRegister && (
+        <Card>
+          <div className="section-heading">
+            <h2>Class session register</h2>
+            <Badge tone="muted">AUDITED</Badge>
           </div>
-        ) : (
-          <EmptyState title="No class sessions scheduled">
-            Scheduled sessions will appear here with their cohort, lesson,
-            instructor and lifecycle state.
-          </EmptyState>
-        )}
-      </Card>
+          {statusState.error && (
+            <p className="notice error" role="alert">
+              {statusState.error}
+            </p>
+          )}
+          {statusState.message && (
+            <p className="notice" role="status">
+              {statusState.message}
+            </p>
+          )}
+          {sessions.length ? (
+            <div className="data-table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Class</th>
+                    <th>Instructor</th>
+                    <th>Schedule</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions.map((session) => (
+                    <tr key={session.id}>
+                      <td>
+                        <strong>{session.lesson_title}</strong>
+                        <div className="muted">
+                          {session.programme_title} · {session.cohort_title}
+                        </div>
+                      </td>
+                      <td>
+                        {session.instructor_name}
+                        <div className="muted">{session.instructor_title}</div>
+                      </td>
+                      <td>
+                        {new Date(session.scheduled_start).toLocaleString()}
+                        <div className="muted">
+                          to {new Date(session.scheduled_end).toLocaleString()}
+                        </div>
+                      </td>
+                      <td>
+                        <Badge
+                          tone={
+                            session.status === "SCHEDULED"
+                              ? "green"
+                              : session.status === "CANCELLED"
+                                ? "gold"
+                                : "muted"
+                          }
+                        >
+                          {session.status}
+                        </Badge>
+                      </td>
+                      <td>
+                        {session.status === "SCHEDULED" ? (
+                          <form action={statusAction} className="support-form">
+                            <input
+                              type="hidden"
+                              name="sessionId"
+                              value={session.id}
+                            />
+                            <select name="status" defaultValue="" required>
+                              <option value="" disabled>
+                                Select status
+                              </option>
+                              <option value="COMPLETED">COMPLETED</option>
+                              <option value="CANCELLED">CANCELLED</option>
+                            </select>
+                            <input
+                              name="reason"
+                              minLength={5}
+                              maxLength={300}
+                              placeholder="Reason"
+                              required
+                            />
+                            <button
+                              className="button secondary"
+                              disabled={statusPending}
+                            >
+                              {statusPending ? "Updating…" : "Update"}
+                            </button>
+                          </form>
+                        ) : (
+                          <span className="muted">
+                            Closed historical record
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <EmptyState title="No class sessions scheduled">
+              Scheduled sessions will appear here with their cohort, lesson,
+              instructor and lifecycle state.
+            </EmptyState>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

@@ -1,6 +1,10 @@
 import "server-only";
 import { z } from "zod";
 import {
+  SessionOperationError,
+  sessionErrorCode,
+} from "@/domain/session-operations";
+import {
   classSessionCreationSchema,
   classSessionStatusSchema,
 } from "@/domain/academy";
@@ -145,7 +149,7 @@ export async function createClassSession(input: unknown) {
     p_scheduled_end: payload.scheduledEnd,
     p_reason: payload.reason,
   });
-  if (error) throw new Error("Class session could not be scheduled.");
+  if (error) throw new SessionOperationError(sessionErrorCode(error));
   return z.uuid().parse(data);
 }
 

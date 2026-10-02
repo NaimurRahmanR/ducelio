@@ -1,3 +1,9 @@
+import { randomUUID } from "node:crypto";
+import { SessionOperationsConsole } from "@/components/session-operations-console";
+import {
+  listSessionOperations,
+  getSessionBatchOptions,
+} from "@/server/session-operations";
 import Link from "next/link";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { AdminWorkspace } from "@/components/admin-workspace";
@@ -33,7 +39,18 @@ import { notFound } from "next/navigation";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ section?: string }>;
+  searchParams: Promise<{
+    section?: string;
+    cohortId?: string;
+    status?: string;
+    from?: string;
+    until?: string;
+    offset?: string;
+    activationId?: string;
+    activationOffset?: string;
+    lessonOffset?: string;
+    sessionId?: string;
+  }>;
 }) {
   const data = await getAdminOverview();
   const params = await searchParams;
@@ -73,6 +90,25 @@ export default async function Page({
     section === "Sessions" ? await getAttendanceWorkspace() : null;
   const lessonProgressWorkspace =
     section === "Sessions" ? await getLessonProgressWorkspace() : null;
+  const sessionOperations =
+    section === "Sessions"
+      ? await listSessionOperations({
+          cohortId: params.cohortId || undefined,
+          status: params.status || undefined,
+          from: params.from || undefined,
+          until: params.until || undefined,
+          offset: Number(params.offset || 0),
+          sessionId: params.sessionId || undefined,
+        })
+      : null;
+  const sessionBatchOptions =
+    section === "Sessions"
+      ? await getSessionBatchOptions({
+          activationId: params.activationId || undefined,
+          activationOffset: params.activationOffset || undefined,
+          lessonOffset: params.lessonOffset || undefined,
+        })
+      : null;
   const canPublish = data.actor.roles.some(
     (role) => role === "ACADEMIC_ADMIN" || role === "PLATFORM_ADMIN",
   );
@@ -199,8 +235,37 @@ export default async function Page({
           lessons={classSessionWorkspace.lessons}
           instructors={classSessionWorkspace.instructors}
           sessions={classSessionWorkspace.sessions}
+          showRegister={false}
         />
       )}
+      {section === "Sessions" &&
+        sessionOperations &&
+        sessionBatchOptions &&
+        classSessionWorkspace && (
+          <SessionOperationsConsole
+            key={`${params.activationId || "session-register"}:${sessionBatchOptions.lessonOffset}`}
+            discovery={sessionOperations}
+            options={sessionBatchOptions}
+            activationId={params.activationId}
+            instructors={classSessionWorkspace.instructors}
+            cohorts={classSessionWorkspace.cohorts}
+            requestIds={Object.fromEntries(
+              sessionOperations.rows.map((x) => [x.id, randomUUID()]),
+            )}
+            batchRequestId={randomUUID()}
+            filters={{
+              cohortId: params.cohortId,
+              status: params.status,
+              from: params.from,
+              until: params.until,
+              offset: params.offset,
+              activationId: params.activationId,
+              activationOffset: params.activationOffset,
+              lessonOffset: params.lessonOffset,
+              sessionId: params.sessionId,
+            }}
+          />
+        )}
       {section === "Sessions" && attendanceWorkspace && (
         <AttendanceWorkspace
           sessions={attendanceWorkspace.sessions}
