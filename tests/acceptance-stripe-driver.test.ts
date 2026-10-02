@@ -1760,7 +1760,12 @@ describe("Stripe acceptance: production commerce code carries no acceptance hook
     expect(webhook).toContain(
       "provider.verifyWebhookEvent(rawBody, signature)",
     );
-    expect(webhook).toContain("attestCommerceFulfillment({");
+    expect(webhook).toContain("processCommerceWebhook(event, provider)");
+    const processor = readFileSync(
+      "src/server/commercial-v1-commerce/webhooks.ts",
+      "utf8",
+    );
+    expect(processor).toContain("attestCommerceFulfillment(evidence.data)");
   });
 });
 

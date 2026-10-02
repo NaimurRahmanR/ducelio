@@ -300,7 +300,13 @@ describe("server: reconcileCommercialV1Order", () => {
     mocks.requireActor.mockResolvedValue({ id: "learner-1" });
   });
 
-  function orderRpc(overrides: Partial<{ state: string }> = {}) {
+  function orderRpc(
+    overrides: Partial<{
+      state: string;
+      orderRefunded: boolean;
+      accessRevoked: boolean;
+    }> = {},
+  ) {
     return vi.fn(async (name: string) => {
       if (name === "get_commercial_v1_order") {
         return {
@@ -309,6 +315,8 @@ describe("server: reconcileCommercialV1Order", () => {
             order: {
               id: orderId,
               state: overrides.state ?? "PENDING",
+              orderRefunded: overrides.orderRefunded ?? false,
+              accessRevoked: overrides.accessRevoked ?? false,
               offerSlug: "cybersecurity-foundations",
               activationId,
               amountMinor: 19900,
@@ -322,6 +330,27 @@ describe("server: reconcileCommercialV1Order", () => {
       throw new Error("unexpected rpc " + name);
     });
   }
+
+  it.each([false, true])(
+    "refunded order with accessRevoked=%s is refused before fulfilled replay or payment attestation",
+    async (accessRevoked) => {
+      mocks.client.mockResolvedValue({
+        rpc: orderRpc({
+          state: "FULFILLED",
+          orderRefunded: true,
+          accessRevoked,
+        }),
+      });
+      expect(
+        await reconcileCommercialV1Order({ orderId, sessionId: "cs_refunded" }),
+      ).toEqual({
+        ok: false,
+        code: accessRevoked ? "ACCESS_REVOKED" : "ORDER_REFUNDED",
+      });
+      expect(mocks.getCommerceProvider).not.toHaveBeenCalled();
+      expect(mocks.attestCommerceFulfillment).not.toHaveBeenCalled();
+    },
+  );
 
   it("an order already FULFILLED short-circuits without ever calling the provider or attesting again", async () => {
     const rpc = orderRpc({ state: "FULFILLED" });

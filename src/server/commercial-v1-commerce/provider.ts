@@ -35,6 +35,9 @@ export type RetrievedCheckout = {
 };
 
 export type VerifiedWebhookEvent = {
+  eventType?: string;
+  subjectId?: string;
+  paymentIntentId?: string | null;
   eventId: string;
   sessionId: string;
   paymentStatus: PaymentStatus;
@@ -43,11 +46,25 @@ export type VerifiedWebhookEvent = {
   metadataOrderId: string | null;
 };
 
+export type RetrievedPayment = RetrievedCheckout & {
+  chargeId: string | null;
+  capturedMinor: number | null;
+  refundedMinor: number | null;
+  refundPending: boolean;
+};
+
 export interface CommerceProvider {
   createCheckoutSession(
     input: CreateCheckoutInput,
   ): Promise<CreateCheckoutResult>;
   retrieveCheckoutSession(sessionId: string): Promise<RetrievedCheckout>;
+  retrievePayment(sessionId: string): Promise<RetrievedPayment>;
+  findCheckoutForPaymentIntent(paymentIntentId: string): Promise<string | null>;
+  findCheckoutForOrder(
+    orderId: string,
+    createdAt: string,
+  ): Promise<string | null>;
+  retrieveWebhookEvent(eventId: string): Promise<VerifiedWebhookEvent>;
   // Returns null when the payload/signature does not verify as a genuine
   // Stripe checkout-completion event -- callers must treat null as "no
   // trusted fact", never fall back to trusting the payload anyway.

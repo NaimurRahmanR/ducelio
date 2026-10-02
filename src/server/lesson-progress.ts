@@ -135,13 +135,10 @@ export async function recordLessonProgress(input: unknown) {
 export async function getStudentLessonProgress() {
   await requireActor("student");
   const client = await createSupabase();
-  const { data, error } = await client
-    .from("lesson_progress")
-    .select(
-      "id,lesson_id,segment_id,status,updated_at,lesson_segments(title,position,lessons(title))",
-    )
-    .order("updated_at", { ascending: false })
-    .limit(500);
+  const { data, error } = await client.rpc(
+    "get_student_retained_learning_history",
+    { p_kind: "progress" },
+  );
 
   if (error) throw new Error("Your lesson progress could not be loaded.");
 
@@ -160,6 +157,7 @@ export async function getStudentLessonProgress() {
         }),
       }),
     )
+    .max(500)
     .parse(data);
 
   return rows.map(({ lesson_segments, ...row }) => ({

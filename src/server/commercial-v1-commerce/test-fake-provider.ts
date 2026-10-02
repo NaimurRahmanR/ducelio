@@ -30,6 +30,41 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
   // behaviour -- a repeated createCheckoutSession call with the SAME
   // idempotencyKey returns the SAME session, never a second one.
   #idempotency = new Map<string, string>();
+  #refunds = new Map<string, number>();
+
+  setRefundedAmount(sessionId: string, amountMinor: number) {
+    if (!this.#sessions.has(sessionId)) throw new Error("Unknown fake session");
+    this.#refunds.set(sessionId, amountMinor);
+  }
+
+  async retrievePayment(sessionId: string) {
+    const session = await this.retrieveCheckoutSession(sessionId);
+    return {
+      ...session,
+      chargeId:
+        session.paymentStatus === "PAID" ? "ch_fake_" + sessionId : null,
+      capturedMinor:
+        session.paymentStatus === "PAID" ? session.amountMinor : null,
+      refundedMinor: this.#refunds.get(sessionId) ?? 0,
+      refundPending: false,
+    };
+  }
+
+  async findCheckoutForPaymentIntent(paymentIntentId: string) {
+    const sessionId = paymentIntentId.replace(/^pi_fake_/, "");
+    return this.#sessions.has(sessionId) ? sessionId : null;
+  }
+  async findCheckoutForOrder(orderId: string, _createdAt: string) {
+    void _createdAt;
+    const matches = [...this.#sessions].filter(
+      ([, session]) => session.orderId === orderId,
+    );
+    return matches.length === 1 ? matches[0][0] : null;
+  }
+  async retrieveWebhookEvent(_eventId: string): Promise<VerifiedWebhookEvent> {
+    void _eventId;
+    throw new Error("Use a test event fixture");
+  }
 
   constructor() {
     if (process.env.NODE_ENV === "production") {

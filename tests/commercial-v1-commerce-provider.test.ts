@@ -228,14 +228,47 @@ describe("StripeCommerceProvider webhook signature verification (real adapter, n
     expect(await provider.verifyWebhookEvent("{}", null)).toBeNull();
   });
 
-  it("rejects an event of the wrong type even with a genuinely valid signature", async () => {
+  it("retains only a bounded envelope for a valid unsupported event so it can be durably ignored", async () => {
     const provider = new StripeCommerceProvider();
     const { payload, header } = signedPayload({
       id: "evt_test_other",
       type: "payment_intent.created",
       data: { object: { id: "pi_test", object: "payment_intent" } },
     });
-    expect(await provider.verifyWebhookEvent(payload, header)).toBeNull();
+    expect(await provider.verifyWebhookEvent(payload, header)).toEqual({
+      eventId: "evt_test_other",
+      eventType: "payment_intent.created",
+      sessionId: "",
+      paymentStatus: "UNPAID",
+      amountMinor: null,
+      currency: null,
+      metadataOrderId: null,
+    });
+  });
+
+  it("verifies a full or partial charge.refunded event without exposing raw charge data", async () => {
+    const provider = new StripeCommerceProvider();
+    const { payload, header } = signedPayload({
+      id: "evt_refunded",
+      type: "charge.refunded",
+      data: {
+        object: {
+          id: "ch_refund",
+          payment_intent: "pi_refund",
+          amount_refunded: 19900,
+          billing_details: { email: "never-render@example.test" },
+        },
+      },
+    });
+    const event = await provider.verifyWebhookEvent(payload, header);
+    expect(event).toMatchObject({
+      eventId: "evt_refunded",
+      eventType: "charge.refunded",
+      subjectId: "ch_refund",
+      paymentIntentId: "pi_refund",
+    });
+    expect(JSON.stringify(event)).not.toContain("never-render");
+    expect(event?.amountMinor).toBeNull();
   });
 
   it("when Stripe is not configured, verification returns null without attempting verification", async () => {

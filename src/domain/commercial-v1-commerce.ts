@@ -233,6 +233,8 @@ export const commercialV1OrderProjectionSchema = z.union([
     order: z.strictObject({
       id: z.uuid(),
       state: commercialV1OrderStateSchema,
+      accessRevoked: z.boolean().default(false),
+      orderRefunded: z.boolean().default(false),
       offerSlug: offerSlugSchema.nullable(),
       activationId: z.uuid(),
       amountMinor: z.number().int().min(1),
@@ -260,6 +262,8 @@ export const paymentStatusSchema = z.enum([
 export type PaymentStatus = z.infer<typeof paymentStatusSchema>;
 
 const fulfillmentDenialCode = z.enum([
+  "ORDER_REFUNDED",
+  "ACCESS_REVOKED",
   "UNTRUSTED_CLAIM",
   "ORDER_NOT_FOUND",
   "MISMATCHED_SESSION",
@@ -316,6 +320,8 @@ export type VerifiedCheckout = z.infer<typeof verifiedCheckoutSchema>;
 // synthesises missing provider amount/currency, and never attests a
 // non-PAID observation at all.
 const reconcileDenialCode = z.enum([
+  "ORDER_REFUNDED",
+  "ACCESS_REVOKED",
   "UNAUTHENTICATED",
   "NOT_FOUND_OR_FORBIDDEN",
   "MISMATCHED_SESSION",

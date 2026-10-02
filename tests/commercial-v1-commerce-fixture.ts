@@ -32,7 +32,11 @@ async function value<T = string>(
 // (administrator/learner/foreignLearner/learnerAuth/asPolicyUser) so
 // `administrator` inherits its seeded staff_profiles row for free.
 export async function buildCommerceFixture(
-  opts: { db?: PGlite; throughMigration?: number } = {},
+  opts: {
+    db?: PGlite;
+    throughMigration?: number;
+    withLessonSegment?: boolean;
+  } = {},
 ) {
   const db =
     opts.db ??
@@ -89,6 +93,17 @@ export async function buildCommerceFixture(
     "select public.apply_course_package($1,$2) as v",
     [importId, "Apply commerce fixture"],
   );
+  if (opts.withLessonSegment) {
+    const lessonId = await value(
+      db,
+      "select id as v from public.lessons where programme_version_id=$1 order by position limit 1",
+      [programmeVersionId],
+    );
+    await db.query(
+      "select public.create_lesson_segment($1,'Historical lesson segment',1,'Retained history fixture segment')",
+      [lessonId],
+    );
+  }
   // PR15: publish_course_package now requires a current passing
   // pre-publication test. This fixture does not exercise agent
   // configuration semantics, so every role is saved explicitly disabled
