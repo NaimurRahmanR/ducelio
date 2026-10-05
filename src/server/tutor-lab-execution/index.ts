@@ -30,9 +30,12 @@ import { isCapabilityAuthorized } from "@/domain/academic-capability-policy";
 import { getAgentBehaviourForEnrolment } from "../agent-behaviour-config";
 import { buildTutorLabProviderContext } from "@/domain/tutor-lab-provider-context";
 import {
+  PROFESSOR_TEACHING_RECORD_AWARE_VERSIONS,
   roleBaselineFor,
   type EffectiveAgentBehaviour,
 } from "@/domain/agent-behaviour";
+import type { ProfessorTeachingRecord } from "@/domain/professor-academic-handoff";
+import { getProfessorTeachingRecordForRelease } from "../professor-academic-handoff";
 
 export type TutorLabSupportResult =
   | { status: "SUCCEEDED"; text: string; role: TutorLabRole }
@@ -162,6 +165,10 @@ export async function executeTutorLabSupport(
     // AC-2 LEVEL 3: the effective programme behaviour for the learner's own
     // enrolment, resolved before AUTHORIZE; failure fails closed.
     let behaviour: EffectiveAgentBehaviour | null = null;
+    // AC-3: the governed Professor academic handoff projection for this
+    // exact release, read only when the pinned role version is told what it
+    // means. A refused or malformed read fails closed (POLICY_BLOCKED).
+    let teachingRecord: ProfessorTeachingRecord | null = null;
     if (stillAuthorized) {
       try {
         behaviour = await getAgentBehaviourForEnrolment(
@@ -177,6 +184,18 @@ export async function executeTutorLabSupport(
         !roleBaselineFor(release.role, behaviour.behaviourVersion)
       )
         behaviour = null;
+      if (
+        behaviour &&
+        PROFESSOR_TEACHING_RECORD_AWARE_VERSIONS.has(behaviour.behaviourVersion)
+      ) {
+        try {
+          teachingRecord = await getProfessorTeachingRecordForRelease(
+            release.releaseId,
+          );
+        } catch {
+          behaviour = null;
+        }
+      }
     }
     if (!stillAuthorized || !behaviour) {
       providerResult = {
@@ -254,6 +273,7 @@ export async function executeTutorLabSupport(
                 behaviour.config.courseContextNotes,
                 profile.budgetPolicy.maxInputContextBytes,
                 behaviour.behaviourVersion,
+                teachingRecord,
               ),
               behaviour,
             },

@@ -2,9 +2,60 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AGENT-CONTROL-1 (migration 050), independently reviewed and merged through PR #54 (merge `3099e7206a30149650ca401abcc13d0ea345fecf` on `main`). Hosted acceptance of migrations 044–050 has **not** run. See [AC-1 design and evidence](43-agent-control-1.md).
+LAST COMPLETED CHECKPOINT: AC-2, Governed Academic Agent Behaviour (migration 051), independently reviewed and merged through PR #55 (merge `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c` on `main`). Hosted acceptance status (reported by the operator for the dedicated hosted acceptance database):
 
-CURRENT CHECKPOINT: AC-2, Governed Academic Agent Behaviour, on `feat/agent-behaviour` from base `3099e72`. Migration `202610050051_agent_behaviour.sql` (additive; 001–050 unchanged; no existing attested message format changed). Implemented and locally tested, including the independent-review correction pass, the historical-default-drift correction and the fail-closed enrolment correction. Independently reviewed and approved; committed on `feat/agent-behaviour` and submitted as a pull request against `main` (not merged). **Not production-ready.** See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
+- MIGRATIONS PASS exactly through 051; the sensitive ACL sample passes.
+- The existing Commercial V1 true PostgreSQL concurrency rerun is 4 PASS / 0 FAIL / 2 BLOCKED. The two blocked cases need Examiner HMAC credentials.
+- JWT/PostgREST is blocked only by the absence of a genuinely expired, previously valid learner JWT.
+- AC-1/AC-2 dedicated real-concurrency scenarios remain a tracked hardening gap.
+
+See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
+
+CURRENT CHECKPOINT: AC-3, minimum-data governed academic handoffs, on `feat/ac3-academic-handoffs` from base `7a7d5b8`. Migration `202610050052_professor_academic_handoffs.sql` (additive; 001–051 unchanged; no existing attested message format changed). Implemented and locally tested; uncommitted, awaiting independent review. **Not production-ready.** See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+
+COMPLETED ITEMS (AC-3):
+
+- A learner-initiated Professor follow-up (`request_professor_academic_handoff`) composes the unmodified learner delivery handoff RPCs: Tutor `OBJECTIVE_REINFORCEMENT`, or Lab Instructor `PRACTICAL_HELP` for a lab practical of the lesson.
+  - The database derives the learner, classroom, enrolment, version and lesson.
+  - It verifies the source: the most recent SUCCEEDED, provenance-bound Professor execution of that classroom.
+  - It records an immutable minimum-data projection (`professor_academic_handoffs`): identifiers, two fixed reason codes, a CHECK-pinned code-owned summary and no free text.
+  - Creation is idempotent per classroom and scope, serialised on the classroom row, firewall-gated and audited (ids and codes only).
+- An objective is accepted only when provably in the source's governed teaching context (manifest plus AC-2's complete-objective rule; more than 50 objectives gives `OBJECTIVE_SCOPE_UNPROVEN`). Prose is never parsed.
+- Tutor/Lab receive `professorTeachingRecord.available = true` only through `get_professor_academic_handoff_for_release`:
+  - only for their own ACTIVE release of that exact handoff, firewall-gated, with destination and scope cross-checked;
+  - only when the pinned role version is the new reviewed `TUTOR_BEHAVIOUR_V2` / `LAB_INSTRUCTOR_BEHAVIOUR_V2`, which state that the record is not a transcript, mastery, evidence, a grade or proof of understanding.
+- Level 2 versions:
+  - V1 text is unchanged (hash-pinned to the AC-2 merge), and V1-pinned versions behave exactly as in AC-2.
+  - New publications freeze Tutor/Lab V2. Migration 052 widens the reviewed version lists.
+- Learner classroom UI: a disclosure of exactly what is shared, two closed forms, and a list of the learner's own follow-ups with the existing Tutor/Lab support panel. Execution and provenance ids are not shown, and the transcript is never shared.
+- Decisions documented:
+  - Professor transcript retention policy: deletion at the earlier of 12 months after the class or 90 days after the enrolment leaves ACTIVE; text only, never audit or provenance. The purge mechanism is deferred, and no delete RPC was added.
+  - Lab timing is still not invented.
+- Tests:
+  - New: `professor-academic-handoff-db` 19 (real migration chain) and `professor-academic-handoff` 20 (server, action, UI).
+  - Extended: behaviour contract (V1 hash pins, V2 diff, 052 mirrors), Tutor/Lab provider context (V1/V2 × record matrix), Tutor/Lab runtime (record use, V1 non-read, fail closed), and AC-2 DB, Tutor/Lab DB and control-plane assertions moved to the V2 version for versions published after 052.
+  - Mutation checks: removing the SUCCEEDED source requirement or the consumption firewall fails the DB suite.
+  - Focused AC-3 set: 10 files, 261/261.
+  - `npm run check`, exactly as defined: **3,830/3,830 across 155 files**, exit 0.
+  - `npm run build` passed. `npm run format:check` is clean. `npm audit --omit=dev` reports 0 vulnerabilities. `git diff --check HEAD` is clean.
+
+INCOMPLETE ITEMS:
+
+- Independent review of AC-3; PR CI and merge (not requested yet).
+- Hosted acceptance of migration 052: ACL, JWT/PostgREST, real multi-connection concurrency of `request_professor_academic_handoff`, browser/accessibility.
+- **Production blocker:** a governed purge mechanism for Professor classroom transcripts implementing the AC-3 retention policy.
+- Carried from AC-2:
+  - a reviewed design for lessons with more than 50 objectives;
+  - a repair procedure for corrupt behaviour bindings;
+  - live-provider evaluation of instructional behaviour (now including Tutor/Lab V2);
+  - AC-1/AC-2 dedicated real-concurrency scenarios.
+- AC-4 to AC-7 are not started. Sarah, class notes, teaching feedback and Lab timing are **not** implemented.
+
+KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
+
+NEXT EXACT ACTION: independent review of AC-3 (migration 052, the creation and consumption RPCs, Tutor/Lab V2 versioning, the learner UI and the retention/Lab-timing decisions). Do not commit, push or open a PR without instruction.
+
+### AC-2 record (merged)
 
 COMPLETED ITEMS (AC-2):
 
@@ -53,20 +104,6 @@ COMPLETED ITEMS (AC-2):
   - Extended suites: Course Engineering admin 55 and real-DB workflow 2, Tutor/Lab DB 46 and runtime, classroom domain 24 and actions 23, control-plane UI 20 and server 22, runtime harness 15, native provider adapters, live-provider acceptance driver.
   - `npm run check`, exactly as defined: **3,780/3,780 across 153 files**, exit 0.
   - `npm run build` passed. `npm run format:check` is clean. `npm audit --omit=dev` reports 0 vulnerabilities. `git diff --check HEAD` is clean.
-
-INCOMPLETE ITEMS:
-
-- PR CI and review of the AC-2 pull request, then merge (not performed).
-- Hosted acceptance of migrations 044–051: effective ACL, JWT/PostgREST, real multi-connection races, browser/accessibility.
-- A reviewed retention and deletion policy for Professor classroom memory. None is automated in AC-2.
-- A reviewed design for lessons with more than 50 objectives (currently refused, fail closed).
-- A reviewed repair procedure for a corrupted or missing behaviour binding (none exists by design; affected versions refuse enrolment and execution). A future default or role behaviour version needs a reviewed migration to widen the binding and provenance CHECK lists.
-- Live-provider evaluation of instructional behaviour quality.
-- AC-3 to AC-7 are not started. Sarah, handoffs, class notes, teaching feedback and Lab timing are **not** implemented.
-
-KNOWN FAILURES: no local functional blocker. `npm run format:check` is clean in this tree. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour.
-
-NEXT EXACT ACTION: confirm PR CI for the AC-2 pull request and complete its review; do not merge without instruction. After merge, run hosted acceptance for migrations 044–051, then start AC-3 (minimum-data structured academic handoffs).
 
 ### AC-1 record (merged)
 

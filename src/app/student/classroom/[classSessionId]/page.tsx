@@ -10,6 +10,37 @@ import {
 } from "@/server/professor-classroom";
 import { ClassroomDenied } from "@/domain/professor-classroom";
 import { getLearnerClassroomTranscript } from "@/server/academic-runtime/professor-teaching";
+import { ProfessorFollowUp } from "@/components/professor-follow-up";
+import { listMyProfessorAcademicHandoffs } from "@/server/professor-academic-handoff";
+import { listMyPracticals } from "@/server/course-activation";
+import type { Practical } from "@/domain/course-activation";
+
+// AC-3: this lesson's lab practicals, for the Lab Instructor follow-up
+// choice. Bounded paging through the learner's own governed practical list;
+// the database independently re-verifies the chosen practical.
+async function lessonLabPracticals(
+  enrolmentId: string,
+  lessonId: string,
+): Promise<Practical[]> {
+  const found: Practical[] = [];
+  try {
+    for (let page = 0; page < 10; page++) {
+      const practicals = await listMyPracticals({
+        enrolmentId,
+        cursor: page * 20,
+      });
+      found.push(
+        ...practicals.filter(
+          (p) => p.lessonId === lessonId && p.kind === "PRACTICAL_LAB",
+        ),
+      );
+      if (practicals.length < 20) break;
+    }
+  } catch {
+    return [];
+  }
+  return found;
+}
 
 // This route is deliberately separate from the existing dynamic
 // /student/[section] route (which never collides with it): the classroom is
@@ -66,6 +97,14 @@ export default async function ClassroomPage({
   const transcript = content.available
     ? await getLearnerClassroomTranscript(context.classSessionId)
     : null;
+  // AC-3: the learner's own Professor follow-ups (firewall-gated by the
+  // database) and this lesson's lab practicals.
+  const followUps = content.available
+    ? await listMyProfessorAcademicHandoffs(context.classSessionId)
+    : null;
+  const labPracticals = content.available
+    ? await lessonLabPracticals(context.enrolmentId, context.lessonId)
+    : [];
 
   return (
     <AcademyShell name={actor.displayName} roles={actor.roles}>
@@ -208,8 +247,26 @@ export default async function ClassroomPage({
         <p className="muted">
           Your conversation with the Professor in this class is kept for you so
           the Professor can continue it. It is not a record of marks, progress
-          or mastery, and it is not shared with counsellors or other staff.
+          or mastery, and it is not shared with counsellors, other staff, the
+          Tutor or the Lab Instructor.
         </p>
+        {content.available && (
+          <Card>
+            <ProfessorFollowUp
+              classSessionId={context.classSessionId}
+              objectives={content.objectives.objectives.map((objective) => ({
+                id: objective.objectiveId,
+                text: objective.description,
+              }))}
+              labPracticals={labPracticals.map((practical) => ({
+                id: practical.id,
+                text: practical.title,
+              }))}
+              handoffs={followUps}
+              disabled={false}
+            />
+          </Card>
+        )}
       </div>
       <ButtonLink href="/student/classes" secondary>
         ← Back to Classes
