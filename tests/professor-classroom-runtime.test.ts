@@ -7,6 +7,20 @@ const mocks = vi.hoisted(() => ({
   withValidatedProfessorContent: vi.fn(),
   attestProviderExecutionCommand: vi.fn(),
 }));
+// AC-2: the learner-scoped Level-3 behaviour read resolves to the
+// code-owned default here; its own authority is tested in
+// agent-behaviour-db.test.ts.
+vi.mock("@/server/agent-behaviour-config", async () => {
+  const behaviour = await import("@/domain/agent-behaviour");
+  return {
+    getAgentBehaviourForEnrolment: vi.fn(
+      async (
+        _enrolmentId: string,
+        role: "PROFESSOR" | "TUTOR" | "LAB_INSTRUCTOR",
+      ) => behaviour.defaultEffectiveBehaviour(role),
+    ),
+  };
+});
 vi.mock("@/server/identity", () => ({
   requireStudentPrincipal: mocks.requireStudentPrincipal,
 }));
@@ -140,7 +154,11 @@ describe("Professor classroom interaction reaching the governed runtime", () => 
     mocks.attestProviderExecutionCommand.mockImplementation(governedAttest());
   });
 
-  it("BEGIN_LESSON reaches the provider context, carrying only the fixed interaction kind", async () => {
+  // AC-2: a classroom interaction now always travels with its classroom
+  // (classSessionId), so the runtime can re-derive timing and memory. The
+  // positive classroom path is covered in
+  // professor-classroom-teaching-runtime.test.ts.
+  it("BEGIN_LESSON without its classroom identity fails closed with zero provider calls (AC-2)", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(enabledConfig());
     mocks.withValidatedProfessorContent.mockImplementation(
       mockGateway({
@@ -162,15 +180,15 @@ describe("Professor classroom interaction reaching the governed runtime", () => 
       { resolveProfile: resolveTestProfile, resolveAdapter: () => adapter },
     );
 
-    expect(result.outcome).toBe("SUCCEEDED");
-    expect(adapter.lastRequest?.context).toMatchObject({
-      capability: "get_lesson_context",
-      data: { enrolmentId, lessonId, title: "Access Control" },
-      interaction: { kind: "BEGIN_LESSON" },
+    expect(result).toMatchObject({
+      outcome: "ABSTAINED",
+      reason: "NO_EXECUTION_PATH",
     });
+    expect(adapter.lastRequest).toBeUndefined();
+    expect(mocks.withValidatedProfessorContent).not.toHaveBeenCalled();
   });
 
-  it("a bounded LEARNER_QUESTION reaches the provider context exactly as submitted, trimmed and bounded", async () => {
+  it("a LEARNER_QUESTION without its classroom identity fails closed with zero provider calls (AC-2)", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(enabledConfig());
     mocks.withValidatedProfessorContent.mockImplementation(
       mockGateway({
@@ -195,12 +213,8 @@ describe("Professor classroom interaction reaching the governed runtime", () => 
       { resolveProfile: resolveTestProfile, resolveAdapter: () => adapter },
     );
 
-    expect(adapter.lastRequest?.context).toMatchObject({
-      interaction: {
-        kind: "LEARNER_QUESTION",
-        learnerMessage: "What is access control?",
-      },
-    });
+    expect(adapter.lastRequest).toBeUndefined();
+    expect(mocks.attestProviderExecutionCommand).not.toHaveBeenCalled();
   });
 
   it("requests without any interaction behave exactly as before (existing non-classroom callers unaffected)", async () => {
@@ -307,7 +321,7 @@ describe("Professor classroom interaction reaching the governed runtime", () => 
     expect(result).toMatchObject({ outcome: "ABSTAINED" });
   });
 
-  it("V2 governance (migration 025 AUTHORIZE/START/FINALIZE) still runs for a classroom interaction", async () => {
+  it("V2 governance (migration 025) is never reached by an interaction without its classroom identity (AC-2)", async () => {
     mocks.getAgentConfigForEnrolment.mockResolvedValue(enabledConfig());
     mocks.withValidatedProfessorContent.mockImplementation(
       mockGateway({
@@ -349,8 +363,13 @@ describe("Professor classroom interaction reaching the governed runtime", () => 
       },
     );
 
-    expect(operations).toEqual(["AUTHORIZE", "START", "FINALIZE"]);
-    expect(result.outcome).toBe("SUCCEEDED");
+    // AC-2: without its classroom the interaction never reaches V2
+    // governance at all; with it, see professor-classroom-teaching-runtime.
+    expect(operations).toEqual([]);
+    expect(result).toMatchObject({
+      outcome: "ABSTAINED",
+      reason: "NO_EXECUTION_PATH",
+    });
   });
 
   it.each(["TUTOR", "LAB_INSTRUCTOR", "EXAMINER", "COUNSELLOR"] as const)(

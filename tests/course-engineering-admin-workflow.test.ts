@@ -19,6 +19,7 @@ import {
   importPackageAction,
   packageLifecycleAction,
   saveCourseAgentAction,
+  saveAgentBehaviourAction,
   runCourseTestAction,
 } from "@/app/admin/course-engineering/actions";
 import {
@@ -26,6 +27,7 @@ import {
   getCoursePackagePreview,
 } from "@/server/course-engineering";
 import { listAgentConfigs } from "@/server/academic-agent-config";
+import { listAgentBehaviourConfigs } from "@/server/agent-behaviour-config";
 let db: PGlite;
 beforeAll(async () => {
   const f = await buildAssessmentPolicyFixture({ withLabs: false });
@@ -49,6 +51,8 @@ beforeAll(async () => {
     "publish_course_package",
     "set_agent_config",
     "list_agent_configs",
+    "admin_set_agent_behaviour_config",
+    "admin_list_agent_behaviour_configs",
     "run_course_package_test",
     "get_course_package_test_status",
   ]);
@@ -82,8 +86,16 @@ beforeAll(async () => {
               : rows[0][name],
           error: null,
         };
-      } catch {
-        return { data: null, error: { message: "Test RPC unavailable" } };
+      } catch (error) {
+        // Relays the database exception text as PostgREST does, so refusal
+        // codes reach the same server-side mapping as in production.
+        return {
+          data: null,
+          error: {
+            message:
+              error instanceof Error ? error.message : "Test RPC unavailable",
+          },
+        };
       }
     },
   });
@@ -152,6 +164,48 @@ describe("real Course Engineering admin journey", () => {
     expect(await listAgentConfigs(applied.programme_version_id!)).toHaveLength(
       5,
     );
+    // AC-2: Level-3 behaviour is configurable while the version is a draft.
+    const behaviourForm = (extra: Record<string, string> = {}) =>
+      form(id, {
+        role: "PROFESSOR",
+        responseDepth: "DETAILED",
+        teachingApproach: "WORKED_EXAMPLE_FIRST",
+        understandingCheckFrequency: "HIGH",
+        challengeLevel: "FOUNDATION",
+        courseContextNotes: "Learners are new to this topic.",
+        ...extra,
+      });
+    expect(await saveAgentBehaviourAction({}, behaviourForm())).toHaveProperty(
+      "message",
+    );
+    expect(
+      await saveAgentBehaviourAction(
+        {},
+        behaviourForm({ responseDepth: "UNBOUNDED" }),
+      ),
+    ).toHaveProperty("error");
+    expect(
+      await saveAgentBehaviourAction(
+        {},
+        behaviourForm({ courseContextNotes: "x".repeat(2001) }),
+      ),
+    ).toHaveProperty("error");
+    expect(
+      await saveAgentBehaviourAction({}, behaviourForm({ role: "EXAMINER" })),
+    ).toHaveProperty("error");
+    expect(
+      await listAgentBehaviourConfigs(applied.programme_version_id!),
+    ).toMatchObject({
+      frozen: false,
+      configs: [
+        {
+          role: "PROFESSOR",
+          responseDepth: "DETAILED",
+          teachingApproach: "WORKED_EXAMPLE_FIRST",
+          courseContextNotes: "Learners are new to this topic.",
+        },
+      ],
+    });
     // Publish still fails closed -- no pre-publication test has run yet.
     expect(
       await packageLifecycleAction({}, form(id, { operation: "publish" })),
@@ -175,6 +229,23 @@ describe("real Course Engineering admin journey", () => {
     expect(
       await packageLifecycleAction({}, form(id, { operation: "reject" })),
     ).toHaveProperty("error");
+    // AC-2: publication freezes Level 3 in the database itself.
+    const frozen = await saveAgentBehaviourAction(
+      {},
+      behaviourForm({ responseDepth: "CONCISE" }),
+    );
+    expect(frozen.error).toMatch(/published or has enrolments/);
+    const tutorFrozen = await saveAgentBehaviourAction(
+      {},
+      behaviourForm({ role: "TUTOR" }),
+    );
+    expect(tutorFrozen.error).toMatch(/published or has enrolments/);
+    expect(
+      await listAgentBehaviourConfigs(applied.programme_version_id!),
+    ).toMatchObject({
+      frozen: true,
+      configs: [{ role: "PROFESSOR", responseDepth: "DETAILED" }],
+    });
   });
   it("invalid staged data is rejected by canonical validation without rendering contents", async () => {
     const p = {

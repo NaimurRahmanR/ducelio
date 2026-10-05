@@ -28,6 +28,10 @@ import {
   resolveRoleBoundRuntimeProfile,
 } from "@/server/academic-runtime/profile-registry";
 import { runGovernedProviderExecution } from "@/server/academic-runtime/runtime";
+import {
+  defaultEffectiveBehaviour,
+  isBehaviourRole,
+} from "@/domain/agent-behaviour";
 
 // ============================================================================
 // Commercial V1 LIVE PROVIDER acceptance: the fail-closed gate and the three
@@ -500,6 +504,12 @@ async function evaluateSmoke(
       role: plan.role,
       capability: plan.capability,
       context: syntheticContext(operation),
+      // AC-2: a teaching role never runs without explicit behaviour. This
+      // synthetic smoke has no programme version, so it states the current
+      // code default explicitly instead of relying on a runtime fallback.
+      ...(isBehaviourRole(plan.role)
+        ? { behaviour: defaultEffectiveBehaviour(plan.role) }
+        : {}),
     },
     policy,
   );

@@ -5,6 +5,7 @@ import {
   importPackageAction,
   packageLifecycleAction,
   saveCourseAgentAction,
+  saveAgentBehaviourAction,
   runCourseTestAction,
 } from "@/app/admin/course-engineering/actions";
 import {
@@ -20,6 +21,23 @@ import {
 } from "@/domain/academic-agent-config";
 import { ROLE_RUNTIME_PROFILE_POLICY } from "@/domain/academic-runtime-profile";
 import { ACADEMIC_ROLE_FACTS } from "@/domain/agent-control-plane";
+import {
+  COURSE_CONTEXT_NOTES_MAX,
+  type AgentBehaviourConfig,
+  type BehaviourRole,
+} from "@/domain/agent-behaviour";
+
+// The database-resolved effective behaviour of one role (migration 051):
+// DRAFT is the live resolution; BOUND is the binding frozen at publication.
+export type CourseEffectiveBehaviour =
+  | {
+      state: "DRAFT" | "BOUND";
+      behaviourVersion: string;
+      source: "EXPLICIT" | "DEFAULT";
+      configVersion: string;
+      config: AgentBehaviourConfig;
+    }
+  | { state: "BEHAVIOUR_BINDING_MISSING" | "BEHAVIOUR_BINDING_INVALID" };
 
 function Result({ state }: { state: CourseEngineeringState }) {
   return (
@@ -314,6 +332,170 @@ export function CourseAgentForm({
         <Reason />
         <button className="button">
           {pending ? "Saving…" : `Save ${role} configuration`}
+        </button>
+      </fieldset>
+      <Result state={state} />
+    </form>
+  );
+}
+
+// AC-2 LEVEL-3 options. Labels only: each value maps to a fixed, reviewed
+// instruction sentence in code, never to free text sent to a provider.
+const BEHAVIOUR_FIELDS = [
+  {
+    name: "responseDepth",
+    label: "Response depth",
+    options: [
+      ["CONCISE", "Concise"],
+      ["STANDARD", "Standard"],
+      ["DETAILED", "Detailed"],
+    ],
+  },
+  {
+    name: "teachingApproach",
+    label: "Teaching approach",
+    options: [
+      ["CONCEPT_FIRST", "Concept first"],
+      ["WORKED_EXAMPLE_FIRST", "Worked example first"],
+      ["GUIDED_QUESTIONING", "Guided questioning"],
+    ],
+  },
+  {
+    name: "understandingCheckFrequency",
+    label: "Understanding check frequency",
+    options: [
+      ["LOW", "Low"],
+      ["STANDARD", "Standard"],
+      ["HIGH", "High"],
+    ],
+  },
+  {
+    name: "challengeLevel",
+    label: "Challenge level",
+    options: [
+      ["FOUNDATION", "Foundation"],
+      ["STANDARD", "Standard"],
+      ["ADVANCED", "Advanced"],
+    ],
+  },
+] as const;
+
+export function CourseBehaviourForm({
+  importId,
+  role,
+  behaviour,
+  frozen,
+}: {
+  importId: string;
+  role: BehaviourRole;
+  // The effective behaviour resolved by the database for this role.
+  behaviour: CourseEffectiveBehaviour;
+  // Published or enrolled: the database refuses every change (migration
+  // 051), so no editable control is rendered.
+  frozen: boolean;
+}) {
+  const [state, action, pending] = useActionState(saveAgentBehaviourAction, {});
+  if (!("config" in behaviour))
+    return (
+      <section aria-label={`${role} behaviour`}>
+        <h3>Behaviour</h3>
+        <p role="alert">
+          {behaviour.state === "BEHAVIOUR_BINDING_MISSING"
+            ? "This version's frozen behaviour binding is missing"
+            : "This version's frozen behaviour binding does not verify"}
+          , so every {role} execution for it is refused. It cannot be repaired
+          here.
+        </p>
+      </section>
+    );
+  const effective = behaviour.config;
+  const source =
+    behaviour.source === "EXPLICIT"
+      ? `Programme configuration (${behaviour.configVersion})`
+      : `Versioned default (${behaviour.configVersion}): no programme configuration recorded`;
+  const frozenNote =
+    behaviour.state === "BOUND"
+      ? "These values and the role behaviour version were frozen when this version was published; later code defaults do not change them."
+      : "Publishing this version freezes these values and the current role behaviour version.";
+  const notesHelp = (
+    <p id={`behaviour-notes-help-${role}`}>
+      Course context notes reach the agent only as subordinate data inside its
+      input, never as instructions, and the learner can read them. Do not
+      include private, assessment or answer-key material.
+    </p>
+  );
+  if (frozen)
+    return (
+      <section aria-label={`${role} behaviour`}>
+        <h3>Behaviour ({behaviour.behaviourVersion})</h3>
+        <p className="notice">
+          This programme version is published or has enrolments, so its
+          behaviour configuration is fixed. Use a new programme version to
+          change it.
+        </p>
+        <p>{source}</p>
+        <p>{frozenNote}</p>
+        <dl>
+          {BEHAVIOUR_FIELDS.map((field) => (
+            <div key={field.name}>
+              <dt>{field.label}</dt>
+              <dd>
+                {
+                  field.options.find(
+                    ([value]) => value === effective[field.name],
+                  )?.[1]
+                }
+              </dd>
+            </div>
+          ))}
+          <div>
+            <dt>Course context notes</dt>
+            <dd>{effective.courseContextNotes ?? "None"}</dd>
+          </div>
+        </dl>
+      </section>
+    );
+  return (
+    <form action={action} className="form-grid">
+      <input type="hidden" name="importId" value={importId} />
+      <input type="hidden" name="role" value={role} />
+      <fieldset disabled={pending}>
+        <legend>
+          {role} behaviour ({behaviour.behaviourVersion}) — {source}
+        </legend>
+        <p>{frozenNote}</p>
+        <p>
+          The institutional baseline and the {role} role baseline are owned by
+          code and always take precedence. These options only adjust teaching
+          style within them. They cannot change the model, provider, budget or
+          any permission.
+        </p>
+        {BEHAVIOUR_FIELDS.map((field) => (
+          <label key={field.name}>
+            {field.label}
+            <select name={field.name} defaultValue={effective[field.name]}>
+              {field.options.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ))}
+        <label>
+          Course context notes (optional, up to {COURSE_CONTEXT_NOTES_MAX}{" "}
+          characters)
+          <textarea
+            name="courseContextNotes"
+            maxLength={COURSE_CONTEXT_NOTES_MAX}
+            aria-describedby={`behaviour-notes-help-${role}`}
+            defaultValue={effective.courseContextNotes ?? ""}
+          />
+        </label>
+        {notesHelp}
+        <Reason />
+        <button className="button">
+          {pending ? "Saving…" : `Save ${role} behaviour`}
         </button>
       </fieldset>
       <Result state={state} />

@@ -78,6 +78,7 @@ describe("beginLessonAction", () => {
       role: "PROFESSOR",
       capability: "get_lesson_context",
       lessonId: context.lessonId,
+      classSessionId: context.classSessionId,
       interaction: { kind: "BEGIN_LESSON" },
     });
   });
@@ -150,6 +151,7 @@ describe("askProfessorAction", () => {
       role: "PROFESSOR",
       capability: "get_lesson_context",
       lessonId: context.lessonId,
+      classSessionId: context.classSessionId,
       interaction: {
         kind: "LEARNER_QUESTION",
         learnerMessage: "What is access control?",
@@ -237,7 +239,14 @@ describe("askProfessorAction", () => {
     );
     const call = mocks.executeRoleCapability.mock.calls[0][0];
     expect(Object.keys(call).sort()).toEqual(
-      ["capability", "enrolmentId", "interaction", "lessonId", "role"].sort(),
+      [
+        "capability",
+        "classSessionId",
+        "enrolmentId",
+        "interaction",
+        "lessonId",
+        "role",
+      ].sort(),
     );
     expect(call.role).toBe("PROFESSOR");
     expect(call.capability).toBe("get_lesson_context");
@@ -384,5 +393,47 @@ describe("askProfessorAction", () => {
     expect(result).toEqual({ status: "RETRY_LATER" });
     expect(JSON.stringify(result)).not.toMatch(/ctrl_live|signature/i);
     expect(mocks.executeRoleCapability).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AC-2 classroom memory states", () => {
+  const usage = {
+    providerCalls: 1,
+    attempts: 1,
+    inputTokens: 1,
+    outputTokens: 1,
+    estimatedCostMicrousd: 1,
+    elapsedMs: 1,
+  };
+  it("returns the confirmed answer and says when it was not recorded", async () => {
+    mocks.executeRoleCapability.mockResolvedValue({
+      outcome: "SUCCEEDED",
+      usage,
+      response: {
+        outputText: "Answer",
+        usage: { inputTokens: 1, outputTokens: 1, estimatedCostMicrousd: 1 },
+      },
+      classroomMemory: "NOT_RECORDED",
+    });
+    expect(
+      await askProfessorAction(
+        {},
+        form({ classSessionId, idempotencyKey: "k-mem", message: "Why?" }),
+      ),
+    ).toEqual({ status: "SUCCEEDED", text: "Answer", memoryNotRecorded: true });
+  });
+  it("reports the explicit memory capacity state", async () => {
+    mocks.executeRoleCapability.mockResolvedValue({
+      outcome: "ABSTAINED",
+      usage,
+      reason: "POLICY_BLOCKED",
+      classroomMemory: "CAPACITY_REACHED",
+    });
+    expect(
+      await askProfessorAction(
+        {},
+        form({ classSessionId, idempotencyKey: "k-full", message: "Why?" }),
+      ),
+    ).toEqual({ status: "MEMORY_FULL" });
   });
 });

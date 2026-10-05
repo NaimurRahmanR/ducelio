@@ -189,6 +189,51 @@ export const agentConfigScopeSchema = z.strictObject({
 });
 export type AgentConfigScope = z.infer<typeof agentConfigScopeSchema>;
 
+export const behaviourConfigScopeSchema = z.strictObject({
+  role: z.enum(["PROFESSOR", "TUTOR", "LAB_INSTRUCTOR"]),
+  responseDepth: z.enum(["CONCISE", "STANDARD", "DETAILED"]),
+  teachingApproach: z.enum([
+    "CONCEPT_FIRST",
+    "WORKED_EXAMPLE_FIRST",
+    "GUIDED_QUESTIONING",
+  ]),
+  understandingCheckFrequency: z.enum(["LOW", "STANDARD", "HIGH"]),
+  challengeLevel: z.enum(["FOUNDATION", "STANDARD", "ADVANCED"]),
+  hasCourseContextNotes: z.boolean(),
+});
+export type BehaviourConfigScope = z.infer<typeof behaviourConfigScopeSchema>;
+
+// AC-2 (migration 051): the EFFECTIVE behaviour per role. DRAFT is the live
+// resolution; BOUND is the binding frozen at publication (pinned role
+// behaviour version and actual values, also for a default). A bound
+// version whose binding is missing or does not verify reports that state,
+// and every execution for it fails closed.
+export const effectiveBehaviourScopeSchema = z.union([
+  z.strictObject({
+    role: z.enum(["PROFESSOR", "TUTOR", "LAB_INSTRUCTOR"]),
+    state: z.enum(["DRAFT", "BOUND"]),
+    behaviourVersion: z.string().max(100),
+    source: z.enum(["EXPLICIT", "DEFAULT"]),
+    configVersion: z.enum([
+      "AGENT_BEHAVIOUR_CONFIG_V1",
+      "AGENT_BEHAVIOUR_DEFAULT_V1",
+    ]),
+    responseDepth: behaviourConfigScopeSchema.shape.responseDepth,
+    teachingApproach: behaviourConfigScopeSchema.shape.teachingApproach,
+    understandingCheckFrequency:
+      behaviourConfigScopeSchema.shape.understandingCheckFrequency,
+    challengeLevel: behaviourConfigScopeSchema.shape.challengeLevel,
+    hasCourseContextNotes: z.boolean(),
+  }),
+  z.strictObject({
+    role: z.enum(["PROFESSOR", "TUTOR", "LAB_INSTRUCTOR"]),
+    state: z.enum(["BEHAVIOUR_BINDING_MISSING", "BEHAVIOUR_BINDING_INVALID"]),
+  }),
+]);
+export type EffectiveBehaviourScope = z.infer<
+  typeof effectiveBehaviourScopeSchema
+>;
+
 export const programmeVersionScopeSchema = z.strictObject({
   programmeVersionId: z.uuid(),
   programmeTitle: z.string().max(2000),
@@ -198,7 +243,18 @@ export const programmeVersionScopeSchema = z.strictObject({
   createdAt: z.string(),
   hasEnrolments: z.boolean(),
   semanticConfigFrozen: z.boolean(),
+  // AC-2: AGENT_BEHAVIOUR_FINGERPRINT_V1 of the actual effective behaviour
+  // values. Separate from, and not covered by, the package publication
+  // fingerprint. Null when a bound version's binding is missing or invalid.
+  behaviourFingerprint: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable(),
+  behaviourEffective: z.array(effectiveBehaviourScopeSchema).length(3),
   configs: z.array(agentConfigScopeSchema).max(5),
+  // AC-2 (migration 051): explicit Level-3 behaviour rows; whether notes are
+  // stored, never their text.
+  behaviourConfigs: z.array(behaviourConfigScopeSchema).max(3),
 });
 export type ProgrammeVersionScope = z.infer<typeof programmeVersionScopeSchema>;
 

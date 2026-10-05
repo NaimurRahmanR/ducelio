@@ -10,6 +10,20 @@ const mocks = vi.hoisted(() => ({
   getDeliveryAgentAccess: vi.fn(),
   withValidatedProfessorContent: vi.fn(),
 }));
+// AC-2: the learner-scoped Level-3 behaviour read resolves to the
+// code-owned default here; its own authority is tested in
+// agent-behaviour-db.test.ts.
+vi.mock("@/server/agent-behaviour-config", async () => {
+  const behaviour = await import("@/domain/agent-behaviour");
+  return {
+    getAgentBehaviourForEnrolment: vi.fn(
+      async (
+        _enrolmentId: string,
+        role: "PROFESSOR" | "TUTOR" | "LAB_INSTRUCTOR",
+      ) => behaviour.defaultEffectiveBehaviour(role),
+    ),
+  };
+});
 vi.mock("@/server/identity", () => ({
   requireStudentPrincipal: mocks.requireStudentPrincipal,
 }));

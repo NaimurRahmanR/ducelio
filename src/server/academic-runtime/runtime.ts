@@ -10,6 +10,11 @@ import {
   type RuntimeResult,
   type RuntimeUsage,
 } from "@/domain/academic-runtime";
+import {
+  isBehaviourRole,
+  roleBaselineFor,
+  type EffectiveAgentBehaviour,
+} from "@/domain/agent-behaviour";
 
 export type GovernedExecutionRequest = {
   role: string;
@@ -18,6 +23,8 @@ export type GovernedExecutionRequest = {
   // caller/browser/course-package JSON. See src/server/academic-runtime/
   // index.ts for where this is actually constructed.
   context: Record<string, unknown>;
+  // AC-2: server-resolved effective behaviour for teaching roles.
+  behaviour?: EffectiveAgentBehaviour;
 };
 
 // Provider-neutral execution harness: admission, a single total deadline
@@ -50,6 +57,15 @@ export async function runGovernedProviderExecution(
 
   if (!adapter)
     return { outcome: "ABSTAINED", usage, reason: "NO_PROVIDER_CONFIGURED" };
+  // AC-2: a teaching role executes only with the programme version's frozen
+  // behaviour binding whose pinned role behaviour version this code has
+  // reviewed text for. There is no fallback to the current code default.
+  if (
+    isBehaviourRole(request.role) &&
+    (!request.behaviour ||
+      !roleBaselineFor(request.role, request.behaviour.behaviourVersion))
+  )
+    return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
   if (validPolicy.maxProviderCalls < 1)
     return { outcome: "BUDGET_BLOCKED", usage, stage: "PRE_CALL" };
 
@@ -97,6 +113,7 @@ export async function runGovernedProviderExecution(
           capability: request.capability,
           context: request.context,
           constraints: { maxOutputTokens: validPolicy.maxOutputTokens },
+          ...(request.behaviour ? { behaviour: request.behaviour } : {}),
         },
         controller.signal,
       );

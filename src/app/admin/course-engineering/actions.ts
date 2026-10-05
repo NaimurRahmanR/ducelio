@@ -22,6 +22,10 @@ import {
   agentRoleSchema,
 } from "@/domain/academic-agent-config";
 import {
+  AgentBehaviourRefused,
+  setAgentBehaviourConfig,
+} from "@/server/agent-behaviour-config";
+import {
   MAX_COURSE_UPLOAD_BYTES,
   describeTestFailure,
   operatorPreviewSchema,
@@ -227,6 +231,55 @@ export async function saveCourseAgentAction(
     return {
       error:
         "Configuration was not saved. Check access, the applied package, role, reviewed capabilities and reason.",
+    };
+  }
+}
+// AC-2 LEVEL-3 behaviour configuration. Only the four reviewed enums and the
+// bounded course context notes are accepted: there is no prompt, model,
+// provider, endpoint, key or budget field, and the database (migration 051)
+// refuses any change once the programme version is published or enrolled.
+export async function saveAgentBehaviourAction(
+  _state: CourseEngineeringState,
+  data: FormData,
+): Promise<CourseEngineeringState> {
+  try {
+    await authorized();
+    const id = z.uuid().parse(data.get("importId"));
+    const current = (await listCoursePackages()).find((row) => row.id === id);
+    if (!current) return { error: "Package not found or unavailable." };
+    if (
+      !["APPLIED", "PUBLISHED"].includes(current.status) ||
+      !current.programme_version_id
+    )
+      return { error: "Apply this package before configuring behaviour." };
+    const notes = data.get("courseContextNotes");
+    await setAgentBehaviourConfig({
+      programmeVersionId: current.programme_version_id,
+      role: data.get("role"),
+      config: {
+        responseDepth: data.get("responseDepth"),
+        teachingApproach: data.get("teachingApproach"),
+        understandingCheckFrequency: data.get("understandingCheckFrequency"),
+        challengeLevel: data.get("challengeLevel"),
+        courseContextNotes:
+          typeof notes === "string" && notes.trim() ? notes : null,
+      },
+      reason: data.get("reason"),
+    });
+    refresh();
+    return {
+      message:
+        "Behaviour configuration saved for this draft programme version. It is fixed once the version is published or has enrolments.",
+    };
+  } catch (error) {
+    if (error instanceof AgentBehaviourRefused)
+      return {
+        error:
+          "Not saved: this programme version is published or has enrolments, so its behaviour configuration is fixed. Use a new programme version.",
+      };
+    return {
+      error:
+        "Behaviour configuration was not saved. Check access, the applied package, the selected options, the notes length and the reason.",
     };
   }
 }

@@ -8,6 +8,11 @@ import {
 } from "@/server/course-engineering";
 import { listAgentConfigs } from "@/server/academic-agent-config";
 import {
+  listAgentBehaviourConfigs,
+  type AgentBehaviourList,
+} from "@/server/agent-behaviour-config";
+import { isBehaviourRole } from "@/domain/agent-behaviour";
+import {
   agentRoleSchema,
   type AgentConfigRecord,
 } from "@/domain/academic-agent-config";
@@ -22,6 +27,7 @@ import {
   CoursePackageImportForm,
   CoursePackageLifecycleForm,
   CourseAgentForm,
+  CourseBehaviourForm,
   CourseTestForm,
 } from "@/components/course-engineering-forms";
 
@@ -61,6 +67,18 @@ export default async function Page({
       configs = await listAgentConfigs(selected.programme_version_id);
     } catch {
       configFailed = true;
+    }
+  }
+  // AC-2 Level-3 behaviour rows. `frozen` is derived by the database
+  // (published or enrolled); a failed read renders no editable control.
+  let behaviour: AgentBehaviourList | null = null;
+  if (selected?.programme_version_id) {
+    try {
+      behaviour = await listAgentBehaviourConfigs(
+        selected.programme_version_id,
+      );
+    } catch {
+      behaviour = null;
     }
   }
   // Server/database-derived only: the browser never calculates publication
@@ -240,39 +258,105 @@ export default async function Page({
                 editing.
               </p>
             ) : (
-              agentRoleSchema.options.map((role) => (
-                <details key={role} className="engineering-role">
-                  <summary>
-                    {role} ·{" "}
-                    {configs.some((c) => c.role === role)
-                      ? "saved"
-                      : "not configured"}
-                  </summary>
-                  {preview && (
-                    <>
-                      <h3>Package proposal (not an approval)</h3>
-                      <pre className="engineering-json">
-                        {JSON.stringify(
-                          preview.agentConfiguration[role],
-                          null,
-                          2,
-                        )}
-                      </pre>
-                    </>
-                  )}
-                  <CourseAgentForm
-                    key={
-                      selected.id +
-                      role +
-                      (configs.find((c) => c.role === role)?.updatedAt ?? "new")
-                    }
-                    importId={selected.id}
-                    role={role}
-                    config={configs.find((c) => c.role === role)}
-                    frozen={selected.status === "PUBLISHED"}
-                  />
-                </details>
-              ))
+              <>
+                {behaviour &&
+                  (behaviour.behaviourFingerprint ? (
+                    <p>
+                      Behaviour fingerprint ({behaviour.fingerprintPolicy}):{" "}
+                      <code>{behaviour.behaviourFingerprint}</code>. It covers
+                      the actual effective values and role behaviour version,
+                      and is separate from the pre-publication test: the course
+                      package publication fingerprint does not cover behaviour.
+                      The database freezes behaviour when this version is
+                      published.
+                    </p>
+                  ) : (
+                    <p role="alert">
+                      The frozen behaviour binding of this version is missing or
+                      does not verify, so no behaviour fingerprint exists and
+                      every teaching execution for it is refused.
+                    </p>
+                  ))}
+                {agentRoleSchema.options.map((role) => (
+                  <details key={role} className="engineering-role">
+                    <summary>
+                      {role} ·{" "}
+                      {configs.some((c) => c.role === role)
+                        ? "saved"
+                        : "not configured"}
+                    </summary>
+                    {preview && (
+                      <>
+                        <h3>Package proposal (not an approval)</h3>
+                        <pre className="engineering-json">
+                          {JSON.stringify(
+                            preview.agentConfiguration[role],
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </>
+                    )}
+                    <CourseAgentForm
+                      key={
+                        selected.id +
+                        role +
+                        (configs.find((c) => c.role === role)?.updatedAt ??
+                          "new")
+                      }
+                      importId={selected.id}
+                      role={role}
+                      config={configs.find((c) => c.role === role)}
+                      frozen={selected.status === "PUBLISHED"}
+                    />
+                    {isBehaviourRole(role) &&
+                      (behaviour ? (
+                        <CourseBehaviourForm
+                          key={
+                            selected.id +
+                            role +
+                            (behaviour.configs.find((c) => c.role === role)
+                              ?.updatedAt ?? "default") +
+                            String(behaviour.frozen)
+                          }
+                          importId={selected.id}
+                          role={role}
+                          behaviour={(() => {
+                            const e = behaviour.effective.find(
+                              (c) => c.role === role,
+                            );
+                            if (!e)
+                              return {
+                                state: "BEHAVIOUR_BINDING_MISSING" as const,
+                              };
+                            if (e.state !== "DRAFT" && e.state !== "BOUND")
+                              return { state: e.state };
+                            return {
+                              state: e.state,
+                              behaviourVersion: e.behaviourVersion,
+                              source: e.source,
+                              configVersion: e.configVersion,
+                              config: {
+                                responseDepth: e.responseDepth,
+                                teachingApproach: e.teachingApproach,
+                                understandingCheckFrequency:
+                                  e.understandingCheckFrequency,
+                                challengeLevel: e.challengeLevel,
+                                courseContextNotes: e.courseContextNotes,
+                              },
+                            };
+                          })()}
+                          frozen={behaviour.frozen}
+                        />
+                      ) : (
+                        <p role="alert">
+                          Behaviour configuration could not be loaded. Refresh
+                          before editing.
+                        </p>
+                      ))}
+                  </details>
+                ))}
+              </>
             )}
           </Card>
           {selected.programme_version_id && selected.status === "APPLIED" && (

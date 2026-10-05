@@ -12,6 +12,20 @@ const mocks = vi.hoisted(() => ({
   resolveAdapterForProfile: vi.fn(),
   runGovernedProviderExecution: vi.fn(),
 }));
+// AC-2: the learner-scoped Level-3 behaviour read resolves to the
+// code-owned default here; its own authority is tested in
+// agent-behaviour-db.test.ts.
+vi.mock("@/server/agent-behaviour-config", async () => {
+  const behaviour = await import("@/domain/agent-behaviour");
+  return {
+    getAgentBehaviourForEnrolment: vi.fn(
+      async (
+        _enrolmentId: string,
+        role: "PROFESSOR" | "TUTOR" | "LAB_INSTRUCTOR",
+      ) => behaviour.defaultEffectiveBehaviour(role),
+    ),
+  };
+});
 vi.mock("@/server/identity", () => ({
   requireStudentPrincipal: mocks.requireStudentPrincipal,
 }));
@@ -59,6 +73,9 @@ vi.mock("@/server/academic-runtime/runtime", () => ({
 import { executeTutorLabSupport } from "@/server/tutor-lab-execution";
 import { TutorLabContentReleaseDenied } from "@/server/tutor-lab-execution/release";
 import { TutorLabExecutionDenied } from "@/domain/tutor-lab-execution";
+import * as behaviourConfig from "@/server/agent-behaviour-config";
+import { defaultEffectiveBehaviour } from "@/domain/agent-behaviour";
+import { providerInstructions } from "@/server/academic-runtime/provider";
 
 const handoffId = "40000000-0000-4000-8000-000000000009";
 const idempotencyKey = "40000000-0000-4000-8000-000000000010";
@@ -247,6 +264,96 @@ describe("executeTutorLabSupport: context construction per role", () => {
     const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
     expect(requestArg.role).toBe("LAB_INSTRUCTOR");
     expect(requestArg.context.practical).toBeDefined();
+  });
+
+  // AC-2 governed behaviour.
+  it("TUTOR receives its role behaviour and is told no governed Professor teaching record exists", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    await executeTutorLabSupport(request("Explain it again"));
+    const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
+    expect(requestArg.behaviour).toEqual(defaultEffectiveBehaviour("TUTOR"));
+    expect(providerInstructions(requestArg)).toContain(
+      "You are executing as the Ducelio TUTOR",
+    );
+    expect(requestArg.context).toMatchObject({
+      role: "TUTOR",
+      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+      professorTeachingRecord: {
+        available: false,
+        reason: "NO_GOVERNED_PROFESSOR_TEACHING_RECORD",
+      },
+    });
+    expect(requestArg.context).not.toHaveProperty("sessionTiming");
+  });
+
+  it("LAB_INSTRUCTOR is told no session clock exists and is instructed never to fabricate execution", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(labRelease());
+    mocks.getAgentConfigForEnrolment.mockResolvedValue({
+      enabled: true,
+      modelProfileRef: "LAB_INSTRUCTOR_COMMERCIAL_V1",
+      capabilities: ["get_lesson_context", "get_lesson_objectives"],
+      escalationPolicy: "NONE",
+    });
+    await executeTutorLabSupport(request("My command failed"));
+    const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
+    expect(requestArg.context).toMatchObject({
+      role: "LAB_INSTRUCTOR",
+      behaviourVersion: "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+      sessionTiming: { available: false, remainingMinutes: null },
+    });
+    const instructions = providerInstructions(requestArg);
+    expect(instructions).toContain(
+      "You are executing as the Ducelio LAB_INSTRUCTOR",
+    );
+    expect(instructions).toMatch(
+      /Never claim that a command, code or task ran/,
+    );
+  });
+
+  it("fails closed with no provider call when the programme behaviour cannot be resolved", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    vi.mocked(
+      behaviourConfig.getAgentBehaviourForEnrolment,
+    ).mockRejectedValueOnce(new Error("unavailable"));
+    const result = await executeTutorLabSupport(request());
+    expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "UNAVAILABLE" });
+  });
+
+  it("fails closed with no provider call when the pinned role behaviour version has no reviewed text", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    vi.mocked(
+      behaviourConfig.getAgentBehaviourForEnrolment,
+    ).mockResolvedValueOnce({
+      ...defaultEffectiveBehaviour("TUTOR"),
+      behaviourVersion: "PROFESSOR_BEHAVIOUR_V1",
+    });
+    const result = await executeTutorLabSupport(request());
+    expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "UNAVAILABLE" });
+  });
+
+  it("passes the frozen binding's pinned version and values to the provider", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    const frozen = {
+      ...defaultEffectiveBehaviour("TUTOR"),
+      config: {
+        ...defaultEffectiveBehaviour("TUTOR").config,
+        challengeLevel: "FOUNDATION" as const,
+      },
+    };
+    vi.mocked(
+      behaviourConfig.getAgentBehaviourForEnrolment,
+    ).mockResolvedValueOnce(frozen);
+    await executeTutorLabSupport(request());
+    const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
+    expect(requestArg.behaviour).toEqual(frozen);
+    expect(requestArg.context).toMatchObject({
+      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+    });
+    expect(providerInstructions(requestArg)).toContain(
+      "Pitch explanations and questions at foundation level",
+    );
   });
 });
 

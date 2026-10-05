@@ -106,7 +106,10 @@ export const interactionRpcResultSchema = z.union([
 // or controller detail. Only SUCCEEDED carries content, and only the
 // provider's own outputText -- never anything else from the RuntimeResult.
 export type ClassroomProfessorOutcome =
-  | { kind: "SUCCEEDED"; text: string }
+  // memoryNotRecorded: the answer is confirmed, but this exchange could not
+  // be recorded in the classroom's learner-visible memory (AC-2).
+  | { kind: "SUCCEEDED"; text: string; memoryNotRecorded?: true }
+  | { kind: "MEMORY_FULL" }
   | { kind: "ACTIVITY_BLOCKED" }
   | { kind: "UNAVAILABLE" }
   | { kind: "ESCALATED" }
@@ -116,8 +119,16 @@ export function mapRuntimeResultToClassroomOutcome(
 ): ClassroomProfessorOutcome {
   switch (result.outcome) {
     case "SUCCEEDED":
-      return { kind: "SUCCEEDED", text: result.response.outputText };
+      return result.classroomMemory === "NOT_RECORDED"
+        ? {
+            kind: "SUCCEEDED",
+            text: result.response.outputText,
+            memoryNotRecorded: true,
+          }
+        : { kind: "SUCCEEDED", text: result.response.outputText };
     case "ABSTAINED":
+      if (result.classroomMemory === "CAPACITY_REACHED")
+        return { kind: "MEMORY_FULL" };
       return result.reason === "ACTIVITY_BLOCKED"
         ? { kind: "ACTIVITY_BLOCKED" }
         : { kind: "UNAVAILABLE" };

@@ -9,6 +9,7 @@ import {
   getClassroomLessonContent,
 } from "@/server/professor-classroom";
 import { ClassroomDenied } from "@/domain/professor-classroom";
+import { getLearnerClassroomTranscript } from "@/server/academic-runtime/professor-teaching";
 
 // This route is deliberately separate from the existing dynamic
 // /student/[section] route (which never collides with it): the classroom is
@@ -60,6 +61,11 @@ export default async function ClassroomPage({
     enrolmentId: context.enrolmentId,
     lessonId: context.lessonId,
   });
+  // AC-2: the learner's own stored classroom conversation (the database
+  // refuses it during a controlled assessment, and to anyone else).
+  const transcript = content.available
+    ? await getLearnerClassroomTranscript(context.classSessionId)
+    : null;
 
   return (
     <AcademyShell name={actor.displayName} roles={actor.roles}>
@@ -195,7 +201,15 @@ export default async function ClassroomPage({
         <ProfessorClassroomPanel
           classSessionId={context.classSessionId}
           disabled={!content.available}
+          initialTurns={transcript?.turns}
+          memoryDegraded={(transcript?.unrecordedExchanges ?? 0) > 0}
+          memoryFull={transcript?.capacityReached ?? false}
         />
+        <p className="muted">
+          Your conversation with the Professor in this class is kept for you so
+          the Professor can continue it. It is not a record of marks, progress
+          or mastery, and it is not shared with counsellors or other staff.
+        </p>
       </div>
       <ButtonLink href="/student/classes" secondary>
         ← Back to Classes

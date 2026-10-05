@@ -12,6 +12,7 @@ import {
   tutorLabFixture,
   asExecutionUser,
   foreignLearner,
+  learner,
   type TutorLabFixture,
 } from "./tutor-lab-fixture";
 import {
@@ -416,6 +417,111 @@ describe("Tutor/Lab governed provider execution (AUTHORIZE/START/FINALIZE)", () 
     );
     expect(result.ok).toBe(false);
     expect(result.code).not.toBe(undefined);
+  });
+  it("AUTHORIZE records database-derived AC-2 provenance, with no caller input and no content", async () => {
+    const release = await openRelease(f.missedLessonHandoffId, "TUTOR");
+    const executionId = randomUUID();
+    await sendTutorLabCommand(
+      f.db,
+      signedTutorLabCommand(f, {
+        role: "TUTOR",
+        executionId,
+        releaseId: release.release_id,
+      }),
+    );
+    await owner();
+    const row = (
+      await f.db.query<{ v: Record<string, unknown> }>(
+        "select to_jsonb(p) as v from public.academic_agent_execution_provenance p where tutor_lab_execution_id=$1",
+        [executionId],
+      )
+    ).rows[0];
+    expect(row.v).toMatchObject({
+      execution_kind: "TUTOR_LAB_PROVIDER_V1",
+      role: "TUTOR",
+      student_id: learner,
+      runtime_profile_ref: "TUTOR_COMMERCIAL_V1",
+      institutional_baseline_version: "DUCELIO_INSTITUTIONAL_BASELINE_V1",
+      behaviour_version: "TUTOR_BEHAVIOUR_V1",
+      behaviour_config_source: "DEFAULT",
+      behaviour_config_version: "AGENT_BEHAVIOUR_DEFAULT_V1",
+      professor_execution_id: null,
+      classroom_id: null,
+    });
+    // Identity only: no prompt, response, key, MAC or provider payload.
+    expect(Object.keys(row.v).sort()).toEqual([
+      "behaviour_config_id",
+      "behaviour_config_source",
+      "behaviour_config_version",
+      "behaviour_fingerprint",
+      "behaviour_version",
+      "classroom_id",
+      "enrolment_id",
+      "execution_kind",
+      "id",
+      "institutional_baseline_version",
+      "professor_execution_id",
+      "programme_version_id",
+      "recorded_at",
+      "role",
+      "runtime_profile_ref",
+      "student_id",
+      "tutor_lab_execution_id",
+    ]);
+    // AGENT_BEHAVIOUR_FINGERPRINT_V1 of the execution's own programme version.
+    expect(
+      (
+        await f.db.query<{ v: boolean }>(
+          "select behaviour_fingerprint = agent_behaviour_private.behaviour_fingerprint(programme_version_id) as v from public.academic_agent_execution_provenance where tutor_lab_execution_id=$1",
+          [executionId],
+        )
+      ).rows[0].v,
+    ).toBe(true);
+    await expect(
+      f.db.query(
+        "update public.academic_agent_execution_provenance set runtime_profile_ref='PROFESSOR_COMMERCIAL_V1' where tutor_lab_execution_id=$1",
+        [executionId],
+      ),
+    ).rejects.toThrow("AGENT_BEHAVIOUR_HISTORY_IMMUTABLE");
+  });
+  it("AUTHORIZE fails closed when the programme version's frozen behaviour binding is missing", async () => {
+    const release = await openRelease(f.missedLessonHandoffId, "TUTOR");
+    await owner();
+    const version = await value(
+      "select programme_version_id as v from public.enrolments where id=$1",
+      [release.enrolment_id],
+    );
+    await f.db.exec(
+      "alter table public.academic_agent_behaviour_bindings disable trigger guard_agent_behaviour_binding",
+    );
+    await f.db.query(
+      "delete from public.academic_agent_behaviour_bindings where programme_version_id=$1 and role='TUTOR'",
+      [version],
+    );
+    await f.db.exec(
+      "alter table public.academic_agent_behaviour_bindings enable trigger guard_agent_behaviour_binding",
+    );
+    await user(1);
+    const executionId = randomUUID();
+    await f.db.exec("savepoint unbound");
+    await expect(
+      sendTutorLabCommand(
+        f.db,
+        signedTutorLabCommand(f, {
+          role: "TUTOR",
+          executionId,
+          releaseId: release.release_id,
+        }),
+      ),
+    ).rejects.toThrow("AGENT_BEHAVIOUR_BINDING_INVALID");
+    await f.db.exec("rollback to savepoint unbound; release savepoint unbound");
+    await owner();
+    expect(
+      await value<number>(
+        "select count(*)::int as v from public.tutor_lab_provider_executions where id=$1",
+        [executionId],
+      ),
+    ).toBe(0);
   });
   it("a LAB_INSTRUCTOR-labelled AUTHORIZE cannot bind to a TUTOR release", async () => {
     const release = await openRelease(f.missedLessonHandoffId, "TUTOR");

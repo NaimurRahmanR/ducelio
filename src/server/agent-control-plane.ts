@@ -38,6 +38,7 @@ import { EXAMINER_EXECUTION_DB_CEILING } from "@/domain/commercial-v1-examiner-g
 import { AccessDenied } from "@/domain/policy";
 import { ROLE_RUNTIME_PROFILE_POLICY } from "@/domain/academic-runtime-profile";
 import { listProductionRuntimeProfiles } from "./academic-runtime/profile-registry";
+import { isBehaviourRole } from "@/domain/agent-behaviour";
 import { requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
 
@@ -166,7 +167,10 @@ export function describeProductionProfiles(
   });
 }
 
-export type VersionView = Omit<ProgrammeVersionScope, "configs"> & {
+export type VersionView = Omit<
+  ProgrammeVersionScope,
+  "configs" | "behaviourConfigs" | "behaviourEffective"
+> & {
   roles: (DerivedAcademicConfiguration & {
     displayName: string;
     executionDescription: string;
@@ -174,6 +178,19 @@ export type VersionView = Omit<ProgrammeVersionScope, "configs"> & {
     escalationPolicy: "NONE" | "ACADEMIC_REVIEW" | null;
     enabled: boolean | null;
     hasInstructionalNotes: boolean;
+    behaviour:
+      | {
+          state: "DRAFT" | "BOUND";
+          behaviourVersion: string;
+          source: "EXPLICIT" | "DEFAULT";
+          configVersion: string;
+          summary: string;
+          hasCourseContextNotes: boolean;
+        }
+      | {
+          state: "BEHAVIOUR_BINDING_MISSING" | "BEHAVIOUR_BINDING_INVALID";
+        }
+      | null;
     readiness: ProfileReadiness | "NOT_APPLICABLE";
   })[];
 };
@@ -229,11 +246,20 @@ function buildVersionView(
   scope: ProgrammeVersionScope,
   profiles: readonly ProfileView[],
 ): VersionView {
-  const { configs, ...version } = scope;
+  // behaviourConfigs (explicit draft rows) is superseded here by the
+  // database-resolved effective behaviour, which is what executions use.
+  const {
+    configs,
+    behaviourConfigs: _explicitRows,
+    behaviourEffective,
+    ...version
+  } = scope;
+  void _explicitRows;
   return {
     ...version,
     roles: agentRoleSchema.options.map((role) => {
       const config = configs.find((c) => c.role === role);
+      const effective = behaviourEffective.find((b) => b.role === role);
       const derived = deriveAcademicConfiguration(role, config);
       const profile = profiles.find(
         (p) => p.ref === derived.effectiveProfileRef,
@@ -246,6 +272,19 @@ function buildVersionView(
         escalationPolicy: config?.escalationPolicy ?? null,
         enabled: config?.enabled ?? null,
         hasInstructionalNotes: config?.hasInstructionalNotes ?? false,
+        behaviour:
+          !isBehaviourRole(role) || !effective
+            ? null
+            : effective.state === "DRAFT" || effective.state === "BOUND"
+              ? {
+                  state: effective.state,
+                  behaviourVersion: effective.behaviourVersion,
+                  source: effective.source,
+                  configVersion: effective.configVersion,
+                  summary: `${effective.responseDepth} depth, ${effective.teachingApproach}, ${effective.understandingCheckFrequency} understanding checks, ${effective.challengeLevel} challenge`,
+                  hasCourseContextNotes: effective.hasCourseContextNotes,
+                }
+              : { state: effective.state },
         readiness:
           derived.executable && profile ? profile.readiness : "NOT_APPLICABLE",
       };

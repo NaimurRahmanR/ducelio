@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({ client: vi.fn() }));
 vi.mock("@/server/supabase", () => ({ createSupabase: mocks.client }));
 vi.mock("@/lib/env", () => ({ config: () => ({ configured: true }) }));
 import { invokeProfessorCapability } from "@/server/academic-capabilities";
+import { withProfessorTeachingReleases } from "@/server/academic-runtime/professor-teaching";
+import { buildProfessorTeachingContext } from "@/domain/professor-teaching-context";
 import { getOwnedStudentEnrolment } from "@/server/academy";
 
 let db: PGlite;
@@ -1141,5 +1143,167 @@ describe("Professor reads through Academy OS services and PostgreSQL RLS", () =>
         /Protected prompt sentinel|Protected answer sentinel|Protected guidance sentinel/,
       );
     }
+  });
+});
+
+// AC-2 correction: the Professor's nested reviewed releases through the REAL
+// gateway and the REAL migrated database.
+describe("nested Professor teaching releases against the real database", () => {
+  const FOUR = [
+    "get_lesson_context",
+    "get_lesson_objectives",
+    "get_learning_resources",
+    "get_current_mastery_state",
+  ];
+  async function releaseStates(ids: string[]) {
+    await db.exec("reset role");
+    const rows = (
+      await db.query<{ id: string; state: string }>(
+        "select id,state from public.academic_content_releases where id = any($1::uuid[])",
+        [ids],
+      )
+    ).rows;
+    const active = (
+      await db.query<{ n: number }>(
+        "select count(*)::int as n from public.academic_content_releases where student_id=$1 and state='ACTIVE'",
+        [studentId],
+      )
+    ).rows[0].n;
+    await db.exec("set role authenticated");
+    return { rows, active };
+  }
+
+  it("holds every nested release ACTIVE while consuming, keeps assessment start excluded, then closes them all", async () => {
+    let manifestIds: string[] = [];
+    let consumed = false;
+    const outcome = await withProfessorTeachingReleases(
+      {
+        enrolmentId: secondEnrolment,
+        lessonId: thirdLesson,
+        includeResources: true,
+        includeMastery: true,
+      },
+      async ({ manifest, release }) => {
+        consumed = true;
+        manifestIds = manifest.map((entry) => entry.releaseId);
+        expect(manifest.map((entry) => entry.capability)).toEqual(FOUR);
+        expect(manifestIds[0]).toBe(release.release_id);
+        await db.exec("reset role");
+        const live = (
+          await db.query<{ id: string; capability_name: string }>(
+            "select id,capability_name from public.academic_content_releases where student_id=$1 and state='ACTIVE' and expires_at > clock_timestamp() order by started_at,id",
+            [studentId],
+          )
+        ).rows;
+        expect(live.map((r) => r.capability_name)).toEqual(FOUR);
+        expect(live.map((r) => r.id)).toEqual(manifestIds);
+        // The existing database authority still refuses a controlled
+        // assessment start while any Professor release is inside its window.
+        await db.exec("set role authenticated; savepoint nested_exclusion");
+        await expect(
+          db.query("select public.start_assessment_attempt($1)", [
+            assessmentId,
+          ]),
+        ).rejects.toThrow("Academic activity is busy. Retry shortly.");
+        await db.exec(
+          "rollback to savepoint nested_exclusion; release savepoint nested_exclusion",
+        );
+      },
+    );
+    expect(consumed).toBe(true);
+    expect(outcome).toEqual({
+      ok: true,
+      activityBlocked: false,
+      releaseFinalizationFailed: false,
+    });
+    const { rows, active } = await releaseStates(manifestIds);
+    expect(rows).toHaveLength(4);
+    expect(rows.every((r) => r.state === "COMPLETED")).toBe(true);
+    expect(active).toBe(0);
+  });
+
+  it("leaves no release ACTIVE when the consumer fails, and reports the failure", async () => {
+    let manifestIds: string[] = [];
+    const outcome = await withProfessorTeachingReleases(
+      {
+        enrolmentId: secondEnrolment,
+        lessonId: thirdLesson,
+        includeResources: true,
+        includeMastery: true,
+      },
+      async ({ manifest }) => {
+        manifestIds = manifest.map((entry) => entry.releaseId);
+        throw new Error("consumer failed after reading");
+      },
+    );
+    expect(outcome.ok).toBe(false);
+    const { rows, active } = await releaseStates(manifestIds);
+    expect(rows).toHaveLength(4);
+    expect(rows.some((r) => r.state === "ACTIVE")).toBe(false);
+    expect(active).toBe(0);
+  });
+
+  it("never reaches the consumer when a required nested read fails, and closes what it opened", async () => {
+    state.failTable = "learning_resources";
+    let consumed = false;
+    const outcome = await withProfessorTeachingReleases(
+      {
+        enrolmentId: secondEnrolment,
+        lessonId: thirdLesson,
+        includeResources: true,
+        includeMastery: true,
+      },
+      async () => {
+        consumed = true;
+      },
+    );
+    expect(consumed).toBe(false);
+    expect(outcome.ok).toBe(false);
+    expect((await releaseStates([])).active).toBe(0);
+  });
+
+  it("reports a multi-page objective set as incomplete, which the Professor refuses before any provider call", async () => {
+    let incomplete: unknown = null;
+    await withProfessorTeachingReleases(
+      {
+        enrolmentId: secondEnrolment,
+        lessonId: secondLesson,
+        includeResources: false,
+        includeMastery: false,
+      },
+      async ({ reads }) => {
+        expect(reads.objectives.objectives).toHaveLength(50);
+        expect(reads.objectives.nextAfterPosition).toBe(50);
+        incomplete = buildProfessorTeachingContext(
+          {
+            classroom: {
+              classroomId: "60000000-0000-4000-8000-000000000001",
+              classSessionId: "60000000-0000-4000-8000-000000000002",
+              enrolmentId: secondEnrolment,
+              programmeVersionId: secondVersion,
+              lessonId: secondLesson,
+              lessonTitle: "Second lesson",
+              lessonPosition: 1,
+              moduleTitle: "Second module",
+              scheduledStart: "2026-10-05T09:00:00+00:00",
+              scheduledEnd: "2026-10-05T10:00:00+00:00",
+              serverNow: "2026-10-05T09:30:00+00:00",
+              mode: "LIVE",
+            },
+            objectives: reads.objectives,
+            mastery: null,
+            resources: null,
+            turns: [],
+            totalTurns: 0,
+            unrecordedExchanges: 0,
+            courseContextNotes: null,
+            behaviourVersion: "PROFESSOR_BEHAVIOUR_V1",
+            interaction: { kind: "BEGIN_LESSON" },
+          },
+          16_000,
+        );
+      },
+    );
+    expect(incomplete).toEqual({ ok: false, reason: "OBJECTIVES_INCOMPLETE" });
   });
 });
