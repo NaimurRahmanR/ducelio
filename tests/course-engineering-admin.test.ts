@@ -30,6 +30,11 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   testStatus: vi.fn(),
   runTest: vi.fn(),
+  AgentConfigRefused: class AgentConfigRefused extends Error {
+    constructor(readonly code: string) {
+      super("Agent configuration change refused.");
+    }
+  },
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
@@ -49,6 +54,7 @@ vi.mock("@/server/course-engineering", () => ({
 vi.mock("@/server/academic-agent-config", () => ({
   listAgentConfigs: mocks.configs,
   setAgentConfig: mocks.save,
+  AgentConfigRefused: mocks.AgentConfigRefused,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.refresh }));
 vi.mock("@/app/auth/actions", () => ({ logout: vi.fn() }));
@@ -442,14 +448,15 @@ describe("Course Engineering operator actions", () => {
     expect(mocks.apply).not.toHaveBeenCalled();
   });
   it("explicit config derives its programme version from package metadata", async () => {
-    mocks.list.mockResolvedValue([
-      { ...metadata, status: "APPLIED", programme_version_id: version },
-    ]);
+    appliedPackage();
     const f = form({
       role: "TUTOR",
       enabled: "false",
       escalationPolicy: "NONE",
       programmeVersionId: "forged",
+      // AGENT-CONTROL-1: a forged profile reference is ignored; the server
+      // takes it from the package's own validated proposal.
+      modelProfileRef: "EXAMINER_COMMERCIAL_V1",
     });
     f.append("capabilities", "get_lesson_context");
     expect(await saveCourseAgentAction({}, f)).toHaveProperty("message");
@@ -458,21 +465,67 @@ describe("Course Engineering operator actions", () => {
         programmeVersionId: version,
         role: "TUTOR",
         enabled: false,
+        modelProfileRef: null,
         capabilities: ["get_lesson_context"],
       }),
     );
   });
-  it("config outside allowlist or before Apply is refused", async () => {
+  it("records the academic COUNSELLOR exactly as proposed, ignoring every submitted field", async () => {
+    const pkg = buildPackage();
+    appliedPackage(pkg);
     const f = form({
       role: "COUNSELLOR",
+      enabled: "true",
+      escalationPolicy: "ACADEMIC_REVIEW",
+      instructionalNotes: "Forged counsellor note",
+      modelProfileRef: "COUNSELLOR_PLATFORM_V1",
+    });
+    f.append("capabilities", "get_current_learner_context");
+    const result = await saveCourseAgentAction({}, f);
+    expect(result.message).toContain("not executable");
+    expect(result.message).toContain("does not launch Sarah");
+    expect(mocks.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "COUNSELLOR",
+        ...pkg.agentConfiguration.COUNSELLOR,
+      }),
+    );
+  });
+  it.each([
+    ["AGENT_CONFIG_SEMANTIC_FROZEN", "published or has enrolments"],
+    ["AGENT_CONFIG_BINDING_CLOSED", "learners are already enrolled"],
+    [
+      "AGENT_CONFIG_PACKAGE_MISMATCH",
+      "exactly as the published course package proposes",
+    ],
+    [
+      "AGENT_CONFIG_PACKAGE_AUTHORITY_UNAVAILABLE",
+      "no single published course package",
+    ],
+  ])(
+    "maps the database %s refusal to a truthful message",
+    async (code, text) => {
+      appliedPackage();
+      mocks.save.mockRejectedValue(new mocks.AgentConfigRefused(code));
+      const f = form({
+        role: "TUTOR",
+        enabled: "true",
+        escalationPolicy: "NONE",
+      });
+      const result = await saveCourseAgentAction({}, f);
+      expect(result.error).toContain(text);
+      expect(result).not.toHaveProperty("message");
+    },
+  );
+  it("config outside allowlist or before Apply is refused", async () => {
+    const f = form({
+      role: "TUTOR",
       enabled: "true",
       escalationPolicy: "NONE",
     });
     f.append("capabilities", "record_learning_evidence");
     expect(await saveCourseAgentAction({}, f)).toHaveProperty("error");
-    mocks.list.mockResolvedValue([
-      { ...metadata, status: "APPLIED", programme_version_id: version },
-    ]);
+    appliedPackage();
     expect(await saveCourseAgentAction({}, f)).toHaveProperty("error");
     expect(mocks.save).not.toHaveBeenCalled();
   });

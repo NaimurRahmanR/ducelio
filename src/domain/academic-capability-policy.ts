@@ -26,12 +26,13 @@ export type AgentRole = z.infer<typeof agentRoleSchema>;
 // capabilities are its real, live grade_controlled_assessment/
 // grade_practical_lab execution authorities (PR16A,
 // src/server/commercial-v1-examiner-grading), governed by the database's own
-// AUTHORIZE admission (migration 036) -- not a placeholder. TUTOR,
-// LAB_INSTRUCTOR and COUNSELLOR still have no independent server-enforced
-// execution capability today beyond the existing delivery-access/
-// Counsellor-scope gating in src/domain/delivery.ts; their catalogues here
-// remain a reviewed placeholder boundary for future capability work, not a
-// live execution path. Listing a capability here is necessary but never
+// AUTHORIZE admission (migration 036) -- not a placeholder. TUTOR and
+// LAB_INSTRUCTOR execute only through the governed handoff path
+// (src/server/tutor-lab-execution, migration 028), whose context builders
+// read get_lesson_context/get_lesson_objectives (and, for Tutor,
+// get_learning_resources) under these catalogues. COUNSELLOR has no
+// academic execution path at all; its catalogue is historical vocabulary
+// only. Listing a capability here is necessary but never
 // sufficient authorization: callers must independently confirm a stored
 // configuration also requested it (see isCapabilityAuthorized) and, for any
 // role without a reviewed live execution path, fail closed regardless.

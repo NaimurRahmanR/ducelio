@@ -27,6 +27,23 @@ async function requireAgentConfigAdmin() {
   return actor;
 }
 
+// Migration 050: once a programme version is published or enrolled, the
+// database refuses academic-semantic changes. Only these two reviewed,
+// content-free codes are surfaced; every other failure stays generic.
+export const agentConfigRefusalCodes = [
+  "AGENT_CONFIG_SEMANTIC_FROZEN",
+  "AGENT_CONFIG_BINDING_CLOSED",
+  "AGENT_CONFIG_PACKAGE_MISMATCH",
+  "AGENT_CONFIG_PACKAGE_AUTHORITY_UNAVAILABLE",
+] as const;
+export type AgentConfigRefusalCode = (typeof agentConfigRefusalCodes)[number];
+export class AgentConfigRefused extends Error {
+  constructor(readonly code: AgentConfigRefusalCode) {
+    super("Agent configuration change refused.");
+    this.name = "AgentConfigRefused";
+  }
+}
+
 export async function setAgentConfig(input: unknown): Promise<string> {
   await requireAgentConfigAdmin();
   const payload = agentConfigInputSchema.parse(input);
@@ -41,7 +58,13 @@ export async function setAgentConfig(input: unknown): Promise<string> {
     p_escalation_policy: payload.escalationPolicy,
     p_reason: payload.reason,
   });
-  if (error) throw new Error("Agent configuration could not be saved.");
+  if (error) {
+    const code = agentConfigRefusalCodes.find((c) =>
+      error.message?.startsWith(c),
+    );
+    if (code) throw new AgentConfigRefused(code);
+    throw new Error("Agent configuration could not be saved.");
+  }
   return z.uuid().parse(data);
 }
 

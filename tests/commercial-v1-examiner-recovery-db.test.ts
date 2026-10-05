@@ -360,10 +360,19 @@ describe("Examiner initial-grade recovery: target eligibility", () => {
     // time (role_profile_ref_is_valid) -- unreachable through the governed
     // writer, exactly like migration 036's own equivalent defense. Proven
     // the same way migration 036's own suite must: a direct owner-level
-    // UPDATE bypassing the governed writer.
+    // UPDATE bypassing the governed writer. Migration 050's semantic-binding
+    // guard refuses that UPDATE on this published version too, so only that
+    // guard is disabled for this one owner-level corruption seed (the
+    // surrounding test transaction rolls it back either way).
+    await f.db.exec(
+      "alter table public.academic_agent_configs disable trigger guard_agent_config_semantic_binding",
+    );
     await f.db.query(
       "update academic_agent_configs set model_profile_ref='PROFESSOR_COMMERCIAL_V1' where programme_version_id=$1 and role='EXAMINER'",
       [f.programmeVersionId],
+    );
+    await f.db.exec(
+      "alter table public.academic_agent_configs enable trigger guard_agent_config_semantic_binding",
     );
     await asPolicyUser(f.db, 2);
     expect(await govern(f, args(f))).toEqual({

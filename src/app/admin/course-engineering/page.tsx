@@ -269,6 +269,7 @@ export default async function Page({
                     importId={selected.id}
                     role={role}
                     config={configs.find((c) => c.role === role)}
+                    frozen={selected.status === "PUBLISHED"}
                   />
                 </details>
               ))

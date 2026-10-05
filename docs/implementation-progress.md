@@ -2,21 +2,40 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: merged Academic Results Operations (migration 048), base `da6e4bba1ef9f339fc4248255f9f609ab3188096`.
+LAST COMPLETED CHECKPOINT: Academic Session Operations (migration 049), independently reviewed and merged through PR #53. PR head `380d6abfac8740bd89cb23d9281a81650ec1f4ac`; merge on `main` `d6bf283cf30915aa8eea3248d5a1ec7d1267517d`. PR CI passed (run 37046895265) and post-merge `main` CI passed (run 37049593392). Hosted acceptance of migration 049 has **not** run. See [checkpoint evidence](42-academic-session-operations.md).
 
-CURRENT CHECKPOINT: bounded Academic Session Operations on `feat/academic-session-operations`, migration `202610020049_commercial_v1_session_operations.sql`. The three independent-review corrections are implemented and locally tested; independent review remains pending. Uncommitted; hosted acceptance pending. See [checkpoint evidence](42-academic-session-operations.md).
+CURRENT CHECKPOINT: AGENT-CONTROL-1, a truthful agent control plane plus configuration governance, on `feat/agent-model-control` from base `d6bf283`. Migration `202610050050_agent_configuration_governance.sql`. Implemented and locally tested; uncommitted, awaiting independent review. This is foundation work only: Agent / Model and Behaviour work is **not** complete (AC-2 to AC-7 follow). See [checkpoint design and evidence](43-agent-control-1.md).
 
-COMPLETED ITEMS: existing immutable, atomic cancel-and-replace rescheduling and activation-scoped explicit batches remain intact (100 items/request; additional requests permitted). Correction pass adds a private classroom BEFORE INSERT parent lock/recheck that refuses missing/CANCELLED sessions; closing effective-ACL assertions that fail on inherited/unintended table, column, schema/helper or public-RPC privileges; and navigable 200-activation/250-lesson pages with independent selected activation projection. OPEN/CLOSED remain allowed, COMPLETED refused; cohort dates remain metadata. Focused tests pass 105/105 (64 DB, 34 server/action, 7 UI). Existing regressions pass 277/277 across 17 suites. Final full check passed lint, types and 3,534 tests across 142 files; production build passed. Migrations 001-048 remain unchanged.
+COMPLETED ITEMS (AC-1):
 
-INCOMPLETE ITEMS: independent review remains required. Hosted effective-ACL/JWT/PostgREST, real PostgreSQL multi-connection concurrency (including the original-start/classroom boundary), and browser/accessibility acceptance remain pending. Recurrence and cohort-date teaching constraints remain out of scope; no production-readiness claim is made.
+- Migration 050 binds academic-semantic agent configuration to the programme version once it is PUBLISHED or enrolled. It refuses note, profile-reference, capability-widening and escalation changes, except EXAMINER NONE→ACADEMIC_REVIEW. The enabled kill switch and capability narrowing stay available as audited operational controls. A first binding of a missing role on a PUBLISHED, unenrolled version is allowed only when it exactly matches the version's single immutable published course-package proposal. The database derives that proposal from `course_package_imports` itself (independent-review correction), which preserves course activation. A first binding is refused once learners are enrolled.
+- Audit records changed field categories without any note text or note hash.
+- A bounded admin-only scope read backs the new read-only `/admin/agents`. It shows CONFIGURED / READY / TESTED / PRODUCTION-PROVEN separately, credential presence only, and evidence keyed to each profile's SHA-256 fingerprint.
+- The Course Engineering form no longer edits `modelProfileRef` (the server derives it from the package proposal). It labels instructional notes as stored but unused, and records the academic COUNSELLOR only as a non-executable package proposal.
+- Professor and Tutor/Lab learner copy no longer claims an academic review that does not exist.
+- Focused tests (after the first-binding correction): 15 files, 497/497. Governance DB 38/38: 23 of the original 29 failed against migrations 001–049, and 7 of 38 failed against the uncorrected 050 first-binding rule. Control-plane server 22/22; control-plane UI 14/14.
+- `npm run check`, exactly as defined:
+  - failed once before the correction (exit 1; 12 wall-clock timeouts, 116 skips, zero assertion failures);
+  - then passed (3,603/3,603);
+  - passed after the correction: **3,614/3,614 across 145 files**.
+- Build passed. `npm audit --omit=dev` reports 0 vulnerabilities. Evidence is in docs/43.
 
-KNOWN FAILURES: no local functional blocker. The known seven unchanged Windows-CRLF baseline files remain the only format warnings; their LF-normalized contents pass Prettier. Final correction-pass audit reports zero vulnerabilities, diff check passes, and no correction file fails format checking. PGlite does not prove real multi-connection behaviour.
+INCOMPLETE ITEMS: independent review of AC-1. Hosted acceptance of migrations 044–050 is pending:
 
-NEXT EXACT ACTION: independent review of the corrected 049 patch; local correction gates are complete, apart from the documented baseline-only format exit. Subsequently run hosted and concurrency/browser acceptance specified in docs/42. Do not commit, push or open a PR without further instructions.
+- hosted effective-ACL / JWT / PostgREST acceptance
+- real PostgreSQL multi-connection races (049's original-start/classroom boundary; 050's configuration-write vs first-enrolment/publication serialisation)
+- browser and accessibility acceptance
+- related hosted pagination and session-operation acceptance
+
+AC-2 to AC-7 are planned and not started (docs/43). No production-readiness claim is made, and no role is production-proven.
+
+KNOWN FAILURES: no local functional blocker. The known seven unchanged Windows-CRLF baseline files remain the only format warnings. PGlite does not prove real multi-connection behaviour.
+
+NEXT EXACT ACTION: independent review of AC-1 (migration 050, `/admin/agents`, the Course Engineering form changes and the learner escalation copy). Do not commit, push or open a PR without further instructions. After approval and merge, run hosted acceptance for 044–050, then start AC-2.
 
 ### Previously recorded hosted acceptance (unchanged historical scope)
 
-COMPLETED ACCEPTANCE EVIDENCE: hosted migrations previously passed through 043. Earlier hosted JWT/PostgREST, provider, concurrency and Stripe TEST-mode evidence remains historical evidence only and does not establish migration 044/045 hosted acceptance or production readiness.
+COMPLETED ACCEPTANCE EVIDENCE: hosted migrations previously passed through 043. Earlier hosted JWT/PostgREST, provider, concurrency and Stripe TEST-mode evidence remains historical evidence only and does not establish hosted acceptance of migrations 044–050 or production readiness.
 
 ## Phase 1 â€” complete
 
@@ -459,6 +478,37 @@ Branch `feat/academic-results-operations` from `main` `5179822`. Migration `2026
 Focused total: 86/86. The existing regrade (74) and academic-review suites (DB 15, policy 3, UI 13) also pass with migration 048's regrade-table guard. `npm run check`: lint, route/type generation, TypeScript and **3429/3429 tests across 139 files** passed. `npm run build` passed (no `.env.local`), including `/admin/academic-results`. `npm audit`: 0 vulnerabilities. `git diff --check` passed, and the new untracked files have no trailing whitespace or CR line endings. `npm run format:check` flags only the same seven untouched CRLF-checkout files (`i/lf w/crlf`); every changed file passes.
 
 **Limitations.** Deterministic single-connection (PGlite) tests only. No multi-connection PostgreSQL concurrency acceptance and no hosted Supabase/PostgREST acceptance of migration 048 was run. Discovery is not load-tested. Regrade remains provider-backed and keeps its one-claim-per-source semantics: a current revision whose claim failed or escalated cannot be regraded again, and no authority resolves an escalated regrade (shown truthfully, not fixed here). Detail history is read-bounded to the newest 100 revisions. Operators see learner names (not blind).
+
+## Commercial V1 Academic Session Operations (2026-10-02)
+
+Branch `feat/academic-session-operations` from `main` `da6e4bb`. Migration `202610020049_commercial_v1_session_operations.sql`, additive; migrations 001–048 unchanged. Design, authority and limitations: docs/42.
+
+**Implemented.**
+
+- Immutable, atomic cancel-and-replace rescheduling.
+- Activation-scoped explicit session batches: 100 items per request, with additional requests permitted.
+- The independent-review corrections:
+  - a private classroom BEFORE INSERT parent lock and recheck that refuses missing or CANCELLED sessions;
+  - closing effective-ACL assertions on table, column, schema/helper and public-RPC privileges;
+  - navigable 200-activation and 250-lesson pages with an independent selected-activation projection.
+- OPEN and CLOSED cohorts are allowed and COMPLETED is refused. Cohort dates remain metadata.
+
+**Closure.** Independently reviewed; committed as `380d6ab`; merged by PR #53 into `main` at `d6bf283`. PR CI passed (run 37046895265) and post-merge `main` CI passed (run 37049593392).
+
+**Validation (pre-merge, local).**
+
+- Focused tests 105/105 (64 DB, 34 server/action, 7 UI).
+- Regressions 277/277 across 17 suites.
+- Full check: lint, types and 3,534 tests across 142 files.
+- Production build passed.
+
+**Limitations.** Hosted effective-ACL / JWT / PostgREST acceptance, real PostgreSQL multi-connection concurrency (including the original-start/classroom boundary), browser/accessibility acceptance and hosted pagination/session-operation acceptance have not run. Recurrence and cohort-date teaching constraints remain out of scope.
+
+## Agent / Model control: AGENT-CONTROL-1 (2026-10-05)
+
+Branch `feat/agent-model-control` from `main` `d6bf283`. Migration `202610050050_agent_configuration_governance.sql`, additive; migrations 001–049 unchanged. Design, policy, evidence and the approved follow-on checkpoints (AC-2 to AC-7): docs/43.
+
+AC-1 is foundation work only. It makes the current agent and model state truthful and stops published or enrolled academic configuration from being silently rewritten. It adds no AI behaviour, prompt, handoff, class note, classroom memory or Sarah runtime, and changes no provider or model assignment. Agent / Model and Behaviour work is not complete.
 
 ## Current scope boundary
 

@@ -15,13 +15,17 @@ function newIdempotencyKey() {
   return crypto.randomUUID();
 }
 
-const STATUS_MESSAGE: Partial<
+// Tutor/Lab support never creates an academic-review case, so ESCALATED
+// support never claims one (AGENT-CONTROL-1). Lab work grading below is
+// Examiner grading, whose ESCALATED outcome is a real review case.
+export const STATUS_MESSAGE: Partial<
   Record<NonNullable<TutorLabSupportActionState["status"]>, string>
 > = {
   ACTIVITY_BLOCKED:
     "Support is not available while a controlled assessment is active.",
   UNAVAILABLE: "Support is unavailable right now.",
-  ESCALATED: "This has been passed to academic review.",
+  ESCALATED:
+    "Support is not available for this request. No academic review has been opened.",
   RETRY_LATER: "Please try again in a moment.",
   DUPLICATE: "This request was already sent.",
 };

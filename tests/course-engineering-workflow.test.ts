@@ -633,18 +633,62 @@ describe("reusable academic-agent configuration", () => {
     await resetRole();
   });
 
-  it("stores a configuration within the allowlist and is readable by the owning learner", async () => {
+  it("refuses a first binding on a version that already has enrolments (migration 050)", async () => {
     await asAuth(adminAuth);
-    const versionId = "20000000-0000-4000-8000-000000000002";
+    await expect(
+      db.query(
+        "select public.set_agent_config($1,'PROFESSOR',true,'PROFESSOR_COMMERCIAL_V1',null,array['get_lesson_context'],'NONE',$2)",
+        [
+          "20000000-0000-4000-8000-000000000002", // seeded, published, enrolled
+          "Enable Professor for the seeded demo course",
+        ],
+      ),
+    ).rejects.toThrow("AGENT_CONFIG_BINDING_CLOSED");
+    await resetRole();
+  });
+
+  it("stores a configuration within the allowlist and is readable by the owning learner", async () => {
+    // Real lifecycle order: configure while DRAFT, publish, then enrol.
+    const versionId = (
+      await db.query<{ id: string }>(
+        "insert into public.programme_versions(programme_id,label) values('20000000-0000-4000-8000-000000000001','Agent config read version') returning id",
+      )
+    ).rows[0].id;
+    const moduleId = (
+      await db.query<{ id: string }>(
+        "insert into public.modules(programme_version_id,title,position) values($1,'Module',1) returning id",
+        [versionId],
+      )
+    ).rows[0].id;
+    const lessonId = (
+      await db.query<{ id: string }>(
+        "insert into public.lessons(module_id,programme_version_id,title,position) values($1,$2,'Lesson',1) returning id",
+        [moduleId, versionId],
+      )
+    ).rows[0].id;
+    await db.query(
+      "insert into public.lesson_objectives(lesson_id,programme_version_id,description,position) values($1,$2,'Explain configuration',1)",
+      [lessonId, versionId],
+    );
+    await asAuth(adminAuth);
     await db.query(
       "select public.set_agent_config($1,'PROFESSOR',true,'PROFESSOR_COMMERCIAL_V1',null,array['get_lesson_context'],'NONE',$2)",
-      [versionId, "Enable Professor for the seeded demo course"],
+      [versionId, "Enable Professor before publication"],
     );
     await resetRole();
-
+    await db.query(
+      "update public.programme_versions set status='PUBLISHED' where id=$1",
+      [versionId],
+    );
+    const cohortId = (
+      await db.query<{ id: string }>(
+        "insert into public.cohorts(programme_version_id,title,starts_on) values($1,'Agent config cohort','2026-11-01') returning id",
+        [versionId],
+      )
+    ).rows[0].id;
     const enrolment = await db.query<{ id: string }>(
-      "select id from public.enrolments where student_id=$1",
-      [studentId],
+      "insert into public.enrolments(student_id,cohort_id,programme_version_id) values($1,$2,$3) returning id",
+      [studentId, cohortId, versionId],
     );
 
     await asAuth(studentAuth);

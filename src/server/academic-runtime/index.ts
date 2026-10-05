@@ -51,17 +51,16 @@ import { runGovernedProviderExecution } from "./runtime";
 // active -> the gateway rechecks principal/activity and finalizes the
 // release -> only once all of that succeeds does provider output escape
 // this module. It never forwards arbitrary caller JSON as provider
-// context, writes no LearningEvidence/mastery/grade/institutional record,
-// and is NOT invoked by any route, Server Action or UI surface in this
-// checkpoint — see docs/implementation-progress.md for why composing this
-// into the live migration-022 execution RPC remains a separate checkpoint.
+// context, and writes no LearningEvidence/mastery/grade/institutional
+// record. Its one production caller is the learner Professor classroom
+// (src/app/student/classroom/actions.ts), governed by migration 025's
+// PROFESSOR_EXECUTION_V2 provider-execution authority.
 //
-// Only PROFESSOR has a reviewed, bounded, server-owned capability/context
-// builder today (the existing PROFESSOR_READ_V2 gateway). TUTOR,
-// LAB_INSTRUCTOR, EXAMINER and COUNSELLOR have no such builder with correct
-// provenance yet, so every request for those roles fails closed with
-// NO_EXECUTION_PATH regardless of stored configuration — a placeholder
-// capability-catalogue entry is never treated as a live execution path.
+// Only PROFESSOR executes through this boundary. TUTOR and LAB_INSTRUCTOR
+// execute only through src/server/tutor-lab-execution, EXAMINER only through
+// the Examiner grading/recovery/regrade authorities, and COUNSELLOR has no
+// academic execution path. Every non-PROFESSOR request here therefore fails
+// closed with NO_EXECUTION_PATH regardless of stored configuration.
 const requestSchema = z.strictObject({
   enrolmentId: z.uuid(),
   role: agentRoleSchema,

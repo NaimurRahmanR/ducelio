@@ -8,13 +8,17 @@ import {
 
 type Exchange = { role: "STUDENT" | "PROFESSOR" | "SYSTEM"; text: string };
 
-const STATUS_MESSAGE: Partial<
+// ESCALATED only ever arises here from the programme's Professor escalation
+// policy (ACADEMIC_REVIEW), which creates no academic-review case, so the
+// learner is never told a review exists (AGENT-CONTROL-1).
+export const STATUS_MESSAGE: Partial<
   Record<NonNullable<ClassroomActionState["status"]>, string>
 > = {
   ACTIVITY_BLOCKED:
     "Professor is unavailable while a controlled assessment is active.",
   UNAVAILABLE: "Professor is currently unavailable for this class.",
-  ESCALATED: "This has been routed to academic review/support.",
+  ESCALATED:
+    "Professor is not available for this class. No academic review has been opened; ask your instructor if you need help.",
   RETRY_LATER: "Professor could not respond just now. Please try again.",
   DUPLICATE: "That request was already sent.",
 };
