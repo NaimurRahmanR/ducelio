@@ -42,7 +42,12 @@ vi.mock("@/app/student/practicals/actions", () => ({
 import AgentsPage from "@/app/admin/agents/page";
 import { adminControlRoutesForRoles } from "@/components/staff-shell";
 import { CourseAgentForm } from "@/components/course-engineering-forms";
-import { STATUS_MESSAGE as PROFESSOR_STATUS } from "@/components/professor-classroom-panel";
+import {
+  STATUS_MESSAGE as PROFESSOR_STATUS,
+  MEMORY_DEGRADED_MESSAGE,
+  MEMORY_FULL_MESSAGE,
+  ProfessorClassroomPanel,
+} from "@/components/professor-classroom-panel";
 import { STATUS_MESSAGE as SUPPORT_STATUS } from "@/components/practical-support";
 import { AccessDenied } from "@/domain/policy";
 import type { AgentConfigRecord } from "@/domain/academic-agent-config";
@@ -55,7 +60,24 @@ const OPERATOR = {
 const VERSION = "22222222-2222-4222-8222-222222222222";
 const SECRET = "sk-proj-SENTINELuiKEY0123456789";
 
-function scope(configs: Record<string, unknown>[], over = {}) {
+const bound = (role: string, over: Record<string, unknown> = {}) => ({
+  role,
+  state: "BOUND",
+  behaviourVersion: `${role}_BEHAVIOUR_V1`,
+  source: "DEFAULT",
+  configVersion: "AGENT_BEHAVIOUR_DEFAULT_V1",
+  responseDepth: "STANDARD",
+  teachingApproach: "CONCEPT_FIRST",
+  understandingCheckFrequency: "STANDARD",
+  challengeLevel: "STANDARD",
+  hasCourseContextNotes: false,
+  ...over,
+});
+function scope(
+  configs: Record<string, unknown>[],
+  over = {},
+  version: Record<string, unknown> = {},
+) {
   return {
     versions: [
       {
@@ -67,7 +89,33 @@ function scope(configs: Record<string, unknown>[], over = {}) {
         createdAt: "2026-10-01T10:00:00.123456+00:00",
         hasEnrolments: true,
         semanticConfigFrozen: true,
+        behaviourFingerprint:
+          "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         configs,
+        behaviourConfigs: [
+          {
+            role: "TUTOR",
+            responseDepth: "DETAILED",
+            teachingApproach: "WORKED_EXAMPLE_FIRST",
+            understandingCheckFrequency: "HIGH",
+            challengeLevel: "FOUNDATION",
+            hasCourseContextNotes: true,
+          },
+        ],
+        behaviourEffective: [
+          bound("PROFESSOR"),
+          bound("TUTOR", {
+            source: "EXPLICIT",
+            configVersion: "AGENT_BEHAVIOUR_CONFIG_V1",
+            responseDepth: "DETAILED",
+            teachingApproach: "WORKED_EXAMPLE_FIRST",
+            understandingCheckFrequency: "HIGH",
+            challengeLevel: "FOUNDATION",
+            hasCourseContextNotes: true,
+          }),
+          bound("LAB_INSTRUCTOR"),
+        ],
+        ...version,
       },
     ],
     pageSize: 50,
@@ -341,5 +389,114 @@ describe("learner escalation copy", () => {
         /(routed|passed|sent) (to|for) academic review/i,
       );
     }
+  });
+});
+
+describe("/admin/agents behaviour (AC-2)", () => {
+  it("shows each teaching role's frozen behaviour version and whether Level 3 is explicit or a versioned default", async () => {
+    const plain = text(await render());
+    expect(plain).toContain("PROFESSOR_BEHAVIOUR_V1");
+    expect(plain).toContain("LAB_INSTRUCTOR_BEHAVIOUR_V1");
+    expect(plain).toContain(
+      "Versioned default (AGENT_BEHAVIOUR_DEFAULT_V1): no programme configuration recorded · frozen at publication",
+    );
+    expect(plain).toContain(
+      "Programme configuration (AGENT_BEHAVIOUR_CONFIG_V1)",
+    );
+    expect(plain).toContain(
+      "DETAILED depth, WORKED_EXAMPLE_FIRST, HIGH understanding checks, FOUNDATION challenge",
+    );
+    expect(plain).toContain("Course context notes stored (used as data)");
+    expect(plain).not.toMatch(
+      /academic handoffs, class notes and Sarah are implemented/,
+    );
+  });
+});
+
+describe("Professor classroom memory states (AC-2 correction)", () => {
+  const classSessionId = "33333333-3333-4333-8333-333333333333";
+  it("states degraded continuity truthfully and keeps the controls usable", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProfessorClassroomPanel, {
+        classSessionId,
+        disabled: false,
+        initialTurns: [{ learnerMessage: null, professorMessage: "Welcome." }],
+        memoryDegraded: true,
+      }),
+    );
+    expect(html).toContain(MEMORY_DEGRADED_MESSAGE.replace(/'/g, "&#x27;"));
+    expect(html).toContain("Begin with Professor");
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*type="submit">Begin/);
+  });
+  it("at capacity, explains the state and offers no enabled control that cannot act", () => {
+    const html = renderToStaticMarkup(
+      createElement(ProfessorClassroomPanel, {
+        classSessionId,
+        disabled: false,
+        memoryFull: true,
+      }),
+    );
+    expect(html).toContain(MEMORY_FULL_MESSAGE.replace(/'/g, "&#x27;"));
+    expect(PROFESSOR_STATUS.MEMORY_FULL).toBe(MEMORY_FULL_MESSAGE);
+    expect(html.match(/<button[^>]*disabled=""/g)).toHaveLength(2);
+    expect(html).toMatch(/<textarea[^>]*disabled=""/);
+    for (const message of [MEMORY_FULL_MESSAGE, MEMORY_DEGRADED_MESSAGE])
+      expect(message).not.toMatch(/mastery|grade|progress record/i);
+  });
+});
+
+describe("/admin/agents behaviour fingerprint (AC-2 correction)", () => {
+  it("shows each version's behaviour fingerprint and states the package fingerprint does not cover it", async () => {
+    mocks.requireAnyRole.mockResolvedValue(OPERATOR);
+    mocks.rpc.mockResolvedValue({ data: scope([]), error: null });
+    const html = await render();
+    expect(html).toContain("AGENT_BEHAVIOUR_FINGERPRINT_V1");
+    expect(html).toContain("f".repeat(64));
+    expect(html).toContain(
+      "The course package publication fingerprint does not cover behaviour.",
+    );
+  });
+
+  it("shows the database-pinned role version, not the current code version", async () => {
+    mocks.requireAnyRole.mockResolvedValue(OPERATOR);
+    mocks.rpc.mockResolvedValue({
+      data: scope(
+        [],
+        {},
+        {
+          behaviourEffective: [
+            bound("PROFESSOR", { behaviourVersion: "PROFESSOR_BEHAVIOUR_V0" }),
+            bound("TUTOR"),
+            bound("LAB_INSTRUCTOR"),
+          ],
+        },
+      ),
+      error: null,
+    });
+    expect(text(await render())).toContain("PROFESSOR_BEHAVIOUR_V0");
+  });
+
+  it("states a missing or invalid binding as refused execution, with no fingerprint", async () => {
+    mocks.requireAnyRole.mockResolvedValue(OPERATOR);
+    mocks.rpc.mockResolvedValue({
+      data: scope(
+        [],
+        {},
+        {
+          behaviourFingerprint: null,
+          behaviourEffective: [
+            { role: "PROFESSOR", state: "BEHAVIOUR_BINDING_MISSING" },
+            { role: "TUTOR", state: "BEHAVIOUR_BINDING_INVALID" },
+            bound("LAB_INSTRUCTOR"),
+          ],
+        },
+      ),
+      error: null,
+    });
+    const plain = text(await render());
+    expect(plain).toContain("Behaviour binding missing: execution refused");
+    expect(plain).toContain("Behaviour binding invalid: execution refused");
+    expect(plain).toMatch(/binding is missing or does not verify/);
+    expect(plain).not.toContain("Behaviour fingerprint (");
   });
 });

@@ -15,12 +15,16 @@ import { executeRoleCapability } from "@/server/academic-runtime";
 export type ClassroomActionState = {
   status?:
     | "SUCCEEDED"
+    | "MEMORY_FULL"
     | "ACTIVITY_BLOCKED"
     | "UNAVAILABLE"
     | "ESCALATED"
     | "RETRY_LATER"
     | "DUPLICATE";
   text?: string;
+  // AC-2: the answer is shown, but this exchange is not in the classroom's
+  // memory, so the Professor may not remember it later.
+  memoryNotRecorded?: true;
   error?: string;
 };
 
@@ -75,14 +79,18 @@ async function requestProfessorClassroom(
       capability: "get_lesson_context",
       lessonId: context.lessonId,
       interaction,
+      // AC-2: the classroom identity from the server-opened classroom (never
+      // the form), so the runtime can re-derive timing and memory.
+      classSessionId: context.classSessionId,
     });
   } catch {
     return { status: "RETRY_LATER" };
   }
   const outcome = mapRuntimeResultToClassroomOutcome(result);
-  return outcome.kind === "SUCCEEDED"
-    ? { status: "SUCCEEDED", text: outcome.text }
-    : { status: outcome.kind };
+  if (outcome.kind !== "SUCCEEDED") return { status: outcome.kind };
+  return outcome.memoryNotRecorded
+    ? { status: "SUCCEEDED", text: outcome.text, memoryNotRecorded: true }
+    : { status: "SUCCEEDED", text: outcome.text };
 }
 
 const formInputSchema = z.strictObject({

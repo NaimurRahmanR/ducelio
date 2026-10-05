@@ -39,6 +39,27 @@ import {
   resolveRuntimeProfile,
 } from "./profile-registry";
 import { runGovernedProviderExecution } from "./runtime";
+import {
+  ProfessorTeachingDenied,
+  getProfessorClassroomState,
+  listProfessorClassroomTurns,
+  recordProfessorClassroomTurn,
+  recordProfessorExecutionProvenance,
+  withProfessorTeachingReleases,
+  type ContextReleaseManifestEntry,
+  type GatewayOutcome,
+} from "./professor-teaching";
+import { getAgentBehaviourForEnrolment } from "../agent-behaviour-config";
+import {
+  INSTITUTIONAL_BASELINE_VERSION,
+  roleBaselineFor,
+  type EffectiveAgentBehaviour,
+} from "@/domain/agent-behaviour";
+import {
+  TEACHING_CONTEXT_LIMITS,
+  buildProfessorTeachingContext,
+  type ClassroomState,
+} from "@/domain/professor-teaching-context";
 
 // The reusable composition boundary for a future role runtime:
 // authenticated learner -> Academy OS authority (existing 2A delivery
@@ -83,6 +104,12 @@ const requestSchema = z.strictObject({
   // context only when present, alongside the capability's own validated
   // output, never in place of it.
   interaction: professorClassroomInteractionSchema.optional(),
+  // AC-2: the classroom a classroom `interaction` belongs to. Only a bounded
+  // identifier: the database re-derives ownership, enrolment, lesson,
+  // timing and memory from it for the authenticated learner, and this
+  // boundary refuses any mismatch with enrolmentId/lessonId. Required
+  // whenever `interaction` is present, and never accepted without it.
+  classSessionId: z.uuid().optional(),
 });
 export type RoleCapabilityRequest = z.infer<typeof requestSchema>;
 
@@ -220,10 +247,13 @@ async function executeRoleCapabilityCore(
       payload.role === "PROFESSOR" &&
       capabilityName.data === CLASSROOM_INTERACTION_CAPABILITY &&
       payload.lessonId !== undefined &&
-      payload.objectiveId === undefined;
+      payload.objectiveId === undefined &&
+      payload.classSessionId !== undefined;
     if (!boundToReviewedClassroomCapability) {
       return { outcome: "ABSTAINED", usage, reason: "NO_EXECUTION_PATH" };
     }
+  } else if (payload.classSessionId !== undefined) {
+    return { outcome: "ABSTAINED", usage, reason: "NO_EXECUTION_PATH" };
   }
 
   // The capability's own input schema — never a generic caller-supplied
@@ -243,6 +273,52 @@ async function executeRoleCapabilityCore(
   } else {
     // get_current_learner_context, get_current_class_session
     capabilityInput = { enrolmentId: payload.enrolmentId };
+  }
+
+  // AC-2 LEVEL 3: the behaviour binding the database froze when this
+  // enrolment's programme version was published (pinned role behaviour
+  // version and actual values). It cannot be supplied by the caller and
+  // never falls back to the current code default; failure fails closed.
+  let behaviour: EffectiveAgentBehaviour;
+  try {
+    behaviour = await getAgentBehaviourForEnrolment(
+      payload.enrolmentId,
+      "PROFESSOR",
+    );
+  } catch {
+    return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+  }
+  // The pinned role behaviour version must have reviewed text in this code.
+  if (!roleBaselineFor("PROFESSOR", behaviour.behaviourVersion))
+    return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+
+  // AC-2 classroom teaching: the published objectives are REQUIRED context
+  // (the stored configuration must authorise get_lesson_objectives, or the
+  // Professor abstains rather than teach blind); resources and persisted
+  // mastery are included only when the configuration authorises them.
+  // Timing and the classroom identity come from the database for the
+  // authenticated learner and must agree with this request exactly.
+  const classSessionId = payload.classSessionId ?? null;
+  let classroom: ClassroomState | null = null;
+  if (classSessionId) {
+    if (
+      !isCapabilityAuthorized(
+        "PROFESSOR",
+        "get_lesson_objectives",
+        config.capabilities,
+      )
+    )
+      return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+    try {
+      classroom = await getProfessorClassroomState(classSessionId);
+    } catch {
+      return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+    }
+    if (
+      classroom.enrolmentId !== payload.enrolmentId ||
+      classroom.lessonId !== payload.lessonId
+    )
+      return { outcome: "ABSTAINED", usage, reason: "NO_EXECUTION_PATH" };
   }
 
   const adapter = deps.resolveAdapter(profile);
@@ -307,97 +383,223 @@ async function executeRoleCapabilityCore(
   function lastKnownUsage() {
     return providerResult ? providerResult.usage : usage;
   }
-  const outcome = await withValidatedProfessorContent(
-    { capability: capabilityName.data, input: capabilityInput },
-    async ({ release, data }) => {
-      capturedRelease = release;
-      if (!budgetParsed || !budgetParsed.success) {
-        providerResult = {
-          outcome: "BUDGET_BLOCKED",
-          usage,
-          stage: "PRE_CALL",
-        };
-        return;
+  const governedProviderCall = async (
+    release: AcademicContentRelease,
+    context: Record<string, unknown>,
+    contextReleases: readonly ContextReleaseManifestEntry[] | null,
+  ): Promise<void> => {
+    if (!budgetParsed || !budgetParsed.success) {
+      providerResult = {
+        outcome: "BUDGET_BLOCKED",
+        usage,
+        stage: "PRE_CALL",
+      };
+      return;
+    }
+    providerExecutionId = randomUUID();
+    try {
+      await attestProviderExecutionCommand(providerExecutionId, release, {
+        operation: "AUTHORIZE",
+        budget: budgetParsed.data,
+      });
+      providerExecutionAuthorized = true;
+      // AC-2 provenance, attested and re-derived by the database before
+      // START: no classroom provider call can happen without it.
+      if (classSessionId) {
+        if (!contextReleases)
+          throw new ProfessorTeachingDenied("CONTEXT_MANIFEST_MISSING");
+        await recordProfessorExecutionProvenance({
+          executionId: providerExecutionId,
+          release,
+          classSessionId,
+          contextReleases,
+          runtimeProfileRef: profile.ref,
+          institutionalBaselineVersion: INSTITUTIONAL_BASELINE_VERSION,
+          behaviourVersion: behaviour.behaviourVersion,
+          behaviourConfigVersion: behaviour.configVersion,
+        });
       }
-      providerExecutionId = randomUUID();
-      try {
-        await attestProviderExecutionCommand(providerExecutionId, release, {
-          operation: "AUTHORIZE",
-          budget: budgetParsed.data,
-        });
-        providerExecutionAuthorized = true;
-        await attestProviderExecutionCommand(providerExecutionId, release, {
-          operation: "START",
-        });
-        providerExecutionStarted = true;
-        // The provider context is the capability's own validated, bounded
-        // output — never payload/browser/course-package JSON — with the
-        // caller's optional, strictly-typed interaction descriptor appended
-        // only when present (see requestSchema above). This is the only
-        // place in the whole boundary where "context" is assembled.
-        const context = {
-          capability: capabilityName.data,
-          data,
-          ...(payload.interaction ? { interaction: payload.interaction } : {}),
-        };
-        // The runtime harness must never be given more room than the V2
-        // execution was actually admitted for: reuse the profile's own
-        // budgetPolicy for everything NOT re-negotiated at AUTHORIZE
-        // (maxAttempts, maxInputContextBytes, totalDeadlineMs), but replace
-        // maxProviderCalls/maxOutputTokens/maxEstimatedCostMicrousd with the
-        // exact capped values the DB just admitted (`budgetParsed.data`) —
-        // never the profile's own, possibly larger, originals. A generous
-        // profile can therefore never cause the provider to be asked for
-        // more output tokens, calls or cost headroom than
-        // academic_provider_executions actually recorded as admitted.
-        const effectiveRuntimePolicy: RuntimeBudgetPolicy = {
-          ...profile.budgetPolicy,
-          maxProviderCalls: budgetParsed.data.maxProviderCalls,
-          maxOutputTokens: budgetParsed.data.maxOutputTokens,
-          maxEstimatedCostMicrousd: budgetParsed.data.maxEstimatedCostMicrousd,
-        };
-        providerResult = await runGovernedProviderExecution(
-          adapter,
-          { role: payload.role, capability: payload.capability, context },
-          effectiveRuntimePolicy,
-        );
-      } catch (error) {
-        // AUTHORIZE/START denials are ordinary, bounded outcomes here
-        // (rate limits, an out-of-envelope proposal, an activity/policy
-        // change mid-flight, expiry) — never an exception that should abort
-        // an otherwise-valid content release. A genuinely unexpected error
-        // (not ProviderExecutionDenied) is rethrown below unchanged.
-        if (!(error instanceof ProviderExecutionDenied)) throw error;
-        providerResult = {
-          outcome: "ABSTAINED",
-          usage,
-          reason:
-            error.code === "ACTIVITY_BLOCKED"
-              ? "ACTIVITY_BLOCKED"
-              : "POLICY_BLOCKED",
-        };
-        // If AUTHORIZE itself was admitted but a later step failed without
-        // the database already having closed the execution out on its own
-        // (databaseTerminal), the row would otherwise dangle AUTHORIZED
-        // until it lazily expires. Best-effort cleanup; a failure here is
-        // not itself surfaced, since the DB-owned timeout policy remains
-        // the backstop (never a fabricated terminal success).
-        if (providerExecutionAuthorized && !error.databaseTerminal) {
-          try {
-            await attestProviderExecutionCommand(providerExecutionId, release, {
-              operation: "FINALIZE",
-              state: "FAILED",
-              reason: "INTERNAL_ERROR",
-              budgetStage: null,
-              usage: zeroUsage(),
-            });
-          } catch {
-            // Lazy DB-owned expiry remains the backstop.
-          }
+      await attestProviderExecutionCommand(providerExecutionId, release, {
+        operation: "START",
+      });
+      providerExecutionStarted = true;
+      // The runtime harness must never be given more room than the V2
+      // execution was actually admitted for: reuse the profile's own
+      // budgetPolicy for everything NOT re-negotiated at AUTHORIZE
+      // (maxAttempts, maxInputContextBytes, totalDeadlineMs), but replace
+      // maxProviderCalls/maxOutputTokens/maxEstimatedCostMicrousd with the
+      // exact capped values the DB just admitted (`budgetParsed.data`) —
+      // never the profile's own, possibly larger, originals. A generous
+      // profile can therefore never cause the provider to be asked for
+      // more output tokens, calls or cost headroom than
+      // academic_provider_executions actually recorded as admitted.
+      const effectiveRuntimePolicy: RuntimeBudgetPolicy = {
+        ...profile.budgetPolicy,
+        maxProviderCalls: budgetParsed.data.maxProviderCalls,
+        maxOutputTokens: budgetParsed.data.maxOutputTokens,
+        maxEstimatedCostMicrousd: budgetParsed.data.maxEstimatedCostMicrousd,
+      };
+      providerResult = await runGovernedProviderExecution(
+        adapter,
+        {
+          role: payload.role,
+          capability: payload.capability,
+          context,
+          behaviour,
+        },
+        effectiveRuntimePolicy,
+      );
+    } catch (error) {
+      // AUTHORIZE/START denials are ordinary, bounded outcomes here
+      // (rate limits, an out-of-envelope proposal, an activity/policy
+      // change mid-flight, expiry) — never an exception that should abort
+      // an otherwise-valid content release. A genuinely unexpected error
+      // (not ProviderExecutionDenied) is rethrown below unchanged.
+      if (
+        !(error instanceof ProviderExecutionDenied) &&
+        !(error instanceof ProfessorTeachingDenied)
+      )
+        throw error;
+      providerResult = {
+        outcome: "ABSTAINED",
+        usage,
+        reason:
+          error.code === "ACTIVITY_BLOCKED"
+            ? "ACTIVITY_BLOCKED"
+            : "POLICY_BLOCKED",
+      };
+      // If AUTHORIZE itself was admitted but a later step failed without
+      // the database already having closed the execution out on its own
+      // (databaseTerminal), the row would otherwise dangle AUTHORIZED
+      // until it lazily expires. Best-effort cleanup; a failure here is
+      // not itself surfaced, since the DB-owned timeout policy remains
+      // the backstop (never a fabricated terminal success).
+      if (
+        providerExecutionAuthorized &&
+        !(error instanceof ProviderExecutionDenied && error.databaseTerminal)
+      ) {
+        try {
+          await attestProviderExecutionCommand(providerExecutionId, release, {
+            operation: "FINALIZE",
+            state: "FAILED",
+            reason: "INTERNAL_ERROR",
+            budgetStage: null,
+            usage: zeroUsage(),
+          });
+        } catch {
+          // Lazy DB-owned expiry remains the backstop.
         }
       }
-    },
-  );
+    }
+  };
+
+  // The governed gateway. Without a classroom: the single reviewed
+  // capability release, exactly as before AC-2. With a classroom: the
+  // existing reviewed PROFESSOR_READ_V2 reads (lesson, objectives and, only
+  // when authorised, resources and mastery), each under its own release,
+  // nested so the provider runs while every release is ACTIVE and every
+  // gateway performs its own final recheck and closure afterwards.
+  let gateway: GatewayOutcome;
+  if (classroom && classSessionId && payload.interaction && payload.lessonId) {
+    const classroomState = classroom;
+    const interaction = payload.interaction;
+    gateway = await withProfessorTeachingReleases(
+      {
+        enrolmentId: payload.enrolmentId,
+        lessonId: payload.lessonId,
+        includeResources: isCapabilityAuthorized(
+          "PROFESSOR",
+          "get_learning_resources",
+          config.capabilities,
+        ),
+        includeMastery: isCapabilityAuthorized(
+          "PROFESSOR",
+          "get_current_mastery_state",
+          config.capabilities,
+        ),
+      },
+      async ({ release, manifest, reads }) => {
+        capturedRelease = release;
+        let memory: Awaited<ReturnType<typeof listProfessorClassroomTurns>>;
+        try {
+          memory = await listProfessorClassroomTurns(
+            classSessionId,
+            TEACHING_CONTEXT_LIMITS.memoryTurns,
+          );
+        } catch (error) {
+          providerResult = {
+            outcome: "ABSTAINED",
+            usage,
+            reason:
+              error instanceof ProfessorTeachingDenied &&
+              error.code === "ACTIVITY_BLOCKED"
+                ? "ACTIVITY_BLOCKED"
+                : "POLICY_BLOCKED",
+          };
+          return;
+        }
+        // Explicit capacity state: the classroom's memory is full, so the
+        // Professor refuses before any provider call rather than continue
+        // a conversation it could no longer record.
+        if (memory.capacityReached) {
+          providerResult = {
+            outcome: "ABSTAINED",
+            usage,
+            reason: "POLICY_BLOCKED",
+            classroomMemory: "CAPACITY_REACHED",
+          };
+          return;
+        }
+        const built = buildProfessorTeachingContext(
+          {
+            classroom: classroomState,
+            objectives: reads.objectives,
+            mastery: reads.mastery,
+            resources: reads.resources,
+            turns: memory.turns,
+            totalTurns: memory.totalTurns,
+            unrecordedExchanges: memory.unrecordedExchanges,
+            courseContextNotes: behaviour.config.courseContextNotes,
+            behaviourVersion: behaviour.behaviourVersion,
+            interaction,
+          },
+          profile.budgetPolicy.maxInputContextBytes,
+        );
+        // The complete objective set is mandatory: no objectives or an
+        // incomplete set is a policy refusal, and objectives that cannot
+        // all fit the reviewed budget are a pre-call budget refusal. Either
+        // way no execution is authorized and no provider is called.
+        if (!built.ok) {
+          providerResult =
+            built.reason === "MANDATORY_CONTEXT_EXCEEDS_BUDGET"
+              ? { outcome: "BUDGET_BLOCKED", usage, stage: "PRE_CALL" }
+              : { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
+          return;
+        }
+        await governedProviderCall(release, built.context, manifest);
+      },
+    );
+  } else {
+    const outcome = await withValidatedProfessorContent(
+      { capability: capabilityName.data, input: capabilityInput },
+      async ({ release, data }) => {
+        capturedRelease = release;
+        // The provider context is the capability's own validated, bounded
+        // output, never payload/browser/course-package JSON.
+        await governedProviderCall(
+          release,
+          { capability: capabilityName.data, data },
+          null,
+        );
+      },
+    );
+    gateway = {
+      ok: outcome.result.ok,
+      activityBlocked:
+        !outcome.result.ok && outcome.result.error.code === "ACTIVITY_BLOCKED",
+      releaseFinalizationFailed: outcome.releaseFinalizationFailed,
+    };
+  }
 
   // Best-effort cleanup used only by the two release/gateway failure paths
   // below, where a V2 execution may have reached RUNNING (a real provider
@@ -438,7 +640,7 @@ async function executeRoleCapabilityCore(
   // same real usage rather than the zero placeholder: real providerCalls/
   // tokens/cost already consumed must not disappear merely because the
   // response itself is discarded.
-  if (outcome.releaseFinalizationFailed) {
+  if (gateway.releaseFinalizationFailed) {
     await finalizeProviderExecutionAfterRelease(
       "FAILED",
       "CONTENT_RELEASE_UNAVAILABLE",
@@ -454,8 +656,8 @@ async function executeRoleCapabilityCore(
   // discards any provider output, for the same reason: content validity is
   // re-proven only up to that recheck, not merely at the moment the
   // callback captured it. Same usage-preservation rule as above.
-  if (!outcome.result.ok) {
-    const activityBlocked = outcome.result.error.code === "ACTIVITY_BLOCKED";
+  if (!gateway.ok) {
+    const activityBlocked = gateway.activityBlocked;
     await finalizeProviderExecutionAfterRelease(
       "FAILED",
       activityBlocked ? "ACTIVITY_BLOCKED" : "POLICY_BLOCKED",
@@ -467,7 +669,7 @@ async function executeRoleCapabilityCore(
     };
   }
   // The callback never produced a result at all (should not happen once
-  // outcome.result.ok is true, but fail closed rather than assume).
+  // the gateway succeeded, but fail closed rather than assume).
   if (!providerResult) {
     return { outcome: "ABSTAINED", usage, reason: "POLICY_BLOCKED" };
   }
@@ -519,6 +721,37 @@ async function executeRoleCapabilityCore(
       outcome: "ABSTAINED",
       usage: lastKnownUsage(),
       reason: "POLICY_BLOCKED",
+    };
+  }
+  // AC-2 classroom memory: only after FINALIZE confirmed SUCCEEDED, only the
+  // learner-visible exchange, attested and bound to this execution. A
+  // confirmed answer is never hidden because memory failed, but the failure
+  // is never silent either: this result says NOT_RECORDED (the learner is
+  // told), and the database itself counts the exchange as unrecorded, so
+  // every later turn reports DEGRADED continuity to the Professor.
+  const finished = providerResult as RuntimeResult;
+  if (
+    classSessionId &&
+    payload.interaction &&
+    finished.outcome === "SUCCEEDED"
+  ) {
+    let recorded = false;
+    if (Array.from(finished.response.outputText).length <= 12_000) {
+      try {
+        await recordProfessorClassroomTurn({
+          executionId: providerExecutionId,
+          classSessionId,
+          interaction: payload.interaction,
+          professorMessage: finished.response.outputText,
+        });
+        recorded = true;
+      } catch {
+        recorded = false;
+      }
+    }
+    return {
+      ...finished,
+      classroomMemory: recorded ? "RECORDED" : "NOT_RECORDED",
     };
   }
   return providerResult;

@@ -2,9 +2,73 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: Academic Session Operations (migration 049), independently reviewed and merged through PR #53. PR head `380d6abfac8740bd89cb23d9281a81650ec1f4ac`; merge on `main` `d6bf283cf30915aa8eea3248d5a1ec7d1267517d`. PR CI passed (run 37046895265) and post-merge `main` CI passed (run 37049593392). Hosted acceptance of migration 049 has **not** run. See [checkpoint evidence](42-academic-session-operations.md).
+LAST COMPLETED CHECKPOINT: AGENT-CONTROL-1 (migration 050), independently reviewed and merged through PR #54 (merge `3099e7206a30149650ca401abcc13d0ea345fecf` on `main`). Hosted acceptance of migrations 044–050 has **not** run. See [AC-1 design and evidence](43-agent-control-1.md).
 
-CURRENT CHECKPOINT: AGENT-CONTROL-1, a truthful agent control plane plus configuration governance, on `feat/agent-model-control` from base `d6bf283`. Migration `202610050050_agent_configuration_governance.sql`. Implemented and locally tested; uncommitted, awaiting independent review. This is foundation work only: Agent / Model and Behaviour work is **not** complete (AC-2 to AC-7 follow). See [checkpoint design and evidence](43-agent-control-1.md).
+CURRENT CHECKPOINT: AC-2, Governed Academic Agent Behaviour, on `feat/agent-behaviour` from base `3099e72`. Migration `202610050051_agent_behaviour.sql` (additive; 001–050 unchanged; no existing attested message format changed). Implemented and locally tested, including the independent-review correction pass, the historical-default-drift correction and the fail-closed enrolment correction. Independently reviewed and approved; committed on `feat/agent-behaviour` and submitted as a pull request against `main` (not merged). **Not production-ready.** See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
+
+COMPLETED ITEMS (AC-2):
+
+- Code-owned, versioned behaviour contract keyed by role, never by model:
+  - Level 1: `DUCELIO_INSTITUTIONAL_BASELINE_V1`.
+  - Level 2: `PROFESSOR_BEHAVIOUR_V1`, `TUTOR_BEHAVIOUR_V1`, `LAB_INSTRUCTOR_BEHAVIOUR_V1`.
+  - Explicit precedence 1 > 2 > 3 > 4 > 5. The provider is told its role.
+  - Course context notes, runtime facts and learner prose reach the provider only as subordinate input data.
+  - The Examiner's instructions are byte-for-byte unchanged.
+- Level 3, `AGENT_BEHAVIOUR_CONFIG_V1`, in a separate table:
+  - four typed enums plus bounded notes;
+  - admin-only and audited (no note text in the audit);
+  - frozen by the database once the version is PUBLISHED or enrolled, for a first insert exactly as for an update, under the shared programme-version row lock, and never deleted.
+  - Its own `AGENT_BEHAVIOUR_FINGERPRINT_V1` over the actual effective semantic values (pinned role version, source, config version, the four values and notes, including a default's concrete values), shown to admins and recorded in provenance. The migration-035 package fingerprint does not cover behaviour and is unchanged.
+  - A draft without a row resolves to the versioned default `AGENT_BEHAVIOUR_DEFAULT_V1`.
+  - Historical default drift is closed, fail-closed:
+    - **Publication materialises behaviour.** Inside the publication transaction the database freezes an immutable `academic_agent_behaviour_bindings` row per teaching role (the effective values, including a default's concrete V1 values, and the pinned Level-2 role behaviour version), and publication cannot commit without all three verified bindings.
+    - **Migration 051 performs the one-time legacy backfill** of versions already published before AC-2 (`MIGRATION_BACKFILL`, idempotent, no invented actor).
+    - **Enrolment only verifies frozen behaviour** and never repairs or materialises a missing binding. A missing or corrupt binding, or an unrecognised role/config version, refuses the enrolment (`AGENT_BEHAVIOUR_BINDING_MISSING` / `_INVALID`) and blocks execution; nothing is written.
+    - Runtime reads only the binding; there is no fallback to the current code default anywhere.
+  - **Level 1 may evolve institutionally**, but its applied version (`institutional_baseline_version`) is recorded on every Professor/Tutor/Lab execution-provenance row alongside the pinned Level-2 version, Level-3 source/version/fingerprint, runtime profile and programme version.
+  - Level-2 role baselines are kept in a versioned registry (`roleBaselineFor`); instructions, provenance and context use the pinned version.
+  - Course Engineering has a typed draft-only form, read-only when bound. `/admin/agents` and Course Engineering show the database-resolved effective behaviour (pinned version, source, values, frozen/draft) and a missing/invalid binding as "execution refused".
+  - There is no prompt editor and no model or provider field.
+- Professor teaching context through nested reviewed `PROFESSOR_READ_V2` releases, with deterministic context budgeting:
+  - lesson and the complete objective set, which is mandatory: an incomplete set or one that cannot fit is refused before any execution;
+  - authorised resources and authoritative mastery;
+  - server-clock timing (LIVE remaining minutes; CATCH_UP none);
+  - bounded learner-visible classroom memory.
+
+  A classroom interaction now requires its server-opened classroom.
+
+- Professor classroom memory (`professor_classroom_turns`):
+  - server-attested (`DUCELIO_CLASSROOM_TURN_HMAC_SHA256_V1`);
+  - owner-only and firewall-gated;
+  - non-authoritative, bounded, immutable;
+  - shown to the learner on the classroom page;
+  - continuity derived by the database: an unrecorded exchange is reported to the learner and to later turns as degraded memory;
+  - an explicit 200-turn capacity state refused before any execution.
+- Tutor: no claimed Professor teaching history and no protected-assessment help. Lab: no fabricated execution and no session clock (null timing).
+- Execution provenance (`academic_agent_execution_provenance`):
+  - Tutor/Lab is derived by the database in a trigger.
+  - Professor is recorded through a new attested RPC (`DUCELIO_AGENT_PROVENANCE_HMAC_SHA256_V1`) before START, with every claim re-derived by the database, including an attested, database-verified manifest of every contributing content release (ids and capabilities only).
+- Tests (after the final drift correction):
+  - AC-2 suites: behaviour contract 17, behaviour DB 44 (all need migration 051; 9 binding tests and 13 enrolment-verification, publication and institutional-baseline tests), behaviour config server read 14, Professor provenance attestation 1, provider instructions 5, teaching context 15, Tutor/Lab context 3, classroom teaching runtime 35, real-database nested releases 4 (in the capability workflow suite, 33 total).
+  - Extended suites: Course Engineering admin 55 and real-DB workflow 2, Tutor/Lab DB 46 and runtime, classroom domain 24 and actions 23, control-plane UI 20 and server 22, runtime harness 15, native provider adapters, live-provider acceptance driver.
+  - `npm run check`, exactly as defined: **3,780/3,780 across 153 files**, exit 0.
+  - `npm run build` passed. `npm run format:check` is clean. `npm audit --omit=dev` reports 0 vulnerabilities. `git diff --check HEAD` is clean.
+
+INCOMPLETE ITEMS:
+
+- PR CI and review of the AC-2 pull request, then merge (not performed).
+- Hosted acceptance of migrations 044–051: effective ACL, JWT/PostgREST, real multi-connection races, browser/accessibility.
+- A reviewed retention and deletion policy for Professor classroom memory. None is automated in AC-2.
+- A reviewed design for lessons with more than 50 objectives (currently refused, fail closed).
+- A reviewed repair procedure for a corrupted or missing behaviour binding (none exists by design; affected versions refuse enrolment and execution). A future default or role behaviour version needs a reviewed migration to widen the binding and provenance CHECK lists.
+- Live-provider evaluation of instructional behaviour quality.
+- AC-3 to AC-7 are not started. Sarah, handoffs, class notes, teaching feedback and Lab timing are **not** implemented.
+
+KNOWN FAILURES: no local functional blocker. `npm run format:check` is clean in this tree. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour.
+
+NEXT EXACT ACTION: confirm PR CI for the AC-2 pull request and complete its review; do not merge without instruction. After merge, run hosted acceptance for migrations 044–051, then start AC-3 (minimum-data structured academic handoffs).
+
+### AC-1 record (merged)
 
 COMPLETED ITEMS (AC-1):
 
@@ -19,19 +83,6 @@ COMPLETED ITEMS (AC-1):
   - then passed (3,603/3,603);
   - passed after the correction: **3,614/3,614 across 145 files**.
 - Build passed. `npm audit --omit=dev` reports 0 vulnerabilities. Evidence is in docs/43.
-
-INCOMPLETE ITEMS: independent review of AC-1. Hosted acceptance of migrations 044–050 is pending:
-
-- hosted effective-ACL / JWT / PostgREST acceptance
-- real PostgreSQL multi-connection races (049's original-start/classroom boundary; 050's configuration-write vs first-enrolment/publication serialisation)
-- browser and accessibility acceptance
-- related hosted pagination and session-operation acceptance
-
-AC-2 to AC-7 are planned and not started (docs/43). No production-readiness claim is made, and no role is production-proven.
-
-KNOWN FAILURES: no local functional blocker. The known seven unchanged Windows-CRLF baseline files remain the only format warnings. PGlite does not prove real multi-connection behaviour.
-
-NEXT EXACT ACTION: independent review of AC-1 (migration 050, `/admin/agents`, the Course Engineering form changes and the learner escalation copy). Do not commit, push or open a PR without further instructions. After approval and merge, run hosted acceptance for 044–050, then start AC-2.
 
 ### Previously recorded hosted acceptance (unchanged historical scope)
 

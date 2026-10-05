@@ -162,6 +162,24 @@ function VersionTable({ version }: { version: VersionView }) {
           ? "This version is published or has enrolments. Instructional notes, profile reference, capability widening and escalation policy are fixed. Only availability, capability narrowing and the Examiner move to academic review can change."
           : "This version is an unenrolled draft. Its configuration can still be changed in Course Engineering."}
       </p>
+      {version.behaviourFingerprint ? (
+        <p>
+          Behaviour fingerprint (AGENT_BEHAVIOUR_FINGERPRINT_V1):{" "}
+          <code>{version.behaviourFingerprint}</code>. It covers the actual
+          effective behaviour values and pinned role behaviour version of every
+          role and is{" "}
+          {version.semanticConfigFrozen
+            ? "fixed, because behaviour was frozen when this version was published."
+            : "changed by any draft behaviour edit."}{" "}
+          The course package publication fingerprint does not cover behaviour.
+        </p>
+      ) : (
+        <p role="alert">
+          This version&apos;s frozen behaviour binding is missing or does not
+          verify, so no behaviour fingerprint exists and every Professor, Tutor
+          and Lab Instructor execution for it is refused.
+        </p>
+      )}
       <div className="data-table-wrap">
         <table className="data-table">
           <thead>
@@ -173,6 +191,7 @@ function VersionTable({ version }: { version: VersionView }) {
               <th scope="col">Capabilities</th>
               <th scope="col">Escalation</th>
               <th scope="col">Instructional notes</th>
+              <th scope="col">Behaviour</th>
               <th scope="col">READY</th>
             </tr>
           </thead>
@@ -241,6 +260,33 @@ function VersionTable({ version }: { version: VersionView }) {
                     : "None"}
                 </td>
                 <td>
+                  {r.behaviour && "summary" in r.behaviour ? (
+                    <>
+                      <code>{r.behaviour.behaviourVersion}</code>
+                      <p>
+                        {r.behaviour.source === "EXPLICIT"
+                          ? `Programme configuration (${r.behaviour.configVersion})`
+                          : `Versioned default (${r.behaviour.configVersion}): no programme configuration recorded`}
+                        {r.behaviour.state === "BOUND"
+                          ? " · frozen at publication"
+                          : " · draft, not yet frozen"}
+                      </p>
+                      <p>{r.behaviour.summary}</p>
+                      {r.behaviour.hasCourseContextNotes && (
+                        <p>Course context notes stored (used as data)</p>
+                      )}
+                    </>
+                  ) : r.behaviour ? (
+                    <Badge tone="gold">
+                      {r.behaviour.state === "BEHAVIOUR_BINDING_MISSING"
+                        ? "Behaviour binding missing: execution refused"
+                        : "Behaviour binding invalid: execution refused"}
+                    </Badge>
+                  ) : (
+                    "Not applicable"
+                  )}
+                </td>
+                <td>
                   {r.readiness === "NOT_APPLICABLE"
                     ? "Not applicable"
                     : r.readiness === "CREDENTIAL_PRESENT"
@@ -292,9 +338,10 @@ export default async function Page({
         <p>
           Providers, models, budgets and tariffs are fixed in server code. No
           browser, course package or stored configuration can choose them, and
-          nothing on this page changes them. Agent behaviour work is not
-          complete: role behaviour contracts, handoffs, class notes and Sarah
-          are later checkpoints.
+          nothing on this page changes them. Professor, Tutor and Lab Instructor
+          follow the governed behaviour contract, keyed by role and never by
+          model. Agent behaviour work is not complete: academic handoffs, class
+          notes and Sarah are later checkpoints.
         </p>
       </Card>
 

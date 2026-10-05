@@ -5,11 +5,13 @@ import {
   DEFAULT_RUNTIME_BUDGET_POLICY,
   type RuntimeBudgetPolicy,
 } from "@/domain/academic-runtime";
+import { defaultEffectiveBehaviour } from "@/domain/agent-behaviour";
 
 const request = {
   role: "PROFESSOR",
   capability: "get_lesson_context",
   context: { lessonTitle: "Access Control" },
+  behaviour: defaultEffectiveBehaviour("PROFESSOR"),
 };
 
 function successResponse(
@@ -34,6 +36,26 @@ function successResponse(
 }
 
 describe("runGovernedProviderExecution", () => {
+  it("refuses a teaching role without a reviewed frozen behaviour before any provider call (AC-2)", async () => {
+    for (const behaviour of [
+      undefined,
+      { ...request.behaviour, behaviourVersion: "PROFESSOR_BEHAVIOUR_V2" },
+      { ...request.behaviour, behaviourVersion: "TUTOR_BEHAVIOUR_V1" },
+    ]) {
+      const adapter = new DeterministicFakeProviderAdapter([successResponse()]);
+      const result = await runGovernedProviderExecution(
+        adapter,
+        { ...request, behaviour },
+        DEFAULT_RUNTIME_BUDGET_POLICY,
+      );
+      expect(result).toMatchObject({
+        outcome: "ABSTAINED",
+        reason: "POLICY_BLOCKED",
+      });
+      expect(result.usage.providerCalls).toBe(0);
+    }
+  });
+
   it("fails closed to ABSTAINED when no provider is configured", async () => {
     const result = await runGovernedProviderExecution(
       null,

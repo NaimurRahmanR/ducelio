@@ -172,3 +172,46 @@ describe("professorClassroomInteractionSchema / learnerMessageSchema", () => {
     ).toBe(false);
   });
 });
+
+describe("mapRuntimeResultToClassroomOutcome: AC-2 classroom memory", () => {
+  const usage = {
+    providerCalls: 1,
+    attempts: 1,
+    inputTokens: 1,
+    outputTokens: 1,
+    estimatedCostMicrousd: 1,
+    elapsedMs: 1,
+  };
+  const response = {
+    outputText: "Answer",
+    usage: { inputTokens: 1, outputTokens: 1, estimatedCostMicrousd: 1 },
+  };
+  it("keeps a confirmed answer but flags an unrecorded exchange", () => {
+    expect(
+      mapRuntimeResultToClassroomOutcome({
+        outcome: "SUCCEEDED",
+        usage,
+        response,
+        classroomMemory: "NOT_RECORDED",
+      }),
+    ).toEqual({ kind: "SUCCEEDED", text: "Answer", memoryNotRecorded: true });
+    expect(
+      mapRuntimeResultToClassroomOutcome({
+        outcome: "SUCCEEDED",
+        usage,
+        response,
+        classroomMemory: "RECORDED",
+      }),
+    ).toEqual({ kind: "SUCCEEDED", text: "Answer" });
+  });
+  it("maps the explicit capacity refusal to its own learner state", () => {
+    expect(
+      mapRuntimeResultToClassroomOutcome({
+        outcome: "ABSTAINED",
+        usage,
+        reason: "POLICY_BLOCKED",
+        classroomMemory: "CAPACITY_REACHED",
+      }),
+    ).toEqual({ kind: "MEMORY_FULL" });
+  });
+});

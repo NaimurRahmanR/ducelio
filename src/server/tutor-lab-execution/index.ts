@@ -27,6 +27,12 @@ import {
 import { runGovernedProviderExecution } from "../academic-runtime/runtime";
 import { getAgentConfigForEnrolment } from "../academic-agent-config";
 import { isCapabilityAuthorized } from "@/domain/academic-capability-policy";
+import { getAgentBehaviourForEnrolment } from "../agent-behaviour-config";
+import { buildTutorLabProviderContext } from "@/domain/tutor-lab-provider-context";
+import {
+  roleBaselineFor,
+  type EffectiveAgentBehaviour,
+} from "@/domain/agent-behaviour";
 
 export type TutorLabSupportResult =
   | { status: "SUCCEEDED"; text: string; role: TutorLabRole }
@@ -153,7 +159,26 @@ export async function executeTutorLabSupport(
       requiredCapabilities.every((capability) =>
         isCapabilityAuthorized(release.role, capability, config.capabilities),
       );
-    if (!stillAuthorized) {
+    // AC-2 LEVEL 3: the effective programme behaviour for the learner's own
+    // enrolment, resolved before AUTHORIZE; failure fails closed.
+    let behaviour: EffectiveAgentBehaviour | null = null;
+    if (stillAuthorized) {
+      try {
+        behaviour = await getAgentBehaviourForEnrolment(
+          release.enrolmentId,
+          release.role,
+        );
+      } catch {
+        behaviour = null;
+      }
+      // The pinned role behaviour version must have reviewed text here.
+      if (
+        behaviour &&
+        !roleBaselineFor(release.role, behaviour.behaviourVersion)
+      )
+        behaviour = null;
+    }
+    if (!stillAuthorized || !behaviour) {
       providerResult = {
         outcome: "ABSTAINED",
         usage: zeroUsage(),
@@ -223,7 +248,14 @@ export async function executeTutorLabSupport(
             {
               role: release.role,
               capability: "tutor_lab_support",
-              context: { ...context, learnerMessage: request.message },
+              context: buildTutorLabProviderContext(
+                context,
+                request.message,
+                behaviour.config.courseContextNotes,
+                profile.budgetPolicy.maxInputContextBytes,
+                behaviour.behaviourVersion,
+              ),
+              behaviour,
             },
             effectivePolicy,
           );

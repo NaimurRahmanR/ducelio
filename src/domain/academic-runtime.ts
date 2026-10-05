@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { EffectiveAgentBehaviour } from "./agent-behaviour";
 
 // B2 provider-neutral AI runtime foundation. Pure domain module: no node
 // built-ins, no vendor SDK, no database access. This describes the shape of
@@ -142,6 +143,10 @@ export type RuntimeProviderRequest = {
   capability: string;
   context: Record<string, unknown>;
   constraints: { maxOutputTokens: number };
+  // AC-2: the effective LEVEL-3 programme behaviour for PROFESSOR / TUTOR /
+  // LAB_INSTRUCTOR, resolved server-side. Composed into the provider
+  // instructions only through code-owned sentences; never caller text.
+  behaviour?: EffectiveAgentBehaviour;
 };
 
 export type ProviderUsageReport = {
@@ -167,12 +172,25 @@ export interface ProviderAdapter {
 }
 
 export type RuntimeResult =
-  | { outcome: "SUCCEEDED"; usage: RuntimeUsage; response: ProviderResponse }
+  | {
+      outcome: "SUCCEEDED";
+      usage: RuntimeUsage;
+      response: ProviderResponse;
+      // AC-2 Professor classroom only: whether this confirmed exchange was
+      // recorded in the learner-visible classroom memory. NOT_RECORDED is
+      // surfaced to the learner and to later turns as degraded continuity.
+      classroomMemory?: "RECORDED" | "NOT_RECORDED";
+    }
   | { outcome: "FAILED"; usage: RuntimeUsage; reason: ProviderFailureCode }
   | {
       outcome: "ABSTAINED";
       usage: RuntimeUsage;
       reason: RuntimeAbstentionReason;
+      // AC-2 Professor classroom only: the classroom's learner-visible
+      // memory is at its explicit capacity, so no further exchange runs
+      // there. Always paired with POLICY_BLOCKED, refused before any
+      // execution is authorized, and never persisted as a terminal reason.
+      classroomMemory?: "CAPACITY_REACHED";
     }
   | { outcome: "ESCALATED"; usage: RuntimeUsage; reviewPath: "ACADEMIC_REVIEW" }
   // `stage` distinguishes a pre-call hard-admission refusal (no provider

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { defaultEffectiveBehaviour } from "@/domain/agent-behaviour";
 import {
   resolveAnthropicMessagesProvider,
   resolveConfiguredProvider,
@@ -40,6 +41,7 @@ const request: RuntimeProviderRequest = {
   capability: "get_lesson_context",
   context: { lesson: { title: "Safe parsing" }, learnerMessage: "Help me" },
   constraints: { maxOutputTokens: 77 },
+  behaviour: defaultEffectiveBehaviour("LAB_INSTRUCTOR"),
 };
 
 function restore(name: string, value: string | undefined) {
