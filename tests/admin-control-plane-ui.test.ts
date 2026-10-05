@@ -684,6 +684,7 @@ describe("Commercial V1 admin navigation", () => {
       "Grade recovery",
       "Academic review",
       "Academic results",
+      "Agents",
       "Commerce",
     ]);
     expect(

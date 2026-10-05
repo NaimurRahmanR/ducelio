@@ -878,11 +878,19 @@ describe("PR16A: config-governed AUTHORIZE admission (migration 036)", () => {
     // so this adversarial state is unreachable through the normal RPC
     // surface -- the table's own CHECK constraint only validates bounded-
     // identifier shape, not role binding, so this UPDATE is otherwise a
-    // structurally valid row.
+    // structurally valid row. Migration 050's semantic-binding guard also
+    // refuses it on this published version, so the corruption is seeded
+    // with only that guard disabled, owner-role only, for this one write.
     await owner(f.db);
+    await f.db.exec(
+      "alter table public.academic_agent_configs disable trigger guard_agent_config_semantic_binding",
+    );
     await f.db.query(
       "update public.academic_agent_configs set model_profile_ref='TUTOR_COMMERCIAL_V1' where programme_version_id=$1 and role='EXAMINER'",
       [f.programmeVersionId],
+    );
+    await f.db.exec(
+      "alter table public.academic_agent_configs enable trigger guard_agent_config_semantic_binding",
     );
     const key = await installKey(f);
     const fields = authorizeFields(key, "grade_controlled_assessment", {

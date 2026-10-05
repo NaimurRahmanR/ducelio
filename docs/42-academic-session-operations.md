@@ -1,6 +1,13 @@
 # Academic Session Operations
 
-Branch `feat/academic-session-operations`, base `da6e4bba1ef9f339fc4248255f9f609ab3188096`. Migration `202610020049_commercial_v1_session_operations.sql` follows unchanged migrations 001-048. Work is uncommitted for independent review. The three independent-review corrections are implemented and locally validated; independent review remains pending. Hosted acceptance has not run. This checkpoint makes no production-readiness claim.
+Branch `feat/academic-session-operations`, base `da6e4bba1ef9f339fc4248255f9f609ab3188096`. Migration `202610020049_commercial_v1_session_operations.sql` follows unchanged migrations 001-048. Status: independently reviewed, including the three independent-review corrections below. Merged through PR #53: PR head `380d6abfac8740bd89cb23d9281a81650ec1f4ac`, merge on `main` `d6bf283cf30915aa8eea3248d5a1ec7d1267517d`. PR CI passed (run 37046895265) and post-merge `main` CI passed (run 37049593392). Hosted acceptance has **not** run. Still pending:
+
+- hosted effective-ACL / JWT / PostgREST acceptance
+- real PostgreSQL multi-connection races
+- browser/accessibility acceptance
+- hosted pagination/session-operation acceptance
+
+This checkpoint makes no production-readiness claim.
 
 ## Authority and lifecycle
 

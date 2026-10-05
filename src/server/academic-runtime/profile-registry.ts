@@ -148,6 +148,13 @@ const PRODUCTION_PROFILE_REGISTRY: Readonly<Record<string, RuntimeProfile>> =
     }),
   });
 
+// Read-only view of every reviewed production profile, for the operator
+// control plane (src/server/agent-control-plane.ts). It returns the same
+// frozen objects; nothing here can add, replace or select a profile.
+export function listProductionRuntimeProfiles(): readonly RuntimeProfile[] {
+  return Object.freeze(Object.values(PRODUCTION_PROFILE_REGISTRY));
+}
+
 export function resolveRuntimeProfile(
   ref: string | null,
   registry: Readonly<

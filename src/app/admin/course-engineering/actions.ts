@@ -11,12 +11,20 @@ import {
   rejectCoursePackage,
   runCoursePackageTest,
   getCoursePackageTestStatus,
+  getCoursePackagePreview,
 } from "@/server/course-engineering";
-import { setAgentConfig } from "@/server/academic-agent-config";
-import { agentConfigInputSchema } from "@/domain/academic-agent-config";
+import {
+  AgentConfigRefused,
+  setAgentConfig,
+} from "@/server/academic-agent-config";
+import {
+  agentConfigInputSchema,
+  agentRoleSchema,
+} from "@/domain/academic-agent-config";
 import {
   MAX_COURSE_UPLOAD_BYTES,
   describeTestFailure,
+  operatorPreviewSchema,
   packageActionInputSchema,
   packageActions,
   safeValidationIssues,
@@ -159,24 +167,63 @@ export async function saveCourseAgentAction(
       !current.programme_version_id
     )
       return { error: "Apply this package before configuring its agents." };
-    const enabled = z.enum(["true", "false"]).parse(data.get("enabled"));
-    const input = agentConfigInputSchema.parse({
-      programmeVersionId: current.programme_version_id,
-      role: data.get("role"),
-      enabled: enabled === "true",
-      modelProfileRef: data.get("modelProfileRef") || null,
-      instructionalNotes: data.get("instructionalNotes") || null,
-      capabilities: data.getAll("capabilities"),
-      escalationPolicy: data.get("escalationPolicy"),
-      reason: data.get("reason"),
-    });
+    const role = agentRoleSchema.parse(data.get("role"));
+    // AGENT-CONTROL-1: the browser never supplies a model profile reference.
+    // It is taken from this package's own validated proposal, which can only
+    // be null or the role's single code-owned profile (migration 036), so a
+    // saved row can still match the proposal exactly for activation.
+    const preview = await getCoursePackagePreview(id);
+    if (preview.programme_version_id !== current.programme_version_id)
+      return { error: "Package not found or unavailable." };
+    const proposal = operatorPreviewSchema.parse(preview.preview)
+      .agentConfiguration[role];
+    const reason = data.get("reason");
+    // The academic COUNSELLOR role has no execution path. Its row exists only
+    // so the programme version matches its package, so it is recorded
+    // exactly as proposed and never edited field by field.
+    const input =
+      role === "COUNSELLOR"
+        ? agentConfigInputSchema.parse({
+            programmeVersionId: current.programme_version_id,
+            role,
+            enabled: proposal.enabled,
+            modelProfileRef: proposal.modelProfileRef,
+            instructionalNotes: proposal.instructionalNotes,
+            capabilities: proposal.capabilities,
+            escalationPolicy: proposal.escalationPolicy,
+            reason,
+          })
+        : agentConfigInputSchema.parse({
+            programmeVersionId: current.programme_version_id,
+            role,
+            enabled:
+              z.enum(["true", "false"]).parse(data.get("enabled")) === "true",
+            modelProfileRef: proposal.modelProfileRef,
+            instructionalNotes: data.get("instructionalNotes") || null,
+            capabilities: data.getAll("capabilities"),
+            escalationPolicy: data.get("escalationPolicy"),
+            reason,
+          });
     await setAgentConfig(input);
     refresh();
     return {
       message:
-        "Governed role configuration saved. Runtime and activation checks still apply.",
+        role === "COUNSELLOR"
+          ? "COUNSELLOR package proposal recorded for publication matching. It is not executable and does not launch Sarah or any Counsellor AI."
+          : "Governed role configuration saved. Runtime and activation checks still apply.",
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof AgentConfigRefused)
+      return {
+        error:
+          error.code === "AGENT_CONFIG_BINDING_CLOSED"
+            ? "Not saved: learners are already enrolled on this programme version, so a role without a saved configuration cannot be added. Use a new programme version."
+            : error.code === "AGENT_CONFIG_PACKAGE_MISMATCH"
+              ? "Not saved: this programme version is published, so a role without a saved configuration can only be recorded exactly as the published course package proposes."
+              : error.code === "AGENT_CONFIG_PACKAGE_AUTHORITY_UNAVAILABLE"
+                ? "Not saved: this programme version is published and has no single published course package to record a role configuration from. Use a new programme version."
+                : "Not saved: this programme version is published or has enrolments. Instructional notes, the profile reference and escalation policy are fixed, and capabilities can only be removed. You can still change availability. Use a new programme version for anything else.",
+      };
     return {
       error:
         "Configuration was not saved. Check access, the applied package, role, reviewed capabilities and reason.",
