@@ -145,7 +145,7 @@ export const ACADEMIC_ROLE_FACTS: Readonly<
     execution: {
       executable: false,
       description:
-        "No academic Counsellor execution path exists. This record does not launch Sarah or any Counsellor AI.",
+        "No academic Counsellor execution path exists. This record does not launch Sarah Mitchell or any Counsellor AI: Sarah runs only on the separate platform COUNSELLOR plane.",
     },
     requiredAll: [],
     requiredAny: [],
@@ -157,11 +157,11 @@ export const PLATFORM_ROLE_FACTS: Readonly<
   Record<PlatformAgentRole, { displayName: string; execution: Executability }>
 > = Object.freeze({
   COUNSELLOR: {
-    displayName: "Sarah (planned learner guide)",
+    displayName: "Sarah Mitchell (learner-success AI)",
     execution: {
-      executable: false,
+      executable: true,
       description:
-        "No production execution plane. Sarah is planned for a later checkpoint and does not exist in production.",
+        "AC-5 learner guide at /student/sarah (executeSarahGuide, SARAH_EXECUTION_V1): onboarding, learner guidance and learner-confirmed support-profile proposals. Not the academic COUNSELLOR role and not a human counsellor account. Post-session feedback (AC-6) and course guidance (AC-7) are not implemented.",
     },
   },
   OPERATIONS_ENGINEER: {
@@ -484,14 +484,17 @@ export const AGENT_PROFILE_EVIDENCE: Readonly<Record<string, EvidenceRecord>> =
     COUNSELLOR_PLATFORM_V1: {
       profileFingerprint:
         "2899e69ec577812e9e6d14f6830ad4918baa8289c674cbef54d8cee9f2c2fc1e",
-      reviewedAt: "2026-10-05",
+      reviewedAt: "2026-10-06",
       levels: {
         LOCAL_DETERMINISTIC: {
-          status: "PARTIAL",
+          status: "RECORDED",
           scope:
-            "Routing and profile-schema tests only. There is no execution path to test.",
+            "AC-5 deterministic Sarah tests (2026-10-06): the SARAH_EXECUTION_V1 database governance on the real migration chain (PGlite, single connection), the governed orchestrator, strict output and proposal contract, and the OpenAI adapter with mocked transport. No hosted run and no live model.",
         },
-        HOSTED: { status: "NONE", scope: "Never run hosted." },
+        HOSTED: {
+          status: "NONE",
+          scope: "Never run hosted. Migration 054 is not deployed.",
+        },
         LIVE_PROVIDER: {
           status: "NONE",
           scope: "No live-provider request has used this profile.",

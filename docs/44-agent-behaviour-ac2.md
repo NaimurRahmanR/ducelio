@@ -215,7 +215,7 @@ No prompt, response, key, MAC or provider payload is stored.
 - A reviewed retention and deletion policy for Professor classroom memory.
 - A reviewed, minimum-data handoff projection: what the Professor may hand to the Tutor or Lab, and what the learner sees. This is the only route by which the Tutor may later learn what was taught.
 - A reviewed decision on whether a Lab execution can be linked to an authoritative session (precondition for any Lab timing).
-- Resolution of the "Sarah Mitchell" demo-data naming collision before AC-5.
+- Resolution of the "Sarah Mitchell" demo-data naming collision before AC-5. _(Resolved in [AC-5](47-agent-behaviour-ac5-sarah.md).)_
 - An evaluation plan for instructional behaviour quality.
 
 ## 12. Independent-review correction pass

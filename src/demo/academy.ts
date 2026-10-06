@@ -31,13 +31,22 @@ export const demo = {
       "Explain multi-factor authentication",
     ],
   },
+  // AC-5: Sarah Mitchell is Ducelio's AI learner-success counsellor and
+  // learner guide, the same persona the signed-in academy runs. She is AI,
+  // not a human member of staff. No AI is connected in this demo.
   counsellor: {
     name: "Sarah Mitchell",
     initials: "SM",
-    title: "Learner success counsellor",
-    checkin: "Thu, 10 Sep · 16:30",
+    title: "Ducelio AI learner-success counsellor",
+    routineReview: "Thu, 10 Sep",
     hours: 6,
     goal: "Build a consistent evening study routine and prepare confidently for an external examination.",
+  },
+  // A fictional HUMAN counsellor, shown only in the staff workspace preview.
+  // Human counsellors remain distinct from Sarah.
+  humanCounsellor: {
+    name: "Jamie Carter",
+    title: "Learner success counsellor (fictional human staff)",
   },
   tasks: [
     {
@@ -54,7 +63,7 @@ export const demo = {
     },
     {
       title: "Reflect on this week’s study rhythm",
-      meta: "Counsellor check-in · 10 min",
+      meta: "Study-routine review · 10 min",
       due: "Thu, 10 Sep",
       done: false,
     },
@@ -82,8 +91,8 @@ export const demo = {
       tag: "Academy",
     },
     {
-      title: "Prepare for your counsellor check-in",
-      body: "Take a moment to reflect on what is working well and where you would welcome support.",
+      title: "Review your study routine",
+      body: "Take a moment to reflect on what is working well. Sarah Mitchell, Ducelio’s AI learner-success counsellor, can help you organise your support preferences.",
       date: "7 Sep",
       tag: "Student support",
     },

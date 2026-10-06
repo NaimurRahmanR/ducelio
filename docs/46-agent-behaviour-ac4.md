@@ -2,7 +2,7 @@
 
 AC-4 is the fourth checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md), [AC-2](44-agent-behaviour-ac2.md) and [AC-3](45-agent-behaviour-ac3.md)). Branch `feat/ac4-tutor-class-notes`, base `1e8237353ee5b961764875952b41088c658c3468` (AC-3 and its hosted concurrency acceptance merged through PR #57). Migration `202610060053_tutor_class_notes.sql`; migrations 001–052 are unchanged.
 
-**Status:** implemented and locally validated, **uncommitted**. The first independent review's two blockers and two corrections are applied (section 20), and the patch awaits re-review. Migration 053 has **not** been deployed. No hosted evidence exists for AC-4. **Not production-ready.**
+**Status:** independently reviewed twice (corrections in section 20), CI green, and merged through PR #58 (merge `6845a59a8f6f951d55162e0f834d912b4743cfa9`). Migration 053 has **not** been deployed to hosted acceptance, and its hosted and concurrency work is tracked separately (section 17). **Not production-ready.**
 
 The approved definition (AC-1 section 7): _Tutor class notes. Supplementary, versioned class notes with provenance and the protected-content firewall. They never overwrite published curriculum and are never stored in `learning_resources`._
 

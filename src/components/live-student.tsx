@@ -17,6 +17,7 @@ import {
 import { listMyProfessorClassroomSessionIds } from "@/server/professor-classroom";
 import { previewClassroomEligibility } from "@/domain/professor-classroom";
 import { SupportForms } from "./support-forms";
+import { SarahIdentity, SARAH_IS_AI_NOTICE } from "./sarah-identity";
 
 export async function LiveStudent({ section = "" }: { section?: string }) {
   const { actor, enrolments, profile } = await getStudentAcademy();
@@ -383,7 +384,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
         {(section === "" || section === "support") && (
           <div className="two-column">
             <Card className="counsellor-card">
-              <h2>Your counsellor</h2>
+              <h2>Your assigned counsellor</h2>
               {counsellor ? (
                 <>
                   <h3>{counsellor.display_name}</h3>
@@ -392,7 +393,9 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                   </p>
                 </>
               ) : (
-                <p className="muted">A counsellor has not yet been assigned.</p>
+                <p className="muted">
+                  A human counsellor has not yet been assigned.
+                </p>
               )}
               {support && <p>{support.study_goal}</p>}
               <ButtonLink href="/student/study-plan" secondary>
@@ -415,6 +418,19 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               )}
             </Card>
           </div>
+        )}
+        {(section === "" || section === "support") && (
+          <Card className="counsellor-card">
+            <SarahIdentity as="h2" />
+            <p>
+              Sarah helps you get started, find your way around Ducelio,
+              understand your schedule and access, and organise your support
+              preferences. {SARAH_IS_AI_NOTICE}
+            </p>
+            <ButtonLink href="/student/sarah" secondary>
+              Ask Sarah
+            </ButtonLink>
+          </Card>
         )}
         {section === "support" && (
           <Card>

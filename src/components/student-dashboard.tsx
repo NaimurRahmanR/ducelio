@@ -14,30 +14,29 @@ import {
 } from "lucide-react";
 import { Card, Badge, ButtonLink, Progress } from "./ui";
 import { demo } from "@/demo/academy";
+import { SarahIdentity } from "./sarah-identity";
+// AC-5: the demo face of Sarah Mitchell, Ducelio's AI learner-success
+// counsellor. Same persona as the signed-in guide, presented as AI; no AI is
+// connected in this demo and no message is sent.
 export function CounsellorCard() {
   return (
     <Card className="counsellor-card">
       <div className="section-heading">
-        <h2>Your counsellor</h2>
+        <h2>Your AI learner guide</h2>
         <HeartHandshake size={20} />
       </div>
-      <div className="counsellor-person">
-        <div className="avatar counsellor-avatar">SM</div>
-        <div>
-          <h3>{demo.counsellor.name}</h3>
-          <span className="muted">Your learner success partner</span>
-        </div>
-      </div>
+      <SarahIdentity as="h3" />
       <p className="support-copy">
-        A familiar face. A clear next step.
+        A clear next step, whenever you need one.
         <br />
-        Support throughout your academy journey.
+        Sarah is AI. She guides you around your academy and does not replace
+        your human support team.
       </p>
       <div className="checkin">
         <CalendarDays size={18} />
         <div>
-          <span>YOUR NEXT CHECK-IN</span>
-          <strong>{demo.counsellor.checkin}</strong>
+          <span>STUDY-ROUTINE REVIEW</span>
+          <strong>{demo.counsellor.routineReview}</strong>
         </div>
       </div>
       <ButtonLink href="/demo/study-plan" secondary>

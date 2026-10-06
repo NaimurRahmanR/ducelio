@@ -111,7 +111,7 @@ describe("phase 2 integration hardening", () => {
 
     expect(rows.rows[0]).toEqual({
       id: sessionId,
-      instructor_name: "Sarah Mitchell",
+      instructor_name: "Jamie Carter",
       instructor_title: "Learner success counsellor",
       lesson_title: "Access Control Fundamentals — DEMO",
     });

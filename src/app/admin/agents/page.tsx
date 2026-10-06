@@ -340,8 +340,11 @@ export default async function Page({
           browser, course package or stored configuration can choose them, and
           nothing on this page changes them. Professor, Tutor and Lab Instructor
           follow the governed behaviour contract, keyed by role and never by
-          model. Agent behaviour work is not complete: academic handoffs, class
-          notes and Sarah are later checkpoints.
+          model. Sarah Mitchell, the AI learner-success counsellor, runs on the
+          separate platform COUNSELLOR plane (AC-5: learner guide and
+          learner-confirmed support-profile proposals). Agent behaviour work is
+          not complete: Sarah post-session feedback (AC-6) and course guidance
+          (AC-7) are later checkpoints.
         </p>
       </Card>
 
@@ -400,7 +403,7 @@ export default async function Page({
                 <tr key={role.role}>
                   <th scope="row">{role.displayName}</th>
                   <td>
-                    NOT EXECUTABLE
+                    {role.executable ? "EXECUTABLE" : "NOT EXECUTABLE"}
                     <p>{role.executionDescription}</p>
                   </td>
                   <td>

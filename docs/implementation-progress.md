@@ -2,9 +2,117 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-3, Governed Professor Academic Handoffs (migration 052), independently reviewed and merged through PR #56 (merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32` on `main`). Its dedicated hosted concurrency acceptance was merged through PR #57 (merge `1e8237353ee5b961764875952b41088c658c3468`). The hosted status after deploying 052 is in the AC-3 hosted record below. See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+LAST COMPLETED CHECKPOINT: AC-4, Governed Tutor Class Notes (migration 053), independently reviewed twice, CI green and merged through PR #58 (merge `6845a59a8f6f951d55162e0f834d912b4743cfa9` on `main`). Migration 053 is **not** yet deployed to hosted acceptance; its hosted and concurrency work is tracked separately and does not block AC-5. See [AC-4 design and evidence](46-agent-behaviour-ac4.md).
 
-CURRENT CHECKPOINT (partial): AC-4, Tutor class notes, on `feat/ac4-tutor-class-notes` from base `1e8237353ee5b961764875952b41088c658c3468`. Migration `202610060053_tutor_class_notes.sql` (additive; 001–052 unchanged). **Implemented and locally validated, uncommitted. The first independent review's two blockers and two corrections are applied, and the patch awaits re-review. Migration 053 is not deployed. No hosted AC-4 evidence exists. Not production-ready.** See [AC-4 design and evidence](46-agent-behaviour-ac4.md).
+CURRENT CHECKPOINT (partial): AC-5, Sarah Mitchell production execution plane, on `feat/ac5-sarah-foundation-runtime` from base `6845a59a8f6f951d55162e0f834d912b4743cfa9`. Migration `202610060054_sarah_learner_guide.sql` (additive; 001–053 unchanged). **Implemented and locally validated, uncommitted. The first independent review's five blockers and four corrections are applied and were accepted on re-review. The re-review's final execution-audit-source blocker is applied ([AC-5 section 20](47-agent-behaviour-ac5-sarah.md)), and the patch awaits final review. Migration 054 is not deployed. No hosted or live-provider AC-5 evidence exists. Not production-ready.** See [AC-5 design and evidence](47-agent-behaviour-ac5-sarah.md).
+
+COMPLETED ITEMS (AC-5, local):
+
+- Identity:
+  - Sarah Mitchell is Ducelio's AI learner-success counsellor and learner guide. Her technical role is the platform `COUNSELLOR`, on the fixed, unchanged `COUNSELLOR_PLATFORM_V1` profile, under `SARAH_EXECUTION_V1` / `SARAH_BEHAVIOUR_V1`.
+  - She is not the historical academic COUNSELLOR row (still non-executable), and not a human staff account: no user account row, role grant or assignment, and no `is_assigned_counsellor()`.
+- Capabilities:
+  - Two learner intents, `GUIDE` and `SUPPORT_PROFILE`.
+  - The code-owned `SARAH_AC5_EXECUTABLE_CAPABILITIES` per mode, plus two new narrow capabilities (`guide_learner_journey`, `propose_support_profile_update`).
+  - Every AC-7 commercial capability, academic handoff coordination and follow-up recording stay non-executable. AC-6 is absent.
+- Execution: reservation (hash only) before any provider work, then AUTHORIZE / START / FINALIZE attested under the new tag `DUCELIO_SARAH_EXECUTION_HMAC_SHA256_V1`, with the existing controller key store via `agent_behaviour_private.verify_mac` and no historical format changed.
+  - The database derives learner, mode and confirmed-profile version.
+  - One execution per reservation; rate limit and envelope.
+  - DB ceiling of 1 call / 500 tokens / 10,000 µUSD, equal to the profile.
+  - Strict transitions; immutable terminal history.
+- Context: `get_my_sarah_context()` is an owner-only, bounded projection, further filtered by capability before the provider. It never includes human counsellor notes, follow-up or plan titles, transcripts, Tutor notes, assessment content, grades, payments or audit.
+- Output and proposals:
+  - One provider response, parsed as strict JSON `{reply, proposal|null}`. No prose scraping. Malformed output is `FAILED`/`OUTPUT_INVALID`.
+  - Proposals are recorded only after a confirmed SUCCEEDED `SUPPORT_PROFILE` FINALIZE, through the new attested RPC (`DUCELIO_SARAH_PROFILE_PROPOSAL_HMAC_SHA256_V1`). Content is immutable; `PENDING → CONFIRMED | DECLINED | STALE`; at most 3 pending.
+  - Only the learner confirms or declines. Confirmation is under the learner lock and fingerprint-checked (`STALE_PROPOSAL`, no last-write-wins), and applies exactly the proposed fields to `student_support_profiles`.
+- No Sarah memory: no learner message, reply, prompt or payload is persisted.
+- RLS on, no table grants, six `authenticated`-only RPCs, and migration-time privilege self-verification. Audit holds ids, states and changed field names only.
+- UI and demo:
+  - `/student/sarah` (persona, honest limits, ask panel, proposal review with current vs suggested values and explicit Confirm/Decline), with nav "Sarah (AI guide)" for signed-in learners.
+  - The demo persona is truth-synced (Sarah Mitchell as AI), and the staff workspace preview uses a distinct fictional human.
+  - Seed: the fictional human COUNSELLOR staff user is renamed from "Sarah Mitchell".
+- Control plane:
+  - Sarah Mitchell is the executable platform COUNSELLOR, with a DB ceiling.
+  - `COUNSELLOR_PLATFORM_V1` local evidence is RECORDED; hosted and live are NONE; production-proven is false; the fingerprint is unchanged.
+  - Operations Engineer stays non-executable.
+- Docs: new `docs/47-agent-behaviour-ac5-sarah.md`. Truth-synced docs 08, 43, 44 (collision note) and 46 (merged AC-4 status).
+- Independent-review corrections (first review):
+  1. **Bounded reservation admission.** The reservation RPC locks the learner first. Existing keys still replay or conflict. A NEW reservation is admitted only below 5 per 60 s and 30 per hour (`RATE_LIMITED`, with no row written), indexed on `(student_id, reserved_at)`. The server maps the refusal to `RETRY_LATER` with no provider call.
+  2. **One attempt.** Usage `attempts` is 0–1 in the table CHECK, the RPC and the TypeScript schema, matching `COUNSELLOR_PLATFORM_V1`, which is unchanged.
+  3. **Seed fixture repair.** Migration 054 renames the one known previously seeded fictional human "Sarah Mitchell" fixture to "Jamie Carter" under an exact guard: fixed demo id, `is_demo`, the old name and a COUNSELLOR grant. It is a no-op otherwise.
+  4. **Absent profile.** An absent support profile is never treated as confirmed defaults. `NO_CHANGE` applies only against an existing confirmed row, in SQL and in TypeScript.
+  5. **Truthful audit source per state.** `PENDING` is attested controller; `CONFIRMED`/`DECLINED` are learner decision; `STALE` is `DATABASE_STALE_POLICY`.
+  6. **`profileFingerprint` boundary.** It stays in the learner-callable self-context as an opaque, authority-free version token. The docs now state exactly this; it is excluded from provider context and UI, and never audited.
+  7. **Hydration-safe ask panel.** The server generates the first idempotency key. The key rotates in the action result after every resolved response, including `DUPLICATE`, and is kept only while the outcome is unresolved.
+  8. **Adversarial assessment-help regression.** The message stays data, the instructions are unchanged and forbid it, and no assessment content reaches the provider. Live refusal remains unproven.
+  9. **START re-check.** START re-checks mode and profile version under the learner lock; on change the execution is closed `FAILED`/`POLICY_BLOCKED` before any provider call.
+  10. **Execution audit source (final re-review).** The source follows the resulting shape: `BLOCKED`, `TIMEOUT` and `FAILED/POLICY_BLOCKED` with null `started_at` are `DATABASE_EXECUTION_POLICY`; everything else, including a controller-finalized `FAILED/EXECUTION_TIMEOUT` after START, is `ATTESTED_EXECUTION_CONTROLLER`. The state machine is unchanged. One migration-chain test covers all seven required cases plus a started `FAILED/POLICY_BLOCKED`. Five classifier mutations were run and all were killed (restored byte-identically).
+- Tests: `sarah-db` 43 (real migration chain plus the real TS controller end to end, plus a genuine pre-054 fixture-repair database), `sarah` 34, `sarah-ui` 15. Updated: control-plane server and UI, and integration-hardening (seed name).
+- Correction mutation checks (each restored byte-identically and SHA-256 verified): all 8 killed.
+  - Killed on the first run (7): reservation admission bound, attempts gate (RPC and CHECK), attempts in the TypeScript schema, absent-profile distinction (SQL and TypeScript), `STALE` audit source, START re-check.
+  - Killed after a test fix (1): the reservation learner lock first **survived**. The xid probe cannot tell `FOR UPDATE` from the foreign key's key-share lock, so a structural pin on the live definition was added, and the re-run mutation is killed.
+- Mutation checks (temporary edits, each restored byte-identically and verified by SHA-256), 15 safeguards, all killed:
+  - **DB suite:**
+    - role/profile `POLICY_BLOCKED`: 1 failure;
+    - decision owner filter: 1;
+    - record owner filter: 1;
+    - SUCCEEDED source (RPC and guard): 1;
+    - human-counsellor note exclusion: 5;
+    - creation never applies the profile: 7;
+    - stale guard: 1;
+    - content immutability: 1;
+    - one execution per reservation: 1;
+    - decision learner lock: 1.
+  - **Combined suites:**
+    - reservation conflict: 2;
+    - GUIDE-never-proposes: 2.
+  - **Server suite:**
+    - AC-7 `help_choose_course` executable: 1;
+    - proposal before a confirmed FINALIZE: 1;
+    - Sarah profile pin: 1. This one first **survived**, because the adapter mock did not observe the profile. The test now asserts the adapter is resolved from exactly `COUNSELLOR_PLATFORM_V1`, and the re-run mutation is killed.
+
+AC-5 local gates: (Node 24.19.0, Windows, 16 logical processors.) **After the final re-review correction (execution audit source):**
+
+- Focused AC-5 plus neighbouring suites: 22 files, **499/499**.
+- `npm run check`, exactly as defined, at the default worker count: lint and type check passed; **4,063/4,063 across 165 files, exit 0**.
+- `npm run build`: `.env.local` as-is gives exit 1 at the known `/admin` HTTPS `APP_URL` validation. With the process-level `APP_URL=https://ducelio.invalid` override: exit 0, and `/student/sarah` compiles.
+- `npm run format:check`: only the six unchanged CRLF-checkout files.
+- `git diff --check HEAD`: clean; untracked files have no CR or trailing whitespace.
+- `npm audit --omit=dev`: the same 2 pre-existing highs (`sharp`, `source-map-js`). The package and lockfile are unchanged; `npm audit fix` was not run.
+
+**After the first review corrections** (superseded):
+
+- Focused AC-5 plus neighbouring suites: 22 files, **498/498** (adds `admin-control-plane-db`).
+- `npm run check`, exactly as defined, at the default worker count: lint and type check passed; **4,062/4,062 across 165 files, exit 0** (+18 correction tests).
+- `npm run build`: `.env.local` as-is gives exit 1 at the known `/admin` HTTPS `APP_URL` validation. With the process-level `APP_URL=https://ducelio.invalid` override: exit 0, and `/student/sarah` compiles.
+- `npm run format:check`: only the six unchanged CRLF-checkout files.
+- `git diff --check HEAD`: clean; untracked files have no CR or trailing whitespace.
+- `npm audit --omit=dev`: the same 2 pre-existing highs (`sharp`, `source-map-js`). The package and lockfile are unchanged; `npm audit fix` was not run.
+
+**Before the review corrections** (superseded):
+
+- Focused AC-5 plus neighbouring suites: 21 files, 451/451. This covers Sarah DB, server and UI; platform policy; control-plane server and UI; provider and behaviour instructions; profile registry; production safety; native routing; integration hardening; counsellor assignment; support page; Tutor-note DB; Tutor/Lab runtime; database; RLS; course-engineering admin; admin control plane UI; and AC-2 DB.
+- `npm run check`, exactly as defined, at Vitest's default worker count: lint and type check passed, **4,044/4,044 tests across 165 files, exit 0**. The pre-existing load-sensitive `commercial-v1-results-completion-db` timeout did not occur in this run. Timeouts and worker settings are unchanged.
+- `npm run build`:
+  - With this workstation's `.env.local` as-is: exit 1 at the known `/admin` prerender check "Configured production authentication requires an HTTPS APP_URL". This is environment validation on a page AC-5 does not touch.
+  - With a process-level `APP_URL=https://ducelio.invalid` override (`.env.local` untouched): exit 0, and `/student/sarah` compiles as a dynamic route.
+- `npm run format:check`: exit 1 only on the six unchanged CRLF-checkout files (`.github/workflows/ci.yml`, `package.json` and four `content/courses/security-plus-sy0-701/*.json`). These are Prettier-clean as committed. Every AC-5 file is clean.
+- `git diff --check HEAD`: clean. The untracked AC-5 files have no CR line endings or trailing whitespace.
+- `npm audit --omit=dev`: 2 high, both pre-existing and identical to the AC-4 record: `sharp` (GHSA-wq5f-xc86-pv6w) and `source-map-js@1.2.1` (GHSA-68fv-2mgg-jv7q). `package.json` and the lockfile are unchanged. `npm audit fix` was not run.
+
+INCOMPLETE ITEMS (AC-5):
+
+- Independent review of the uncommitted patch, then commit, PR CI and merge (not done; no commit was made).
+- Hosted: deploy 054, verify the ledger through 054 (including the fixture repair on the hosted seed), run the ACL smoke, and the true-PostgreSQL races in [AC-5 section 13](47-agent-behaviour-ac5-sarah.md). These include the fresh-key reservation bound under concurrency and authority changes racing START.
+- JWT/PostgREST (still BLOCKED independently), and browser/accessibility acceptance of `/student/sarah`.
+- Live-provider evaluation of `SARAH_BEHAVIOUR_V1` (persona, AI disclosure, refusals, contract compliance, proposal precision).
+- **Production item:** retention and purge of proposals, reservation hashes and execution metadata, plus a learner export decision. The free-text proposed study goal can hold sensitive content that deterministic validation cannot classify. Also a rate-limit and abuse review.
+
+KNOWN FAILURES (AC-5): no AC-5 functional failure locally. Pre-existing environment items are recorded with the gates.
+
+NEXT EXACT ACTION: final independent review of the corrected, uncommitted AC-5 patch. Do not commit, push, deploy 054, or start AC-6/AC-7 without instruction.
+
+### AC-4 record (merged through PR #58)
 
 COMPLETED ITEMS (AC-4, local):
 
@@ -64,7 +172,7 @@ COMPLETED ITEMS (AC-4, local):
 
 INCOMPLETE ITEMS (AC-4):
 
-- Independent review of the uncommitted patch, then commit, PR CI and merge (not done; no commit was made).
+- Independent review, commit, PR CI and merge: done (PR #58).
 - Hosted: deploy 053, verify the ledger through 053, ACL smoke, and dedicated true-PostgreSQL AC-4 concurrency scenarios:
   - the same-source execution materialisation race;
   - the two-execution same-series revision allocation race;
@@ -76,7 +184,7 @@ INCOMPLETE ITEMS (AC-4):
 - **Production item:** a reviewed retention period and governed purge mechanism for learner-kept Tutor notes, plus a learner deletion/export decision.
 - Browser/accessibility and live-provider acceptance.
 
-NEXT EXACT ACTION: independent review of the uncommitted AC-4 patch. Do not commit, push, deploy 053, or start AC-5/Sarah without instruction.
+(The AC-4 review and merge are done: PR #58.)
 
 Previous checkpoint: AC-2, Governed Academic Agent Behaviour (migration 051), merged through PR #55 (merge `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c`). Its hosted status, as reported by the operator:
 

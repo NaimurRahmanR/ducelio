@@ -131,7 +131,7 @@ Each reviewed profile shows:
 
 All of it comes from the unchanged server-owned registry via a read-only `listProductionRuntimeProfiles()`. Platform roles are shown as **not executable**:
 
-- **Sarah** (the platform Counsellor) has no production execution plane and does not exist in production.
+- **Sarah** (the platform Counsellor) has no production execution plane and does not exist in production. _(Superseded by [AC-5](47-agent-behaviour-ac5-sarah.md): Sarah Mitchell, Ducelio's AI learner-success counsellor, now runs on the platform COUNSELLOR plane, `SARAH_EXECUTION_V1`, and is shown as executable. Hosted and live evidence remain none.)_
 - **Operations Engineer** has no production tool-execution plane.
 
 The academic COUNSELLOR row is shown as historical vocabulary that is not executable and does not launch Sarah. Per role, the page states the exact escalation semantics from the table above.
@@ -162,14 +162,14 @@ Evidence is never inferred from configuration or credentials. Each entry is revi
 
 Any change to a profile's model, adapter, reasoning, tariff or budget changes its fingerprint, and every evidence level for it then shows **NOT CURRENT** until it is re-reviewed and re-recorded. A test fails until that happens, so the change cannot pass silently.
 
-| Profile                           | Local / deterministic               | Hosted                                                                                                                         | Live provider                                                                                                                                    | Production-proven |
-| --------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
-| `PROFESSOR_COMMERCIAL_V1`         | Recorded                            | Partial: FULL_JOURNEY:CLASSROOM stage only, stubbed provider (run `1790635594309-jz55ep`); the full journey has no hosted pass | None                                                                                                                                             | No                |
-| `TUTOR_COMMERCIAL_V1`             | Recorded                            | Partial: FULL_JOURNEY:TUTOR_LAB stage only, stubbed provider                                                                   | None (the Examiner smoke shares the model id; not evidence for this profile or path)                                                             | No                |
-| `LAB_INSTRUCTOR_COMMERCIAL_V1`    | Recorded                            | Partial: TUTOR_LAB stage through the governed handoff path, stubbed provider                                                   | Partial: one synthetic request through the production adapter and runtime; the governed handoff/release/attestation workflow was not live-tested | No                |
-| `EXAMINER_COMMERCIAL_V1`          | Recorded                            | Recorded: EXAMINER_APP GRADING / INITIAL_RECOVERY / REGRADE with a stubbed provider, not a live model                          | Partial: one synthetic request plus strict marks validation; the governed grading workflow was not live-tested                                   | No                |
-| `COUNSELLOR_PLATFORM_V1` (Sarah)  | Partial: routing/schema only        | None                                                                                                                           | None                                                                                                                                             | No                |
-| `OPERATIONS_ENGINEER_PLATFORM_V1` | Partial: routing/schema/driver only | None                                                                                                                           | Partial: one synthetic request (model accessibility only)                                                                                        | No                |
+| Profile                           | Local / deterministic                                        | Hosted                                                                                                                         | Live provider                                                                                                                                    | Production-proven |
+| --------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------- |
+| `PROFESSOR_COMMERCIAL_V1`         | Recorded                                                     | Partial: FULL_JOURNEY:CLASSROOM stage only, stubbed provider (run `1790635594309-jz55ep`); the full journey has no hosted pass | None                                                                                                                                             | No                |
+| `TUTOR_COMMERCIAL_V1`             | Recorded                                                     | Partial: FULL_JOURNEY:TUTOR_LAB stage only, stubbed provider                                                                   | None (the Examiner smoke shares the model id; not evidence for this profile or path)                                                             | No                |
+| `LAB_INSTRUCTOR_COMMERCIAL_V1`    | Recorded                                                     | Partial: TUTOR_LAB stage through the governed handoff path, stubbed provider                                                   | Partial: one synthetic request through the production adapter and runtime; the governed handoff/release/attestation workflow was not live-tested | No                |
+| `EXAMINER_COMMERCIAL_V1`          | Recorded                                                     | Recorded: EXAMINER_APP GRADING / INITIAL_RECOVERY / REGRADE with a stubbed provider, not a live model                          | Partial: one synthetic request plus strict marks validation; the governed grading workflow was not live-tested                                   | No                |
+| `COUNSELLOR_PLATFORM_V1` (Sarah)  | Recorded (AC-5 deterministic tests; was routing/schema only) | None                                                                                                                           | None                                                                                                                                             | No                |
+| `OPERATIONS_ENGINEER_PLATFORM_V1` | Partial: routing/schema/driver only                          | None                                                                                                                           | Partial: one synthetic request (model accessibility only)                                                                                        | No                |
 
 ## 3. Misleading controls removed (Course Engineering)
 
@@ -343,7 +343,7 @@ Migrations 001–049 are unchanged. No live provider was called.
 - Evidence entries are reviewed code data. Recording new hosted or live evidence is a deliberate code change and review, not an automatic feed.
 - Credential readiness is presence only and cannot detect an invalid, revoked or unfunded key. No probe call is made by design.
 - The control plane does not show which model served a past Professor or Tutor/Lab execution: those execution rows do not persist a runtime profile ref (planned for AC-2). The Examiner already does.
-- The Professor `ACADEMIC_REVIEW` setting still turns the Professor off for that version with no review case. AC-1 makes this truthful but does not redesign it. The seeded demo data contains a fictional human counsellor named "Sarah Mitchell", a naming collision to resolve before AC-5.
+- The Professor `ACADEMIC_REVIEW` setting still turns the Professor off for that version with no review case. AC-1 makes this truthful but does not redesign it. The seeded demo data contains a fictional human counsellor named "Sarah Mitchell", a naming collision to resolve before AC-5. _(Resolved in AC-5: Sarah Mitchell is the AI learner-success counsellor persona; the fictional human staff user is renamed.)_
 
 ## 7. Approved following checkpoints (not implemented in AC-1)
 
@@ -358,9 +358,9 @@ Migrations 001–049 are unchanged. No live provider was called.
 
 **AC-3: Structured academic handoffs.** Professor, Tutor and Lab handoffs to the learner, Tutor, Lab and Sarah, with strict minimum-data projections.
 
-**AC-4: Tutor class notes.** Supplementary, versioned class notes with provenance and the protected-content firewall. They never overwrite published curriculum and are never stored in `learning_resources`. (Status: implemented and locally validated, awaiting independent review; see [AC-4](46-agent-behaviour-ac4.md).)
+**AC-4: Tutor class notes.** Supplementary, versioned class notes with provenance and the protected-content firewall. They never overwrite published curriculum and are never stored in `learning_resources`. (Status: independently reviewed and merged through PR #58, merge `6845a59`; migration 053 not yet deployed to hosted acceptance; see [AC-4](46-agent-behaviour-ac4.md).)
 
-**AC-5: Sarah production execution plane.** Onboarding, learner guide, confirmed profile proposals, learner-success context.
+**AC-5: Sarah production execution plane.** Onboarding, learner guide, confirmed profile proposals, learner-success context. (Status: implemented and locally validated, uncommitted, awaiting independent review; migration 054 not deployed; see [AC-5](47-agent-behaviour-ac5-sarah.md). Sarah Mitchell is the AI persona of the platform COUNSELLOR role.)
 
 **AC-6: Sarah post-session feedback.** Feedback collection and an admin teaching-quality surface.
 

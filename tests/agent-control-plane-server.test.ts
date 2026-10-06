@@ -294,11 +294,17 @@ describe("exact profile metadata", () => {
         maxEstimatedCostMicrousd: 50_000,
       },
     });
+    // AC-5: the platform COUNSELLOR (Sarah Mitchell) now has its own
+    // database ceiling, equal to the reviewed profile budget.
     expect(byRef.get("COUNSELLOR_PLATFORM_V1")).toMatchObject({
       model: "gpt-5.6-luna",
       reasoningEffort: "low",
-      dbCeiling: null,
-      roles: ["Sarah (planned learner guide) (platform)"],
+      dbCeiling: {
+        maxProviderCalls: 1,
+        maxOutputTokens: 500,
+        maxEstimatedCostMicrousd: 10_000,
+      },
+      roles: ["Sarah Mitchell (learner-success AI) (platform)"],
     });
     expect(byRef.get("OPERATIONS_ENGINEER_PLATFORM_V1")).toMatchObject({
       model: "claude-opus-5-5",
@@ -427,8 +433,10 @@ describe("reviewed evidence keyed to the exact profile definition", () => {
       live: "PARTIAL",
       production: false,
     });
+    // AC-5: local deterministic Sarah execution evidence only; never
+    // hosted, live or production proof.
     expect(status("COUNSELLOR_PLATFORM_V1")).toEqual({
-      local: "PARTIAL",
+      local: "RECORDED",
       hosted: "NONE",
       live: "NONE",
       production: false,
@@ -598,7 +606,8 @@ describe("getAgentControlPlane", () => {
     expect(plane.platformRoles).toEqual([
       expect.objectContaining({
         role: "COUNSELLOR",
-        executable: false,
+        displayName: "Sarah Mitchell (learner-success AI)",
+        executable: true,
         profileRef: "COUNSELLOR_PLATFORM_V1",
       }),
       expect.objectContaining({

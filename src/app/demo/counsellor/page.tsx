@@ -7,7 +7,9 @@ export default function Page() {
     display_name: demo.student.name,
   };
   return (
-    <StaffShell kind="counsellor" demo name={demo.counsellor.name}>
+    // The staff workspace preview is a fictional HUMAN counsellor, never
+    // Sarah Mitchell (Ducelio's AI learner-success counsellor).
+    <StaffShell kind="counsellor" demo name={demo.humanCounsellor.name}>
       <CounsellorWorkspace
         demo
         learners={[learner]}

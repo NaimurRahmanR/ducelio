@@ -24,6 +24,14 @@ export const PLATFORM_ROLE_PROFILE_REF: Readonly<
   OPERATIONS_ENGINEER: "OPERATIONS_ENGINEER_PLATFORM_V1",
 });
 
+// The platform COUNSELLOR is the technical role of Sarah Mitchell, Ducelio's
+// AI learner-success counsellor (AC-5). The catalogue below is the full
+// policy vocabulary across checkpoints; being listed here does NOT make a
+// capability executable. Only SARAH_AC5_EXECUTABLE_CAPABILITIES (below) is
+// executable, and only where it is also listed for the learner's mode.
+// AC-5 added exactly two narrow capabilities, in every mode:
+// guide_learner_journey (onboarding and navigation of Ducelio itself) and
+// propose_support_profile_update (an optional, learner-confirmed proposal).
 export const counsellorCapabilityByMode: Readonly<
   Record<CounsellorMode, readonly string[]>
 > = Object.freeze({
@@ -33,6 +41,8 @@ export const counsellorCapabilityByMode: Readonly<
     "explain_duration_pricing_format",
     "help_choose_course",
     "capture_optional_prospect_preferences",
+    "guide_learner_journey",
+    "propose_support_profile_update",
   ]),
   ACTIVE_COURSE: Object.freeze([
     "read_owned_course_logistics",
@@ -40,14 +50,71 @@ export const counsellorCapabilityByMode: Readonly<
     "read_owned_support_state",
     "coordinate_academic_handoff",
     "record_bounded_support_followup",
+    "guide_learner_journey",
+    "propose_support_profile_update",
   ]),
   POST_COURSE: Object.freeze([
     "read_owned_completion_summary",
     "explain_next_course_options",
     "coordinate_progression",
     "explain_reenrolment_and_pricing",
+    "guide_learner_journey",
+    "read_owned_support_state",
+    "propose_support_profile_update",
   ]),
 });
+
+// AC-5: the ONLY Sarah capabilities that execute, per mode. Code-owned; a
+// browser, learner message or stored configuration can never add one. Every
+// entry must also be in counsellorCapabilityByMode for the same mode
+// (tested). Deliberately absent: every commercial/course-guidance capability
+// (AC-7: catalogue, prerequisites, pricing, choosing a course, next course,
+// progression, re-enrolment), prospect preference capture, academic handoff
+// coordination and support follow-up recording (human-counsellor domain).
+export const SARAH_AC5_EXECUTABLE_CAPABILITIES: Readonly<
+  Record<CounsellorMode, readonly string[]>
+> = Object.freeze({
+  PROSPECT: Object.freeze([
+    "guide_learner_journey",
+    "propose_support_profile_update",
+  ]),
+  ACTIVE_COURSE: Object.freeze([
+    "guide_learner_journey",
+    "read_owned_course_logistics",
+    "explain_schedule_and_access",
+    "read_owned_support_state",
+    "propose_support_profile_update",
+  ]),
+  POST_COURSE: Object.freeze([
+    "guide_learner_journey",
+    "read_owned_support_state",
+    "propose_support_profile_update",
+  ]),
+});
+
+// Deferred, never executable in AC-5: AC-6 (post-session feedback) has no
+// capability in the catalogue at all; these AC-7 entries stay vocabulary.
+export const SARAH_AC7_DEFERRED_CAPABILITIES = Object.freeze([
+  "read_public_course_catalogue",
+  "explain_course_prerequisites",
+  "explain_duration_pricing_format",
+  "help_choose_course",
+  "capture_optional_prospect_preferences",
+  "read_owned_completion_summary",
+  "explain_next_course_options",
+  "coordinate_progression",
+  "explain_reenrolment_and_pricing",
+] as const);
+
+export function isSarahCapabilityExecutable(
+  mode: CounsellorMode,
+  capability: string,
+): boolean {
+  return (
+    SARAH_AC5_EXECUTABLE_CAPABILITIES[mode].includes(capability) &&
+    isCounsellorCapabilityAllowed(mode, capability)
+  );
+}
 
 // These are the only capabilities the future Operations Engineer execution
 // plane may expose. They are observation/proposal capabilities. There is no
@@ -81,8 +148,9 @@ export function isOperationsEngineerCapabilityAllowed(
 }
 
 // Global prohibitions remain true in every Counsellor mode. The one
-// institutional Counsellor persona may change context/mode across the
-// learner lifecycle, but it never becomes Professor/Tutor/Examiner.
+// institutional Counsellor persona (Sarah Mitchell) may change context/mode
+// across the learner lifecycle, but it never becomes Professor/Tutor/Lab
+// Instructor/Examiner.
 export const COUNSELLOR_PROHIBITED_SCOPES = Object.freeze([
   "teach_course_content",
   "solve_lab",

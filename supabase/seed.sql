@@ -1,6 +1,6 @@
 -- LOCAL DEMO ONLY: fictional accounts with no Auth mapping, passwords or login ability.
 insert into public.app_users(id,display_name,is_demo) values ('10000000-0000-4000-8000-000000000001','Alex Morgan',true),
-('10000000-0000-4000-8000-000000000002','Sarah Mitchell',true),
+('10000000-0000-4000-8000-000000000002','Jamie Carter',true),
 ('10000000-0000-4000-8000-000000000003','Jordan Lee',true);
 insert into public.role_grants values ('10000000-0000-4000-8000-000000000001','STUDENT'),
 ('10000000-0000-4000-8000-000000000002','COUNSELLOR'),
