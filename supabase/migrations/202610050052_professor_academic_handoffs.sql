@@ -30,7 +30,11 @@
 --    versions TUTOR_BEHAVIOUR_V2 / LAB_INSTRUCTOR_BEHAVIOUR_V2 (code-owned in
 --    src/domain/agent-behaviour.ts) become the version a NEW publication
 --    freezes. Versions already frozen on V1 keep V1 exactly (AC-2 pinning)
---    and their Tutor/Lab never receive a Professor record.
+--    and their Tutor/Lab never receive a Professor record. Consequently a
+--    Professor academic handoff is CREATED only when the destination role's
+--    frozen binding is the AC-3-aware V2 (DESTINATION_BEHAVIOUR_UNSUPPORTED
+--    otherwise, before anything is written); V1 versions keep the ordinary
+--    learner Tutor/Lab handoff flows unchanged.
 
 -- ==========================================================================
 -- 1. Level-2 role behaviour versions (AC-2 mirrors, additive widening).
@@ -163,6 +167,7 @@ language plpgsql security definer set search_path='' as $$
 declare actor uuid; c public.professor_classroom_sessions%rowtype; e public.enrolments%rowtype;
   source_execution uuid; source_provenance uuid; prior public.professor_academic_handoffs%rowtype;
   scope text; destination text; request_id uuid; handoff uuid; objective_count integer;
+  destination_behaviour jsonb; required_behaviour_version text;
 begin
   actor := public.current_app_user();
   if actor is null or not public.has_role('STUDENT') then return jsonb_build_object('ok', false, 'code', 'FORBIDDEN'); end if;
@@ -222,6 +227,21 @@ begin
       return jsonb_build_object('ok', false, 'code', 'NOT_FOUND_OR_FORBIDDEN');
     end if;
     scope := 'PRACTICAL:' || p_practical_id::text; destination := 'LAB_INSTRUCTOR';
+  end if;
+
+  -- The destination must be able to consume the record. Its role behaviour
+  -- version is read from the programme version's FROZEN AC-2 binding (the
+  -- verified binding, never the live/current version) and must be exactly
+  -- the reviewed AC-3-aware version. A missing, invalid or V1 binding is
+  -- refused here, before any delivery handoff is composed, so no
+  -- Professor-labelled handoff exists that Tutor/Lab could never read.
+  destination_behaviour := agent_behaviour_private.effective_behaviour(c.programme_version_id, destination);
+  required_behaviour_version := case destination when 'TUTOR' then 'TUTOR_BEHAVIOUR_V2'
+    else 'LAB_INSTRUCTOR_BEHAVIOUR_V2' end;
+  if not coalesce((destination_behaviour->>'ok')::boolean, false)
+    or destination_behaviour->>'state' is distinct from 'BOUND'
+    or destination_behaviour->>'behaviourVersion' is distinct from required_behaviour_version then
+    return jsonb_build_object('ok', false, 'code', 'DESTINATION_BEHAVIOUR_UNSUPPORTED');
   end if;
 
   select * into prior from public.professor_academic_handoffs

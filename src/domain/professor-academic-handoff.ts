@@ -68,6 +68,9 @@ export const professorHandoffRefusalCodes = [
   "ACTIVITY_BLOCKED",
   "NO_SOURCE_EXECUTION",
   "OBJECTIVE_SCOPE_UNPROVEN",
+  // The destination role's frozen behaviour binding is not the AC-3-aware
+  // version (for example a programme version published before AC-3).
+  "DESTINATION_BEHAVIOUR_UNSUPPORTED",
   "LIMIT_EXCEEDED",
   "CONTEXT_CONFLICT",
   "POLICY_BLOCKED",
@@ -174,3 +177,8 @@ export function professorTeachingRecordForProvider(
     note: "This only records that the learner asked for this follow-up after a Professor lesson. It is not a transcript, mastery, evidence, a grade, completion or proof of understanding.",
   };
 }
+
+// Learner-safe wording when Professor follow-up is not offered for this
+// course version. Never names behaviour versions.
+export const PROFESSOR_FOLLOW_UP_UNSUPPORTED =
+  "Professor follow-up is not available for this course version.";

@@ -11,7 +11,7 @@ LAST COMPLETED CHECKPOINT: AC-2, Governed Academic Agent Behaviour (migration 05
 
 See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
 
-CURRENT CHECKPOINT: AC-3, minimum-data governed academic handoffs, on `feat/ac3-academic-handoffs` from base `7a7d5b8`. Migration `202610050052_professor_academic_handoffs.sql` (additive; 001–051 unchanged; no existing attested message format changed). Implemented and locally tested; uncommitted, awaiting independent review. **Not production-ready.** See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+CURRENT CHECKPOINT: AC-3, minimum-data governed academic handoffs, on `feat/ac3-academic-handoffs` from base `7a7d5b8`. Migration `202610050052_professor_academic_handoffs.sql` (additive; 001–051 unchanged; no existing attested message format changed). Implemented and locally tested. The original commit is `fb9759c`; the independent-review correction (destination behaviour gate) is committed on top. Pushed to the feature branch only (no PR, not merged), awaiting independent review. **Not production-ready.** See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
 
 COMPLETED ITEMS (AC-3):
 
@@ -31,12 +31,17 @@ COMPLETED ITEMS (AC-3):
 - Decisions documented:
   - Professor transcript retention policy: deletion at the earlier of 12 months after the class or 90 days after the enrolment leaves ACTIVE; text only, never audit or provenance. The purge mechanism is deferred, and no delete RPC was added.
   - Lab timing is still not invented.
+- Correction (independent review): creation now requires the destination role's **frozen** AC-2 binding to be the AC-3-aware V2.
+  - Otherwise `DESTINATION_BEHAVIOUR_UNSUPPORTED`, refused before any delivery handoff or projection is written. The learner sees "Professor follow-up is not available for this course version."
+  - The classroom page hides unsupported destinations, using the existing learner-scoped behaviour read.
+  - V1 (pre-052) programme versions keep their ordinary learner Tutor/Lab handoffs. A new programme version is required for AC-3 continuity.
+  - The objective-scope wording is tightened: the release rows themselves carry no lesson selector.
 - Tests:
-  - New: `professor-academic-handoff-db` 19 (real migration chain) and `professor-academic-handoff` 20 (server, action, UI).
+  - New: `professor-academic-handoff-db` 20 (real migration chain), `professor-academic-handoff-v1-db` 5 (a genuine pre-052 V1 publication: both refusals, no partial writes, ordinary handoffs still work), and `professor-academic-handoff` 22 (server, action, UI).
   - Extended: behaviour contract (V1 hash pins, V2 diff, 052 mirrors), Tutor/Lab provider context (V1/V2 × record matrix), Tutor/Lab runtime (record use, V1 non-read, fail closed), and AC-2 DB, Tutor/Lab DB and control-plane assertions moved to the V2 version for versions published after 052.
-  - Mutation checks: removing the SUCCEEDED source requirement or the consumption firewall fails the DB suite.
-  - Focused AC-3 set: 10 files, 261/261.
-  - `npm run check`, exactly as defined: **3,830/3,830 across 155 files**, exit 0.
+  - Mutation checks: removing the SUCCEEDED source requirement, the consumption firewall or the destination behaviour gate fails the DB suites.
+  - After the correction: focused AC-3 set 11 files, 269/269.
+  - `npm run check`, exactly as defined: **3,838/3,838 across 156 files**, exit 0. Before the correction it was 3,830/3,830 across 155 files.
   - `npm run build` passed. `npm run format:check` is clean. `npm audit --omit=dev` reports 0 vulnerabilities. `git diff --check HEAD` is clean.
 
 INCOMPLETE ITEMS:
@@ -53,7 +58,7 @@ INCOMPLETE ITEMS:
 
 KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
 
-NEXT EXACT ACTION: independent review of AC-3 (migration 052, the creation and consumption RPCs, Tutor/Lab V2 versioning, the learner UI and the retention/Lab-timing decisions). Do not commit, push or open a PR without instruction.
+NEXT EXACT ACTION: independent review of the AC-3 correction (destination behaviour gate) together with AC-3 as a whole. Do not open a PR, merge or deploy migration 052 without instruction.
 
 ### AC-2 record (merged)
 

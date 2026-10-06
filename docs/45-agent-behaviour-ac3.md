@@ -2,7 +2,7 @@
 
 AC-3 is the third checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md) and [AC-2](44-agent-behaviour-ac2.md)). Branch `feat/ac3-academic-handoffs`, base `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c` (AC-2 merged through PR #55). Migration `202610050052_professor_academic_handoffs.sql`; migrations 001–051 are unchanged.
 
-**Status:** implemented and locally tested, uncommitted, awaiting independent review. Hosted acceptance of migration 052 has **not** run. **Not production-ready.**
+**Status:** implemented and locally tested; committed on `feat/ac3-academic-handoffs` (not merged) with an independent-review correction (section 16), awaiting independent review. Hosted acceptance of migration 052 has **not** run. **Not production-ready.**
 
 AC-3 adds exactly one thing: the smallest safe route by which a learner's successful Professor classroom interaction can produce a reviewed, minimum-data academic handoff to the Tutor or Lab Instructor. It is the **only** governed route by which the Tutor or Lab Instructor can learn that a Professor lesson happened, and what bounded academic scope the learner asked them to follow up. The classroom transcript is never shared.
 
@@ -67,20 +67,26 @@ There is no transcript, learner question, Professor answer, provider output, pro
 3. Controlled-assessment firewall: `ACTIVITY_BLOCKED` when explanation is not allowed.
 4. The enrolment must be the learner's own and match the classroom's enrolment and version.
 5. **Source.** The learner's most recent `SUCCEEDED` Professor execution whose AC-2 provenance (database-derived) names this classroom, enrolment and version, and whose attested context-release manifest includes `get_lesson_objectives`. Otherwise `NO_SOURCE_EXECUTION`. A FAILED, ABSTAINED, other-role or non-classroom execution can never be a source, and the caller cannot name one.
-6. **Objective (Tutor).** The objective must belong to the classroom's lesson and version. It must also have been in the source's governed teaching context. This is proven without parsing any prose:
-   - the manifest shows the objectives release;
-   - the AC-2 runtime refuses any lesson whose objective set exceeds one governed page (50) and otherwise sends the complete set;
+6. **Objective (Tutor).** The objective must belong to the classroom's lesson and version. It must also have been in the source's governed teaching context. This rests on existing authoritative facts, not on parsing any prose:
+   - the AC-2 attested manifest proves that `get_lesson_objectives` participated in the source execution;
+   - the source execution's provenance is attested to the learner's own governed classroom, whose lesson the database derived;
+   - the trusted Professor runtime uses that classroom's server-derived lesson for its governed reads, refuses any lesson whose objective set exceeds one governed page (50), and otherwise sends the complete set;
    - published curriculum is immutable.
 
-   So the objective was in context exactly when the lesson has at most 50 objectives. Otherwise: `OBJECTIVE_SCOPE_UNPROVEN`.
+   So, given that trusted-runtime invariant, the objective was in context exactly when the lesson has at most 50 objectives. Otherwise: `OBJECTIVE_SCOPE_UNPROVEN`.
+
+   This is **not** proven by `academic_content_releases` alone. Legacy content-release rows carry no lesson selector, which remains an AC-2 limitation. The lesson identity of the objectives read rests on the attested classroom provenance plus the trusted runtime's server-derived lesson.
 
 7. **Practical (Lab).** The practical must be a `PRACTICAL_LAB` of the classroom's lesson and version, activated for the learner's cohort. The handoff claims only that the learner asked for Lab help with it after the lesson, not that the Professor taught it.
-8. **Idempotency.**
+8. **Destination behaviour gate.** The destination role's role behaviour version is read from the programme version's **frozen** AC-2 binding, through AC-2's own resolver (`agent_behaviour_private.effective_behaviour`, which for a bound version reads only the verified binding, never the live or current version). It must be exactly the AC-3-aware version: `TUTOR_BEHAVIOUR_V2` for the Tutor, or `LAB_INSTRUCTOR_BEHAVIOUR_V2` for the Lab Instructor.
+   - A missing, invalid or V1 binding is refused with `DESTINATION_BEHAVIOUR_UNSUPPORTED` before any delivery handoff is composed. Neither a delivery handoff nor a projection is written, and there is no fallback to an ordinary handoff.
+   - The learner sees "Professor follow-up is not available for this course version." No behaviour version is named.
+9. **Idempotency.**
    - `unique(classroom_id, reason_code, scope_key)`: a repeated request returns `{duplicate: true}` with the same handoff and creates nothing.
    - The composed delivery handoff uses a deterministic request id (`md5` of policy, classroom, reason and scope), so migration 023's own `(requested_by, request_id)` identity is idempotent too.
    - At most 20 Professor follow-ups per classroom (`LIMIT_EXCEEDED`), on top of migration 023's existing limits.
-9. The composed delivery handoff is re-read and must match the derived learner, enrolment, lesson, destination, reason and objective (`CONTEXT_CONFLICT` otherwise). Known governed refusals inside the composition are returned as codes, and everything inside is rolled back.
-10. An audit event records identifiers and fixed codes only.
+10. The composed delivery handoff is re-read and must match the derived learner, enrolment, lesson, destination, reason and objective (`CONTEXT_CONFLICT` otherwise). Known governed refusals inside the composition are returned as codes, and everything inside is rolled back.
+11. An audit event records identifiers and fixed codes only.
 
 The projection is immutable: `PROFESSOR_HANDOFF_IMMUTABLE` on any update or delete.
 
@@ -114,7 +120,11 @@ New publications freeze V2 for the Tutor and Lab Instructor (the Professor stays
 | Lab V1         | any                      | no `professorTeachingRecord` field (AC-2, unchanged)                                                                                    |
 | Lab V2         | no / yes                 | unavailable shape / the same bounded record                                                                                             |
 
-So versions already published before migration 052 stay exactly as in AC-2: their Tutor and Lab Instructor never receive a Professor record. A refused or malformed record read fails closed (`POLICY_BLOCKED`, no provider call).
+So versions already published before migration 052 stay exactly as in AC-2: their Tutor and Lab Instructor never receive a Professor record.
+
+**AC-3 Professor-specific handoff creation is available only when the destination role's frozen programme-version binding is the AC-3-aware V2** (section 4, step 8). Older V1 programme versions remain fully AC-2-compatible: their learners can still use the ordinary learner Tutor/Lab handoff flows, but cannot create an AC-3 Professor-specific continuity handoff. **A new programme version is required to gain AC-3 Professor continuity.**
+
+A refused or malformed record read fails closed (`POLICY_BLOCKED`, no provider call).
 
 ## 6. Learner visibility
 
@@ -188,7 +198,7 @@ Extended suites:
 - **`tutor-lab-execution-runtime`:** V2 receives the record; V1 never reads it; a refused read fails closed.
 - **`agent-behaviour-db` and `tutor-lab-execution-db`:** assertions for versions published after 052 now expect the V2 Tutor/Lab version (no assertion weakened); test G's simulated "later" deployment moved to V3.
 
-**Mutation checks.** Removing the `SUCCEEDED` source requirement, or the consumption firewall, makes the corresponding DB tests fail.
+**Mutation checks.** Removing the `SUCCEEDED` source requirement, the consumption firewall, or (correction) the destination behaviour gate makes the corresponding DB tests fail.
 
 **Gates (local).**
 
@@ -215,7 +225,7 @@ Extended suites:
 - Objective follow-ups for lessons with more than 50 objectives are refused (`OBJECTIVE_SCOPE_UNPROVEN`), consistent with AC-2's Professor refusal.
 - The classroom page finds lab practicals by paging the learner's governed practical list up to 10 pages (200 practicals); a lab beyond that cannot be chosen there. The database still re-verifies any chosen practical.
 - The source is the classroom's most recent qualifying execution. The record states only that a Professor lesson took place and what the learner asked for, not which exchange.
-- Tutor/Lab versions published before migration 052 (pinned V1) never receive a Professor record. This is deliberate, and needs a new programme version to change.
+- Tutor/Lab versions published before migration 052 (pinned V1) never receive a Professor record and cannot create a Professor follow-up (`DESTINATION_BEHAVIOUR_UNSUPPORTED`). This is deliberate, and needs a new programme version to change.
 - The transcript retention policy is decided but not enforced (section 8).
 - Hosted acceptance of migration 052 has not run: ACL, JWT/PostgREST, real multi-connection concurrency, browser and accessibility.
 
@@ -226,3 +236,34 @@ Everything above is local evidence: PGlite with the full migration chain, plus u
 ## 15. Next checkpoint
 
 AC-4: Tutor class notes (supplementary, versioned, provenance-bound and firewall-respecting; never overwriting published curriculum). Not started.
+
+## 16. Independent-review correction: destination behaviour gate
+
+**Blocker.** A Professor follow-up could be created for a programme version whose destination role is pinned to `TUTOR_BEHAVIOUR_V1` or `LAB_INSTRUCTOR_BEHAVIOUR_V1`, whose runtime deliberately never reads the Professor record. That contradicted the learner disclosure.
+
+**Fix (smallest, no redesign).**
+
+- **Database (authoritative).** `request_professor_academic_handoff` derives the destination from the reviewed reason, then requires that destination's frozen AC-2 binding to be the exact AC-3-aware V2 (section 4, step 8). Otherwise it returns `DESTINATION_BEHAVIOUR_UNSUPPORTED` before composing any delivery handoff.
+- **Domain and server.** The new refusal code is in the strict TypeScript contract and maps to "Professor follow-up is not available for this course version."
+- **UI (presentation only).** The classroom page uses the existing learner-scoped `get_agent_behaviour_for_enrolment` read: the frozen binding's pinned version for the learner's own enrolment. It offers a follow-up form only for a destination that can receive the record, and otherwise shows the unsupported message. The database gate applies regardless.
+- **Docs.** The objective-scope wording now states precisely what proves what (section 4, step 6).
+
+**Tests.**
+
+- New **`professor-academic-handoff-v1-db` (5, real migration chain).**
+  - The version is published through the real publication trigger while the database runs migration 051's own role-version definition (read from that file), then restored. It is genuinely frozen on Tutor/Lab V1, with a verified binding and a real SUCCEEDED provenance-bound Professor execution.
+  - `OBJECTIVE_REINFORCEMENT` and `PRACTICAL_HELP` are both refused with `DESTINATION_BEHAVIOUR_UNSUPPORTED`. No `delivery_handoffs` or `professor_academic_handoffs` row is created.
+  - The ordinary learner `request_delivery_handoff` and `request_practical_support` still work for that version, and the Tutor/Lab authority still opens releases for them.
+  - The learner-scoped read reports V1, which the page uses to hide the form.
+- `professor-academic-handoff-db` gains 1 (20): a missing Tutor binding and a corrupt Lab binding digest are both refused before any write, while the verified destination still works. The existing post-052 tests (V2 pins, valid handoffs) are unchanged.
+- `professor-academic-handoff` gains 2 (22): the learner-safe refusal mapping (no version internals, no revalidation), and the UI hiding unsupported destinations and showing the unsupported message.
+- **Mutation check.** Removing the gate makes both V1 refusal tests fail.
+
+**Gates after the correction (local).**
+
+- Focused set: 11 files, 269/269.
+- `npm run check`: 3,838/3,838 across 156 files, exit 0.
+- `npm run build` passed.
+- `npm run format:check` is clean.
+- `npm audit --omit=dev` reports 0 vulnerabilities.
+- `git diff --check HEAD` is clean.

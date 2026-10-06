@@ -42,7 +42,10 @@ import {
   FOLLOW_UP_DISCLOSURE,
   ProfessorFollowUp,
 } from "@/components/professor-follow-up";
-import { PROFESSOR_HANDOFF_SUMMARY } from "@/domain/professor-academic-handoff";
+import {
+  PROFESSOR_FOLLOW_UP_UNSUPPORTED,
+  PROFESSOR_HANDOFF_SUMMARY,
+} from "@/domain/professor-academic-handoff";
 
 const SESSION = "11111111-1111-4111-8111-111111111111";
 const OBJECTIVE = "22222222-2222-4222-8222-222222222222";
@@ -310,6 +313,26 @@ describe("requestProfessorFollowUpAction", () => {
     expect(refused.error).not.toMatch(/NO_SOURCE_EXECUTION/);
   });
 
+  it("maps an unsupported course version to learner-safe copy without version internals", async () => {
+    mocks.rpc.mockResolvedValueOnce({
+      data: { ok: false, code: "DESTINATION_BEHAVIOUR_UNSUPPORTED" },
+      error: null,
+    });
+    const result = await requestProfessorFollowUpAction(
+      {},
+      form({
+        classSessionId: SESSION,
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+        objectiveId: OBJECTIVE,
+      }),
+    );
+    expect(result).toEqual({ error: PROFESSOR_FOLLOW_UP_UNSUPPORTED });
+    expect(PROFESSOR_FOLLOW_UP_UNSUPPORTED).toBe(
+      "Professor follow-up is not available for this course version.",
+    );
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+
   it("is a ProfessorHandoffRefused for unknown input", async () => {
     await expect(
       requestProfessorAcademicHandoff({ classSessionId: "nope" }),
@@ -320,6 +343,7 @@ describe("requestProfessorFollowUpAction", () => {
 describe("ProfessorFollowUp (learner UI)", () => {
   const render = (
     handoffs: Parameters<typeof ProfessorFollowUp>[0]["handoffs"],
+    available: { tutor: boolean; lab: boolean } = { tutor: true, lab: true },
   ) =>
     renderToStaticMarkup(
       createElement(ProfessorFollowUp, {
@@ -328,8 +352,22 @@ describe("ProfessorFollowUp (learner UI)", () => {
         labPracticals: [{ id: PRACTICAL, text: "Configure MFA" }],
         handoffs,
         disabled: false,
+        tutorAvailable: available.tutor,
+        labAvailable: available.lab,
       }),
     );
+
+  it("offers no Professor follow-up form for a course version whose Tutor/Lab cannot receive it, and says so safely", () => {
+    const html = render([], { tutor: false, lab: false });
+    expect(html).toContain(PROFESSOR_FOLLOW_UP_UNSUPPORTED);
+    expect(html).not.toContain(FOLLOW_UP_DISCLOSURE);
+    expect(html).not.toMatch(/name="reasonCode"/);
+    expect(html).not.toMatch(/BEHAVIOUR_V|behaviour version/i);
+    // Only the destination that can receive it is offered.
+    const tutorOnly = render([], { tutor: true, lab: false });
+    expect(tutorOnly).toContain('value="OBJECTIVE_REINFORCEMENT"');
+    expect(tutorOnly).not.toContain('value="PRACTICAL_HELP"');
+  });
 
   it("states exactly what is shared and offers no free-form or role field", () => {
     const html = render([]);

@@ -16,6 +16,7 @@ import {
   ProfessorHandoffRefused,
   requestProfessorAcademicHandoff,
 } from "@/server/professor-academic-handoff";
+import { PROFESSOR_FOLLOW_UP_UNSUPPORTED } from "@/domain/professor-academic-handoff";
 
 export type ClassroomActionState = {
   status?:
@@ -162,6 +163,7 @@ const FOLLOW_UP_ERRORS: Partial<Record<string, string>> = {
   LIMIT_EXCEEDED: "This classroom has reached its follow-up limit.",
   OBJECTIVE_SCOPE_UNPROVEN:
     "A follow-up cannot be requested for this lesson's objectives.",
+  DESTINATION_BEHAVIOUR_UNSUPPORTED: PROFESSOR_FOLLOW_UP_UNSUPPORTED,
 };
 
 // AC-3: the learner asks for a Tutor or Lab Instructor follow-up after a

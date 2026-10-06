@@ -5,7 +5,10 @@ import {
   type ProfessorFollowUpActionState,
 } from "@/app/student/classroom/actions";
 import { TutorLabSupportPanel } from "@/components/practical-support";
-import type { LearnerProfessorHandoff } from "@/domain/professor-academic-handoff";
+import {
+  PROFESSOR_FOLLOW_UP_UNSUPPORTED,
+  type LearnerProfessorHandoff,
+} from "@/domain/professor-academic-handoff";
 
 // AC-3: the learner asks for a Tutor or Lab Instructor follow-up after a
 // Professor lesson, and sees exactly what is handed off. The learner never
@@ -73,6 +76,8 @@ export function ProfessorFollowUp({
   labPracticals,
   handoffs,
   disabled,
+  tutorAvailable,
+  labAvailable,
 }: {
   classSessionId: string;
   objectives: { id: string; text: string }[];
@@ -80,12 +85,21 @@ export function ProfessorFollowUp({
   // null when the learner's own follow-ups cannot be read right now.
   handoffs: LearnerProfessorHandoff[] | null;
   disabled: boolean;
+  // Whether this course version's Tutor / Lab Instructor can receive a
+  // Professor follow-up. Presentation only: the database refuses creation
+  // regardless (DESTINATION_BEHAVIOUR_UNSUPPORTED).
+  tutorAvailable: boolean;
+  labAvailable: boolean;
 }) {
   return (
     <section aria-labelledby="professor-follow-up-heading">
       <h2 id="professor-follow-up-heading">Follow up with Tutor or Lab</h2>
-      <p>{FOLLOW_UP_DISCLOSURE}</p>
-      {objectives.length > 0 && (
+      {tutorAvailable || labAvailable ? (
+        <p>{FOLLOW_UP_DISCLOSURE}</p>
+      ) : (
+        <p>{PROFESSOR_FOLLOW_UP_UNSUPPORTED}</p>
+      )}
+      {tutorAvailable && objectives.length > 0 && (
         <FollowUpForm
           classSessionId={classSessionId}
           reasonCode="OBJECTIVE_REINFORCEMENT"
@@ -96,7 +110,7 @@ export function ProfessorFollowUp({
           disabled={disabled}
         />
       )}
-      {labPracticals.length > 0 && (
+      {labAvailable && labPracticals.length > 0 && (
         <FollowUpForm
           classSessionId={classSessionId}
           reasonCode="PRACTICAL_HELP"

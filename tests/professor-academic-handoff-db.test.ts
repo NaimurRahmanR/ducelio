@@ -553,6 +553,47 @@ describe("creation", () => {
       ),
     ).toEqual({ ok: false, code: "ACTIVITY_BLOCKED" });
   });
+
+  it("fails closed before any write when the destination's frozen binding is missing or does not verify", async () => {
+    const counts = () =>
+      value<string>(
+        "select (select count(*) from public.professor_academic_handoffs)::text || '/' || (select count(*) from public.delivery_handoffs)::text as v",
+      );
+    const withoutBindingGuard = async (sql: string) => {
+      await owner();
+      await f.db.exec(
+        "alter table public.academic_agent_behaviour_bindings disable trigger guard_agent_behaviour_binding",
+      );
+      await f.db.query(sql, [f.programmeVersionId]);
+      await f.db.exec(
+        "alter table public.academic_agent_behaviour_bindings enable trigger guard_agent_behaviour_binding",
+      );
+    };
+    // Missing Tutor binding.
+    await f.db.exec("savepoint missing");
+    await withoutBindingGuard(
+      "delete from public.academic_agent_behaviour_bindings where programme_version_id=$1 and role='TUTOR'",
+    );
+    let before = await counts();
+    expect(await tutorRequest()).toEqual({
+      ok: false,
+      code: "DESTINATION_BEHAVIOUR_UNSUPPORTED",
+    });
+    expect(await counts()).toBe(before);
+    await f.db.exec("rollback to savepoint missing");
+    // Corrupt Lab binding digest.
+    await withoutBindingGuard(
+      "update public.academic_agent_behaviour_bindings set semantic_digest=repeat('c',64) where programme_version_id=$1 and role='LAB_INSTRUCTOR'",
+    );
+    before = await counts();
+    expect(await labRequest()).toEqual({
+      ok: false,
+      code: "DESTINATION_BEHAVIOUR_UNSUPPORTED",
+    });
+    expect(await counts()).toBe(before);
+    // The other destination, whose binding verifies, is unaffected.
+    expect(await tutorRequest()).toMatchObject({ ok: true });
+  });
 });
 
 describe("learner visibility", () => {
