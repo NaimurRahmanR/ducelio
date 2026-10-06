@@ -2,7 +2,7 @@
 
 AC-3 is the third checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md) and [AC-2](44-agent-behaviour-ac2.md)). Branch `feat/ac3-academic-handoffs`, base `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c` (AC-2 merged through PR #55). Migration `202610050052_professor_academic_handoffs.sql`; migrations 001–051 are unchanged.
 
-**Status:** implemented and locally tested; committed on `feat/ac3-academic-handoffs` (not merged) with an independent-review correction (section 16), awaiting independent review. Hosted acceptance of migration 052 has **not** run. **Not production-ready.**
+**Status:** the AC-3 implementation and its independent-review correction (section 16) have **passed independent review** at branch head `40069b6`. PR CI and merge are the next step. Migration 052 is **not** deployed, and hosted acceptance of 052 has **not** run. **Not production-ready.**
 
 AC-3 adds exactly one thing: the smallest safe route by which a learner's successful Professor classroom interaction can produce a reviewed, minimum-data academic handoff to the Tutor or Lab Instructor. It is the **only** governed route by which the Tutor or Lab Instructor can learn that a Professor lesson happened, and what bounded academic scope the learner asked them to follow up. The classroom transcript is never shared.
 

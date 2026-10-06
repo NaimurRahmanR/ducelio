@@ -11,7 +11,7 @@ LAST COMPLETED CHECKPOINT: AC-2, Governed Academic Agent Behaviour (migration 05
 
 See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
 
-CURRENT CHECKPOINT: AC-3, minimum-data governed academic handoffs, on `feat/ac3-academic-handoffs` from base `7a7d5b8`. Migration `202610050052_professor_academic_handoffs.sql` (additive; 001–051 unchanged; no existing attested message format changed). Implemented and locally tested. The original commit is `fb9759c`; the independent-review correction (destination behaviour gate) is committed on top. Pushed to the feature branch only (no PR, not merged), awaiting independent review. **Not production-ready.** See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+CURRENT CHECKPOINT: AC-3, minimum-data governed academic handoffs, on `feat/ac3-academic-handoffs` from base `7a7d5b8`. Migration `202610050052_professor_academic_handoffs.sql` (additive; 001–051 unchanged; no existing attested message format changed). Implemented and locally tested. The original commit is `fb9759c`; the independent-review correction (destination behaviour gate) is committed on top. AC-3 and its correction have passed independent review at `40069b6`; the next step is the pull request's CI and merge (not merged). Migration 052 is **not** deployed, and hosted acceptance of 052 has **not** run. **Not production-ready.** See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
 
 COMPLETED ITEMS (AC-3):
 
@@ -46,7 +46,7 @@ COMPLETED ITEMS (AC-3):
 
 INCOMPLETE ITEMS:
 
-- Independent review of AC-3; PR CI and merge (not requested yet).
+- PR CI and merge of AC-3 (independent review passed; merge not performed).
 - Hosted acceptance of migration 052: ACL, JWT/PostgREST, real multi-connection concurrency of `request_professor_academic_handoff`, browser/accessibility.
 - **Production blocker:** a governed purge mechanism for Professor classroom transcripts implementing the AC-3 retention policy.
 - Carried from AC-2:
@@ -58,7 +58,7 @@ INCOMPLETE ITEMS:
 
 KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
 
-NEXT EXACT ACTION: independent review of the AC-3 correction (destination behaviour gate) together with AC-3 as a whole. Do not open a PR, merge or deploy migration 052 without instruction.
+NEXT EXACT ACTION: confirm PR CI for the AC-3 pull request, then merge only on instruction. After merge, deploy migration 052 to the hosted acceptance database and run its hosted acceptance, including true PostgreSQL concurrency for AC-3. Do not start AC-4 or Sarah without instruction.
 
 ### AC-2 record (merged)
 
