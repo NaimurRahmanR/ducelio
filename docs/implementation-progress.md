@@ -20,10 +20,20 @@ CURRENT CHECKPOINT: AC-3 hosted concurrency acceptance, on `test/ac3-hosted-conc
   - MIGRATIONS PASS, exactly 52 local and hosted migrations through 052;
   - RLS_ACL PASS (existing sensitive-table sample);
   - 0 FAIL;
-  - JWT_POSTGREST BLOCKED (no `ACCEPTANCE_EXPIRED_LEARNER_JWT`);
-  - POSTGRES_CONCURRENCY not run there (separate command).
-- This checkpoint adds the separately named hosted scenario `POSTGRES_CONCURRENCY:AC3_PROFESSOR_HANDOFF_DUPLICATE` (`scripts/acceptance/ac3-handoff-race.mjs`, also run by `npm run acceptance:concurrency` after, and reported apart from, the Commercial V1 scenarios). It is implemented and locally tested but has **not** yet been run against hosted PostgreSQL. Uncommitted, awaiting independent review. See [AC-3 section 10](45-agent-behaviour-ac3.md).
-- The scenario's direct-PostgreSQL authenticated-role context is not evidence of Supabase JWT or PostgREST token enforcement; JWT_POSTGREST stays BLOCKED as above.
+  - JWT_POSTGREST BLOCKED (no `ACCEPTANCE_EXPIRED_LEARNER_JWT`).
+- This checkpoint adds the separately named hosted scenario `POSTGRES_CONCURRENCY:AC3_PROFESSOR_HANDOFF_DUPLICATE` (`scripts/acceptance/ac3-handoff-race.mjs`, also run by `npm run acceptance:concurrency` after, and reported apart from, the Commercial V1 scenarios). It passed independent code review (commits `47e7d1c`, `d00f5ed`). See [AC-3 section 10](45-agent-behaviour-ac3.md).
+- **Hosted result (operator-reported): PASS.** Acceptance run `ac3-1791251699086-aelhec`, at branch head `d00f5ed`, against the dedicated hosted acceptance PostgreSQL:
+  - two independent sessions, `pg_backend_pid` 1090742 and 1090751, for the same acceptance learner, each with the request-JWT GUC context plus `SET LOCAL ROLE authenticated`, released from one start gate;
+  - both called the real `public.request_professor_academic_handoff`: one returned `duplicate=false`, the other `duplicate=true`, with the same `handoffId` `9cc6423d-987c-45ca-b8f2-eec93218cc35`;
+  - exactly one `professor_academic_handoffs` projection and exactly one matching delivery handoff;
+  - 1 PASS / 0 FAIL / 0 BLOCKED / 0 NOT_RUN.
+- **AC-3 implementation and its dedicated hosted concurrency acceptance are complete for this checkpoint.**
+- Evidence boundaries. The run proves hosted PostgreSQL migration-052 concurrency and idempotency for this exact handoff surface: two distinct backends, database `authenticated`-role semantics for the real acceptance learner, the actual governed RPC, and the classroom-lock/idempotency outcome observed in this race. It does **not** prove:
+  - Supabase JWT signature or expiry enforcement, or PostgREST token enforcement (JWT_POSTGREST stays BLOCKED independently);
+  - Professor HMAC acceptance (the execution/provenance prerequisite rows were acceptance fixtures);
+  - every possible interleaving;
+  - Tutor/Lab live-provider quality;
+  - production readiness.
 - `npm audit --omit=dev` reports 1 high advisory (`source-map-js@1.2.1`, GHSA-68fv-2mgg-jv7q, via `next` → `postcss`). It is pre-existing on base `0d52fa6`, not a regression from this branch: `package.json` and the lockfile are unchanged. Dependencies are to be addressed separately.
 - **Not production-ready.**
 
@@ -60,8 +70,8 @@ COMPLETED ITEMS (AC-3):
 
 INCOMPLETE ITEMS:
 
-- PR CI and merge of AC-3 (independent review passed; merge not performed).
-- Hosted run of `POSTGRES_CONCURRENCY:AC3_PROFESSOR_HANDOFF_DUPLICATE` (implemented, not yet run). Hosted JWT/PostgREST (needs `ACCEPTANCE_EXPIRED_LEARNER_JWT`) and browser/accessibility acceptance remain open.
+- PR CI, review and merge of the `test/ac3-hosted-concurrency` acceptance-harness branch.
+- Hosted JWT/PostgREST evidence (needs `ACCEPTANCE_EXPIRED_LEARNER_JWT`) and browser/accessibility acceptance remain open. Other Commercial V1 hosted blockers are unchanged.
 - **Production blocker:** a governed purge mechanism for Professor classroom transcripts implementing the AC-3 retention policy.
 - Carried from AC-2:
   - a reviewed design for lessons with more than 50 objectives;
@@ -72,7 +82,7 @@ INCOMPLETE ITEMS:
 
 KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
 
-NEXT EXACT ACTION: independent review of the AC-3 hosted concurrency scenario; then, only on instruction, run it against the hosted acceptance database (`npm run acceptance:concurrency`, or AC-3 alone with `node --env-file-if-exists=.env.local scripts/acceptance/ac3-handoff-race.mjs`). Do not start AC-4 or Sarah without instruction.
+NEXT EXACT ACTION: independent review, CI and merge of the acceptance-harness PR. Do not rerun hosted acceptance, and do not start AC-4 or Sarah, without instruction.
 
 ### AC-2 record (merged)
 

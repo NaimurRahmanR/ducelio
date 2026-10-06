@@ -2,7 +2,7 @@
 
 AC-3 is the third checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md) and [AC-2](44-agent-behaviour-ac2.md)). Branch `feat/ac3-academic-handoffs`, base `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c` (AC-2 merged through PR #55). Migration `202610050052_professor_academic_handoffs.sql`; migrations 001–051 are unchanged.
 
-**Status:** the AC-3 implementation and its independent-review correction (section 16) passed independent review and were merged through PR #56 (merge `0d52fa6`). Migration 052 is deployed to the dedicated hosted acceptance database (section 14). The AC-3 hosted concurrency scenario is implemented but **not yet run** (section 10). **Not production-ready.**
+**Status:** the AC-3 implementation and its independent-review correction (section 16) passed independent review and were merged through PR #56 (merge `0d52fa6`). Migration 052 is deployed to the dedicated hosted acceptance database (section 14). The dedicated AC-3 hosted true PostgreSQL concurrency scenario **passed** there (run `ac3-1791251699086-aelhec`, section 10). AC-3 implementation and hosted concurrency acceptance are complete for this checkpoint. **Not production-ready.** Transcript purge enforcement, JWT/PostgREST evidence and live-provider quality remain outstanding.
 
 AC-3 adds exactly one thing: the smallest safe route by which a learner's successful Professor classroom interaction can produce a reviewed, minimum-data academic handoff to the Tutor or Lab Instructor. It is the **only** governed route by which the Tutor or Lab Instructor can learn that a Professor lesson happened, and what bounded academic scope the learner asked them to follow up. The classroom transcript is never shared.
 
@@ -174,7 +174,7 @@ AC-3 does **not** invent Lab timing. No Professor or learner handoff is linked t
 
 PGlite is single-connection: the tests prove **sequential** replay idempotency only, not real multi-connection behaviour.
 
-### Hosted concurrency acceptance scenario (implemented; not yet run)
+### Hosted concurrency acceptance scenario (hosted PASS)
 
 `POSTGRES_CONCURRENCY:AC3_PROFESSOR_HANDOFF_DUPLICATE` (`scripts/acceptance/ac3-handoff-race.mjs`). It is run by `npm run acceptance:concurrency` after, and reported separately from, the Commercial V1 scenarios, or alone with `node --env-file-if-exists=.env.local scripts/acceptance/ac3-handoff-race.mjs`. It is separate from the Commercial V1 scenarios, which prove nothing about AC-3.
 
@@ -201,7 +201,17 @@ PGlite is single-connection: the tests prove **sequential** replay idempotency o
 - **Local evidence (not concurrency).**
   - `tests/acceptance-ac3-handoff-race.test.ts` (25) covers orchestration and verdicts against in-memory stand-in connections.
   - `tests/acceptance-ac3-handoff-race-db.test.ts` (2) runs the scenario's **real** seed SQL, authenticated-context SQL, RPC call and verification reads against the real migration chain in PGlite, **sequentially** on one connection.
-- **Status.** The hosted result is **not yet available**, and this document will record it only after a real hosted run.
+- **Status: hosted PASS** (operator-reported), acceptance run `ac3-1791251699086-aelhec`, at branch head `d00f5ed`, against the dedicated hosted acceptance PostgreSQL:
+  - two independent sessions, `pg_backend_pid` 1090742 and 1090751, for the same acceptance learner, each with the request-JWT GUC context plus `SET LOCAL ROLE authenticated`, released from one start gate;
+  - the actual `public.request_professor_academic_handoff` returned `duplicate=false` once and `duplicate=true` once, with the same `handoffId` `9cc6423d-987c-45ca-b8f2-eec93218cc35`;
+  - exactly one `professor_academic_handoffs` projection and exactly one matching delivery handoff;
+  - 1 PASS / 0 FAIL / 0 BLOCKED / 0 NOT_RUN.
+- **Evidence boundaries.** This proves hosted PostgreSQL migration-052 concurrency and idempotency for this exact handoff surface: two distinct backend processes, database `authenticated`-role semantics for the real acceptance learner, the actual governed RPC, and the classroom-lock/idempotency outcome observed in this race. It does **not** prove:
+  - Supabase JWT signature or expiry enforcement, or PostgREST token enforcement (JWT_POSTGREST stays BLOCKED independently);
+  - Professor HMAC acceptance (the execution/provenance prerequisite rows were acceptance fixtures);
+  - every possible interleaving;
+  - Tutor/Lab live-provider quality;
+  - production readiness.
 
 ## 11. Local evidence
 
@@ -256,19 +266,19 @@ Extended suites:
 - The source is the classroom's most recent qualifying execution. The record states only that a Professor lesson took place and what the learner asked for, not which exchange.
 - Tutor/Lab versions published before migration 052 (pinned V1) never receive a Professor record and cannot create a Professor follow-up (`DESTINATION_BEHAVIOUR_UNSUPPORTED`). This is deliberate, and needs a new programme version to change.
 - The transcript retention policy is decided but not enforced (section 8).
-- Hosted acceptance of migration 052 has not run: ACL, JWT/PostgREST, real multi-connection concurrency, browser and accessibility.
+- Hosted acceptance of migration 052 is partial (section 14). The migration ledger, the RLS_ACL smoke and the dedicated AC-3 concurrency scenario passed. JWT/PostgREST, browser and accessibility acceptance have not.
 
 ## 14. Hosted versus local
 
 Everything above is local evidence: PGlite with the full migration chain, plus unit and UI tests. After the merge (PR #56), migration 052 was deployed to the dedicated hosted acceptance database. The operator-reported acceptance after deployment:
 
 - HOSTED_DATABASE PASS (PostgreSQL 17.6);
-- MIGRATIONS PASS through 052;
-- RLS_ACL PASS (existing sample);
+- MIGRATIONS PASS: the hosted migration ledger matched all 52 migrations through 052;
+- RLS_ACL PASS (existing smoke sample);
 - 0 FAIL;
 - JWT_POSTGREST BLOCKED (no expired learner JWT).
 
-The AC-3 hosted concurrency scenario (section 10) has not yet been run.
+The dedicated AC-3 true PostgreSQL concurrency scenario then **passed** on the same hosted database (run `ac3-1791251699086-aelhec`; section 10 has the evidence and its boundaries). This is not production readiness: transcript purge enforcement (section 8), JWT/PostgREST evidence and live-provider quality remain outstanding, and other Commercial V1 hosted blockers are unchanged.
 
 ## 15. Next checkpoint
 
