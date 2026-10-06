@@ -2,7 +2,7 @@
 
 AC-3 is the third checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md) and [AC-2](44-agent-behaviour-ac2.md)). Branch `feat/ac3-academic-handoffs`, base `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c` (AC-2 merged through PR #55). Migration `202610050052_professor_academic_handoffs.sql`; migrations 001–051 are unchanged.
 
-**Status:** the AC-3 implementation and its independent-review correction (section 16) have **passed independent review** at branch head `40069b6`. PR CI and merge are the next step. Migration 052 is **not** deployed, and hosted acceptance of 052 has **not** run. **Not production-ready.**
+**Status:** the AC-3 implementation and its independent-review correction (section 16) passed independent review and were merged through PR #56 (merge `0d52fa6`). Migration 052 is deployed to the dedicated hosted acceptance database (section 14). The dedicated AC-3 hosted true PostgreSQL concurrency scenario **passed** there (run `ac3-1791251699086-aelhec`, section 10). AC-3 implementation and hosted concurrency acceptance are complete for this checkpoint. **Not production-ready.** Transcript purge enforcement, JWT/PostgREST evidence and live-provider quality remain outstanding.
 
 AC-3 adds exactly one thing: the smallest safe route by which a learner's successful Professor classroom interaction can produce a reviewed, minimum-data academic handoff to the Tutor or Lab Instructor. It is the **only** governed route by which the Tutor or Lab Instructor can learn that a Professor lesson happened, and what bounded academic scope the learner asked them to follow up. The classroom transcript is never shared.
 
@@ -172,7 +172,46 @@ AC-3 does **not** invent Lab timing. No Professor or learner handoff is linked t
 - The unique `(classroom_id, reason_code, scope_key)` and the unique `handoff_id` are the database backstops.
 - Migration 023's `(requested_by, request_id)` identity, with the deterministic request id, prevents a duplicate delivery handoff.
 
-PGlite is single-connection: the tests prove **sequential** replay idempotency only, not real multi-connection behaviour. A real PostgreSQL concurrency acceptance for this RPC has **not** run.
+PGlite is single-connection: the tests prove **sequential** replay idempotency only, not real multi-connection behaviour.
+
+### Hosted concurrency acceptance scenario (hosted PASS)
+
+`POSTGRES_CONCURRENCY:AC3_PROFESSOR_HANDOFF_DUPLICATE` (`scripts/acceptance/ac3-handoff-race.mjs`). It is run by `npm run acceptance:concurrency` after, and reported separately from, the Commercial V1 scenarios, or alone with `node --env-file-if-exists=.env.local scripts/acceptance/ac3-handoff-race.mjs`. It is separate from the Commercial V1 scenarios, which prove nothing about AC-3.
+
+- **Race.** Two genuinely independent PostgreSQL connections (`connectMany(2)`), whose distinct `pg_backend_pid()` values are part of the PASS evidence. Each is write-gated (`assertAllAcceptanceDatabaseWriteAuthorized`) and fully prepared. Both are then released from one start gate to call the real `public.request_professor_academic_handoff` for the same learner, classroom, `OBJECTIVE_REINFORCEMENT` and objective.
+- **PASS requires all of:**
+  - one `{ok:true, duplicate:false}` and one `{ok:true, duplicate:true}` with the same `handoffId`;
+  - exactly one `professor_academic_handoffs` row for the classroom/reason/scope, with the expected destination, reason, scope and source execution;
+  - exactly one matching `delivery_handoffs` row, with the same id, created since the race started.
+- **Verdicts.** Anything else, including an unexpected RPC result or a database/network error, is FAIL. Missing write authorization, or an authenticated learner context that cannot be established, is BLOCKED, never bypassed.
+- **Authentication.** There is no service-role path. On each connection, inside its own transaction:
+  - set Supabase's standard request-JWT GUCs locally (`request.jwt.claims` with `sub/role/aud`, plus `request.jwt.claim.sub/role`), which hosted `auth.uid()` reads;
+  - `SET LOCAL ROLE authenticated`;
+  - verify `current_user = 'authenticated'` and that `current_app_user()` equals the learner's `app_users` id, resolved from their real hosted Supabase Auth identity (never hardcoded).
+
+  The RPC therefore runs under `authenticated`'s own grants and its SECURITY DEFINER boundary. If the acceptance connection lacks permission to `SET ROLE authenticated` (`pg_has_role(..., 'SET')`), the actual role switch is refused, or the identity does not resolve, the scenario is BLOCKED.
+
+  This proves two independent hosted PostgreSQL sessions acting under the database's `authenticated`-role semantics for the real acceptance learner subject, calling the real governed RPC, and real PostgreSQL locking and idempotency. It does **not** prove Supabase JWT signature or expiry validation, or PostgREST token enforcement; that remains separate acceptance evidence (JWT_POSTGREST, currently BLOCKED).
+
+- **Fixture (setup, not evidence).**
+  - The post-052 course, cohort and enrolment come from the existing governed `seedAcceptanceCourse` pipeline. The scenario verifies that the frozen Tutor binding is `TUTOR_BEHAVIOUR_V2`, and is BLOCKED otherwise.
+  - The class session is created through the governed `create_class_session` RPC (a unique past window), and the classroom through the learner's own `open_professor_classroom`.
+  - The SUCCEEDED Professor execution, its two COMPLETED content releases, its AC-2 provenance and its context manifest are **seeded directly** in one write-gated transaction, because the attested V2 path needs the controller HMAC key. Every derivable value is derived by the database's own AC-2 functions in that insert. This is **not** evidence that any Professor HMAC execution was accepted.
+  - Those tables' AFTER INSERT audit triggers record the seeded rows with their fixed source labels. The rows are identifiable through this run's unique cohort and class session, and nothing is deleted.
+- **Local evidence (not concurrency).**
+  - `tests/acceptance-ac3-handoff-race.test.ts` (25) covers orchestration and verdicts against in-memory stand-in connections.
+  - `tests/acceptance-ac3-handoff-race-db.test.ts` (2) runs the scenario's **real** seed SQL, authenticated-context SQL, RPC call and verification reads against the real migration chain in PGlite, **sequentially** on one connection.
+- **Status: hosted PASS** (operator-reported), acceptance run `ac3-1791251699086-aelhec`, at branch head `d00f5ed`, against the dedicated hosted acceptance PostgreSQL:
+  - two independent sessions, `pg_backend_pid` 1090742 and 1090751, for the same acceptance learner, each with the request-JWT GUC context plus `SET LOCAL ROLE authenticated`, released from one start gate;
+  - the actual `public.request_professor_academic_handoff` returned `duplicate=false` once and `duplicate=true` once, with the same `handoffId` `9cc6423d-987c-45ca-b8f2-eec93218cc35`;
+  - exactly one `professor_academic_handoffs` projection and exactly one matching delivery handoff;
+  - 1 PASS / 0 FAIL / 0 BLOCKED / 0 NOT_RUN.
+- **Evidence boundaries.** This proves hosted PostgreSQL migration-052 concurrency and idempotency for this exact handoff surface: two distinct backend processes, database `authenticated`-role semantics for the real acceptance learner, the actual governed RPC, and the classroom-lock/idempotency outcome observed in this race. It does **not** prove:
+  - Supabase JWT signature or expiry enforcement, or PostgREST token enforcement (JWT_POSTGREST stays BLOCKED independently);
+  - Professor HMAC acceptance (the execution/provenance prerequisite rows were acceptance fixtures);
+  - every possible interleaving;
+  - Tutor/Lab live-provider quality;
+  - production readiness.
 
 ## 11. Local evidence
 
@@ -227,11 +266,19 @@ Extended suites:
 - The source is the classroom's most recent qualifying execution. The record states only that a Professor lesson took place and what the learner asked for, not which exchange.
 - Tutor/Lab versions published before migration 052 (pinned V1) never receive a Professor record and cannot create a Professor follow-up (`DESTINATION_BEHAVIOUR_UNSUPPORTED`). This is deliberate, and needs a new programme version to change.
 - The transcript retention policy is decided but not enforced (section 8).
-- Hosted acceptance of migration 052 has not run: ACL, JWT/PostgREST, real multi-connection concurrency, browser and accessibility.
+- Hosted acceptance of migration 052 is partial (section 14). The migration ledger, the RLS_ACL smoke and the dedicated AC-3 concurrency scenario passed. JWT/PostgREST, browser and accessibility acceptance have not.
 
 ## 14. Hosted versus local
 
-Everything above is local evidence: PGlite with the full migration chain, plus unit and UI tests. The dedicated hosted acceptance database is at migration 051; migration 052 has not been deployed or accepted there.
+Everything above is local evidence: PGlite with the full migration chain, plus unit and UI tests. After the merge (PR #56), migration 052 was deployed to the dedicated hosted acceptance database. The operator-reported acceptance after deployment:
+
+- HOSTED_DATABASE PASS (PostgreSQL 17.6);
+- MIGRATIONS PASS: the hosted migration ledger matched all 52 migrations through 052;
+- RLS_ACL PASS (existing smoke sample);
+- 0 FAIL;
+- JWT_POSTGREST BLOCKED (no expired learner JWT).
+
+The dedicated AC-3 true PostgreSQL concurrency scenario then **passed** on the same hosted database (run `ac3-1791251699086-aelhec`; section 10 has the evidence and its boundaries). This is not production readiness: transcript purge enforcement (section 8), JWT/PostgREST evidence and live-provider quality remain outstanding, and other Commercial V1 hosted blockers are unchanged.
 
 ## 15. Next checkpoint
 

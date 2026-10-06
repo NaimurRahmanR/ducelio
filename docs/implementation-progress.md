@@ -2,7 +2,9 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-2, Governed Academic Agent Behaviour (migration 051), independently reviewed and merged through PR #55 (merge `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c` on `main`). Hosted acceptance status (reported by the operator for the dedicated hosted acceptance database):
+LAST COMPLETED CHECKPOINT: AC-3, Governed Professor Academic Handoffs (migration 052), independently reviewed and merged through PR #56 (merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32` on `main`). The hosted status after deploying 052 is listed under the current checkpoint below. See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+
+Previous checkpoint: AC-2, Governed Academic Agent Behaviour (migration 051), merged through PR #55 (merge `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c`). Its hosted status, as reported by the operator:
 
 - MIGRATIONS PASS exactly through 051; the sensitive ACL sample passes.
 - The existing Commercial V1 true PostgreSQL concurrency rerun is 4 PASS / 0 FAIL / 2 BLOCKED. The two blocked cases need Examiner HMAC credentials.
@@ -11,7 +13,29 @@ LAST COMPLETED CHECKPOINT: AC-2, Governed Academic Agent Behaviour (migration 05
 
 See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
 
-CURRENT CHECKPOINT: AC-3, minimum-data governed academic handoffs, on `feat/ac3-academic-handoffs` from base `7a7d5b8`. Migration `202610050052_professor_academic_handoffs.sql` (additive; 001–051 unchanged; no existing attested message format changed). Implemented and locally tested. The original commit is `fb9759c`; the independent-review correction (destination behaviour gate) is committed on top. AC-3 and its correction have passed independent review at `40069b6`; the next step is the pull request's CI and merge (not merged). Migration 052 is **not** deployed, and hosted acceptance of 052 has **not** run. **Not production-ready.** See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+CURRENT CHECKPOINT: AC-3 hosted concurrency acceptance, on `test/ac3-hosted-concurrency` from base `0d52fa6` (AC-3 merged through PR #56, merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32`).
+
+- Migration `202610050052_professor_academic_handoffs.sql` has been deployed to the dedicated hosted acceptance database. The operator-reported hosted acceptance after deployment:
+  - HOSTED_DATABASE PASS (PostgreSQL 17.6);
+  - MIGRATIONS PASS, exactly 52 local and hosted migrations through 052;
+  - RLS_ACL PASS (existing sensitive-table sample);
+  - 0 FAIL;
+  - JWT_POSTGREST BLOCKED (no `ACCEPTANCE_EXPIRED_LEARNER_JWT`).
+- This checkpoint adds the separately named hosted scenario `POSTGRES_CONCURRENCY:AC3_PROFESSOR_HANDOFF_DUPLICATE` (`scripts/acceptance/ac3-handoff-race.mjs`, also run by `npm run acceptance:concurrency` after, and reported apart from, the Commercial V1 scenarios). It passed independent code review (commits `47e7d1c`, `d00f5ed`). See [AC-3 section 10](45-agent-behaviour-ac3.md).
+- **Hosted result (operator-reported): PASS.** Acceptance run `ac3-1791251699086-aelhec`, at branch head `d00f5ed`, against the dedicated hosted acceptance PostgreSQL:
+  - two independent sessions, `pg_backend_pid` 1090742 and 1090751, for the same acceptance learner, each with the request-JWT GUC context plus `SET LOCAL ROLE authenticated`, released from one start gate;
+  - both called the real `public.request_professor_academic_handoff`: one returned `duplicate=false`, the other `duplicate=true`, with the same `handoffId` `9cc6423d-987c-45ca-b8f2-eec93218cc35`;
+  - exactly one `professor_academic_handoffs` projection and exactly one matching delivery handoff;
+  - 1 PASS / 0 FAIL / 0 BLOCKED / 0 NOT_RUN.
+- **AC-3 implementation and its dedicated hosted concurrency acceptance are complete for this checkpoint.**
+- Evidence boundaries. The run proves hosted PostgreSQL migration-052 concurrency and idempotency for this exact handoff surface: two distinct backends, database `authenticated`-role semantics for the real acceptance learner, the actual governed RPC, and the classroom-lock/idempotency outcome observed in this race. It does **not** prove:
+  - Supabase JWT signature or expiry enforcement, or PostgREST token enforcement (JWT_POSTGREST stays BLOCKED independently);
+  - Professor HMAC acceptance (the execution/provenance prerequisite rows were acceptance fixtures);
+  - every possible interleaving;
+  - Tutor/Lab live-provider quality;
+  - production readiness.
+- `npm audit --omit=dev` reports 1 high advisory (`source-map-js@1.2.1`, GHSA-68fv-2mgg-jv7q, via `next` → `postcss`). It is pre-existing on base `0d52fa6`, not a regression from this branch: `package.json` and the lockfile are unchanged. Dependencies are to be addressed separately.
+- **Not production-ready.**
 
 COMPLETED ITEMS (AC-3):
 
@@ -46,8 +70,8 @@ COMPLETED ITEMS (AC-3):
 
 INCOMPLETE ITEMS:
 
-- PR CI and merge of AC-3 (independent review passed; merge not performed).
-- Hosted acceptance of migration 052: ACL, JWT/PostgREST, real multi-connection concurrency of `request_professor_academic_handoff`, browser/accessibility.
+- PR CI, review and merge of the `test/ac3-hosted-concurrency` acceptance-harness branch.
+- Hosted JWT/PostgREST evidence (needs `ACCEPTANCE_EXPIRED_LEARNER_JWT`) and browser/accessibility acceptance remain open. Other Commercial V1 hosted blockers are unchanged.
 - **Production blocker:** a governed purge mechanism for Professor classroom transcripts implementing the AC-3 retention policy.
 - Carried from AC-2:
   - a reviewed design for lessons with more than 50 objectives;
@@ -58,7 +82,7 @@ INCOMPLETE ITEMS:
 
 KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
 
-NEXT EXACT ACTION: confirm PR CI for the AC-3 pull request, then merge only on instruction. After merge, deploy migration 052 to the hosted acceptance database and run its hosted acceptance, including true PostgreSQL concurrency for AC-3. Do not start AC-4 or Sarah without instruction.
+NEXT EXACT ACTION: independent review, CI and merge of the acceptance-harness PR. Do not rerun hosted acceptance, and do not start AC-4 or Sarah, without instruction.
 
 ### AC-2 record (merged)
 
