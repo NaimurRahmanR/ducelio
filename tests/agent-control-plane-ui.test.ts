@@ -263,10 +263,12 @@ describe("/admin/agents", () => {
     expect(html).not.toContain(">NOT CURRENT<");
   });
 
-  it("presents Sarah and the academic COUNSELLOR truthfully as not executable", async () => {
+  it("presents Sarah Mitchell as the executable platform COUNSELLOR and the academic COUNSELLOR as not executable", async () => {
     const plain = text(await render());
-    expect(plain).toContain("Sarah (planned learner guide) NOT EXECUTABLE");
-    expect(plain).toContain("does not exist in production");
+    expect(plain).toContain("Sarah Mitchell (learner-success AI) EXECUTABLE");
+    expect(plain).toContain("Not the academic COUNSELLOR role");
+    expect(plain).toContain("not a human counsellor account");
+    expect(plain).toContain("Operations Engineer (internal) NOT EXECUTABLE");
     expect(plain).toContain(
       "Academic Counsellor role (historical vocabulary) ENABLED NOT EXECUTABLE",
     );

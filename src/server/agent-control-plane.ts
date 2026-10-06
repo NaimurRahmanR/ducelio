@@ -35,6 +35,7 @@ import {
 import { PROVIDER_EXECUTION_DB_CEILING } from "@/domain/academic-provider-execution";
 import { TUTOR_LAB_EXECUTION_DB_CEILING } from "@/domain/tutor-lab-execution";
 import { EXAMINER_EXECUTION_DB_CEILING } from "@/domain/commercial-v1-examiner-grading";
+import { SARAH_DB_CEILING } from "@/domain/sarah";
 import { AccessDenied } from "@/domain/policy";
 import { ROLE_RUNTIME_PROFILE_POLICY } from "@/domain/academic-runtime-profile";
 import { listProductionRuntimeProfiles } from "./academic-runtime/profile-registry";
@@ -112,6 +113,15 @@ const ACADEMIC_DB_CEILING: Readonly<Record<AgentRole, DbCeiling | null>> = {
   COUNSELLOR: null,
 };
 
+// AC-5: the platform COUNSELLOR (Sarah Mitchell) has its own database
+// ceiling (migration 054). Operations Engineer has no execution plane.
+const PLATFORM_DB_CEILING: Readonly<
+  Record<PlatformAgentRole, DbCeiling | null>
+> = {
+  COUNSELLOR: SARAH_DB_CEILING,
+  OPERATIONS_ENGINEER: null,
+};
+
 function rolesForProfile(ref: string): {
   labels: string[];
   ceiling: DbCeiling | null;
@@ -131,7 +141,12 @@ function rolesForProfile(ref: string): {
         (r) => `${PLATFORM_ROLE_FACTS[r].displayName} (platform)`,
       ),
     ],
-    ceiling: academic.length === 1 ? ACADEMIC_DB_CEILING[academic[0]] : null,
+    ceiling:
+      academic.length === 1 && platform.length === 0
+        ? ACADEMIC_DB_CEILING[academic[0]]
+        : platform.length === 1 && academic.length === 0
+          ? PLATFORM_DB_CEILING[platform[0]]
+          : null,
   };
 }
 
@@ -198,7 +213,7 @@ export type VersionView = Omit<
 export type PlatformRoleView = {
   role: PlatformAgentRole;
   displayName: string;
-  executable: false;
+  executable: boolean;
   executionDescription: string;
   profileRef: string;
 };
@@ -322,7 +337,7 @@ export async function getAgentControlPlane(
       platformRoles: platformAgentRoleSchema.options.map((role) => ({
         role,
         displayName: PLATFORM_ROLE_FACTS[role].displayName,
-        executable: false,
+        executable: PLATFORM_ROLE_FACTS[role].execution.executable,
         executionDescription: PLATFORM_ROLE_FACTS[role].execution.description,
         profileRef: PLATFORM_ROLE_PROFILE_REF[role],
       })),

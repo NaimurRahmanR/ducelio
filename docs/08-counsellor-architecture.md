@@ -21,4 +21,6 @@ Current service boundaries include learner support context, study plans, support
 
 Learners read their own profile, plans, learner-visible follow-ups, support events and institutional notifications. Assigned counsellors access permitted support context. Private interaction summaries are excluded from student views and inaccessible to instructors/admins absent an explicit support assignment and role. Reassignment access follows current assignment; introduce a reviewed historical-access policy before broader case transfer.
 
+**Human counsellors and Sarah Mitchell are different things (AC-5).** Everything above describes human counsellors: real staff accounts with the COUNSELLOR role and dated assignments. Sarah Mitchell is Ducelio's AI learner-success counsellor, the persona of the platform COUNSELLOR AI role. She has no user account, role grant or assignment, never reads `counsellor_interactions` or follow-up titles, and authorises nothing through `is_assigned_counsellor()`. She may only propose support-profile changes, which the learner alone confirms. See [AC-5](47-agent-behaviour-ac5-sarah.md).
+
 Do not store health diagnoses or other unnecessary sensitive narrative. Private note retention, access/export and escalation procedures require an institutional policy before real counselling use.

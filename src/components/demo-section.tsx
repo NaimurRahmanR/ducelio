@@ -128,8 +128,8 @@ export function DemoSection({ section }: { section: DemoSectionName }) {
               [
                 "10",
                 "THU",
-                "Counsellor check-in",
-                "16:30 · Study routine review",
+                "Study-routine review",
+                "Personal study-plan reminder",
                 "/demo/support",
               ],
               [
@@ -284,7 +284,8 @@ export function DemoSection({ section }: { section: DemoSectionName }) {
               </ButtonLink>
               <p className="config-caption">
                 Non-conversational demo. No messages are sent and no AI is
-                connected.
+                connected. In the signed-in academy, Sarah Mitchell is
+                Ducelio&apos;s AI learner-success counsellor.
               </p>
             </Card>
             <CounsellorCard />

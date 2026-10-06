@@ -20,6 +20,7 @@ import {
   ShieldCheck,
   Trophy,
   Award,
+  MessageCircle,
 } from "lucide-react";
 import { Brand } from "./ui";
 import { logout } from "@/app/auth/actions";
@@ -38,6 +39,8 @@ const links = [
   ["Notes", "notes", NotebookPen],
   ["Results", "results", ChartNoAxesCombined],
   ["Support", "support", HeartHandshake],
+  // AC-5: Sarah Mitchell, Ducelio's AI learner-success counsellor.
+  ["Sarah (AI guide)", "sarah", MessageCircle],
   ["Profile", "profile", UserRound],
 ] as const;
 export function AcademyShell({
@@ -69,7 +72,10 @@ export function AcademyShell({
             !demo ||
             (slug !== "practicals" &&
               slug !== "leaderboard" &&
-              slug !== "progress"),
+              slug !== "progress" &&
+              // The credential-free demo never reaches the governed Sarah
+              // execution plane.
+              slug !== "sarah"),
         )
         .map(([label, slug, Icon]) => {
           const href = slug ? base + "/" + slug : base;
