@@ -25,6 +25,10 @@
 //   attestations are produced only by the production authority modules.
 //   They additionally need the examiner-app prerequisites (controller key,
 //   ACADEMIC_EXECUTION_* settings); without them both report BLOCKED.
+// - AC3_PROFESSOR_HANDOFF_DUPLICATE (ac3-handoff-race.mjs) is a SEPARATE
+//   AC-3 / migration-052 scenario, run after and reported apart from the
+//   Commercial V1 scenarios: two independent authenticated-learner
+//   connections race the governed request_professor_academic_handoff RPC.
 //
 // Start discipline (V7): NEVER_TWO_REVISION_ONES,
 // COMPLETION_VS_COMPLETION and both application races release both
@@ -142,6 +146,7 @@ import {
   createStartGate,
   runAppRaceScenarios,
 } from "./concurrency-app-races.mjs";
+import { scenarioAc3ProfessorHandoffDuplicate } from "./ac3-handoff-race.mjs";
 
 // createStartGate lives with the application races (which also need it)
 // and is re-exported here, where the DB-level races and tests use it.
@@ -923,7 +928,18 @@ async function main() {
   }
 
   printSummary(results, "Commercial V1 true-PostgreSQL-concurrency acceptance");
-  process.exit(exitCodeFor(results));
+
+  // AC-3 (migration 052) is a SEPARATE scenario with its own fixture,
+  // header and summary; it is never evidence for, nor evidenced by, the
+  // Commercial V1 scenarios above. See ac3-handoff-race.mjs.
+  console.log("");
+  console.log(
+    "===== AC-3 true PostgreSQL concurrency acceptance (separate from Commercial V1) =====",
+  );
+  const ac3 = await scenarioAc3ProfessorHandoffDuplicate(`ac3-${runId}`);
+  printResult(ac3);
+  printSummary([ac3], "AC-3 true-PostgreSQL-concurrency acceptance");
+  process.exit(exitCodeFor([...results, ac3]));
 }
 
 // Independent-review finding (this pass): main() calls process.exit()
