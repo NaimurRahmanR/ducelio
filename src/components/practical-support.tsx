@@ -1,5 +1,10 @@
 "use client";
 import { useActionState, useState } from "react";
+import Link from "next/link";
+import {
+  TUTOR_CLASS_NOTE_OPT_IN_LABEL,
+  tutorClassNoteOutcomeMessage,
+} from "@/domain/tutor-class-notes";
 import {
   requestPracticalSupportAction,
   requestTutorLabSupportAction,
@@ -69,6 +74,14 @@ export function TutorLabSupportPanel({
           disabled={pending}
         />
       </label>
+      {/* AC-4: Tutor only. The learner chooses before sending; the note body
+          is the governed Tutor answer itself, never text from this form. */}
+      {!lab && (
+        <label className="engineering-checkbox">
+          <input type="checkbox" name="saveAsClassNote" disabled={pending} />{" "}
+          {TUTOR_CLASS_NOTE_OPT_IN_LABEL}
+        </label>
+      )}
       <button className="button secondary" disabled={pending}>
         {pending ? "Sending…" : "Send to " + label}
       </button>
@@ -81,6 +94,21 @@ export function TutorLabSupportPanel({
               ? STATUS_MESSAGE[state.status]
               : ""}
       </p>
+      {state.status === "SUCCEEDED" &&
+        state.role === "TUTOR" &&
+        state.classNote && (
+          <p className="muted">
+            {tutorClassNoteOutcomeMessage(state.classNote)}
+            {state.classNote.state === "SAVED" && (
+              <>
+                {" "}
+                <Link className="text-link" href="/student/tutor-notes">
+                  View your Tutor notes
+                </Link>
+              </>
+            )}
+          </p>
+        )}
     </form>
   );
 }

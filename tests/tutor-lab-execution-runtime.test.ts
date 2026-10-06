@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { createHash } from "node:crypto";
 
 const mocks = vi.hoisted(() => ({
   requireStudentPrincipal: vi.fn(),
@@ -12,7 +13,19 @@ const mocks = vi.hoisted(() => ({
   resolveAdapterForProfile: vi.fn(),
   runGovernedProviderExecution: vi.fn(),
   getProfessorTeachingRecordForRelease: vi.fn(),
+  recordTutorClassNote: vi.fn(),
 }));
+// AC-4: the attested Tutor class-note write; its own authority is tested in
+// tutor-class-notes-db.test.ts and tutor-class-notes.test.ts.
+vi.mock("@/server/tutor-class-notes", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/server/tutor-class-notes")
+  >("@/server/tutor-class-notes");
+  return {
+    TutorClassNoteRefused: actual.TutorClassNoteRefused,
+    recordTutorClassNote: mocks.recordTutorClassNote,
+  };
+});
 // AC-3: the release-scoped Professor academic handoff read; its own
 // authority is tested in professor-academic-handoff-db.test.ts.
 vi.mock("@/server/professor-academic-handoff", () => ({
@@ -798,5 +811,273 @@ describe("executeTutorLabSupport: unexpected exception safety", () => {
     const result = await executeTutorLabSupport(request());
     expect(result.status).toBe("UNAVAILABLE");
     expect(JSON.stringify(result)).not.toMatch(/ctrl_live|signature/i);
+  });
+});
+
+describe("executeTutorLabSupport: AC-4 Tutor class notes", () => {
+  async function importRefused() {
+    return (await import("@/server/tutor-class-notes")).TutorClassNoteRefused;
+  }
+  function finalizeExecutionId() {
+    const finalize = mocks.attestTutorLabExecutionCommand.mock.calls.find(
+      (call) => (call[3] as { operation: string }).operation === "FINALIZE",
+    );
+    return finalize?.[1] as string;
+  }
+
+  it("keeps a SUCCEEDED Tutor answer the learner asked to keep: exactly the confirmed output, under the execution id this server finalized, after FINALIZE", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.recordTutorClassNote.mockResolvedValue({
+      revisionNumber: 2,
+      duplicate: false,
+    });
+    const result = await executeTutorLabSupport({
+      ...request(),
+      saveAsClassNote: true,
+    });
+    expect(result).toEqual({
+      status: "SUCCEEDED",
+      text: "Here is some guidance.",
+      role: "TUTOR",
+      classNote: { state: "SAVED", revisionNumber: 2 },
+    });
+    expect(mocks.recordTutorClassNote).toHaveBeenCalledExactlyOnceWith({
+      executionId: finalizeExecutionId(),
+      body: "Here is some guidance.",
+    });
+    const finalizeOrder = Math.max(
+      ...mocks.attestTutorLabExecutionCommand.mock.invocationCallOrder,
+    );
+    const closeOrder =
+      mocks.closeTutorLabContentRelease.mock.invocationCallOrder[0];
+    expect(
+      mocks.recordTutorClassNote.mock.invocationCallOrder[0],
+    ).toBeGreaterThan(finalizeOrder);
+    expect(finalizeOrder).toBeGreaterThan(closeOrder);
+  });
+
+  it("never records a note unless the learner asked, and adds no classNote field", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    const result = await executeTutorLabSupport(request());
+    expect(result).toEqual({
+      status: "SUCCEEDED",
+      text: "Here is some guidance.",
+      role: "TUTOR",
+    });
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
+  });
+
+  it("is Tutor-only: a Lab Instructor answer is never kept, even when asked", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(labRelease());
+    mocks.getAgentConfigForEnrolment.mockResolvedValue({
+      enabled: true,
+      modelProfileRef: "LAB_INSTRUCTOR_COMMERCIAL_V1",
+      capabilities: ["get_lesson_context", "get_lesson_objectives"],
+      escalationPolicy: "NONE",
+    });
+    const result = await executeTutorLabSupport({
+      ...request(),
+      saveAsClassNote: true,
+    });
+    expect(result).toEqual({
+      status: "SUCCEEDED",
+      text: "Here is some guidance.",
+      role: "LAB_INSTRUCTOR",
+    });
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "an abstained execution",
+      { outcome: "ABSTAINED", reason: "POLICY_BLOCKED" },
+    ],
+    ["a failed execution", { outcome: "FAILED", reason: "PROVIDER_ERROR" }],
+    [
+      "an escalated execution",
+      { outcome: "ESCALATED", reviewPath: "ACADEMIC_REVIEW" },
+    ],
+    [
+      "a budget-blocked execution",
+      { outcome: "BUDGET_BLOCKED", stage: "POST_CALL" },
+    ],
+    ["a timed-out execution", { outcome: "TIMEOUT" }],
+  ])("records no note for %s", async (_label, outcome) => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.runGovernedProviderExecution.mockResolvedValue({
+      ...outcome,
+      usage: successfulResult().usage,
+    });
+    const result = await executeTutorLabSupport({
+      ...request(),
+      saveAsClassNote: true,
+    });
+    expect(result.status).not.toBe("SUCCEEDED");
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
+  });
+
+  it("records no note when FINALIZE is not confirmed, or when the release did not close", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.attestTutorLabExecutionCommand.mockImplementation(
+      async (
+        _r: string,
+        _i: string,
+        _rel: unknown,
+        command: { operation: string },
+      ) => {
+        if (command.operation === "FINALIZE") throw new Error("not confirmed");
+        return {
+          state: command.operation === "AUTHORIZE" ? "AUTHORIZED" : "RUNNING",
+        };
+      },
+    );
+    expect(
+      await executeTutorLabSupport({ ...request(), saveAsClassNote: true }),
+    ).toEqual({ status: "RETRY_LATER" });
+    mocks.attestTutorLabExecutionCommand.mockImplementation(
+      async (
+        _r: string,
+        _i: string,
+        _rel: unknown,
+        command: { operation: string; state?: string },
+      ) => ({
+        state:
+          command.operation === "AUTHORIZE"
+            ? "AUTHORIZED"
+            : command.operation === "START"
+              ? "RUNNING"
+              : command.state,
+      }),
+    );
+    mocks.closeTutorLabContentRelease.mockRejectedValue(new Error("aborted"));
+    expect(
+      await executeTutorLabSupport({ ...request(), saveAsClassNote: true }),
+    ).toEqual({ status: "UNAVAILABLE" });
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
+  });
+
+  it("an answer longer than the note bound is not kept, the learner is told, and nothing is sent", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    const long = "x".repeat(8001);
+    mocks.runGovernedProviderExecution.mockResolvedValue({
+      ...successfulResult(),
+      response: { ...successfulResult().response, outputText: long },
+    });
+    const result = await executeTutorLabSupport({
+      ...request(),
+      saveAsClassNote: true,
+    });
+    expect(result).toMatchObject({
+      status: "SUCCEEDED",
+      text: long,
+      classNote: { state: "NOT_SAVED", reason: "TOO_LONG" },
+    });
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["REVISION_LIMIT_REACHED", { state: "NOT_SAVED", reason: "LIMIT_REACHED" }],
+    ["ACTIVITY_BLOCKED", { state: "NOT_SAVED", reason: "ACTIVITY_BLOCKED" }],
+    ["PROVENANCE_MISMATCH", { state: "NOT_SAVED", reason: "UNAVAILABLE" }],
+    ["SOURCE_NOT_ELIGIBLE", { state: "NOT_SAVED", reason: "UNAVAILABLE" }],
+    ["SERVICE_UNAVAILABLE", { state: "NOT_SAVED", reason: "UNAVAILABLE" }],
+  ] as const)(
+    "a %s refusal never changes the confirmed answer and maps to a safe note outcome",
+    async (code, outcome) => {
+      const TutorClassNoteRefused = await importRefused();
+      mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+      mocks.recordTutorClassNote.mockRejectedValue(
+        new TutorClassNoteRefused(code),
+      );
+      const result = await executeTutorLabSupport({
+        ...request(),
+        saveAsClassNote: true,
+      });
+      expect(result).toEqual({
+        status: "SUCCEEDED",
+        text: "Here is some guidance.",
+        role: "TUTOR",
+        classNote: outcome,
+      });
+    },
+  );
+
+  it("an unexpected recorder exception is a safe UNAVAILABLE note outcome, never a raw throw", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.recordTutorClassNote.mockRejectedValue(
+      new Error("postgres://controller:s3cr3t@db.internal"),
+    );
+    const result = await executeTutorLabSupport({
+      ...request(),
+      saveAsClassNote: true,
+    });
+    expect(result).toMatchObject({
+      status: "SUCCEEDED",
+      classNote: { state: "NOT_SAVED", reason: "UNAVAILABLE" },
+    });
+    expect(JSON.stringify(result)).not.toMatch(/s3cr3t|postgres/);
+  });
+});
+
+describe("executeTutorLabSupport: AC-4 note choice in the reservation fingerprint", () => {
+  async function reservedHash(saveAsClassNote?: boolean) {
+    const rpc = reservationClient(false);
+    mocks.client.mockImplementation(async () => ({ rpc }));
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.recordTutorClassNote.mockResolvedValue({
+      revisionNumber: 1,
+      duplicate: false,
+    });
+    await executeTutorLabSupport(
+      saveAsClassNote === undefined
+        ? request("Explain least privilege")
+        : { ...request("Explain least privilege"), saveAsClassNote },
+    );
+    const call = (
+      rpc.mock.calls as unknown as [string, { p_request_hash: string }][]
+    ).find(([name]) => name === "reserve_tutor_lab_interaction");
+    return call![1].p_request_hash;
+  }
+  const historical = createHash("sha256")
+    .update(`${handoffId}\nExplain least privilege`, "utf8")
+    .digest("hex");
+
+  it("a no-note (omitted) request keeps the exact pre-AC-4 request hash", async () => {
+    expect(await reservedHash()).toBe(historical);
+  });
+  it("an explicit false is the same no-note request as omitted", async () => {
+    expect(await reservedHash(false)).toBe(historical);
+  });
+  it("saveAsClassNote=true is a different, domain-separated request hash", async () => {
+    const withNote = await reservedHash(true);
+    expect(withNote).not.toBe(historical);
+    expect(withNote).toBe(
+      createHash("sha256")
+        .update(
+          `AC4_SAVE_AS_CLASS_NOTE\n${handoffId}\nExplain least privilege`,
+          "utf8",
+        )
+        .digest("hex"),
+    );
+  });
+  it("a reservation conflict (same key, different note choice) fails closed with no release, provider call or note", async () => {
+    mocks.client.mockImplementation(async () => ({
+      rpc: reservationClient(false, false, "DUPLICATE_KEY_CONFLICT"),
+    }));
+    expect(
+      await executeTutorLabSupport({ ...request(), saveAsClassNote: true }),
+    ).toEqual({ status: "UNAVAILABLE" });
+    expect(mocks.beginTutorLabContentRelease).not.toHaveBeenCalled();
+    expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
+  });
+  it("a true duplicate stays a DUPLICATE with no second note", async () => {
+    mocks.client.mockImplementation(async () => ({
+      rpc: reservationClient(true),
+    }));
+    expect(
+      await executeTutorLabSupport({ ...request(), saveAsClassNote: true }),
+    ).toEqual({ status: "DUPLICATE" });
+    expect(mocks.recordTutorClassNote).not.toHaveBeenCalled();
   });
 });

@@ -358,7 +358,7 @@ Migrations 001–049 are unchanged. No live provider was called.
 
 **AC-3: Structured academic handoffs.** Professor, Tutor and Lab handoffs to the learner, Tutor, Lab and Sarah, with strict minimum-data projections.
 
-**AC-4: Tutor class notes.** Supplementary, versioned class notes with provenance and the protected-content firewall. They never overwrite published curriculum and are never stored in `learning_resources`.
+**AC-4: Tutor class notes.** Supplementary, versioned class notes with provenance and the protected-content firewall. They never overwrite published curriculum and are never stored in `learning_resources`. (Status: implemented and locally validated, awaiting independent review; see [AC-4](46-agent-behaviour-ac4.md).)
 
 **AC-5: Sarah production execution plane.** Onboarding, learner guide, confirmed profile proposals, learner-success context.
 

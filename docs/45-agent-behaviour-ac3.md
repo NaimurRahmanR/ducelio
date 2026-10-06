@@ -282,7 +282,7 @@ The dedicated AC-3 true PostgreSQL concurrency scenario then **passed** on the s
 
 ## 15. Next checkpoint
 
-AC-4: Tutor class notes (supplementary, versioned, provenance-bound and firewall-respecting; never overwriting published curriculum). Not started.
+AC-4: Tutor class notes (supplementary, versioned, provenance-bound and firewall-respecting; never overwriting published curriculum). Implemented and locally validated on `feat/ac4-tutor-class-notes`, uncommitted and awaiting independent review; migration 053 not deployed. See [AC-4](46-agent-behaviour-ac4.md).
 
 ## 16. Independent-review correction: destination behaviour gate
 

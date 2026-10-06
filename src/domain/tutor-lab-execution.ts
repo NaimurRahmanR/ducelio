@@ -95,10 +95,40 @@ export const tutorLabSupportRequestSchema = z.strictObject({
   handoffId: z.uuid(),
   message: learnerSupportMessageSchema,
   idempotencyKey: z.uuid(),
+  // AC-4: the learner's explicit, pre-request choice to keep a SUCCEEDED
+  // Tutor answer as a supplementary Tutor class note. Only a boolean: the
+  // note body is never browser-supplied, and it applies to the TUTOR role
+  // only (a Lab Instructor answer is never kept as a note).
+  saveAsClassNote: z.boolean().optional(),
 });
 export type TutorLabSupportRequest = z.infer<
   typeof tutorLabSupportRequestSchema
 >;
+
+// The material whose SHA-256 is the interaction reservation fingerprint
+// (migration 028's tutor_lab_interaction_reservations.request_hash). It
+// covers every request field with a durable effect: the handoff, the
+// message and, since AC-4, the learner's choice to keep a Tutor note. An
+// omitted or false choice keeps the pre-AC-4 material exactly
+// (handoffId + "\n" + message), so historical no-note reservations still
+// replay; true is domain-separated, so the same idempotency key can never
+// silently switch the note choice (it is a DUPLICATE_KEY_CONFLICT).
+// The separator is a PREFIX, not a suffix: the no-note material always
+// starts with the (schema-validated) handoff UUID, which can never begin
+// with this tag, whereas a suffix could be reproduced by a learner message
+// ending in the same text (messages may contain newlines).
+export const TUTOR_CLASS_NOTE_FINGERPRINT_PREFIX =
+  "AC4_SAVE_AS_CLASS_NOTE\n" as const;
+export function tutorLabInteractionFingerprintMaterial(
+  handoffId: string,
+  message: string,
+  saveAsClassNote: boolean,
+): string {
+  return (
+    (saveAsClassNote ? TUTOR_CLASS_NOTE_FINGERPRINT_PREFIX : "") +
+    `${handoffId}\n${message}`
+  );
+}
 
 export const tutorLabUsageReportSchema = z.strictObject({
   providerCalls: z.number().int().min(0).max(1),
