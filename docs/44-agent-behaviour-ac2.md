@@ -2,7 +2,7 @@
 
 AC-2 is the second checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md)). Branch `feat/agent-behaviour`, base `3099e7206a30149650ca401abcc13d0ea345fecf` (AC-1 merged through PR #54). Migration `202610050051_agent_behaviour.sql`.
 
-AC-2 is **not production-ready**. It is implemented and locally tested, and has passed independent review after the correction passes in sections 12–14. It is submitted as a pull request against `main` and is not merged. It does **not** implement Sarah, academic handoffs, Professor → Sarah weak-area delivery, teaching feedback, Tutor class notes, Lab session timing, or any use of an instructional estimate as mastery.
+AC-2 is **not production-ready**. It is implemented and locally tested, and has passed independent review after the correction passes in sections 12–14. It was merged to `main` through PR #55 (merge `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c`). Its successor is [AC-3](45-agent-behaviour-ac3.md). It does **not** implement Sarah, academic handoffs, Professor → Sarah weak-area delivery, teaching feedback, Tutor class notes, Lab session timing, or any use of an instructional estimate as mastery.
 
 ## 1. Architecture decision
 

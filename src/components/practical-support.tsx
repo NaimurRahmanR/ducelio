@@ -35,7 +35,7 @@ export const STATUS_MESSAGE: Partial<
 // actual destination is re-derived server-side from the handoff itself
 // (src/server/tutor-lab-execution). Calm product wording: never implies
 // "completed"/"passed"/"mastered"/"verified" from an AI conversation.
-function TutorLabSupportPanel({
+export function TutorLabSupportPanel({
   handoffId,
   lab,
 }: {

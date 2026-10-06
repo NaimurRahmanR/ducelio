@@ -52,8 +52,9 @@ export function isBehaviourRole(role: string): role is BehaviourRole {
 export const ROLE_BEHAVIOUR_VERSION: Readonly<Record<BehaviourRole, string>> =
   Object.freeze({
     PROFESSOR: "PROFESSOR_BEHAVIOUR_V1",
-    TUTOR: "TUTOR_BEHAVIOUR_V1",
-    LAB_INSTRUCTOR: "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+    // AC-3 (migration 052): new publications freeze V2 for Tutor and Lab.
+    TUTOR: "TUTOR_BEHAVIOUR_V2",
+    LAB_INSTRUCTOR: "LAB_INSTRUCTOR_BEHAVIOUR_V2",
   });
 
 type RoleBaseline = {
@@ -63,11 +64,13 @@ type RoleBaseline = {
   readonly rules: readonly string[];
 };
 
-export const ROLE_BEHAVIOUR_BASELINES: Readonly<
+// The AC-2 baselines. Their text is never edited: a version pinned by a
+// published programme keeps exactly this text.
+const ROLE_BEHAVIOUR_BASELINES_V1: Readonly<
   Record<BehaviourRole, RoleBaseline>
 > = Object.freeze({
   PROFESSOR: Object.freeze({
-    version: ROLE_BEHAVIOUR_VERSION.PROFESSOR,
+    version: "PROFESSOR_BEHAVIOUR_V1",
     title: "Professor",
     mission:
       "Teach the learner the published curriculum properly and help them understand it.",
@@ -82,7 +85,7 @@ export const ROLE_BEHAVIOUR_BASELINES: Readonly<
     ]),
   }),
   TUTOR: Object.freeze({
-    version: ROLE_BEHAVIOUR_VERSION.TUTOR,
+    version: "TUTOR_BEHAVIOUR_V1",
     title: "Tutor",
     mission:
       "Reinforce learning and help the learner understand theoretical and practical material outside protected assessments.",
@@ -96,7 +99,7 @@ export const ROLE_BEHAVIOUR_BASELINES: Readonly<
     ]),
   }),
   LAB_INSTRUCTOR: Object.freeze({
-    version: ROLE_BEHAVIOUR_VERSION.LAB_INSTRUCTOR,
+    version: "LAB_INSTRUCTOR_BEHAVIOUR_V1",
     title: "Lab Instructor",
     mission:
       "Help the learner become able to perform the practical task themselves.",
@@ -112,6 +115,43 @@ export const ROLE_BEHAVIOUR_BASELINES: Readonly<
   }),
 });
 
+// AC-3: the one rule V2 changes. V1 states that no governed Professor record
+// exists; V2 explains the minimum-data Professor academic handoff
+// (professorTeachingRecord) and its strict limits.
+const PROFESSOR_TEACHING_RECORD_RULE =
+  "professorTeachingRecord is Ducelio's only governed record of Professor teaching. When it is unavailable, do not claim to know what the Professor taught or said. When it is available, it states only that, after a Professor lesson, the learner asked for this follow-up on the named lesson and, where present, the named objective or practical. It is non-authoritative teaching continuity: it is not a transcript, not mastery, not evidence, not a grade, not completion and not proof that the learner understood anything. Never claim to know what the Professor explained, said or concluded beyond those fields.";
+
+const TUTOR_BEHAVIOUR_V2: RoleBaseline = Object.freeze({
+  version: "TUTOR_BEHAVIOUR_V2",
+  title: ROLE_BEHAVIOUR_BASELINES_V1.TUTOR.title,
+  mission: ROLE_BEHAVIOUR_BASELINES_V1.TUTOR.mission,
+  rules: Object.freeze(
+    ROLE_BEHAVIOUR_BASELINES_V1.TUTOR.rules.map((rule) =>
+      rule.startsWith("No governed record of what the Professor taught")
+        ? `${PROFESSOR_TEACHING_RECORD_RULE} Otherwise act as a curriculum-based support tutor.`
+        : rule,
+    ),
+  ),
+});
+const LAB_INSTRUCTOR_BEHAVIOUR_V2: RoleBaseline = Object.freeze({
+  version: "LAB_INSTRUCTOR_BEHAVIOUR_V2",
+  title: ROLE_BEHAVIOUR_BASELINES_V1.LAB_INSTRUCTOR.title,
+  mission: ROLE_BEHAVIOUR_BASELINES_V1.LAB_INSTRUCTOR.mission,
+  rules: Object.freeze([
+    ...ROLE_BEHAVIOUR_BASELINES_V1.LAB_INSTRUCTOR.rules,
+    PROFESSOR_TEACHING_RECORD_RULE,
+  ]),
+});
+
+// The CURRENT baseline per role (the version a new publication freezes).
+export const ROLE_BEHAVIOUR_BASELINES: Readonly<
+  Record<BehaviourRole, RoleBaseline>
+> = Object.freeze({
+  PROFESSOR: ROLE_BEHAVIOUR_BASELINES_V1.PROFESSOR,
+  TUTOR: TUTOR_BEHAVIOUR_V2,
+  LAB_INSTRUCTOR: LAB_INSTRUCTOR_BEHAVIOUR_V2,
+});
+
 // Every reviewed Level-2 role baseline, keyed by its version. A new role
 // baseline is ADDED here under a new version; an existing entry is never
 // edited, so a version pinned by a published programme keeps its text.
@@ -119,12 +159,25 @@ const ROLE_BEHAVIOUR_BASELINES_BY_VERSION: Readonly<
   Record<string, { role: BehaviourRole; baseline: RoleBaseline }>
 > = Object.freeze(
   Object.fromEntries(
-    BEHAVIOUR_ROLES.map((role) => [
-      ROLE_BEHAVIOUR_BASELINES[role].version,
-      { role, baseline: ROLE_BEHAVIOUR_BASELINES[role] },
-    ]),
+    [
+      ...BEHAVIOUR_ROLES.map((role) => ({
+        role,
+        baseline: ROLE_BEHAVIOUR_BASELINES_V1[role],
+      })),
+      { role: "TUTOR" as const, baseline: TUTOR_BEHAVIOUR_V2 },
+      {
+        role: "LAB_INSTRUCTOR" as const,
+        baseline: LAB_INSTRUCTOR_BEHAVIOUR_V2,
+      },
+    ].map((entry) => [entry.baseline.version, entry]),
   ),
 );
+
+// AC-3: only these pinned role versions are told what an AVAILABLE
+// professorTeachingRecord means. A Tutor/Lab version pinned to V1 is never
+// given one, so its instructions and its data cannot contradict.
+export const PROFESSOR_TEACHING_RECORD_AWARE_VERSIONS: ReadonlySet<string> =
+  new Set(["TUTOR_BEHAVIOUR_V2", "LAB_INSTRUCTOR_BEHAVIOUR_V2"]);
 
 // The reviewed baseline for a pinned version, or null when the version is
 // unknown to this code or belongs to another role (callers fail closed).

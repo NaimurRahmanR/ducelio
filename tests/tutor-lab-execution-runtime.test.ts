@@ -11,6 +11,13 @@ const mocks = vi.hoisted(() => ({
   getAgentConfigForEnrolment: vi.fn(),
   resolveAdapterForProfile: vi.fn(),
   runGovernedProviderExecution: vi.fn(),
+  getProfessorTeachingRecordForRelease: vi.fn(),
+}));
+// AC-3: the release-scoped Professor academic handoff read; its own
+// authority is tested in professor-academic-handoff-db.test.ts.
+vi.mock("@/server/professor-academic-handoff", () => ({
+  getProfessorTeachingRecordForRelease:
+    mocks.getProfessorTeachingRecordForRelease,
 }));
 // AC-2: the learner-scoped Level-3 behaviour read resolves to the
 // code-owned default here; its own authority is tested in
@@ -75,6 +82,7 @@ import { TutorLabContentReleaseDenied } from "@/server/tutor-lab-execution/relea
 import { TutorLabExecutionDenied } from "@/domain/tutor-lab-execution";
 import * as behaviourConfig from "@/server/agent-behaviour-config";
 import { defaultEffectiveBehaviour } from "@/domain/agent-behaviour";
+import { PROFESSOR_HANDOFF_SUMMARY } from "@/domain/professor-academic-handoff";
 import { providerInstructions } from "@/server/academic-runtime/provider";
 
 const handoffId = "40000000-0000-4000-8000-000000000009";
@@ -128,6 +136,7 @@ function reservationClient(duplicate: boolean, ok = true, code?: string) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.getProfessorTeachingRecordForRelease.mockResolvedValue(null);
   mocks.requireStudentPrincipal.mockResolvedValue({
     id: "student-1",
     displayName: "Student",
@@ -277,7 +286,7 @@ describe("executeTutorLabSupport: context construction per role", () => {
     );
     expect(requestArg.context).toMatchObject({
       role: "TUTOR",
-      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+      behaviourVersion: "TUTOR_BEHAVIOUR_V2",
       professorTeachingRecord: {
         available: false,
         reason: "NO_GOVERNED_PROFESSOR_TEACHING_RECORD",
@@ -298,8 +307,12 @@ describe("executeTutorLabSupport: context construction per role", () => {
     const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
     expect(requestArg.context).toMatchObject({
       role: "LAB_INSTRUCTOR",
-      behaviourVersion: "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+      behaviourVersion: "LAB_INSTRUCTOR_BEHAVIOUR_V2",
       sessionTiming: { available: false, remainingMinutes: null },
+      professorTeachingRecord: {
+        available: false,
+        reason: "NO_GOVERNED_PROFESSOR_TEACHING_RECORD",
+      },
     });
     const instructions = providerInstructions(requestArg);
     expect(instructions).toContain(
@@ -308,6 +321,69 @@ describe("executeTutorLabSupport: context construction per role", () => {
     expect(instructions).toMatch(
       /Never claim that a command, code or task ran/,
     );
+  });
+
+  it("AC-3: a V2 Tutor receives the governed Professor record for its own release, bounded and non-authoritative", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.getProfessorTeachingRecordForRelease.mockResolvedValue({
+      policy: "PROFESSOR_ACADEMIC_HANDOFF_V1",
+      sourceRole: "PROFESSOR",
+      destinationRole: "TUTOR",
+      reasonCode: "OBJECTIVE_REINFORCEMENT",
+      scope: "OBJECTIVE",
+      summary: PROFESSOR_HANDOFF_SUMMARY.OBJECTIVE_REINFORCEMENT,
+      recordedAt: "2026-10-06T09:30:00+00:00",
+    });
+    await executeTutorLabSupport(request("Help with this objective"));
+    expect(mocks.getProfessorTeachingRecordForRelease).toHaveBeenCalledWith(
+      tutorRelease().releaseId,
+    );
+    const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
+    expect(requestArg.context).toMatchObject({
+      professorTeachingRecord: {
+        available: true,
+        authority: "NON_AUTHORITATIVE_TEACHING_CONTINUITY",
+        sourceRole: "PROFESSOR",
+        reasonCode: "OBJECTIVE_REINFORCEMENT",
+        scope: "OBJECTIVE",
+      },
+    });
+    const instructions = providerInstructions(requestArg);
+    expect(instructions).toContain("TUTOR_BEHAVIOUR_V2");
+    expect(instructions).toMatch(/not a transcript, not mastery, not evidence/);
+  });
+
+  it("AC-3: a Tutor pinned to V1 is never given a Professor record, even if one exists", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    vi.mocked(
+      behaviourConfig.getAgentBehaviourForEnrolment,
+    ).mockResolvedValueOnce({
+      ...defaultEffectiveBehaviour("TUTOR"),
+      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+    });
+    await executeTutorLabSupport(request());
+    expect(mocks.getProfessorTeachingRecordForRelease).not.toHaveBeenCalled();
+    const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
+    expect(requestArg.context).toMatchObject({
+      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+      professorTeachingRecord: {
+        available: false,
+        reason: "NO_GOVERNED_PROFESSOR_TEACHING_RECORD",
+      },
+    });
+    expect(providerInstructions(requestArg)).toContain(
+      "No governed record of what the Professor taught is available to you",
+    );
+  });
+
+  it("AC-3: a refused Professor record read fails closed with no provider call", async () => {
+    mocks.beginTutorLabContentRelease.mockResolvedValue(tutorRelease());
+    mocks.getProfessorTeachingRecordForRelease.mockRejectedValue(
+      new Error("ACTIVITY_BLOCKED"),
+    );
+    const result = await executeTutorLabSupport(request());
+    expect(mocks.runGovernedProviderExecution).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "UNAVAILABLE" });
   });
 
   it("fails closed with no provider call when the programme behaviour cannot be resolved", async () => {
@@ -349,7 +425,7 @@ describe("executeTutorLabSupport: context construction per role", () => {
     const [, requestArg] = mocks.runGovernedProviderExecution.mock.calls[0];
     expect(requestArg.behaviour).toEqual(frozen);
     expect(requestArg.context).toMatchObject({
-      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+      behaviourVersion: "TUTOR_BEHAVIOUR_V2",
     });
     expect(providerInstructions(requestArg)).toContain(
       "Pitch explanations and questions at foundation level",

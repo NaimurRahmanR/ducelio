@@ -442,7 +442,8 @@ describe("Tutor/Lab governed provider execution (AUTHORIZE/START/FINALIZE)", () 
       student_id: learner,
       runtime_profile_ref: "TUTOR_COMMERCIAL_V1",
       institutional_baseline_version: "DUCELIO_INSTITUTIONAL_BASELINE_V1",
-      behaviour_version: "TUTOR_BEHAVIOUR_V1",
+      // AC-3: a version published after migration 052 freezes V2.
+      behaviour_version: "TUTOR_BEHAVIOUR_V2",
       behaviour_config_source: "DEFAULT",
       behaviour_config_version: "AGENT_BEHAVIOUR_DEFAULT_V1",
       professor_execution_id: null,

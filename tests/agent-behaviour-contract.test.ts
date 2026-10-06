@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -15,11 +16,13 @@ import {
   agentBehaviourConfigSchema,
   composeAgentInstructions,
   defaultEffectiveBehaviour,
+  PROFESSOR_TEACHING_RECORD_AWARE_VERSIONS,
   UnreviewedBehaviourVersion,
   isBehaviourRole,
   roleBaselineFor,
   type EffectiveAgentBehaviour,
 } from "@/domain/agent-behaviour";
+import { PROFESSOR_HANDOFF_SUMMARY } from "@/domain/professor-academic-handoff";
 
 // AC-2: the governed academic Agent Behaviour Contract. Levels 1 and 2 are
 // code-owned and versioned; level 3 is a small typed programme-version
@@ -79,8 +82,9 @@ describe("level 2: role behaviour baselines", () => {
     ]);
     expect(ROLE_BEHAVIOUR_VERSION).toEqual({
       PROFESSOR: "PROFESSOR_BEHAVIOUR_V1",
-      TUTOR: "TUTOR_BEHAVIOUR_V1",
-      LAB_INSTRUCTOR: "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+      // AC-3 (migration 052): new publications freeze V2 for Tutor and Lab.
+      TUTOR: "TUTOR_BEHAVIOUR_V2",
+      LAB_INSTRUCTOR: "LAB_INSTRUCTOR_BEHAVIOUR_V2",
     });
     expect(isBehaviourRole("EXAMINER")).toBe(false);
     expect(isBehaviourRole("COUNSELLOR")).toBe(false);
@@ -145,7 +149,7 @@ describe("level 3: structured programme behaviour configuration", () => {
 
   it("has a versioned, code-owned safe default reported as DEFAULT", () => {
     expect(defaultEffectiveBehaviour("TUTOR")).toEqual({
-      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+      behaviourVersion: "TUTOR_BEHAVIOUR_V2",
       source: "DEFAULT",
       configVersion: AGENT_BEHAVIOUR_DEFAULT_VERSION,
       config: {
@@ -307,5 +311,78 @@ describe("institutional baseline mirror", () => {
     expect(migration).toContain(
       `check(institutional_baseline_version in ('${INSTITUTIONAL_BASELINE_VERSION}'))`,
     );
+  });
+});
+
+describe("AC-3 role behaviour versions", () => {
+  const sha = (value: unknown) =>
+    createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+  it("keeps every V1 baseline byte-identical to the merged AC-2 text (pinned versions never drift)", () => {
+    // Hashes taken from the AC-2 merge (7a7d5b8) and cross-checked against
+    // that commit's own src/domain/agent-behaviour.ts.
+    expect(sha(roleBaselineFor("TUTOR", "TUTOR_BEHAVIOUR_V1"))).toBe(
+      "3bdd2370c7896eaccb7ab9795606c01b7196d1fd4cac08e45b1c01222cc290c7",
+    );
+    expect(
+      sha(roleBaselineFor("LAB_INSTRUCTOR", "LAB_INSTRUCTOR_BEHAVIOUR_V1")),
+    ).toBe("1e75c8a3826d720d91a84127fd429df744324e3738d96e9609a032e4a84b8bf4");
+    expect(sha(roleBaselineFor("PROFESSOR", "PROFESSOR_BEHAVIOUR_V1"))).toBe(
+      "4d63560e200c3c51fe8b5b9968a78f342cc74f620b43191c0f593d7ca6e12967",
+    );
+  });
+
+  it("V2 differs from V1 only by the governed Professor-record rule, which states its limits", () => {
+    const tutorV1 = roleBaselineFor("TUTOR", "TUTOR_BEHAVIOUR_V1")!;
+    const tutorV2 = roleBaselineFor("TUTOR", "TUTOR_BEHAVIOUR_V2")!;
+    expect(tutorV2.mission).toBe(tutorV1.mission);
+    const changed = tutorV2.rules.filter((r) => !tutorV1.rules.includes(r));
+    expect(changed).toHaveLength(1);
+    expect(tutorV2.rules).toHaveLength(tutorV1.rules.length);
+    const labV1 = roleBaselineFor(
+      "LAB_INSTRUCTOR",
+      "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+    )!;
+    const labV2 = roleBaselineFor(
+      "LAB_INSTRUCTOR",
+      "LAB_INSTRUCTOR_BEHAVIOUR_V2",
+    )!;
+    expect(labV2.rules.slice(0, labV1.rules.length)).toEqual(labV1.rules);
+    expect(labV2.rules).toHaveLength(labV1.rules.length + 1);
+    for (const rule of [changed[0], labV2.rules.at(-1)!]) {
+      expect(rule).toMatch(/professorTeachingRecord/);
+      expect(rule).toMatch(
+        /not a transcript, not mastery, not evidence, not a grade, not completion/,
+      );
+      expect(rule).toMatch(/Never claim to know what the Professor explained/);
+    }
+    expect(PROFESSOR_TEACHING_RECORD_AWARE_VERSIONS).toEqual(
+      new Set(["TUTOR_BEHAVIOUR_V2", "LAB_INSTRUCTOR_BEHAVIOUR_V2"]),
+    );
+    expect(roleBaselineFor("TUTOR", "LAB_INSTRUCTOR_BEHAVIOUR_V2")).toBeNull();
+  });
+
+  it("the database mirrors (migration 052) name the code's current and recognised versions", () => {
+    const migration = readFileSync(
+      resolve(
+        "supabase/migrations/202610050052_professor_academic_handoffs.sql",
+      ),
+      "utf8",
+    );
+    for (const role of BEHAVIOUR_ROLES)
+      expect(migration).toContain(
+        `when '${role}' then '${ROLE_BEHAVIOUR_VERSION[role]}'`,
+      );
+    for (const version of [
+      "TUTOR_BEHAVIOUR_V1",
+      "TUTOR_BEHAVIOUR_V2",
+      "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+      "LAB_INSTRUCTOR_BEHAVIOUR_V2",
+    ])
+      expect(migration).toContain(`'${version}')`);
+    for (const reason of ["OBJECTIVE_REINFORCEMENT", "PRACTICAL_HELP"] as const)
+      expect(migration).toContain(
+        `when '${reason}' then '${PROFESSOR_HANDOFF_SUMMARY[reason]}'`,
+      );
   });
 });

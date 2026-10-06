@@ -1,6 +1,7 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { ROLE_BEHAVIOUR_VERSION } from "@/domain/agent-behaviour";
 import {
   afterAll,
   afterEach,
@@ -806,7 +807,7 @@ describe("level-3 behaviour configuration authority", () => {
       ok: true,
       source: "EXPLICIT",
       configVersion: "AGENT_BEHAVIOUR_CONFIG_V1",
-      behaviourVersion: "TUTOR_BEHAVIOUR_V1",
+      behaviourVersion: ROLE_BEHAVIOUR_VERSION.TUTOR,
       config: {
         responseDepth: "DETAILED",
         teachingApproach: "WORKED_EXAMPLE_FIRST",
@@ -1444,7 +1445,7 @@ describe("publication-time behaviour bindings", () => {
     expect(await bindings(version)).toEqual([
       {
         role: "LAB_INSTRUCTOR",
-        behaviour_version: "LAB_INSTRUCTOR_BEHAVIOUR_V1",
+        behaviour_version: ROLE_BEHAVIOUR_VERSION.LAB_INSTRUCTOR,
         config_source: "DEFAULT",
         config_version: "AGENT_BEHAVIOUR_DEFAULT_V1",
         config_id: null,
@@ -1468,7 +1469,7 @@ describe("publication-time behaviour bindings", () => {
       },
       {
         role: "TUTOR",
-        behaviour_version: "TUTOR_BEHAVIOUR_V1",
+        behaviour_version: ROLE_BEHAVIOUR_VERSION.TUTOR,
         config_source: "DEFAULT",
         config_version: "AGENT_BEHAVIOUR_DEFAULT_V1",
         config_id: null,
@@ -1720,7 +1721,8 @@ describe("publication-time behaviour bindings", () => {
     expect(after).toHaveLength(3);
     for (const b of after)
       expect(b).toMatchObject({
-        behaviour_version: `${b.role}_BEHAVIOUR_V1`,
+        behaviour_version:
+          ROLE_BEHAVIOUR_VERSION[b.role as keyof typeof ROLE_BEHAVIOUR_VERSION],
         config_source: "DEFAULT",
         config_version: "AGENT_BEHAVIOUR_DEFAULT_V1",
         ...v1Values,
@@ -1765,7 +1767,7 @@ describe("publication-time behaviour bindings", () => {
       );
     expect(await material(a)).toContain('"responseDepth": "STANDARD"');
     expect(await material(a)).toContain(
-      '"behaviourVersion": "TUTOR_BEHAVIOUR_V1"',
+      `"behaviourVersion": "${ROLE_BEHAVIOUR_VERSION.TUTOR}"`,
     );
     expect(await fingerprint(a)).not.toBe(await fingerprint(b));
   });
@@ -1963,7 +1965,7 @@ describe("enrolment verifies frozen behaviour and never repairs it", () => {
     }
   });
 
-  it("G: after a simulated later default / V2 deployment, enrolment leaves an old V1 binding completely unchanged", async () => {
+  it("G: after a simulated later default and role-version deployment, enrolment leaves an old binding completely unchanged", async () => {
     const { version, cohortId } = await publishedVersion("AC-2 verify G");
     const before = await rows(version);
     const fp = await fingerprint(version);
@@ -1984,15 +1986,18 @@ describe("enrolment verifies frozen behaviour and never repairs it", () => {
       language sql immutable set search_path='' as $f$ select 'AGENT_BEHAVIOUR_DEFAULT_V2'::text $f$;
       create or replace function agent_behaviour_private.role_behaviour_version(p_role text) returns text
       language sql immutable set search_path='' as $f$
-        select case p_role when 'PROFESSOR' then 'PROFESSOR_BEHAVIOUR_V2'
-          when 'TUTOR' then 'TUTOR_BEHAVIOUR_V2' when 'LAB_INSTRUCTOR' then 'LAB_INSTRUCTOR_BEHAVIOUR_V2' end $f$;
+        select case p_role when 'PROFESSOR' then 'PROFESSOR_BEHAVIOUR_V3'
+          when 'TUTOR' then 'TUTOR_BEHAVIOUR_V3' when 'LAB_INSTRUCTOR' then 'LAB_INSTRUCTOR_BEHAVIOUR_V3' end $f$;
     `);
     await f.db.query(enrolSql, [foreignLearner, cohortId, version]);
     const after = await rows(version);
     expect(after).toEqual(before);
     for (const b of after)
       expect(b).toMatchObject({
-        behaviour_version: `${String(b.role)}_BEHAVIOUR_V1`,
+        behaviour_version:
+          ROLE_BEHAVIOUR_VERSION[
+            String(b.role) as keyof typeof ROLE_BEHAVIOUR_VERSION
+          ],
         config_version: "AGENT_BEHAVIOUR_DEFAULT_V1",
         response_depth: "STANDARD",
         bound_event: "PUBLICATION",

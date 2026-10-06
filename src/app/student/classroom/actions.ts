@@ -1,4 +1,5 @@
 "use server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
   learnerMessageSchema,
@@ -11,6 +12,11 @@ import {
   recordProfessorClassroomInteraction,
 } from "@/server/professor-classroom";
 import { executeRoleCapability } from "@/server/academic-runtime";
+import {
+  ProfessorHandoffRefused,
+  requestProfessorAcademicHandoff,
+} from "@/server/professor-academic-handoff";
+import { PROFESSOR_FOLLOW_UP_UNSUPPORTED } from "@/domain/professor-academic-handoff";
 
 export type ClassroomActionState = {
   status?:
@@ -142,4 +148,57 @@ export async function askProfessorAction(
     { kind: "LEARNER_QUESTION", learnerMessage: parsed.data.message },
     parsed.data.idempotencyKey,
   );
+}
+
+export type ProfessorFollowUpActionState = {
+  status?: "REQUESTED" | "ALREADY_REQUESTED";
+  error?: string;
+};
+
+const FOLLOW_UP_ERRORS: Partial<Record<string, string>> = {
+  ACTIVITY_BLOCKED:
+    "Follow-ups are not available while a controlled assessment is active.",
+  NO_SOURCE_EXECUTION:
+    "Ask the Professor something in this class first. A follow-up needs a completed Professor answer in this classroom.",
+  LIMIT_EXCEEDED: "This classroom has reached its follow-up limit.",
+  OBJECTIVE_SCOPE_UNPROVEN:
+    "A follow-up cannot be requested for this lesson's objectives.",
+  DESTINATION_BEHAVIOUR_UNSUPPORTED: PROFESSOR_FOLLOW_UP_UNSUPPORTED,
+};
+
+// AC-3: the learner asks for a Tutor or Lab Instructor follow-up after a
+// Professor lesson. The form carries only the class session, one of two
+// reviewed reason codes and the objective or practical chosen from this
+// lesson; the database derives everything else (and verifies the source
+// Professor execution) from the authenticated learner's own classroom.
+export async function requestProfessorFollowUpAction(
+  _previous: ProfessorFollowUpActionState,
+  form: FormData,
+): Promise<ProfessorFollowUpActionState> {
+  const reasonCode = form.get("reasonCode");
+  const request =
+    reasonCode === "OBJECTIVE_REINFORCEMENT"
+      ? {
+          classSessionId: form.get("classSessionId"),
+          reasonCode,
+          objectiveId: form.get("objectiveId"),
+        }
+      : {
+          classSessionId: form.get("classSessionId"),
+          reasonCode,
+          practicalId: form.get("practicalId"),
+        };
+  try {
+    const result = await requestProfessorAcademicHandoff(request);
+    const parsed = z.uuid().safeParse(request.classSessionId);
+    if (parsed.success) revalidatePath(`/student/classroom/${parsed.data}`);
+    return { status: result.duplicate ? "ALREADY_REQUESTED" : "REQUESTED" };
+  } catch (error) {
+    return {
+      error:
+        (error instanceof ProfessorHandoffRefused &&
+          FOLLOW_UP_ERRORS[error.code]) ||
+        "This follow-up could not be requested.",
+    };
+  }
 }

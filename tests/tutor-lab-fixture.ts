@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   executionFixture,
   asExecutionUser,
@@ -39,7 +41,28 @@ async function value<T = string>(
 // afresh into it, then creates one handoff per reviewed reason code as that
 // learner -- exactly the shape migration 028's Tutor/Lab tests need. Reuses
 // executionFixture()'s existing controller-key installation for HMAC tests.
-export async function tutorLabFixture(): Promise<TutorLabFixture> {
+// AC-3: migration 051's own role_behaviour_version definition (Tutor and Lab
+// Instructor V1), read from the migration file itself, so a fixture can be
+// published exactly as a programme version published before migration 052.
+function migration051RoleBehaviourVersion(): string {
+  const migration = readFileSync(
+    resolve("supabase/migrations/202610050051_agent_behaviour.sql"),
+    "utf8",
+  );
+  const start = migration.indexOf(
+    "create function agent_behaviour_private.role_behaviour_version",
+  );
+  const end = migration.indexOf("$$;", start) + 3;
+  if (start < 0 || end < 3)
+    throw new Error("051 role version mirror not found");
+  return migration
+    .slice(start, end)
+    .replace("create function", "create or replace function");
+}
+
+export async function tutorLabFixture(
+  options: { publishBeforeMigration052?: boolean } = {},
+): Promise<TutorLabFixture> {
   const base = await executionFixture();
   const { db } = base;
   const pkg = buildPackage();
@@ -144,10 +167,25 @@ export async function tutorLabFixture(): Promise<TutorLabFixture> {
     throw new Error(
       `Tutor/Lab fixture pre-publication test did not pass: ${testRun}`,
     );
+  let restore: string | null = null;
+  if (options.publishBeforeMigration052) {
+    await db.exec("reset role");
+    restore = (
+      await db.query<{ v: string }>(
+        "select pg_get_functiondef('agent_behaviour_private.role_behaviour_version(text)'::regprocedure) as v",
+      )
+    ).rows[0].v;
+    await db.exec(migration051RoleBehaviourVersion());
+    await asExecutionUser(db, 2);
+  }
   await db.query("select public.publish_course_package($1,$2)", [
     importId,
     "Publish tutor/lab fixture",
   ]);
+  if (restore) {
+    await db.exec("reset role");
+    await db.exec(restore);
+  }
   await db.exec("reset role");
   const cohortId = randomUUID();
   await db.query(
