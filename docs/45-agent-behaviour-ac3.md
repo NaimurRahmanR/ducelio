@@ -189,7 +189,7 @@ PGlite is single-connection: the tests prove **sequential** replay idempotency o
   - `SET LOCAL ROLE authenticated`;
   - verify `current_user = 'authenticated'` and that `current_app_user()` equals the learner's `app_users` id, resolved from their real hosted Supabase Auth identity (never hardcoded).
 
-  The RPC therefore runs under `authenticated`'s own grants and its SECURITY DEFINER boundary. If the acceptance database role is not a member of `authenticated`, the role switch is refused, or the identity does not resolve, the scenario is BLOCKED.
+  The RPC therefore runs under `authenticated`'s own grants and its SECURITY DEFINER boundary. If the acceptance connection lacks permission to `SET ROLE authenticated` (`pg_has_role(..., 'SET')`), the actual role switch is refused, or the identity does not resolve, the scenario is BLOCKED.
 
   This proves two independent hosted PostgreSQL sessions acting under the database's `authenticated`-role semantics for the real acceptance learner subject, calling the real governed RPC, and real PostgreSQL locking and idempotency. It does **not** prove Supabase JWT signature or expiry validation, or PostgREST token enforcement; that remains separate acceptance evidence (JWT_POSTGREST, currently BLOCKED).
 

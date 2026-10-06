@@ -32,7 +32,7 @@ const fixture = {
 
 type Options = {
   pids?: [number, number];
-  member?: boolean;
+  canSet?: boolean;
   firewall?: boolean | "error";
   setRoleFails?: boolean;
   appUser?: string;
@@ -58,8 +58,18 @@ function fakeDatabase(options: Options = {}) {
       const kind = sql.trim().split(/\s+/).slice(0, 3).join(" ");
       if (sql.includes("pg_backend_pid()")) {
         log.push(`${index}:probe`);
+        // Answers only the SET-privilege probe (PostgreSQL 16+ distinguishes
+        // SET from MEMBER); any other probe yields no can_set and fails closed.
+        const asksSet = sql.includes(
+          "pg_has_role(current_user, 'authenticated', 'SET') as can_set",
+        );
         return {
-          rows: [{ pid: pids[index], member: options.member ?? true }],
+          rows: [
+            {
+              pid: pids[index],
+              ...(asksSet ? { can_set: options.canSet ?? true } : {}),
+            },
+          ],
         };
       }
       if (sql.includes("academic_content_release_explain_allowed")) {
@@ -431,9 +441,9 @@ describe("AC3_PROFESSOR_HANDOFF_DUPLICATE: fails closed", () => {
 
   it.each([
     [
-      "the database role is not a member of authenticated",
-      { member: false },
-      /not a member of `authenticated`/,
+      "the connection lacks SET permission for authenticated (pg_has_role SET = false)",
+      { canSet: false },
+      /does not have permission to SET ROLE authenticated/,
     ],
     [
       "SET LOCAL ROLE authenticated is refused",

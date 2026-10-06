@@ -33,8 +33,9 @@
 //   3. verifies current_user = 'authenticated' and current_app_user() equals
 //      the acceptance learner's app_users id resolved from their real
 //      hosted Supabase Auth identity (never hardcoded).
-// If the acceptance database role is not a member of `authenticated`, the
-// role switch is refused, or the identity does not resolve to that learner,
+// If the acceptance connection lacks permission to SET ROLE authenticated
+// (pg_has_role(..., 'SET'), PostgreSQL 16+), the actual role switch is
+// refused, or the identity does not resolve to that learner,
 // the scenario is BLOCKED with the precise reason, never run with a
 // privileged direct call instead.
 // SCOPE OF THIS EVIDENCE: setting the request-JWT GUCs and SET LOCAL ROLE
@@ -129,11 +130,11 @@ export async function prepareAuthenticatedLearner(
   { learnerAuthUserId, studentId },
 ) {
   const { rows: probe } = await client.query(
-    "select pg_backend_pid() as pid, pg_has_role(current_user, 'authenticated', 'MEMBER') as member",
+    "select pg_backend_pid() as pid, pg_has_role(current_user, 'authenticated', 'SET') as can_set",
   );
-  if (probe[0]?.member !== true)
+  if (probe[0]?.can_set !== true)
     throw new Ac3ContextUnavailable(
-      "The acceptance database role is not a member of `authenticated`, so it cannot SET ROLE authenticated to call the RPC as the learner. Refusing to substitute a privileged direct call.",
+      "The acceptance database connection does not have permission to SET ROLE authenticated, so it cannot call the RPC as the learner. Refusing to substitute a privileged direct call.",
     );
   await client.query("begin");
   try {
