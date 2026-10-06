@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   pathname: "/student/sarah",
   mode: "ACTIVE_COURSE" as string | null,
   proposals: null as unknown,
+  feedback: { status: "OK", opportunities: [] } as unknown,
 }));
 vi.mock("react", async () => {
   const actual = await vi.importActual<typeof import("react")>("react");
@@ -56,6 +57,13 @@ vi.mock("@/server/identity", () => ({
 vi.mock("@/server/sarah", () => ({
   getMySarahMode: async () => mocks.mode,
   listMySarahProposals: async () => mocks.proposals,
+}));
+// AC-6: the page also lists deterministic session-feedback prompts.
+vi.mock("@/server/session-feedback", () => ({
+  listMySessionFeedbackOpportunities: async () => mocks.feedback,
+}));
+vi.mock("@/app/student/sarah/feedback-actions", () => ({
+  submitSessionFeedbackAction: vi.fn(),
 }));
 
 import {
@@ -124,6 +132,7 @@ beforeEach(() => {
   mocks.pathname = "/student/sarah";
   mocks.mode = "ACTIVE_COURSE";
   mocks.proposals = { status: "OK", current, proposals: [] };
+  mocks.feedback = { status: "OK", opportunities: [] };
 });
 
 describe("Sarah ask panel", () => {
@@ -276,9 +285,12 @@ describe("Sarah page", () => {
     expect(plain).toContain("not a therapist or a crisis service");
     expect(plain).toContain("You are on a course.");
     expect(plain).not.toMatch(FORBIDDEN_CLAIMS);
-    expect(plain).not.toMatch(
-      /feedback|recommend|next course|re-?enrol|pricing/i,
-    );
+    expect(plain).not.toMatch(/recommend|next course|re-?enrol|pricing/i);
+    // AC-6: feedback appears only in the deterministic session-feedback
+    // card, never in Sarah's AI guide or proposals.
+    const feedbackCard = plain.indexOf("How did that session go?");
+    expect(feedbackCard).toBeGreaterThan(plain.indexOf("Ask Sarah"));
+    expect(plain.slice(0, feedbackCard)).not.toMatch(/feedback/i);
   });
 
   it("degrades safely when proposals cannot be loaded", async () => {

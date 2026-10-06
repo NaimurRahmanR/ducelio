@@ -2,7 +2,7 @@
 
 Branch `feat/agent-model-control`, base `d6bf283cf30915aa8eea3248d5a1ec7d1267517d` (`main` after PR #53). Migration `202610050050_agent_configuration_governance.sql` follows unchanged migrations 001–049.
 
-**Status:** implemented and locally validated, uncommitted, awaiting independent review. Hosted acceptance has not run. This checkpoint makes no production-readiness claim and marks no role production-proven.
+**Status:** independently reviewed and merged through PR #54 (merge `3099e72`). The status at review time was "implemented and locally validated, uncommitted". Hosted acceptance has not run. This checkpoint makes no production-readiness claim and marks no role production-proven.
 
 AC-1 is the first checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream. It is **foundation work only**: Agent / Model and Behaviour work is **not complete** after it. The approved following checkpoints, AC-2 to AC-7, are recorded at the end of this document. They are not dropped and none of them is implemented here.
 
@@ -360,9 +360,9 @@ Migrations 001–049 are unchanged. No live provider was called.
 
 **AC-4: Tutor class notes.** Supplementary, versioned class notes with provenance and the protected-content firewall. They never overwrite published curriculum and are never stored in `learning_resources`. (Status: independently reviewed and merged through PR #58, merge `6845a59`; migration 053 not yet deployed to hosted acceptance; see [AC-4](46-agent-behaviour-ac4.md).)
 
-**AC-5: Sarah production execution plane.** Onboarding, learner guide, confirmed profile proposals, learner-success context. (Status: implemented and locally validated, uncommitted, awaiting independent review; migration 054 not deployed; see [AC-5](47-agent-behaviour-ac5-sarah.md). Sarah Mitchell is the AI persona of the platform COUNSELLOR role.)
+**AC-5: Sarah production execution plane.** Onboarding, learner guide, confirmed profile proposals, learner-success context. (Status: independently reviewed and merged through PR #59, merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41` on `main`; migration 054 is **not** yet deployed to hosted acceptance; see [AC-5](47-agent-behaviour-ac5-sarah.md). Sarah Mitchell is the AI persona of the platform COUNSELLOR role.)
 
-**AC-6: Sarah post-session feedback.** Feedback collection and an admin teaching-quality surface.
+**AC-6: Sarah post-session feedback.** Feedback collection and an admin teaching-quality surface. (Status: implemented and locally validated on `feat/ac6-sarah-session-feedback`, uncommitted, awaiting independent review; migration 055 not deployed; see [AC-6](48-agent-behaviour-ac6-sarah-feedback.md). The feedback is three deterministic 1–5 ratings collected under Sarah's persona with **no model call**, and admins see only threshold-protected aggregates.)
 
 **AC-7: Sarah course guidance.** Commercial recommendation with a hard data firewall between learner-support context and commercial context.
 

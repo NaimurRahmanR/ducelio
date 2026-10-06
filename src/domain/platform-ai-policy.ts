@@ -93,7 +93,9 @@ export const SARAH_AC5_EXECUTABLE_CAPABILITIES: Readonly<
 });
 
 // Deferred, never executable in AC-5: AC-6 (post-session feedback) has no
-// capability in the catalogue at all; these AC-7 entries stay vocabulary.
+// capability in the catalogue at all, because it is deterministic data with
+// no model call (src/domain/session-feedback.ts); these AC-7 entries stay
+// vocabulary.
 export const SARAH_AC7_DEFERRED_CAPABILITIES = Object.freeze([
   "read_public_course_catalogue",
   "explain_course_prerequisites",

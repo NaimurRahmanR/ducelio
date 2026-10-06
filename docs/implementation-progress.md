@@ -2,9 +2,90 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-4, Governed Tutor Class Notes (migration 053), independently reviewed twice, CI green and merged through PR #58 (merge `6845a59a8f6f951d55162e0f834d912b4743cfa9` on `main`). Migration 053 is **not** yet deployed to hosted acceptance; its hosted and concurrency work is tracked separately and does not block AC-5. See [AC-4 design and evidence](46-agent-behaviour-ac4.md).
+LAST COMPLETED CHECKPOINT: AC-5, Sarah Mitchell production execution plane (migration 054), independently reviewed and merged through PR #59 (merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41` on `main`). Migration 054 is **not** yet deployed to hosted acceptance; this does not block local AC-6 work. See [AC-5 design and evidence](47-agent-behaviour-ac5-sarah.md).
 
-CURRENT CHECKPOINT (partial): AC-5, Sarah Mitchell production execution plane, on `feat/ac5-sarah-foundation-runtime` from base `6845a59a8f6f951d55162e0f834d912b4743cfa9`. Migration `202610060054_sarah_learner_guide.sql` (additive; 001–053 unchanged). **Implemented and locally validated, uncommitted. The first independent review's five blockers and four corrections are applied and were accepted on re-review. The re-review's final execution-audit-source blocker is applied ([AC-5 section 20](47-agent-behaviour-ac5-sarah.md)), and the patch awaits final review. Migration 054 is not deployed. No hosted or live-provider AC-5 evidence exists. Not production-ready.** See [AC-5 design and evidence](47-agent-behaviour-ac5-sarah.md).
+CURRENT CHECKPOINT (partial): AC-6, Sarah post-session feedback and the admin teaching-quality surface, on `feat/ac6-sarah-session-feedback` from base `f6ab664d1a42706f34fa5db9ba8826cb483a0b41`. Migration `202610060055_sarah_session_feedback.sql` (additive; 001–054 unchanged). **Implemented and locally validated, uncommitted, awaiting independent review. Migration 055 is not deployed. No hosted AC-6 evidence exists. Not production-ready.** See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
+
+COMPLETED ITEMS (AC-6, local):
+
+- Architecture: Sarah Mitchell is the learner-facing persona. The feedback is deterministic, structured institutional data with **no model, provider, `COUNSELLOR_PLATFORM_V1` or AC-5 execution call**. The AC-5 runtime, behaviour instructions and profile fingerprint are unchanged.
+- Eligibility, owned by `submit_my_session_feedback`: the caller is an authenticated STUDENT, and the session is an existing `class_sessions` row with all of the following:
+  - the caller's own ACTIVE, PAUSED or COMPLETED enrolment is in its cohort and programme version;
+  - it is not CANCELLED;
+  - `scheduled_end <= clock_timestamp()`;
+  - the caller's attendance for it is exactly PRESENT.
+
+  A session still SCHEDULED after its end is eligible. The browser supplies only the session handle, a request UUID and three ratings.
+
+- Fields: `clarity_rating`, `pace_rating` and `usefulness_rating` (integers 1–5, higher is better), plus id, session, learner (database-derived), request id, policy version and `submitted_at`. There is no free text.
+- Persistence and idempotency:
+  - `unique(student_id, class_session_id)` and `unique(student_id, request_id)`;
+  - an immutable row (UPDATE and DELETE refused, even for the owner) and an eligibility backstop on insert;
+  - same UUID and same submission gives `REPLAYED`; a changed submission gives `REQUEST_CONFLICT`; a new UUID gives `ALREADY_SUBMITTED`.
+- Learner UI:
+  - `/student/sarah` always shows the "How did that session go?" card;
+  - `/student/classes` shows it with the Sarah identity when a session is listed;
+  - three required 1–5 radio groups and no text field;
+  - truthful outcome copy;
+  - server-generated request UUIDs and a fixed UTC time format, so hydration is stable;
+  - a bounded opportunity list (10 most recent eligible, unrated sessions).
+- Admin teaching quality (`/admin?section=Sessions`):
+  - ACADEMIC_ADMIN and PLATFORM_ADMIN only, checked by explicit role, not `is_academic_admin()`, which admits REGISTRAR;
+  - filters for instructor, cohort and date window, 50 per page;
+  - per-session present count, response count and three averages;
+  - averages only from 3 responses ("Insufficient responses for scores" below that);
+  - the summary averages only threshold-meeting sessions, so no differencing;
+  - cancelled sessions excluded; no learner identity, individual rating or submission time.
+- Audit: one `SESSION_FEEDBACK_SUBMITTED` row with a **NULL actor** and `{feedback_id, class_session_id, action, submitted_at}` only. No ratings and no learner.
+- ACL: RLS on, with every table and column privilege revoked, including `service_role`. The private schema is closed. Three `authenticated`-only RPCs, and migration-time effective-privilege self-verification.
+- Concurrency: learner `student_profiles` FOR UPDATE, then enrolment FOR SHARE, then session FOR SHARE, then attendance FOR SHARE. The unique index is the final backstop.
+- Truth-sync:
+  - `PLATFORM_ROLE_FACTS.COUNSELLOR` and `/admin/agents`: AC-6 is deterministic and not on the Sarah plane;
+  - comments in `sarah.ts` and `platform-ai-policy.ts`;
+  - docs 43 (stale AC-1 and AC-5 status corrected, AC-6 status), 47 (merged status) and the new 48.
+- Tests:
+  - new: `session-feedback-db` 27 (real migration chain), `session-feedback` 19 (domain, server, Server Action, no provider), `session-feedback-ui` 13;
+  - updated: `sarah` (054 is now followed only by 055) and `sarah-ui` (the feedback server is mocked, and "no feedback" now applies outside the deterministic card; the forbidden-claims list is unchanged).
+- Mutation checks (temporary edits, each restored byte-identically and verified by SHA-256): **19 safeguards, all killed**.
+  - Killed on the first run (17), each by the DB suite unless noted:
+    - RPC: the PRESENT check, the ended check, the cancelled check, the withdrawn-enrolment check, the STUDENT role check, the learner `FOR UPDATE` lock, and replay rating comparison;
+    - guard: UPDATE immutability;
+    - admin: explicit roles replaced by `is_academic_admin()`, row threshold 3→2 (2 failures), summary over all sessions, and cancelled exclusion;
+    - audit: the NULL actor;
+    - opportunities: the PRESENT filter and the bound 10→20;
+    - TypeScript (server suite, 2 failures each): the row privacy refine and the strict submission schema.
+  - Killed after a test fix (1): the `ALREADY_SUBMITTED` pre-check first **survived**, because the unique-index backstop returns the same code. A test now pins that a session cancelled after rating still answers `ALREADY_SUBMITTED` (and `REPLAYED` for the original key), and the re-run mutation is killed.
+  - Killed (1): a smuggled dynamic runtime-profile call in submission, caught by the no-provider spy.
+
+AC-6 local gates (Node 24.19.0, Windows):
+
+- Focused AC-6 suites: 3 files, 59/59 (plus `sarah` and `sarah-ui` updated and passing).
+- `npm run check`, exactly as defined: lint and type check passed; **4,122/4,122 across 168 files, exit 0**. The first run stopped at type check on a test-helper parameter type (`submit(null, …)`); that was fixed before this run.
+- `npm run build`:
+  - with `.env.local` as-is: exit 1 at the known `/admin` prerender "Configured production authentication requires an HTTPS APP_URL";
+  - with the process-level `APP_URL=https://ducelio.invalid` override (`.env.local` untouched): exit 0. `/admin`, `/student/[section]` and `/student/sarah` compile as dynamic routes.
+- `npm run format:check`: only the six unchanged CRLF-checkout files.
+- `git diff --check HEAD`: clean. Untracked files have no CR or trailing whitespace.
+- `npm audit --omit=dev`: the same 2 pre-existing highs (`sharp`, `source-map-js`). `package.json` and the lockfile are unchanged; `npm audit fix` was not run.
+
+INCOMPLETE ITEMS (AC-6):
+
+- Independent review of the uncommitted patch, then commit, PR CI and merge (not done; no commit, stage or push was made).
+- Hosted: deploy 054 then 055, verify the ledger, run the ACL/RLS smoke, and the true-PostgreSQL races in [AC-6 section 11](48-agent-behaviour-ac6-sarah-feedback.md):
+  - double submit;
+  - cancellation, attendance correction and withdrawal racing submission;
+  - deadlock absence.
+- JWT/PostgREST (still BLOCKED independently), and browser/accessibility acceptance of `/student/sarah`, `/student/classes` and `/admin?section=Sessions`.
+- **Production items:**
+  - a feedback retention and export decision;
+  - a review of the temporal-differencing residual (one response arriving between two admin reads), with options such as release after a feedback window;
+  - whether LATE attendance should be eligible.
+
+KNOWN FAILURES (AC-6): no AC-6 functional failure locally. Pre-existing environment items are recorded with the gates.
+
+NEXT EXACT ACTION: independent review of the uncommitted AC-6 patch. Do not commit, push, deploy 054/055, or start AC-7 without instruction.
+
+### AC-5 record (merged through PR #59)
 
 COMPLETED ITEMS (AC-5, local):
 
@@ -102,7 +183,7 @@ AC-5 local gates: (Node 24.19.0, Windows, 16 logical processors.) **After the fi
 
 INCOMPLETE ITEMS (AC-5):
 
-- Independent review of the uncommitted patch, then commit, PR CI and merge (not done; no commit was made).
+- Independent review, commit, PR CI and merge: done (PR #59, merge `f6ab664`).
 - Hosted: deploy 054, verify the ledger through 054 (including the fixture repair on the hosted seed), run the ACL smoke, and the true-PostgreSQL races in [AC-5 section 13](47-agent-behaviour-ac5-sarah.md). These include the fresh-key reservation bound under concurrency and authority changes racing START.
 - JWT/PostgREST (still BLOCKED independently), and browser/accessibility acceptance of `/student/sarah`.
 - Live-provider evaluation of `SARAH_BEHAVIOUR_V1` (persona, AI disclosure, refusals, contract compliance, proposal precision).
@@ -110,7 +191,7 @@ INCOMPLETE ITEMS (AC-5):
 
 KNOWN FAILURES (AC-5): no AC-5 functional failure locally. Pre-existing environment items are recorded with the gates.
 
-NEXT EXACT ACTION: final independent review of the corrected, uncommitted AC-5 patch. Do not commit, push, deploy 054, or start AC-6/AC-7 without instruction.
+AC-5 was subsequently reviewed and merged through PR #59; its hosted items above remain open.
 
 ### AC-4 record (merged through PR #58)
 

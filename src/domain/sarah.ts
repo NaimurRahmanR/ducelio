@@ -25,8 +25,10 @@ import {
 // the learner's own logistics and support state, and OPTIONAL support-
 // profile proposals that only the learner can confirm. She never teaches,
 // grades, solves labs, helps with controlled assessments, recommends or
-// sells courses (AC-7), collects session feedback (AC-6), or changes any
-// institutional record.
+// sells courses (AC-7), collects session feedback, or changes any
+// institutional record. AC-6 post-session feedback is shown under her
+// persona but is deterministic structured data with no model call
+// (src/domain/session-feedback.ts); this runtime never handles it.
 
 export const SARAH_PERSONA = Object.freeze({
   name: "Sarah Mitchell",

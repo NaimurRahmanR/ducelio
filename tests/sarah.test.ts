@@ -1055,7 +1055,15 @@ describe("Sarah static boundaries", () => {
 
   it("adds exactly migration 054 and leaves no Sarah staff account in seed data", () => {
     const migrations = readdirSync(resolve("supabase/migrations")).sort();
-    expect(migrations.at(-1)).toBe("202610060054_sarah_learner_guide.sql");
+    // AC-6 (migration 055) is the only later, additive migration.
+    expect(
+      migrations.slice(
+        migrations.indexOf("202610060054_sarah_learner_guide.sql"),
+      ),
+    ).toEqual([
+      "202610060054_sarah_learner_guide.sql",
+      "202610060055_sarah_session_feedback.sql",
+    ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");
     const migration = read(

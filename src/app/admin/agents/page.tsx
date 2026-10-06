@@ -342,9 +342,10 @@ export default async function Page({
           follow the governed behaviour contract, keyed by role and never by
           model. Sarah Mitchell, the AI learner-success counsellor, runs on the
           separate platform COUNSELLOR plane (AC-5: learner guide and
-          learner-confirmed support-profile proposals). Agent behaviour work is
-          not complete: Sarah post-session feedback (AC-6) and course guidance
-          (AC-7) are later checkpoints.
+          learner-confirmed support-profile proposals). Sarah post-session
+          feedback (AC-6) is structured 1–5 ratings recorded with no model call,
+          so it does not run on this plane. Agent behaviour work is not
+          complete: course guidance (AC-7) is a later checkpoint.
         </p>
       </Card>
 

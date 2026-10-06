@@ -34,6 +34,8 @@ import { getCounsellorAssignmentWorkspace } from "@/server/counsellor-assignment
 import { getClassSessionWorkspace } from "@/server/class-sessions";
 import { getAttendanceWorkspace } from "@/server/attendance";
 import { getLessonProgressWorkspace } from "@/server/lesson-progress";
+import { getTeachingQuality } from "@/server/session-feedback";
+import { TeachingQualityPanel } from "@/components/teaching-quality-panel";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -50,6 +52,11 @@ export default async function Page({
     activationOffset?: string;
     lessonOffset?: string;
     sessionId?: string;
+    tqInstructorId?: string;
+    tqCohortId?: string;
+    tqFrom?: string;
+    tqUntil?: string;
+    tqOffset?: string;
   }>;
 }) {
   const data = await getAdminOverview();
@@ -107,6 +114,19 @@ export default async function Page({
           activationId: params.activationId || undefined,
           activationOffset: params.activationOffset || undefined,
           lessonOffset: params.lessonOffset || undefined,
+        })
+      : null;
+  // AC-6: aggregate teaching quality. The Sessions section is already
+  // limited to Academic and Platform Admin; the server and database check
+  // those roles again.
+  const teachingQuality =
+    section === "Sessions"
+      ? await getTeachingQuality({
+          instructorId: params.tqInstructorId || undefined,
+          cohortId: params.tqCohortId || undefined,
+          from: params.tqFrom || undefined,
+          until: params.tqUntil || undefined,
+          offset: params.tqOffset || undefined,
         })
       : null;
   const canPublish = data.actor.roles.some(
@@ -266,6 +286,20 @@ export default async function Page({
             }}
           />
         )}
+      {section === "Sessions" && teachingQuality && classSessionWorkspace && (
+        <TeachingQualityPanel
+          page={teachingQuality}
+          instructors={classSessionWorkspace.instructors}
+          cohorts={classSessionWorkspace.cohorts}
+          filters={{
+            tqInstructorId: params.tqInstructorId,
+            tqCohortId: params.tqCohortId,
+            tqFrom: params.tqFrom,
+            tqUntil: params.tqUntil,
+            tqOffset: params.tqOffset,
+          }}
+        />
+      )}
       {section === "Sessions" && attendanceWorkspace && (
         <AttendanceWorkspace
           sessions={attendanceWorkspace.sessions}
