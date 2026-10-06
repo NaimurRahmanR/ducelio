@@ -316,6 +316,18 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             )}
           </Card>
         )}
+        {section === "notes" && (
+          <Card>
+            <h2>Supplementary Tutor notes</h2>
+            <p className="muted">
+              Tutor answers you chose to keep are stored separately from the
+              published course material above and never change it.
+            </p>
+            <ButtonLink href="/student/tutor-notes" secondary>
+              Open your Tutor notes
+            </ButtonLink>
+          </Card>
+        )}
         {section === "results" && (
           <Card>
             <div className="section-heading">

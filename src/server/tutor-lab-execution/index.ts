@@ -4,6 +4,7 @@ import {
   TUTOR_LAB_EXECUTION_DB_CEILING,
   mapRuntimeResultToTutorLabFinalizeCommand,
   mapRuntimeResultToTutorLabOutcome,
+  tutorLabInteractionFingerprintMaterial,
   tutorLabReservationRpcResultSchema,
   TutorLabExecutionDenied,
   type TutorLabRole,
@@ -36,9 +37,26 @@ import {
 } from "@/domain/agent-behaviour";
 import type { ProfessorTeachingRecord } from "@/domain/professor-academic-handoff";
 import { getProfessorTeachingRecordForRelease } from "../professor-academic-handoff";
+import {
+  TUTOR_CLASS_NOTE_BODY_MAX,
+  isStorableTutorClassNoteBody,
+  tutorClassNoteBodyLength,
+  tutorClassNoteOutcomeForRefusal,
+  type TutorClassNoteOutcome,
+} from "@/domain/tutor-class-notes";
+import {
+  recordTutorClassNote,
+  TutorClassNoteRefused,
+} from "../tutor-class-notes";
 
 export type TutorLabSupportResult =
-  | { status: "SUCCEEDED"; text: string; role: TutorLabRole }
+  | {
+      status: "SUCCEEDED";
+      text: string;
+      role: TutorLabRole;
+      // AC-4: present only when the learner asked to keep a Tutor answer.
+      classNote?: TutorClassNoteOutcome;
+    }
   | { status: "ACTIVITY_BLOCKED" }
   | { status: "UNAVAILABLE" }
   | { status: "ESCALATED" }
@@ -55,17 +73,27 @@ function outcomeToResult(
 }
 
 // Reservation happens BEFORE any release/provider work, so two simultaneous
-// duplicate actions can never knowingly reach the provider twice. A
-// mismatched replay (same key, different handoff or message) fails closed
-// as a conflict, mapped here to a safe UNAVAILABLE rather than propagating
-// the raw conflict code to the learner.
+// duplicate actions can never knowingly reach the provider twice. The
+// fingerprint covers the handoff, the message and (AC-4) the note choice
+// (tutorLabInteractionFingerprintMaterial). A mismatched replay (same key,
+// different handoff, message or note choice) fails closed as a conflict,
+// mapped here to a safe UNAVAILABLE rather than propagating the raw
+// conflict code to the learner.
 async function reserveInteraction(
   handoffId: string,
   idempotencyKey: string,
   message: string,
+  saveAsClassNote: boolean,
 ): Promise<boolean> {
   const requestHash = createHash("sha256")
-    .update(`${handoffId}\n${message}`, "utf8")
+    .update(
+      tutorLabInteractionFingerprintMaterial(
+        handoffId,
+        message,
+        saveAsClassNote,
+      ),
+      "utf8",
+    )
     .digest("hex");
   const client = await createSupabase();
   const { data, error } = await client.rpc("reserve_tutor_lab_interaction", {
@@ -98,6 +126,8 @@ export async function executeTutorLabSupport(
       request.handoffId,
       request.idempotencyKey,
       request.message,
+      // Omitted and false are the same no-note request.
+      request.saveAsClassNote === true,
     );
   } catch {
     return { status: "UNAVAILABLE" };
@@ -373,8 +403,44 @@ export async function executeTutorLabSupport(
   } catch {
     return { status: "RETRY_LATER" };
   }
-  return outcomeToResult(
+  const result = outcomeToResult(
     mapRuntimeResultToTutorLabOutcome(providerResult),
     release.role,
   );
+  // AC-4: the ONLY class-note creation point. Reached only after the
+  // release closed COMPLETED and FINALIZE was confirmed SUCCEEDED by the
+  // database, for the TUTOR role, when the learner asked beforehand. The
+  // body is exactly the learner-visible answer returned below; the
+  // execution id is this server's own. A note that cannot be kept never
+  // changes the confirmed answer: the learner is told why.
+  if (
+    request.saveAsClassNote === true &&
+    result.status === "SUCCEEDED" &&
+    release.role === "TUTOR"
+  )
+    result.classNote = await keepTutorClassNote(
+      providerExecutionId,
+      result.text,
+    );
+  return result;
+}
+
+async function keepTutorClassNote(
+  executionId: string,
+  body: string,
+): Promise<TutorClassNoteOutcome> {
+  if (tutorClassNoteBodyLength(body) > TUTOR_CLASS_NOTE_BODY_MAX)
+    return { state: "NOT_SAVED", reason: "TOO_LONG" };
+  if (!isStorableTutorClassNoteBody(body))
+    return { state: "NOT_SAVED", reason: "UNAVAILABLE" };
+  try {
+    const recorded = await recordTutorClassNote({ executionId, body });
+    return { state: "SAVED", revisionNumber: recorded.revisionNumber };
+  } catch (error) {
+    return tutorClassNoteOutcomeForRefusal(
+      error instanceof TutorClassNoteRefused
+        ? error.code
+        : "SERVICE_UNAVAILABLE",
+    );
+  }
 }

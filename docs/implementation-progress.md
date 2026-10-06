@@ -2,7 +2,81 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-3, Governed Professor Academic Handoffs (migration 052), independently reviewed and merged through PR #56 (merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32` on `main`). The hosted status after deploying 052 is listed under the current checkpoint below. See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+LAST COMPLETED CHECKPOINT: AC-3, Governed Professor Academic Handoffs (migration 052), independently reviewed and merged through PR #56 (merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32` on `main`). Its dedicated hosted concurrency acceptance was merged through PR #57 (merge `1e8237353ee5b961764875952b41088c658c3468`). The hosted status after deploying 052 is in the AC-3 hosted record below. See [AC-3 design and evidence](45-agent-behaviour-ac3.md).
+
+CURRENT CHECKPOINT (partial): AC-4, Tutor class notes, on `feat/ac4-tutor-class-notes` from base `1e8237353ee5b961764875952b41088c658c3468`. Migration `202610060053_tutor_class_notes.sql` (additive; 001–052 unchanged). **Implemented and locally validated, uncommitted. The first independent review's two blockers and two corrections are applied, and the patch awaits re-review. Migration 053 is not deployed. No hosted AC-4 evidence exists. Not production-ready.** See [AC-4 design and evidence](46-agent-behaviour-ac4.md).
+
+COMPLETED ITEMS (AC-4, local):
+
+- Creation semantic: the learner opts in on the Tutor support form, before sending, to keep a Tutor answer as a supplementary Tutor note.
+  - The body is only the trusted server's copy of a SUCCEEDED Tutor execution's learner-visible output.
+  - It is recorded at the single creation point after the release closed COMPLETED and FINALIZE was confirmed SUCCEEDED.
+  - No second provider call is made and no browser text is accepted.
+- Trust: a new attested RPC `record_tutor_class_note` under the new tag `DUCELIO_TUTOR_CLASS_NOTE_HMAC_SHA256_V1`, using the existing controller key store, with the MAC over the body's SHA-256. No existing HMAC format changed.
+- The database derives and verifies the whole chain:
+  - TUTOR only; SUCCEEDED/`PROVIDER_COMPLETE`; COMPLETED release;
+  - the learner's own TUTOR handoff, with enrolment, lesson, objective and version agreement; ACTIVE enrolment;
+  - AC-2 provenance equal to the frozen binding, fingerprint, runtime profile and baseline;
+  - a final firewall recheck before any write.
+- Schema: an immutable series per Tutor handoff, and append-only revisions.
+  - Revision numbers are database-allocated under the series lock, with `unique(series, revision)`, a unique source execution and a unique provenance.
+  - Bounds: body ≤ 8,000 characters (never truncated), ≤ 10 revisions per note.
+  - UPDATE/DELETE refused for every writer; no delete RPC.
+  - Nothing is written to curriculum or `learning_resources`.
+- Learner read `list_my_tutor_class_notes`: owner-only, firewall-gated, 5 notes per page with current/earlier revisions and no internal identifiers. There is no staff, Sarah, Counsellor, Lab or Professor read.
+- UI:
+  - the Tutor-only opt-in and outcome message on the existing support panel;
+  - `/student/tutor-notes`, labelled "Supplementary Tutor note" and "NOT COURSE MATERIAL", linked from Notes & resources.
+- RLS on, no table grants, two `authenticated`-only RPCs, and migration-time effective-privilege self-verification. Audit is identifiers, role and revision only.
+- Behaviour: `TUTOR_BEHAVIOUR_V2` kept, with no V3, because note keeping changes neither the Tutor's instructions, input nor output. Notes work for V1-pinned versions too (tested).
+- Retention decision: deliberate learner-kept artifacts, retained immutable until a reviewed retention policy exists. The Professor transcript rule is not applied automatically.
+- Independent-review corrections ([AC-4 section 20](46-agent-behaviour-ac4.md)):
+  1. Firewall locking contract: both RPCs lock `student_profiles … FOR UPDATE` before the firewall. Creation then locks the enrolment `FOR UPDATE` before the ACTIVE check, the same order `start_assessment_attempt` uses. The read is no longer STABLE.
+  2. The note choice is part of the reservation fingerprint. Omitted and false keep the exact historical hash; true is domain-separated with a prefix, which a learner message cannot collide with. Migration 028 is unchanged.
+  3. The revision trigger also requires a COMPLETED TUTOR release of the series' learner, handoff, enrolment, lesson and objective. The docs separate the trigger (structural backstop) from the attested RPC (full authority).
+  4. Learner-projection timestamps use the existing `academicTimestampSchema`.
+- Tests (gates below):
+  - new: `tutor-class-notes-db` 54 (real migration chain, including the real TypeScript recorder end to end and 9 review-correction tests), `tutor-class-notes-v1-db` 1, `tutor-class-notes` 19, `tutor-class-notes-ui` 11;
+  - `tutor-lab-execution-runtime` +21;
+  - mutation checks recorded in the AC-4 document; each correction's removal is caught.
+- Local gates before the review correction (superseded by the post-correction gates below; kept for the base reproduction). Node 24.19.0, Windows, 16 logical processors:
+  - Focused AC-4 set plus neighbouring Tutor/Lab, AC-2, AC-3, database and RLS suites: 19 files, 464/464.
+  - `npm run check`, exactly as defined: lint and type check passed. Vitest at its default worker count **failed twice** (exit 1), each time 3,951/3,952 across 162 files. The single failure both times was a 30-second wall-clock timeout in `commercial-v1-results-completion-db` ("rejects pass_mark_bp of 0 and 10001…"), which builds three complete migration-chain fixtures in one test.
+    - That file passes 56/56 alone; the test takes 11.1 s alone.
+    - **The same timeout reproduces on unmodified base `1e82373`** at default parallelism on this workstation (temporary detached worktree, since removed): 3,864/3,865 across 158 files. It is pre-existing and load-sensitive, not an AC-4 regression.
+    - With `--maxWorkers=8`: **3,952/3,952 across 162 files**, exit 0 (+87 AC-4 tests over base).
+    - CI on Linux remains the authoritative gate.
+  - `npm run build`: with this workstation's `.env.local` (an `http` `APP_URL`) it fails prerendering `/admin` with "Configured production authentication requires an HTTPS APP_URL". That is environment validation on a page AC-4 does not touch; the base build was not run with that file. With a process-level `APP_URL=https://ducelio.invalid` override (`.env.local` untouched) the build passes, and `/student/tutor-notes` compiles as a dynamic route.
+  - `npm run format:check`: exit 1, only on the six unchanged CRLF-checkout files (`.github/workflows/ci.yml`, `package.json`, four `content/courses/security-plus-sy0-701/*.json`). Each is Prettier-clean as committed (checked from `HEAD`). Every AC-4 file is clean.
+  - `git diff --check HEAD` is clean. The untracked new files have no trailing whitespace or CR line endings.
+  - `npm audit --omit=dev`: 1 high (`source-map-js@1.2.1`, GHSA-68fv-2mgg-jv7q). Pre-existing, recorded on base after AC-3; `package.json` and the lockfile are unchanged. `npm audit fix` was not run.
+
+- Local gates after the review correction (same workstation):
+  - Focused AC-4 plus neighbouring suites (Tutor/Lab DB, runtime, domain, context, actions; content-release; capability workflow; assessment workflow; AC-2; AC-3; database; RLS; customer-journey route): 21 files, 489/489.
+  - `npm run check`, exactly as defined: lint and type check passed. Vitest at its default worker count: **exit 1, 3,970/3,971 across 162 files**. The single failure is again the 30-second timeout in `commercial-v1-results-completion-db` ("rejects pass_mark_bp…"), the same failure already reproduced on unmodified base `1e82373`. It is **not** AC-4 passing; it is a pre-existing load-sensitive timeout. Supplementary `--maxWorkers=8`: **3,971/3,971**, exit 0 (+19 correction tests). Timeouts and worker settings are unchanged.
+  - `npm run build`: with `.env.local` as-is, exit 1 at the known `/admin` "requires an HTTPS APP_URL" validation. With the process-level `APP_URL=https://ducelio.invalid` override (`.env.local` untouched): exit 0, and `/student/tutor-notes` compiles.
+  - `npm run format:check`: only the six unchanged CRLF-checkout files (Prettier-clean as committed). Every AC-4 file is clean.
+  - `git diff --check HEAD` is clean; the untracked AC-4 files have no trailing whitespace.
+  - `npm audit --omit=dev`: 2 high.
+    - `source-map-js@1.2.1` (GHSA-68fv-2mgg-jv7q): pre-existing.
+    - `sharp <0.35.5` (GHSA-wq5f-xc86-pv6w, librsvg CVE-2026-96889): newly reported since this morning's audit, against an existing transitive dependency.
+    - `package.json` and the lockfile are byte-identical to base, so neither is an AC-4 regression. `npm audit fix` was not run.
+
+INCOMPLETE ITEMS (AC-4):
+
+- Independent review of the uncommitted patch, then commit, PR CI and merge (not done; no commit was made).
+- Hosted: deploy 053, verify the ledger through 053, ACL smoke, and dedicated true-PostgreSQL AC-4 concurrency scenarios:
+  - the same-source execution materialisation race;
+  - the two-execution same-series revision allocation race;
+  - protected-assessment start vs note creation serialisation;
+  - assessment start vs note read (property defined in AC-4 section 17).
+
+  PGlite proves sequential idempotency and that the lock is taken, not the races.
+
+- **Production item:** a reviewed retention period and governed purge mechanism for learner-kept Tutor notes, plus a learner deletion/export decision.
+- Browser/accessibility and live-provider acceptance.
+
+NEXT EXACT ACTION: independent review of the uncommitted AC-4 patch. Do not commit, push, deploy 053, or start AC-5/Sarah without instruction.
 
 Previous checkpoint: AC-2, Governed Academic Agent Behaviour (migration 051), merged through PR #55 (merge `7a7d5b8842f9c8fb3c39df8aefb0df708a14dc5c`). Its hosted status, as reported by the operator:
 
@@ -13,7 +87,9 @@ Previous checkpoint: AC-2, Governed Academic Agent Behaviour (migration 051), me
 
 See [AC-2 design and evidence](44-agent-behaviour-ac2.md).
 
-CURRENT CHECKPOINT: AC-3 hosted concurrency acceptance, on `test/ac3-hosted-concurrency` from base `0d52fa6` (AC-3 merged through PR #56, merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32`).
+### AC-3 hosted concurrency record (merged through PR #57)
+
+AC-3 hosted concurrency acceptance, on `test/ac3-hosted-concurrency` from base `0d52fa6` (AC-3 merged through PR #56, merge `0d52fa601ad5b238556ad28aa53d852dcebf2c32`), merged through PR #57 (merge `1e8237353ee5b961764875952b41088c658c3468`).
 
 - Migration `202610050052_professor_academic_handoffs.sql` has been deployed to the dedicated hosted acceptance database. The operator-reported hosted acceptance after deployment:
   - HOSTED_DATABASE PASS (PostgreSQL 17.6);
@@ -68,9 +144,8 @@ COMPLETED ITEMS (AC-3):
   - `npm run check`, exactly as defined: **3,838/3,838 across 156 files**, exit 0. Before the correction it was 3,830/3,830 across 155 files.
   - `npm run build` passed. `npm run format:check` is clean. `npm audit --omit=dev` reports 0 vulnerabilities. `git diff --check HEAD` is clean.
 
-INCOMPLETE ITEMS:
+INCOMPLETE ITEMS (carried, AC-3 and earlier):
 
-- PR CI, review and merge of the `test/ac3-hosted-concurrency` acceptance-harness branch.
 - Hosted JWT/PostgREST evidence (needs `ACCEPTANCE_EXPIRED_LEARNER_JWT`) and browser/accessibility acceptance remain open. Other Commercial V1 hosted blockers are unchanged.
 - **Production blocker:** a governed purge mechanism for Professor classroom transcripts implementing the AC-3 retention policy.
 - Carried from AC-2:
@@ -78,11 +153,9 @@ INCOMPLETE ITEMS:
   - a repair procedure for corrupt behaviour bindings;
   - live-provider evaluation of instructional behaviour (now including Tutor/Lab V2);
   - AC-1/AC-2 dedicated real-concurrency scenarios.
-- AC-4 to AC-7 are not started. Sarah, class notes, teaching feedback and Lab timing are **not** implemented.
+- AC-5 to AC-7 are not started. Sarah, teaching feedback and Lab timing are **not** implemented. (AC-4 Tutor class notes: see the current checkpoint above.)
 
 KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
-
-NEXT EXACT ACTION: independent review, CI and merge of the acceptance-harness PR. Do not rerun hosted acceptance, and do not start AC-4 or Sarah, without instruction.
 
 ### AC-2 record (merged)
 

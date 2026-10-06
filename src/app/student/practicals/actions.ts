@@ -6,6 +6,7 @@ import {
 } from "@/domain/tutor-lab-execution";
 import { executeTutorLabSupport } from "@/server/tutor-lab-execution";
 import { submitPracticalLabWorkAndGrade } from "@/server/commercial-v1-submission-grading";
+import type { TutorClassNoteOutcome } from "@/domain/tutor-class-notes";
 
 export async function requestPracticalSupportAction(
   value: unknown,
@@ -63,6 +64,9 @@ export type TutorLabSupportActionState = {
     | "DUPLICATE";
   text?: string;
   role?: TutorLabRole;
+  // AC-4: whether the Tutor answer the learner asked to keep was kept as a
+  // supplementary Tutor note.
+  classNote?: TutorClassNoteOutcome;
   error?: string;
 };
 
@@ -80,13 +84,21 @@ export async function requestTutorLabSupportAction(
     handoffId: form.get("handoffId"),
     message: form.get("message"),
     idempotencyKey: form.get("idempotencyKey"),
+    // AC-4: a checkbox, so only its presence is read. No note text, source
+    // execution, role or provenance is ever taken from the form.
+    ...(form.get("saveAsClassNote") === "on" ? { saveAsClassNote: true } : {}),
   });
   if (!parsed.success)
     return { error: "Enter a message between 1 and 2,000 characters." };
   try {
     const result = await executeTutorLabSupport(parsed.data);
     return result.status === "SUCCEEDED"
-      ? { status: "SUCCEEDED", text: result.text, role: result.role }
+      ? {
+          status: "SUCCEEDED",
+          text: result.text,
+          role: result.role,
+          ...(result.classNote ? { classNote: result.classNote } : {}),
+        }
       : { status: result.status };
   } catch {
     return { status: "RETRY_LATER" };
