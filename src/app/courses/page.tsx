@@ -2,15 +2,9 @@ import Link from "next/link";
 import { Brand, Badge } from "@/components/ui";
 import { Card } from "@/components/ui";
 import { listCommercialV1Offers } from "@/server/commercial-v1-commerce";
+import { formatOfferPrice } from "@/domain/commercial-v1-commerce";
 
 export const dynamic = "force-dynamic";
-
-function formatPrice(amountMinor: number, currency: string) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency,
-  }).format(amountMinor / 100);
-}
 
 export default async function Page() {
   const offers = await listCommercialV1Offers().catch(() => []);
@@ -58,7 +52,7 @@ export default async function Page() {
                   <p className="muted">{offer.qualificationName}</p>
                   {offer.summary && <p>{offer.summary}</p>}
                   <p className="course-price">
-                    {formatPrice(offer.priceAmountMinor, offer.currency)}
+                    {formatOfferPrice(offer.priceAmountMinor, offer.currency)}
                   </p>
                   <p className="muted">
                     Next cohort starts{" "}

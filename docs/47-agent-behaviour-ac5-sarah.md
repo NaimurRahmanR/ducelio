@@ -2,9 +2,9 @@
 
 AC-5 is the fifth checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md), [AC-2](44-agent-behaviour-ac2.md), [AC-3](45-agent-behaviour-ac3.md) and [AC-4](46-agent-behaviour-ac4.md)). Branch `feat/ac5-sarah-foundation-runtime`, base `6845a59a8f6f951d55162e0f834d912b4743cfa9` (AC-4 merged through PR #58). Migration `202610060054_sarah_learner_guide.sql`; migrations 001–053 are unchanged.
 
-**Status:** independently reviewed and merged through PR #59 (merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41`). The review corrections are in section 20. Migration 054 has **not** been deployed. AC-6 ([docs/48](48-agent-behaviour-ac6-sarah-feedback.md)) adds deterministic post-session feedback under Sarah's persona without changing this runtime. No hosted or live-provider evidence exists for AC-5. **Not production-ready.**
+**Status:** independently reviewed and merged through PR #59 (merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41`). The review corrections are in section 20. Migration 054 has **not** been deployed. AC-6 ([docs/48](48-agent-behaviour-ac6-sarah-feedback.md), merged through PR #60) adds deterministic post-session feedback under Sarah's persona without changing this runtime. AC-7 ([docs/49](49-agent-behaviour-ac7-sarah-course-guidance.md), independently reviewed and approved for commit/PR, not yet merged) adds a separate `COURSE_GUIDANCE` intent with its own commercial context, behaviour version (`SARAH_COMMERCIAL_BEHAVIOUR_V1`) and attested RPC on the same plane and profile. Migration 056 evolves the 054 ledger only additively (section 21). No hosted or live-provider evidence exists for AC-5. **Not production-ready.**
 
-The approved definition (AC-1 section 7): _Sarah production execution plane. Onboarding, learner guide, confirmed profile proposals, learner-success context._ AC-6 (post-session feedback and the admin teaching-quality surface) and AC-7 (course guidance and commercial recommendation behind a hard data firewall) are **not** implemented.
+The approved definition (AC-1 section 7): _Sarah production execution plane. Onboarding, learner guide, confirmed profile proposals, learner-success context._ AC-6 (post-session feedback and the admin teaching-quality surface) and AC-7 (course guidance and commercial recommendation behind a hard data firewall) were not part of AC-5; see docs/48 and docs/49.
 
 ## 1. Who Sarah Mitchell is (identity decision)
 
@@ -30,7 +30,7 @@ Sarah is AI. Every learner surface says so, and she is instructed never to claim
 | `ACTIVE_COURSE` (an ACTIVE or PAUSED enrolment) | `guide_learner_journey`, `read_owned_course_logistics`, `explain_schedule_and_access`, `read_owned_support_state`, `propose_support_profile_update` |
 | `POST_COURSE` (only COMPLETED/WITHDRAWN)        | `guide_learner_journey`, `read_owned_support_state`, `propose_support_profile_update`                                                               |
 
-Never executable in AC-5 (`SARAH_AC7_DEFERRED_CAPABILITIES` plus two others): `read_public_course_catalogue`, `explain_course_prerequisites`, `explain_duration_pricing_format`, `help_choose_course`, `capture_optional_prospect_preferences`, `read_owned_completion_summary`, `explain_next_course_options`, `coordinate_progression`, `explain_reenrolment_and_pricing` (all AC-7), `coordinate_academic_handoff` and `record_bounded_support_followup` (human-counsellor and academic domain). AC-6 has no capability at all.
+Never executable in AC-5 (then called `SARAH_AC7_DEFERRED_CAPABILITIES`, plus two others; AC-7 replaced that constant with `SARAH_AC7_EXECUTABLE_CAPABILITIES` for its own intent and `SARAH_AC7_NON_EXECUTABLE_CAPABILITIES`): `read_public_course_catalogue`, `explain_course_prerequisites`, `explain_duration_pricing_format`, `help_choose_course`, `capture_optional_prospect_preferences`, `read_owned_completion_summary`, `explain_next_course_options`, `coordinate_progression`, `explain_reenrolment_and_pricing` (all AC-7), `coordinate_academic_handoff` and `record_bounded_support_followup` (human-counsellor and academic domain). AC-6 has no capability at all.
 
 The browser chooses one of **two intents**, a strict enum: `GUIDE` (getting started, navigation, schedule and support information) or `SUPPORT_PROFILE` (suggest an update to support preferences). It never sends a capability string. The capability list per mode and intent is computed by the server (`sarahCapabilitiesFor`), and the database accepts only those two intents (`INVALID_INPUT` otherwise, plus a table CHECK).
 
@@ -285,19 +285,26 @@ The only deliberate state change is the learner-confirmed support profile.
 
 ## 15. Control-plane truth and evidence
 
-- `PLATFORM_ROLE_FACTS.COUNSELLOR`: "Sarah Mitchell (learner-success AI)", **executable**, describing the AC-5 plane and stating it is not the academic role or a human account, and that AC-6/AC-7 are not implemented. `/admin/agents` shows EXECUTABLE/NOT EXECUTABLE per platform role.
+**Current truth (after later checkpoints):**
+
+- `PLATFORM_ROLE_FACTS.COUNSELLOR`: "Sarah Mitchell (learner-success AI)", **executable**. It describes the AC-5 plane and states that it is not the academic role or a human account. It now also states:
+  - AC-6 post-session feedback (merged through PR #60) is deterministic and never runs on this plane;
+  - AC-7 course guidance (implemented and locally validated, independently reviewed and approved for commit/PR, not yet merged, [docs/49](49-agent-behaviour-ac7-sarah-course-guidance.md)) runs on the same plane and profile as a separate commercial path and does not change AC-5 learner-support semantics.
+- `/admin/agents` shows EXECUTABLE/NOT EXECUTABLE per platform role.
 - Operations Engineer: unchanged, not executable.
-- `COUNSELLOR_PLATFORM_V1` database ceiling is now shown (1 call / 500 tokens / 10,000 µUSD).
+- `COUNSELLOR_PLATFORM_V1` database ceiling is shown (1 call / 500 tokens / 10,000 µUSD), unchanged by AC-6 and AC-7.
 - Evidence for `COUNSELLOR_PLATFORM_V1`:
-  - LOCAL_DETERMINISTIC goes from PARTIAL (routing/schema only) to **RECORDED**, scoped to the AC-5 deterministic suites;
-  - HOSTED: NONE (054 not deployed);
+  - LOCAL_DETERMINISTIC: **RECORDED**, now scoped to the AC-5 and AC-7 deterministic suites (at AC-5 time it went from PARTIAL, routing/schema only, to RECORDED for the AC-5 suites);
+  - HOSTED: NONE (054 and 056 not deployed);
   - LIVE_PROVIDER: NONE;
   - production-proven: no.
   - The profile fingerprint (`2899e69e…`) is unchanged because the profile is unchanged.
 
 ## 16. Local evidence
 
-New suites:
+**AC-5 review-time evidence (historical, before later checkpoints).** The statements below describe the AC-5 checkpoint as reviewed. Mentions such as "only two intents (no AC-6/AC-7 path)", "AC-6/AC-7 intents refused" and "no AC-6/AC-7 copy" were true then and remain true of the AC-5 request schema, the 054 migration and the AC-5 learner-support path. They are **not** current whole-product truth: AC-6 is merged, and AC-7 adds a separate `COURSE_GUIDANCE` intent, RPC and "Find a course" UI ([docs/49](49-agent-behaviour-ac7-sarah-course-guidance.md)).
+
+New suites (at AC-5 review time):
 
 - **`sarah-db` (43, real migration chain on PGlite, plus the real TypeScript controller end to end through an RPC shim with a deterministic in-process provider; 9 added by the review corrections and 1 by the final re-review, section 20):**
   - **Governed path:** the governed path and ledger fields; a PROSPECT learner with no human counsellor; ending the human assignment leaves Sarah working; a COUNSELLOR+admin staff account gets `FORBIDDEN` everywhere, including on their own learner's proposal.
@@ -400,3 +407,22 @@ The first independent review approved the architecture and found five blockers a
 | START mode/profile re-check                            | killed (1 DB test)                                                                       |
 
 Note on the lock mutation: the xid/`xmax` probe could not distinguish `FOR UPDATE` from the key-share lock the reservation's foreign key takes on insert. The test now also pins the live definition: the learner `FOR UPDATE` precedes the replay lookup and the admission count.
+
+## 21. AC-7 compatibility (migration 056)
+
+AC-7 ([docs/49](49-agent-behaviour-ac7-sarah-course-guidance.md)) leaves every AC-5 behaviour unchanged. That covers:
+
+- intents, request schema, reservation material (`SARAH_AC5_INTERACTION_V1`) and the canonical execution message;
+- the support context, output contract, proposals and `SARAH_BEHAVIOUR_V1` text, which still forbids course recommendation;
+- `govern_sarah_execution`, which still accepts only `GUIDE` / `SUPPORT_PROFILE`.
+
+Migration 056 changes only these:
+
+- the reservation and execution intent CHECKs accept `COURSE_GUIDANCE`;
+- `source_profile_sha256` is required by a cross-field CHECK for `GUIDE` / `SUPPORT_PROFILE`, instead of `NOT NULL`, and a new `source_commercial_sha256` must be NULL for them;
+- `reserve_sarah_interaction` accepts the new intent, with a mode gate for it only;
+- the execution guard also freezes the new column;
+- the audit reason is intent-aware, while the AC-5 wording and the shape-based source classifier are unchanged;
+- the ACL self-verification covers eight RPCs.
+
+The 43 AC-5 database tests pass unchanged on the evolved schema; only the ACL test's expected RPC list and one test title were updated.

@@ -161,7 +161,7 @@ export const PLATFORM_ROLE_FACTS: Readonly<
     execution: {
       executable: true,
       description:
-        "AC-5 learner guide at /student/sarah (executeSarahGuide, SARAH_EXECUTION_V1): onboarding, learner guidance and learner-confirmed support-profile proposals. Not the academic COUNSELLOR role and not a human counsellor account. Post-session feedback (AC-6) is deterministic structured data collected under Sarah's persona with no model call and never runs on this plane. Course guidance (AC-7) is not implemented.",
+        "AC-5 learner guide at /student/sarah (executeSarahGuide, SARAH_EXECUTION_V1): onboarding, learner guidance and learner-confirmed support-profile proposals. Not the academic COUNSELLOR role and not a human counsellor account. Post-session feedback (AC-6) is deterministic structured data collected under Sarah's persona with no model call and never runs on this plane. AC-7 course guidance (executeSarahCourseGuidance, SARAH_COMMERCIAL_BEHAVIOUR_V1) runs on the same plane and profile only for PROSPECT and POST_COURSE learners, reads only the separate commercial context (published offers, own enrolment status, completed course identities; never support data), suggests at most three published courses by slug and mutates nothing.",
     },
   },
   OPERATIONS_ENGINEER: {
@@ -489,11 +489,11 @@ export const AGENT_PROFILE_EVIDENCE: Readonly<Record<string, EvidenceRecord>> =
         LOCAL_DETERMINISTIC: {
           status: "RECORDED",
           scope:
-            "AC-5 deterministic Sarah tests (2026-10-06): the SARAH_EXECUTION_V1 database governance on the real migration chain (PGlite, single connection), the governed orchestrator, strict output and proposal contract, and the OpenAI adapter with mocked transport. No hosted run and no live model.",
+            "AC-5 and AC-7 deterministic Sarah tests (2026-10-06, 2026-10-07): the SARAH_EXECUTION_V1 database governance (learner guide and course guidance) on the real migration chain (PGlite, single connection), the governed orchestrators, strict output, proposal and recommendation-grounding contracts, the commercial data firewall, and the OpenAI adapter with mocked transport. No hosted run and no live model.",
         },
         HOSTED: {
           status: "NONE",
-          scope: "Never run hosted. Migration 054 is not deployed.",
+          scope: "Never run hosted. Migrations 054 and 056 are not deployed.",
         },
         LIVE_PROVIDER: {
           status: "NONE",

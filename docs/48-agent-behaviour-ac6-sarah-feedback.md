@@ -2,9 +2,9 @@
 
 AC-6 is the sixth checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md) to [AC-5](47-agent-behaviour-ac5-sarah.md)). Branch `feat/ac6-sarah-session-feedback`, base `f6ab664d1a42706f34fa5db9ba8826cb483a0b41` (AC-5 merged through PR #59). Migration `202610060055_sarah_session_feedback.sql`; migrations 001–054 are unchanged.
 
-**Status:** implemented and locally validated, **uncommitted**, awaiting independent review. Migration 055 is **not** deployed. Migration 054 (AC-5) is also still undeployed. No hosted evidence exists for AC-6. **Not production-ready.**
+**Status:** independently reviewed and merged through PR #60 (merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`). Migration 055 is **not** deployed; migration 054 (AC-5) is also still undeployed. No hosted evidence exists for AC-6. **Not production-ready.**
 
-The approved definition (AC-1 section 7): _Sarah post-session feedback. Feedback collection and an admin teaching-quality surface._ AC-7 (course guidance and commercial recommendation behind a hard data firewall) is **not** implemented.
+The approved definition (AC-1 section 7): _Sarah post-session feedback. Feedback collection and an admin teaching-quality surface._ AC-7 (course guidance and commercial recommendation behind a hard data firewall) is implemented separately in [AC-7](49-agent-behaviour-ac7-sarah-course-guidance.md) (independently reviewed and approved for commit/PR, not yet merged). It never reads AC-6 feedback.
 
 ## 1. Architecture decision: no model call
 
@@ -186,7 +186,7 @@ Feedback is observational. Submission writes exactly one feedback row and one au
 
 There is no automatic escalation, punishment or academic action.
 
-Ratings reach **no** commercial path: course recommendation, pricing, sales, re-enrolment, upsell or progression. No AC-6 file imports a commercial, Sarah-runtime or provider module (tested). AC-7 must design its own hard firewall.
+Ratings reach **no** commercial path: course recommendation, pricing, sales, re-enrolment, upsell or progression. No AC-6 file imports a commercial, Sarah-runtime or provider module (tested). AC-7 designs its own hard firewall: its commercial projection never reads `session_teaching_feedback`, and changing any rating leaves the commercial-context fingerprint unchanged (tested; see [AC-7](49-agent-behaviour-ac7-sarah-course-guidance.md) sections 4–5).
 
 ## 9. ACL, RLS and private schema
 

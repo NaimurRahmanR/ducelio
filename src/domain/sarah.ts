@@ -25,9 +25,12 @@ import {
 // the learner's own logistics and support state, and OPTIONAL support-
 // profile proposals that only the learner can confirm. She never teaches,
 // grades, solves labs, helps with controlled assessments, recommends or
-// sells courses (AC-7), collects session feedback, or changes any
-// institutional record. AC-6 post-session feedback is shown under her
-// persona but is deterministic structured data with no model call
+// sells courses, collects session feedback, or changes any institutional
+// record. AC-7 course guidance is a separate intent with its own commercial
+// context, behaviour version and output contract
+// (src/domain/sarah-course-guidance.ts); nothing in this file handles it.
+// AC-6 post-session feedback is shown under her persona but is
+// deterministic structured data with no model call
 // (src/domain/session-feedback.ts); this runtime never handles it.
 
 export const SARAH_PERSONA = Object.freeze({
@@ -63,6 +66,16 @@ export const SARAH_DB_CEILING = Object.freeze({
 
 export const sarahIntentSchema = z.enum(["GUIDE", "SUPPORT_PROFILE"]);
 export type SarahIntent = z.infer<typeof sarahIntentSchema>;
+// Mirror of the execution ledger's intent vocabulary (migration 056). AC-7's
+// COURSE_GUIDANCE is deliberately NOT a SarahIntent: it has its own request
+// schema and its own commercial path (src/domain/sarah-course-guidance.ts),
+// so it can never reach the learner-support context or proposal code below.
+export const sarahExecutionIntentSchema = z.enum([
+  "GUIDE",
+  "SUPPORT_PROFILE",
+  "COURSE_GUIDANCE",
+]);
+export type SarahExecutionIntent = z.infer<typeof sarahExecutionIntentSchema>;
 
 export const SARAH_MESSAGE_MAX = 1000;
 export const sarahRequestSchema = z.strictObject({
@@ -461,7 +474,7 @@ export const sarahExecutionSnapshotSchema = z.strictObject({
   platformRole: z.literal("COUNSELLOR"),
   runtimeProfileRef: z.literal("COUNSELLOR_PLATFORM_V1"),
   mode: counsellorModeSchema,
-  intent: sarahIntentSchema,
+  intent: sarahExecutionIntentSchema,
   state: sarahStateSchema,
   reasonCode: sarahReasonSchema.nullable(),
   budgetStage: z.enum(["PRE_CALL", "POST_CALL"]).nullable(),

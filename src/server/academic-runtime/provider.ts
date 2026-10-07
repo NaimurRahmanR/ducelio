@@ -12,6 +12,10 @@ import {
   isBehaviourRole,
 } from "@/domain/agent-behaviour";
 import { SARAH_PROVIDER_ROLE, composeSarahInstructions } from "@/domain/sarah";
+import {
+  SARAH_COURSE_GUIDANCE_CAPABILITY,
+  composeSarahCourseGuidanceInstructions,
+} from "@/domain/sarah-course-guidance";
 import type {
   AnthropicMessagesConfig,
   OpenAIResponsesConfig,
@@ -89,8 +93,12 @@ export function providerInstructions(request: RuntimeProviderRequest): string {
   // code-owned platform behaviour contract and strict output contract,
   // selected by the code-owned capability. An unknown capability throws, so
   // the governed harness fails closed before any network call is sent.
+  // AC-7: course guidance has its own code-owned contract
+  // (SARAH_COMMERCIAL_BEHAVIOUR_V1); the AC-5 contract is unchanged.
   if (request.role === SARAH_PROVIDER_ROLE)
-    return composeSarahInstructions(request.capability);
+    return request.capability === SARAH_COURSE_GUIDANCE_CAPABILITY
+      ? composeSarahCourseGuidanceInstructions()
+      : composeSarahInstructions(request.capability);
   // AC-2: Professor, Tutor and Lab Instructor receive the governed Agent
   // Behaviour Contract (institutional baseline, role baseline, programme
   // preferences, then the data-precedence statement), composed only from

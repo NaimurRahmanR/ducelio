@@ -16,6 +16,12 @@ import {
   type SarahProposal,
   type SarahProposalRecordRefusal,
 } from "@/domain/sarah";
+import {
+  SARAH_COMMERCIAL_BEHAVIOUR_VERSION,
+  SARAH_COURSE_GUIDANCE_INTENT,
+  SARAH_COURSE_GUIDANCE_MODES,
+  type SarahCourseGuidanceMode,
+} from "@/domain/sarah-course-guidance";
 import { getAuthenticatedActor } from "../identity";
 import { createSupabase } from "../supabase";
 
@@ -34,7 +40,8 @@ import { createSupabase } from "../supabase";
 // builds its canonical message with its own literal first-line tag, so a
 // MAC for one surface can never verify on another: domain separation by tag
 // is sufficient, and a second secret would add operational burden with no
-// security gain. No historical message format is changed.
+// security gain. No historical message format is changed. AC-7 adds a third
+// tag, DUCELIO_SARAH_COURSE_GUIDANCE_HMAC_SHA256_V1, for course guidance.
 
 export class SarahControllerDenied extends Error {
   constructor(
@@ -82,22 +89,9 @@ type Command =
   | { operation: "START" }
   | ({ operation: "FINALIZE" } & SarahFinalizeCommand);
 
-export async function attestSarahExecutionCommand(
-  scope: SarahExecutionScope,
-  command: Command,
-): Promise<SarahExecutionSnapshot> {
-  const actor = await getAuthenticatedActor();
-  if (!actor || !actor.roles.includes("STUDENT"))
-    throw new SarahControllerDenied("FORBIDDEN");
-  const key = controllerKey();
-  if (!key) throw new SarahControllerDenied("SERVICE_UNAVAILABLE");
-  const executionId = z.uuid().parse(scope.executionId).toLowerCase();
-  const idempotencyKey = z.uuid().parse(scope.idempotencyKey).toLowerCase();
-  const fingerprint = z
-    .string()
-    .regex(/^[0-9a-f]{64}$/)
-    .parse(scope.profileFingerprint);
-
+// The requested state, reason, budget and usage carried by one command. The
+// values (and so the AC-5 canonical message) are exactly those AC-5 signed.
+function commandValues(command: Command) {
   const state =
     command.operation === "AUTHORIZE"
       ? "AUTHORIZED"
@@ -126,6 +120,26 @@ export async function attestSarahExecutionCommand(
           estimatedCostMicrousd: 0,
           elapsedMs: 0,
         };
+  return { state, reason, budgetStage, budget, usage };
+}
+
+export async function attestSarahExecutionCommand(
+  scope: SarahExecutionScope,
+  command: Command,
+): Promise<SarahExecutionSnapshot> {
+  const actor = await getAuthenticatedActor();
+  if (!actor || !actor.roles.includes("STUDENT"))
+    throw new SarahControllerDenied("FORBIDDEN");
+  const key = controllerKey();
+  if (!key) throw new SarahControllerDenied("SERVICE_UNAVAILABLE");
+  const executionId = z.uuid().parse(scope.executionId).toLowerCase();
+  const idempotencyKey = z.uuid().parse(scope.idempotencyKey).toLowerCase();
+  const fingerprint = z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .parse(scope.profileFingerprint);
+
+  const { state, reason, budgetStage, budget, usage } = commandValues(command);
   const issuedAt = Math.floor(Date.now() / 1000);
   const expiresAt = issuedAt + 10;
   const canonical = [
@@ -198,6 +212,120 @@ export async function attestSarahExecutionCommand(
     snapshot.studentId !== actor.id ||
     snapshot.mode !== scope.mode ||
     snapshot.intent !== scope.intent
+  )
+    throw new SarahControllerDenied("CONTEXT_CONFLICT");
+  if (snapshot.state === "BLOCKED")
+    throw new SarahControllerDenied(snapshot.reasonCode ?? "BLOCKED", true);
+  if (
+    snapshot.state !== state ||
+    snapshot.reasonCode !== (reason === "NONE" ? null : reason)
+  )
+    throw new SarahControllerDenied("SERVICE_UNAVAILABLE");
+  return snapshot;
+}
+
+// AC-7: the course-guidance lifecycle (govern_sarah_course_guidance). Same
+// trust root and SARAH_EXECUTION_V1 state machine, NEW protocol tag
+// DUCELIO_SARAH_COURSE_GUIDANCE_HMAC_SHA256_V1, and the commercial-context
+// fingerprint in place of any support-profile version: course guidance never
+// signs, sends or binds to learner-support state.
+export type SarahCourseGuidanceScope = {
+  executionId: string;
+  idempotencyKey: string;
+  mode: SarahCourseGuidanceMode;
+  commercialFingerprint: string;
+};
+
+export async function attestSarahCourseGuidanceCommand(
+  scope: SarahCourseGuidanceScope,
+  command: Command,
+): Promise<SarahExecutionSnapshot> {
+  const actor = await getAuthenticatedActor();
+  if (!actor || !actor.roles.includes("STUDENT"))
+    throw new SarahControllerDenied("FORBIDDEN");
+  const key = controllerKey();
+  if (!key) throw new SarahControllerDenied("SERVICE_UNAVAILABLE");
+  const executionId = z.uuid().parse(scope.executionId).toLowerCase();
+  const idempotencyKey = z.uuid().parse(scope.idempotencyKey).toLowerCase();
+  const mode = z.enum(SARAH_COURSE_GUIDANCE_MODES).parse(scope.mode);
+  const fingerprint = z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .parse(scope.commercialFingerprint);
+  const { state, reason, budgetStage, budget, usage } = commandValues(command);
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const expiresAt = issuedAt + 10;
+  const canonical = [
+    "DUCELIO_SARAH_COURSE_GUIDANCE_HMAC_SHA256_V1",
+    SARAH_EXECUTION_POLICY,
+    SARAH_PLATFORM_ROLE,
+    SARAH_RUNTIME_PROFILE_REF,
+    SARAH_COMMERCIAL_BEHAVIOUR_VERSION,
+    key.keyId,
+    actor.id.toLowerCase(),
+    executionId,
+    idempotencyKey,
+    command.operation,
+    mode,
+    SARAH_COURSE_GUIDANCE_INTENT,
+    fingerprint,
+    state,
+    reason,
+    budgetStage,
+    String(budget.maxProviderCalls),
+    String(budget.maxOutputTokens),
+    String(budget.maxEstimatedCostMicrousd),
+    String(usage.providerCalls),
+    String(usage.attempts),
+    String(usage.inputTokens),
+    String(usage.outputTokens),
+    String(usage.estimatedCostMicrousd),
+    String(usage.elapsedMs),
+    String(issuedAt),
+    String(expiresAt),
+  ].join("\n");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("govern_sarah_course_guidance", {
+    p_key_id: key.keyId,
+    p_platform_role: SARAH_PLATFORM_ROLE,
+    p_runtime_profile_ref: SARAH_RUNTIME_PROFILE_REF,
+    p_behaviour_version: SARAH_COMMERCIAL_BEHAVIOUR_VERSION,
+    p_execution_id: executionId,
+    p_idempotency_key: idempotencyKey,
+    p_operation: command.operation,
+    p_mode: mode,
+    p_commercial_fingerprint: fingerprint,
+    p_state: state,
+    p_reason: reason,
+    p_budget_stage: budgetStage,
+    p_max_calls: budget.maxProviderCalls,
+    p_max_output: budget.maxOutputTokens,
+    p_max_cost: budget.maxEstimatedCostMicrousd,
+    p_calls: usage.providerCalls,
+    p_attempts: usage.attempts,
+    p_input: usage.inputTokens,
+    p_output: usage.outputTokens,
+    p_cost: usage.estimatedCostMicrousd,
+    p_elapsed: usage.elapsedMs,
+    p_issued_at: issuedAt,
+    p_expires_at: expiresAt,
+    p_mac: mac(key.keyHex, canonical),
+  });
+  if (error) throw new SarahControllerDenied("SERVICE_UNAVAILABLE");
+  const result = sarahGovernResultSchema.safeParse(data);
+  if (!result.success) throw new SarahControllerDenied("SERVICE_UNAVAILABLE");
+  if (!result.data.ok)
+    throw new SarahControllerDenied(
+      result.data.code,
+      command.operation !== "AUTHORIZE" &&
+        result.data.code === "EXECUTION_TIMEOUT",
+    );
+  const snapshot = result.data.execution;
+  if (
+    snapshot.executionId !== executionId ||
+    snapshot.studentId !== actor.id ||
+    snapshot.mode !== mode ||
+    snapshot.intent !== SARAH_COURSE_GUIDANCE_INTENT
   )
     throw new SarahControllerDenied("CONTEXT_CONFLICT");
   if (snapshot.state === "BLOCKED")

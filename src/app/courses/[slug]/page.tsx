@@ -5,15 +5,9 @@ import { BuyCourseForm } from "@/components/buy-course-form";
 import { getCommercialV1Offer } from "@/server/commercial-v1-commerce";
 import { commerceConfig } from "@/lib/env";
 import { DELIVERY_PLAN_DEFINITIONS } from "@/domain/commercial-v1-launch";
+import { formatOfferPrice } from "@/domain/commercial-v1-commerce";
 
 export const dynamic = "force-dynamic";
-
-function formatPrice(amountMinor: number, currency: string) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency,
-  }).format(amountMinor / 100);
-}
 
 export default async function Page({
   params,
@@ -56,7 +50,7 @@ export default async function Page({
         </div>
         <Card className="course-buy-card">
           <p className="course-price">
-            {formatPrice(offer.priceAmountMinor, offer.currency)}
+            {formatOfferPrice(offer.priceAmountMinor, offer.currency)}
           </p>
           <p className="muted">One-time course fee</p>
           {offer.viewerEntitled || offer.viewerEnrolmentStatus === "ACTIVE" ? (
