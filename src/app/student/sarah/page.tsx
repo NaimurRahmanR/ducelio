@@ -7,15 +7,17 @@ import { Card } from "@/components/ui";
 import { SarahAskPanel, SarahProposals } from "@/components/sarah-guide";
 import { SarahIdentity, SARAH_IS_AI_NOTICE } from "@/components/sarah-identity";
 import { SarahSessionFeedback } from "@/components/sarah-session-feedback";
+import { SarahCourseGuidancePanel } from "@/components/sarah-course-guidance";
 import type { CounsellorMode } from "@/domain/platform-ai-policy";
+import { isCourseGuidanceMode } from "@/domain/sarah-course-guidance";
 
 const MODE_HELP: Record<CounsellorMode, string> = {
   PROSPECT:
-    "You have no course enrolment yet. Sarah can help you get started and find your way around Ducelio.",
+    "You have no course enrolment yet. Sarah can help you get started and find your way around Ducelio, and separately help you find a course.",
   ACTIVE_COURSE:
     "You are on a course. Sarah can help you find your way around Ducelio and understand your schedule, access and support information.",
   POST_COURSE:
-    "Your course has ended. Sarah can help you find your way around Ducelio and understand the support information it holds for you.",
+    "Your course has ended. Sarah can help you find your way around Ducelio and understand the support information it holds for you, and separately help you find a course.",
 };
 
 // AC-5: Sarah Mitchell, Ducelio's AI learner-success counsellor. Learner
@@ -69,6 +71,14 @@ export default async function Page() {
         {/* The first idempotency key is generated here, on the server, so
             the Client Component renders identically during hydration. */}
         <SarahAskPanel initialIdempotencyKey={randomUUID()} />
+        {/* AC-7: course guidance, only when the database-derived mode is
+            PROSPECT or POST_COURSE. Never offered during an active course. */}
+        {mode && isCourseGuidanceMode(mode) && (
+          <SarahCourseGuidancePanel
+            mode={mode}
+            initialIdempotencyKey={randomUUID()}
+          />
+        )}
         {proposals.status === "OK" ? (
           <SarahProposals
             current={proposals.current}

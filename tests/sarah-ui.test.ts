@@ -65,6 +65,10 @@ vi.mock("@/server/session-feedback", () => ({
 vi.mock("@/app/student/sarah/feedback-actions", () => ({
   submitSessionFeedbackAction: vi.fn(),
 }));
+// AC-7: the page also offers course guidance outside an active course.
+vi.mock("@/app/student/sarah/course-guidance-actions", () => ({
+  askSarahCourseGuidanceAction: vi.fn(),
+}));
 
 import {
   SarahAskPanel,

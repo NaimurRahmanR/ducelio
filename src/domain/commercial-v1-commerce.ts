@@ -27,6 +27,17 @@ export const offerSlugSchema = z
   .min(3)
   .max(80);
 
+// The one display format for an offer's authoritative price (minor units
+// and ISO currency from the database projection). Shared by the public
+// course pages and Sarah's AC-7 recommendation cards, so a price is never
+// formatted from model text.
+export function formatOfferPrice(amountMinor: number, currency: string) {
+  return new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency,
+  }).format(amountMinor / 100);
+}
+
 // Independent of commerce entitlement: the CANONICAL academic enrolments
 // table's own status for the current viewer's exact cohort (V2 correction,
 // finding 4) -- a learner can be legitimately enrolled (a comped/free seat)

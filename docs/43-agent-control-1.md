@@ -131,7 +131,7 @@ Each reviewed profile shows:
 
 All of it comes from the unchanged server-owned registry via a read-only `listProductionRuntimeProfiles()`. Platform roles are shown as **not executable**:
 
-- **Sarah** (the platform Counsellor) has no production execution plane and does not exist in production. _(Superseded by [AC-5](47-agent-behaviour-ac5-sarah.md): Sarah Mitchell, Ducelio's AI learner-success counsellor, now runs on the platform COUNSELLOR plane, `SARAH_EXECUTION_V1`, and is shown as executable. Hosted and live evidence remain none.)_
+- **Sarah** (the platform Counsellor) has no production execution plane and does not exist in production. _(Superseded by [AC-5](47-agent-behaviour-ac5-sarah.md): Sarah Mitchell, Ducelio's AI learner-success counsellor, now runs on the platform COUNSELLOR plane, `SARAH_EXECUTION_V1`, and is shown as executable; [AC-7](49-agent-behaviour-ac7-sarah-course-guidance.md) adds course guidance on the same plane. Hosted and live evidence remain none.)_
 - **Operations Engineer** has no production tool-execution plane.
 
 The academic COUNSELLOR row is shown as historical vocabulary that is not executable and does not launch Sarah. Per role, the page states the exact escalation semantics from the table above.
@@ -362,9 +362,9 @@ Migrations 001–049 are unchanged. No live provider was called.
 
 **AC-5: Sarah production execution plane.** Onboarding, learner guide, confirmed profile proposals, learner-success context. (Status: independently reviewed and merged through PR #59, merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41` on `main`; migration 054 is **not** yet deployed to hosted acceptance; see [AC-5](47-agent-behaviour-ac5-sarah.md). Sarah Mitchell is the AI persona of the platform COUNSELLOR role.)
 
-**AC-6: Sarah post-session feedback.** Feedback collection and an admin teaching-quality surface. (Status: implemented and locally validated on `feat/ac6-sarah-session-feedback`, uncommitted, awaiting independent review; migration 055 not deployed; see [AC-6](48-agent-behaviour-ac6-sarah-feedback.md). The feedback is three deterministic 1–5 ratings collected under Sarah's persona with **no model call**, and admins see only threshold-protected aggregates.)
+**AC-6: Sarah post-session feedback.** Feedback collection and an admin teaching-quality surface. (Status: independently reviewed and merged through PR #60, merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`; migration 055 not deployed; see [AC-6](48-agent-behaviour-ac6-sarah-feedback.md). The feedback is three deterministic 1–5 ratings collected under Sarah's persona with **no model call**, and admins see only threshold-protected aggregates.)
 
-**AC-7: Sarah course guidance.** Commercial recommendation with a hard data firewall between learner-support context and commercial context.
+**AC-7: Sarah course guidance.** Commercial recommendation with a hard data firewall between learner-support context and commercial context. (Status: implemented and locally validated on `feat/ac7-sarah-course-guidance`, independently reviewed and approved for commit/PR, not yet committed or merged; migration 056 not deployed, and neither are 054 and 055; no hosted or live-provider AC-7 evidence; not production-ready; see [AC-7](49-agent-behaviour-ac7-sarah-course-guidance.md). A separate `COURSE_GUIDANCE` intent runs only for PROSPECT and POST_COURSE learners, on the same `COUNSELLOR_PLATFORM_V1` profile and budget, from a separate commercial projection that never reads support data. It suggests at most three published offers by slug, rendered from authoritative data, and mutates nothing. Once AC-7 is merged, the AC-1 → AC-7 workstream is implemented; hosted, live-provider and production acceptance of every checkpoint remains outstanding.)
 
 ### Design-record amendments from the independent review
 

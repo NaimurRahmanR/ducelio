@@ -2,9 +2,103 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-5, Sarah Mitchell production execution plane (migration 054), independently reviewed and merged through PR #59 (merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41` on `main`). Migration 054 is **not** yet deployed to hosted acceptance; this does not block local AC-6 work. See [AC-5 design and evidence](47-agent-behaviour-ac5-sarah.md).
+LAST COMPLETED CHECKPOINT: AC-6, Sarah post-session feedback and the admin teaching-quality surface (migration 055), independently reviewed and merged through PR #60 (merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`). Migrations 054 and 055 are **not** deployed to hosted acceptance; this does not block local AC-7 work. See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
 
-CURRENT CHECKPOINT (partial): AC-6, Sarah post-session feedback and the admin teaching-quality surface, on `feat/ac6-sarah-session-feedback` from base `f6ab664d1a42706f34fa5db9ba8826cb483a0b41`. Migration `202610060055_sarah_session_feedback.sql` (additive; 001–054 unchanged). **Implemented and locally validated, uncommitted, awaiting independent review. Migration 055 is not deployed. No hosted AC-6 evidence exists. Not production-ready.** See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
+CURRENT CHECKPOINT (partial): AC-7, Sarah course guidance with a hard learner-support / commercial data firewall, on `feat/ac7-sarah-course-guidance` from base `b33da08b3ce4bd9e918230bf7940c5f1bfb58889`. Migration `202610070056_sarah_course_guidance.sql` (001–055 unchanged). **Implemented and locally validated, independently reviewed and approved for commit/PR; still uncommitted and unmerged at this point. Migration 056 is not deployed, and neither are 054 and 055. No hosted or live-provider AC-7 evidence exists. Not production-ready.** See [AC-7 design and evidence](49-agent-behaviour-ac7-sarah-course-guidance.md).
+
+AC-7 is the **final** checkpoint of the AC-1 → AC-7 Agent / Model control and Governed Academic Agent Behaviour workstream. Once it is merged, the workstream is **implemented** (locally validated, reviewed and merged). That is **not** a claim that the platform is production-proven: the hosted, live-provider, concurrency, browser/accessibility and retention items of every checkpoint remain outstanding (see INCOMPLETE ITEMS below and each checkpoint record).
+
+COMPLETED ITEMS (AC-7, local):
+
+- Architecture:
+  - one new intent, `COURSE_GUIDANCE` (provider capability `sarah_course_guidance`, behaviour `SARAH_COMMERCIAL_BEHAVIOUR_V1`), on the unchanged platform `COUNSELLOR` / `COUNSELLOR_PLATFORM_V1` / `SARAH_EXECUTION_V1` plane;
+  - provider, model, reasoning, one attempt, 500 tokens, 10,000 µUSD, deadline and lease are unchanged;
+  - `GUIDE` / `SUPPORT_PROFILE` are unchanged (`SARAH_BEHAVIOUR_V1` still forbids selling);
+  - a physically separate code path (`src/domain/sarah-course-guidance.ts`, `src/server/sarah/course-guidance.ts`, its own Server Action and component). `COURSE_GUIDANCE` is not an AC-5 `SarahIntent`.
+- Mode boundary: PROSPECT and POST_COURSE only. ACTIVE_COURSE is refused at the page, reservation, context, AUTHORIZE, START and table CHECK, before any provider work.
+- Capabilities:
+  - executable (`SARAH_AC7_EXECUTABLE_CAPABILITIES`): PROSPECT `read_public_course_catalogue`, `explain_duration_pricing_format`, `help_choose_course`; POST_COURSE `read_owned_completion_summary`, `explain_next_course_options`, `explain_reenrolment_and_pricing`; ACTIVE_COURSE none;
+  - non-executable: `explain_course_prerequisites` ("No authoritative prerequisite field is currently published."), `capture_optional_prospect_preferences` (no approved persistent model; preferences stay ephemeral), `coordinate_progression` (navigation only).
+- Firewall:
+  - `get_my_sarah_commercial_context()` (self-scoped, STUDENT only, no argument) reads only published offers (≤ 20 plus a truncation flag) with the learner's own `viewerStatus` and `newPurchaseAvailable`, and in POST_COURSE ≤ 5 completed course identities with `completedOn`;
+  - `newPurchaseAvailable` mirrors `create_commercial_v1_order` eligibility, and conservatively requires an OPEN, not-full cohort;
+  - no support, proposal, counsellor, AC-6 feedback, assessment/lab result rows or result-detail data, score, pass-mark, mark, outcome, mastery, remediation, order, payment or campaign data (static test of every 056 body plus behavioural twins). The only completion-receipt field consumed is `completed_at` (structurally tested).
+- Fingerprint:
+  - `SARAH_COMMERCIAL_CONTEXT_V1` over the exact deterministic projection, with no actor identity;
+  - `source_commercial_sha256` on the execution, with an explicit cross-field CHECK (support intents: profile version only; course guidance: commercial version only, PROSPECT/POST_COURSE, commercial behaviour);
+  - historical rows stay valid.
+- Lifecycle:
+  - the new attested `govern_sarah_course_guidance` (`DUCELIO_SARAH_COURSE_GUIDANCE_HMAC_SHA256_V1`, the existing trust root);
+  - AUTHORIZE and START re-check mode and commercial fingerprint, and a stale START is `FAILED`/`POLICY_BLOCKED` with no provider call;
+  - **post-provider re-check (review correction 1):** before any successful FINALIZE or learner output, the context is re-read (even with zero recommendations) and must match the START-admitted mode and fingerprint. Otherwise all provider prose is suppressed and the execution is `FAILED`/`POLICY_BLOCKED` with real usage (`INTERNAL_ERROR` if the re-read fails), with no second provider call and no lock across the network call;
+  - the shared Sarah admission and budget envelope;
+  - the 054 `govern_sarah_execution` is not replaced;
+  - reservation material `SARAH_AC7_COURSE_GUIDANCE_V1`, with AC-5's unchanged.
+- Output: strict `{reply, recommendations[≤3]{slug, reason}}`, with unique slugs, each an exact `newPurchaseAvailable` slug of the authorised context. Everything else is `OUTPUT_INVALID`, with no repair.
+- Cards: built by slug from the verified post-provider projection, never from model text. `formatOfferPrice` is shared with the public course pages.
+- UI: "Find a course" on `/student/sarah` (PROSPECT/POST_COURSE only), with firewall and no-pressure copy, ≤ 3 cards linking to `/courses/<slug>`, and no buy, order or reserve control.
+- No commercial mutation, and no persistence of message, reply, reasons, recommendations or preferences.
+- Audit: intent-aware wording with the 054 source classifier unchanged; no fingerprint or content.
+- ACL: eight `authenticated`-only RPCs, closed private helpers, column privileges revoked, migration-time self-verification.
+- Truth-sync:
+  - `PLATFORM_ROLE_FACTS.COUNSELLOR`, the COUNSELLOR evidence scope (AC-5 + AC-7 deterministic; HOSTED NONE with 054/056 undeployed), `/admin/agents` copy;
+  - docs 43 (AC-6 merged, AC-7 status), 47 (status and section 21), 48 (merged status and the firewall), and the new 49.
+- Tests:
+  - new: `sarah-course-guidance-db` 38, `sarah-course-guidance` 27, `sarah-course-guidance-ui` 9;
+  - updated: `sarah` (capability truth, migration list), `sarah-db` (eight RPCs, a retitled 054 intent test; the other 42 unchanged and passing), `sarah-ui` (action mock).
+
+AC-7 local gates (Node 24.19.0, Windows):
+
+- Focused suites (AC-7 plus `sarah-db`, `sarah`, `sarah-ui`): 6 files, 166/166 (AC-7 74, AC-5 `sarah-db` 43).
+- `npm run check`, exactly as defined, after the review corrections: lint and type check passed; **4,196/4,196 across 171 files, exit 0** (4,190 before the corrections).
+- `npm run build`:
+  - with `.env.local` as-is: exit 1 at the known `/admin` prerender "Configured production authentication requires an HTTPS APP_URL";
+  - with the process-level `APP_URL=https://ducelio.invalid` override (`.env.local` untouched): exit 0. `/student/sarah`, `/courses` and `/courses/[slug]` compile as dynamic routes.
+- `npm run format:check`: only the six unchanged pre-existing files (`.github/workflows/ci.yml`, `package.json`, four `content/courses/security-plus-sy0-701/*.json`). Not touched.
+- `git diff --check HEAD`: clean. Untracked files have no CR or trailing whitespace.
+- `npm audit --omit=dev`: the same 2 pre-existing highs (`sharp`, `source-map-js`). `package.json` and the lockfile are unchanged; `npm audit fix` was not run.
+- Mutation checks (temporary edits, each restored byte-identically and verified by SHA-256), re-run in full after the review corrections: **29 safeguards, all killed**.
+  - Firewall and mode:
+    - ACTIVE_COURSE denial in the context RPC, the reservation gate, the AUTHORIZE policy mode check and the page mode gate;
+    - the support-context firewall (the projection reading `student_support_profiles`) and the feedback firewall (the projection reading `session_teaching_feedback`);
+    - actor identity in the fingerprint;
+    - the TS firewall (the course-guidance path calling `get_my_sarah_context`).
+  - Stale state:
+    - the stale commercial fingerprint at START and at AUTHORIZE;
+    - **post-provider (review correction 1):** fingerprint comparison bypassed, re-check result ignored entirely, re-check skipped when there are zero recommendations, drift recorded with zero usage, a mode change exposed as a plain retry, and a re-read failure treated as success.
+  - Output and catalogue:
+    - unknown slug accepted, duplicate slugs accepted, max 3 → 4, recommendable ignoring availability;
+    - no commercial mutation (an order created after success);
+    - `newPurchaseAvailable` ignoring viewer status, and ignoring the closed/full cohort;
+    - catalogue bound 20 → 21; a completion summary leaking the score.
+  - Regression and audit:
+    - old-intent regression (GUIDE routed to commercial instructions; the shape CHECK allowing GUIDE with a commercial version);
+    - the course-guidance audit wording;
+    - the commercial version made mutable in the guard trigger. This one first **survived** in the original pass, because that test's update was also an invalid transition. The test now makes an otherwise valid AUTHORIZED → RUNNING transition with a control update, and the mutation is killed.
+  - Retired: the earlier "cards from the authorised instead of the current context" mutation is now an **equivalent mutant**. Cards are built only when the post-provider fingerprint equals the START-admitted one, so both contexts are identical. The new post-provider mutations cover the guarantee instead.
+
+INCOMPLETE ITEMS (AC-7, and the workstream's outstanding acceptance):
+
+- Independent review: **done, approved for commit/PR**. Commit, push, PR with green CI and merge are still to do (no stage, commit or push has been made).
+- Hosted:
+  - deploy 054, 055 and then 056, verify the ledger, and run the ACL/RLS smoke (four Sarah tables, eight RPCs);
+  - the true-PostgreSQL races in [AC-7 section 12](49-agent-behaviour-ac7-sarah-course-guidance.md): catalogue change racing START, enrolment racing START, same-key and double AUTHORIZE, and cross-intent admission.
+- JWT/PostgREST (still BLOCKED independently), and browser/accessibility acceptance of `/student/sarah` including "Find a course".
+- Live-provider behavioural evaluation of `SARAH_COMMERCIAL_BEHAVIOUR_V1`: grounding quality, contract compliance, adversarial refusals and no pressure. LIVE_PROVIDER evidence for `COUNSELLOR_PLATFORM_V1` remains NONE.
+- **Production items:**
+  - retention and purge policy for Sarah execution, usage and reservation metadata (AC-5/AC-7);
+  - AC-6 feedback retention and window policy;
+  - live-model commercial grounding quality;
+  - catalogue breadth (with one or few published courses, guidance is thin; more than 20 are truncated);
+  - an authoritative prerequisite field (none exists; the capability stays non-executable);
+  - review of the shared 5-per-minute / 30-per-hour admission envelope at production scale.
+- All earlier checkpoint hosted and production items listed in their records below remain open.
+
+KNOWN FAILURES (AC-7): no AC-7 functional failure locally. Pre-existing environment items are recorded with the gates.
+
+NEXT EXACT ACTION: stage the independently reviewed AC-7 file set, verify the staged diff, commit, push, open the PR and require green CI. Do not deploy 054/055/056 or start Operations Engineer work without instruction.
+
+### AC-6 record (merged through PR #60)
 
 COMPLETED ITEMS (AC-6, local):
 
@@ -83,7 +177,7 @@ INCOMPLETE ITEMS (AC-6):
 
 KNOWN FAILURES (AC-6): no AC-6 functional failure locally. Pre-existing environment items are recorded with the gates.
 
-NEXT EXACT ACTION: independent review of the uncommitted AC-6 patch. Do not commit, push, deploy 054/055, or start AC-7 without instruction.
+AC-6 status at review time: implemented and locally validated, uncommitted; it was then independently reviewed and merged through PR #60 (`b33da08`).
 
 ### AC-5 record (merged through PR #59)
 
@@ -342,7 +436,7 @@ INCOMPLETE ITEMS (carried, AC-3 and earlier):
   - a repair procedure for corrupt behaviour bindings;
   - live-provider evaluation of instructional behaviour (now including Tutor/Lab V2);
   - AC-1/AC-2 dedicated real-concurrency scenarios.
-- AC-5 to AC-7 are not started. Sarah, teaching feedback and Lab timing are **not** implemented. (AC-4 Tutor class notes: see the current checkpoint above.)
+- At AC-4 time, AC-5 to AC-7 were not started. (Superseded: AC-5 and AC-6 are merged, and AC-7 is implemented, independently reviewed and approved for commit/PR; see the current checkpoint above. Lab timing is still not implemented.)
 
 KNOWN FAILURES: no local functional blocker. PGlite does not prove real multi-connection behaviour. There is no live-provider evidence for the new behaviour. Hosted acceptance blockers are listed above.
 

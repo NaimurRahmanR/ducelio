@@ -956,7 +956,7 @@ describe("AC-5 governed Sarah execution", () => {
     ).toEqual({ ok: false, code: "INVALID_INPUT" });
   });
 
-  it("has only the two AC-5 intents: no feedback (AC-6) or course recommendation (AC-7) path exists", async () => {
+  it("accepts no AC-6 feedback or invented recommendation intent, and 054 itself carries no commercial path (AC-7 is the separate migration 056)", async () => {
     for (const intent of [
       "FEEDBACK",
       "SESSION_FEEDBACK",
@@ -1424,7 +1424,7 @@ describe("AC-5 support-profile proposals", () => {
 });
 
 describe("AC-5 authority, privacy and side effects", () => {
-  it("grants nothing on Sarah tables or the private schema, and exactly six RPCs to authenticated only", async () => {
+  it("grants nothing on Sarah tables or the private schema, and exactly the six AC-5 plus two AC-7 RPCs to authenticated only", async () => {
     await owner();
     for (const role of ["anon", "authenticated", "service_role"]) {
       expect(
@@ -1451,9 +1451,13 @@ describe("AC-5 authority, privacy and side effects", () => {
        where (n.nspname='sarah_private' or p.proname like '%sarah%')
          and has_function_privilege('authenticated', p.oid, 'EXECUTE')`,
     );
+    // AC-7 (migration 056) adds exactly get_my_sarah_commercial_context and
+    // govern_sarah_course_guidance.
     expect(executable).toEqual([
       "decide_sarah_profile_proposal",
+      "get_my_sarah_commercial_context",
       "get_my_sarah_context",
+      "govern_sarah_course_guidance",
       "govern_sarah_execution",
       "list_my_sarah_profile_proposals",
       "record_sarah_profile_proposal",

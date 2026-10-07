@@ -66,7 +66,8 @@ vi.mock("next/cache", () => ({ revalidatePath: m.revalidatePath }));
 import {
   COUNSELLOR_PROHIBITED_SCOPES,
   SARAH_AC5_EXECUTABLE_CAPABILITIES,
-  SARAH_AC7_DEFERRED_CAPABILITIES,
+  SARAH_AC7_EXECUTABLE_CAPABILITIES,
+  SARAH_AC7_NON_EXECUTABLE_CAPABILITIES,
   counsellorCapabilityByMode,
   counsellorModeSchema,
   isSarahCapabilityExecutable,
@@ -271,15 +272,23 @@ describe("Sarah request contract", () => {
 });
 
 describe("Sarah capabilities (code-owned)", () => {
-  it("executes only AC-5 capabilities, each also in the mode catalogue", () => {
+  it("executes only the AC-5 support and AC-7 course-guidance capabilities, each also in the mode catalogue", () => {
     for (const mode of counsellorModeSchema.options) {
-      for (const capability of SARAH_AC5_EXECUTABLE_CAPABILITIES[mode])
+      for (const capability of [
+        ...SARAH_AC5_EXECUTABLE_CAPABILITIES[mode],
+        ...SARAH_AC7_EXECUTABLE_CAPABILITIES[mode],
+      ])
         expect(counsellorCapabilityByMode[mode]).toContain(capability);
       for (const intent of ["GUIDE", "SUPPORT_PROFILE"] as const)
-        for (const capability of sarahCapabilitiesFor(mode, intent))
+        for (const capability of sarahCapabilitiesFor(mode, intent)) {
           expect(isSarahCapabilityExecutable(mode, capability)).toBe(true);
+          // The support path never gains a commercial capability (AC-7).
+          expect(SARAH_AC7_EXECUTABLE_CAPABILITIES[mode]).not.toContain(
+            capability,
+          );
+        }
       for (const deferred of [
-        ...SARAH_AC7_DEFERRED_CAPABILITIES,
+        ...SARAH_AC7_NON_EXECUTABLE_CAPABILITIES,
         "coordinate_academic_handoff",
         "record_bounded_support_followup",
       ])
@@ -292,10 +301,19 @@ describe("Sarah capabilities (code-owned)", () => {
       );
     }
     // Being in the catalogue never makes a capability executable.
-    expect(counsellorCapabilityByMode.PROSPECT).toContain("help_choose_course");
-    expect(isSarahCapabilityExecutable("PROSPECT", "help_choose_course")).toBe(
-      false,
+    expect(counsellorCapabilityByMode.PROSPECT).toContain(
+      "explain_course_prerequisites",
     );
+    expect(
+      isSarahCapabilityExecutable("PROSPECT", "explain_course_prerequisites"),
+    ).toBe(false);
+    // An AC-7 capability executes only in its own mode.
+    expect(isSarahCapabilityExecutable("PROSPECT", "help_choose_course")).toBe(
+      true,
+    );
+    expect(
+      isSarahCapabilityExecutable("ACTIVE_COURSE", "help_choose_course"),
+    ).toBe(false);
     expect(isSarahCapabilityExecutable("PROSPECT", "invented_capability")).toBe(
       false,
     );
@@ -1055,7 +1073,7 @@ describe("Sarah static boundaries", () => {
 
   it("adds exactly migration 054 and leaves no Sarah staff account in seed data", () => {
     const migrations = readdirSync(resolve("supabase/migrations")).sort();
-    // AC-6 (migration 055) is the only later, additive migration.
+    // AC-6 (055) and AC-7 (056) are the only later, additive migrations.
     expect(
       migrations.slice(
         migrations.indexOf("202610060054_sarah_learner_guide.sql"),
@@ -1063,6 +1081,7 @@ describe("Sarah static boundaries", () => {
     ).toEqual([
       "202610060054_sarah_learner_guide.sql",
       "202610060055_sarah_session_feedback.sql",
+      "202610070056_sarah_course_guidance.sql",
     ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");

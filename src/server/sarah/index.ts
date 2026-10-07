@@ -51,6 +51,10 @@ import {
 // The learner, mode and profile version are derived by the database; the
 // browser supplies only the intent, message and idempotency key. Nothing
 // the learner writes and nothing Sarah replies is persisted.
+//
+// AC-7 course guidance is NOT handled here: it has its own module
+// (./course-guidance.ts) with its own commercial context, which never reads
+// the learner-support context below.
 
 class SarahUnavailable extends Error {}
 // The database's bounded new-reservation admission refused this request.
