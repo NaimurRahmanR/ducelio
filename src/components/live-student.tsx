@@ -18,6 +18,9 @@ import { listMyProfessorClassroomSessionIds } from "@/server/professor-classroom
 import { previewClassroomEligibility } from "@/domain/professor-classroom";
 import { SupportForms } from "./support-forms";
 import { SarahIdentity, SARAH_IS_AI_NOTICE } from "./sarah-identity";
+import { randomUUID } from "node:crypto";
+import { listMySessionFeedbackOpportunities } from "@/server/session-feedback";
+import { SarahSessionFeedback } from "./sarah-session-feedback";
 
 export async function LiveStudent({ section = "" }: { section?: string }) {
   const { actor, enrolments, profile } = await getStudentAcademy();
@@ -48,6 +51,10 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     getStudentObjectiveMastery(),
     listMyProfessorClassroomSessionIds(),
   ]);
+  // AC-6: Sarah's structured post-session feedback prompts, only on the
+  // classes view and only when the database lists an eligible session.
+  const feedback =
+    section === "classes" ? await listMySessionFeedbackOpportunities() : null;
   const attendanceBySession = new Map(
     attendance.map((record) => [record.session_id, record]),
   );
@@ -114,6 +121,15 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
         )}
         {section === "classes" && (
           <>
+            {feedback?.status === "OK" && feedback.opportunities.length > 0 && (
+              <SarahSessionFeedback
+                showIdentity
+                prompts={feedback.opportunities.map((opportunity) => ({
+                  ...opportunity,
+                  requestId: randomUUID(),
+                }))}
+              />
+            )}
             <Card>
               <h2>Your class sessions</h2>
               {sessions.length ? (

@@ -2,7 +2,7 @@
 
 AC-5 is the fifth checkpoint of the Agent / Model control and Governed Academic Agent Behaviour workstream (see [AC-1](43-agent-control-1.md), [AC-2](44-agent-behaviour-ac2.md), [AC-3](45-agent-behaviour-ac3.md) and [AC-4](46-agent-behaviour-ac4.md)). Branch `feat/ac5-sarah-foundation-runtime`, base `6845a59a8f6f951d55162e0f834d912b4743cfa9` (AC-4 merged through PR #58). Migration `202610060054_sarah_learner_guide.sql`; migrations 001–053 are unchanged.
 
-**Status:** implemented and locally validated, **uncommitted**. The first independent review's five findings and four corrections are applied (section 20), and the patch awaits re-review. Migration 054 has **not** been deployed. No hosted or live-provider evidence exists for AC-5. **Not production-ready.**
+**Status:** independently reviewed and merged through PR #59 (merge `f6ab664d1a42706f34fa5db9ba8826cb483a0b41`). The review corrections are in section 20. Migration 054 has **not** been deployed. AC-6 ([docs/48](48-agent-behaviour-ac6-sarah-feedback.md)) adds deterministic post-session feedback under Sarah's persona without changing this runtime. No hosted or live-provider evidence exists for AC-5. **Not production-ready.**
 
 The approved definition (AC-1 section 7): _Sarah production execution plane. Onboarding, learner guide, confirmed profile proposals, learner-success context._ AC-6 (post-session feedback and the admin teaching-quality surface) and AC-7 (course guidance and commercial recommendation behind a hard data firewall) are **not** implemented.
 

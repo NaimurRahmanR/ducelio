@@ -161,7 +161,7 @@ export const PLATFORM_ROLE_FACTS: Readonly<
     execution: {
       executable: true,
       description:
-        "AC-5 learner guide at /student/sarah (executeSarahGuide, SARAH_EXECUTION_V1): onboarding, learner guidance and learner-confirmed support-profile proposals. Not the academic COUNSELLOR role and not a human counsellor account. Post-session feedback (AC-6) and course guidance (AC-7) are not implemented.",
+        "AC-5 learner guide at /student/sarah (executeSarahGuide, SARAH_EXECUTION_V1): onboarding, learner guidance and learner-confirmed support-profile proposals. Not the academic COUNSELLOR role and not a human counsellor account. Post-session feedback (AC-6) is deterministic structured data collected under Sarah's persona with no model call and never runs on this plane. Course guidance (AC-7) is not implemented.",
     },
   },
   OPERATIONS_ENGINEER: {
