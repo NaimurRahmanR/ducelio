@@ -22,8 +22,8 @@ export default async function Home() {
         </nav>
       </header>
 
-      <main id="main">
-        <section className="foundation-copy" aria-labelledby="home-heading">
+      <main id="main" className="launch-home">
+        <section className="foundation-copy launch-hero" aria-labelledby="home-heading">
           <Badge tone="gold">DUCELIO ACADEMY</Badge>
           <h1 id="home-heading">Your ambition. Guided to mastery.</h1>
           <p>
@@ -114,7 +114,7 @@ export default async function Home() {
         </section>
       </main>
 
-      <footer className="section-content">
+      <footer className="section-content launch-home-footer">
         <p className="muted">
           Ducelio is an independent learning platform. Examination-preparation
           courses do not themselves award third-party certifications.
