@@ -18,11 +18,7 @@ describe("25 October learner navigation baseline", () => {
   });
 
   it("treats Calendar as an implemented learner section, not a later-milestone placeholder", () => {
-    const placeholderGuard = source.slice(
-      source.indexOf("        !["),
-      source.indexOf("        ![") + 290,
-    );
-    expect(placeholderGuard).toContain('"calendar"');
+    expect(source).toMatch(/"profile",\s*"calendar",\s*"classes"/);
   });
 
   it("separates official graded results from objective mastery", () => {
