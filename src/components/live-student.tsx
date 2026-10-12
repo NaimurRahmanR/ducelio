@@ -119,6 +119,82 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             )}
           </Card>
         )}
+        {section === "calendar" && (
+          <Card>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">YOUR SCHEDULE</p>
+                <h2>Class calendar</h2>
+              </div>
+              <Badge tone="muted">ALL SESSIONS</Badge>
+            </div>
+            <p className="muted">
+              Your class dates and times are shown in your profile time zone (
+              {profile.timezone}). Cancelled sessions remain visible for your
+              records.
+            </p>
+            {sessions.length ? (
+              [...sessions]
+                .sort(
+                  (a, b) =>
+                    Date.parse(a.scheduled_start) -
+                    Date.parse(b.scheduled_start),
+                )
+                .map((session) => (
+                  <div className="support-record" key={session.id}>
+                    <Badge
+                      tone={
+                        session.status === "SCHEDULED"
+                          ? "green"
+                          : session.status === "CANCELLED"
+                            ? "gold"
+                            : "muted"
+                      }
+                    >
+                      {session.status}
+                    </Badge>
+                    <h3>{session.lesson_title}</h3>
+                    <p>
+                      {session.programme_title} · {session.cohort_title}
+                    </p>
+                    <p>
+                      <time dateTime={session.scheduled_start}>
+                        {new Date(session.scheduled_start).toLocaleString(
+                          "en-GB",
+                          {
+                            timeZone: profile.timezone,
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          },
+                        )}
+                      </time>{" "}
+                      –{" "}
+                      <time dateTime={session.scheduled_end}>
+                        {new Date(session.scheduled_end).toLocaleString(
+                          "en-GB",
+                          {
+                            timeZone: profile.timezone,
+                            timeStyle: "short",
+                          },
+                        )}
+                      </time>
+                    </p>
+                    <p className="muted">
+                      Instructor: {session.instructor_name}
+                    </p>
+                  </div>
+                ))
+            ) : (
+              <EmptyState title="No class sessions scheduled">
+                Your class dates will appear here when sessions are scheduled
+                for your cohort.
+              </EmptyState>
+            )}
+            <ButtonLink href="/student/classes" secondary>
+              Open classes and lesson access
+            </ButtonLink>
+          </Card>
+        )}
         {section === "classes" && (
           <>
             {feedback?.status === "OK" && feedback.opportunities.length > 0 && (
@@ -347,6 +423,19 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
         )}
         {section === "results" && (
           <Card>
+            <h2>Formal assessment results</h2>
+            <p className="muted">
+              See your graded course components, pending results and official
+              completion status in Course progress. The objective mastery
+              records below are separate from your formal course grades.
+            </p>
+            <ButtonLink href="/student/progress" secondary>
+              View graded results and course completion
+            </ButtonLink>
+          </Card>
+        )}
+        {section === "results" && (
+          <Card>
             <div className="section-heading">
               <div>
                 <p className="eyebrow">DETERMINISTIC OBJECTIVE STATE</p>
@@ -518,6 +607,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
           "support",
           "study-plan",
           "profile",
+          "calendar",
           "classes",
           "notes",
           "results",
