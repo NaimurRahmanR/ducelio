@@ -104,3 +104,7 @@ For each stage: record checked repository SHA, project/environment, migration le
 - **Staging blocker:** current hosted database and deployed web runtime not connected for direct verification; use authorised operator execution or connected infrastructure tools. Do not mark hosted acceptance as failed simply because it was not run.
 - **Next P0 code edits:** real learner Calendar, Results discoverability, truthful public error states, legal/customer policy routes once owner-approved text is available, checkout and responsive journey QA.
 - **Release scope:** fully polished, reliable public paid website by 25 October; the subsequent iOS/Android store packages will share its backend and web learner experience.
+
+## H. Tonight's in-review UI repairs
+
+- [PR #65](https://github.com/NaimurRahmanR/ducelio/pull/65) addresses the currently placeholder learner Calendar with an authorised chronological session agenda and explicit IANA time-zone rendering; also makes formal component results discoverable from the mastery-only Results view. These changes remain **UNMERGED and require CI plus browser/device QA**. Original findings above describe `main` at the audit SHA.
