@@ -231,6 +231,7 @@ type StripeEvent = {
 type Flags = {
   reconcileGrantsUnpaid?: boolean;
   webhookIgnoresSignature?: boolean;
+  webhookReportsUnresolved?: boolean;
   duplicateCreatesEvent?: boolean;
   reviewerCreatesOrder?: boolean;
   acceptZeroPrice?: boolean;
@@ -635,7 +636,10 @@ function createWorld(flags: Flags = {}) {
         s.payment_status === "paid" ? "PAID" : "UNPAID",
       );
       webhookPosts.push({ status: 200 });
-      return reply(200, { received: true });
+      return reply(200, {
+        received: true,
+        reconciled: !flags.webhookReportsUnresolved,
+      });
     }
     throw new Error(`Unexpected network request to ${path}.`);
   }
@@ -1413,6 +1417,16 @@ describe("Stripe acceptance driver: each surface fails closed against a dishones
     expect(by[SURFACES.RECONCILIATION_REPLAY].reason).toBe(
       "REQUIRES_SIGNED_WEBHOOK_FULFILLMENT",
     );
+  });
+
+  it("rejects HTTP 200 receipts without reconciliation", async () => {
+    const { by } = await run({ webhookReportsUnresolved: true });
+    expect(by[SURFACES.SIGNED_WEBHOOK_FULFILLMENT].status).toBe("FAIL");
+    expect(
+      by[SURFACES.SIGNED_WEBHOOK_FULFILLMENT].details?.join(" "),
+    ).toContain("did not accept and reconcile");
+    expect(by[SURFACES.DUPLICATE_WEBHOOK_IDEMPOTENCY].status).toBe("BLOCKED");
+    expect(by[SURFACES.RECONCILIATION_REPLAY].status).toBe("BLOCKED");
   });
 
   it("P: a duplicate delivery that records a second payment event FAILs idempotency", async () => {

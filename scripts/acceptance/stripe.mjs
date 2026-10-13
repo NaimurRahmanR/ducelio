@@ -711,7 +711,6 @@ const isEmpty = (s) =>
   s.paymentEvents === 0;
 const time = (v) =>
   v === null || v === undefined ? null : new Date(v).getTime();
-const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // Read-only: proves the operator installed the matching key WITHOUT sending
 // the key to the database or reading its secret back. The database MACs a
@@ -1536,7 +1535,11 @@ export async function scenarioSignedWebhookFulfillment(
     rawBody,
     ctx.sign(rawBody, ctx.webhookSecret),
   );
-  if (valid.status !== 200 || !sameJson(valid.body, { received: true }))
+  if (
+    valid.status !== 200 ||
+    valid.body?.received !== true ||
+    valid.body?.reconciled !== true
+  )
     problems.push(
       `The production webhook route did not accept and reconcile the validly signed event (HTTP ${valid.status}).`,
     );
@@ -1610,7 +1613,11 @@ export async function scenarioDuplicateWebhook(
     ctx.sign(fulfilled.rawBody, ctx.webhookSecret),
   );
   const problems = [];
-  if (again.status !== 200 || !sameJson(again.body, { received: true }))
+  if (
+    again.status !== 200 ||
+    again.body?.received !== true ||
+    again.body?.reconciled !== true
+  )
     problems.push(
       `The duplicate delivery was not safely accepted (HTTP ${again.status}).`,
     );
