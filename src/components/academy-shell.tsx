@@ -59,6 +59,23 @@ export function AcademyShell({
   const active = links.find(
     ([, slug]) => pathname === (slug ? base + "/" + slug : base),
   );
+  // Pages outside the main navigation still name themselves truthfully
+  // rather than all reading as "Study plan".
+  const current =
+    active?.[0] ??
+    (pathname.endsWith("/notifications")
+      ? "Notifications"
+      : pathname.endsWith("/lecture")
+        ? "Lecture Hall"
+        : pathname.startsWith(base + "/classroom/")
+          ? "Classroom"
+          : pathname === base + "/tutor-notes"
+            ? "Tutor notes"
+            : pathname === base + "/study-plan"
+              ? "Study plan"
+              : pathname === base + "/announcements"
+                ? "Announcements"
+                : "My academy");
   const initials = name
     .split(" ")
     .slice(0, 2)
@@ -141,15 +158,7 @@ export function AcademyShell({
             <Brand />
           </div>
           <div className="breadcrumb">
-            My academy <span>/</span>{" "}
-            <strong>
-              {active?.[0] ??
-                (pathname.endsWith("/notifications")
-                  ? "Notifications"
-                  : pathname.endsWith("lecture")
-                    ? "Lecture Hall"
-                    : "Study plan")}
-            </strong>
+            My academy <span>/</span> <strong>{current}</strong>
           </div>
           <div className="topbar-actions">
             <span className="term-label">
@@ -184,12 +193,7 @@ export function AcademyShell({
           <summary>
             <Menu size={18} />
             Academy menu
-            <span>
-              {active?.[0] ??
-                (pathname.endsWith("/notifications")
-                  ? "Notifications"
-                  : "Study plan")}
-            </span>
+            <span>{current}</span>
           </summary>
           <nav aria-label="Mobile academy navigation">
             {nav}
