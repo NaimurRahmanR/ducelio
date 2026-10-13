@@ -2,31 +2,26 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-7, merged through PR #61 (merge `00ab7317171eb16f121f8106a2061e553233f71d` on `main`). Hosted acceptance now records all 56 migrations (verified 2026-10-13, see LR-BASELINE-01).
+LAST COMPLETED CHECKPOINT: LR-BASELINE-01, merged through PRs #66–#70 (final `main` `0e21fdf0cb450f3a12e928c0c0cf49eab638ce9b`). Migration 057 is deployed to `ducelio-acceptance` (22/22 post-deployment checks; ledger 57). The independently verified FULL_CUSTOMER_JOURNEY run `1791863337177-6fr8jg` passed 10/0 (reviewer-entitlement access). See [docs/51](51-lr-baseline-01-hosted-baseline-and-ui-audit.md).
 
-CURRENT CHECKPOINT (partial; first independent review returned CHANGES REQUIRED, corrections applied, awaiting re-review): LR-BASELINE-01, hosted baseline resolution and initial website readiness, on the uncommitted review worktree branch `review/lr-baseline-01` from `00ab731`. See [LR-BASELINE-01 evidence and audit](51-lr-baseline-01-hosted-baseline-and-ui-audit.md).
+CURRENT CHECKPOINT (partial, awaiting independent review): LR-03 + UX-02, paid customer journey and commercial website readiness, on the uncommitted branch `lr03/paid-journey-ux02` from `0e21fdf`. See [docs/52](52-lr03-paid-journey-and-commercial-ux.md).
 
 - COMPLETED ITEMS:
-  - read-only hosted reconciliation: 56/56 ledger statements identical to the repository; objects, RLS, private schemas and `search_path` verified; environment identity verified on both paths;
-  - preflight (12 configured, 0 malformed) and `acceptance:hosted`: HOSTED_DATABASE, MIGRATIONS and RLS_ACL PASS, the rest BLOCKED or NOT_RUN;
-  - a confirmed HIGH privilege defect (hosted `authenticated`/`anon` EXECUTE on the internal `apply_objective_mastery_policy`, reproduced locally) and proposed migration `202610130057_supabase_default_privilege_hardening.sql` (001–056 unchanged). After review it adds:
-    - a long-term default-privilege control for functions `postgres` creates, with `PUBLIC` explicitly preserved in `extensions`/`supabase_migrations` and Supabase-role defaults untouched;
-    - a dependency review of the 52 `anon` revocations;
-    - a before/after privilege matrix against the live hosted catalogue (53 functions change, none gains a privilege);
-    - 14 regression/impact tests;
-    - 6/6 mutants killed;
-  - corrected homepage (PR #63), catalogue and learner Calendar/Results/time-zone/breadcrumb (PR #65), with rendered tests. After review: start/end as two `<time>` instants, and neutral cohort-date wording;
-  - `format:check` root cause: `json`/`yml` were unpinned in `.gitattributes` under Windows `core.autocrlf=true`. Fixed with three `eol=lf` lines (no content change);
-  - the page-by-page findings matrix.
+  - payment-safety source review;
+  - a HIGH defect fixed (a learner could never pay again after an abandoned checkout expired), with proposed migration `202610130058_commercial_v1_expired_checkout_replacement.sql` (attested, provenance-recorded replacement of an expired, unpaid session; 001–057 unchanged), 26 regression tests and 10/10 mutants killed;
+  - real-browser UX-02 audit in installed Chrome at three viewports, with five confirmed defects fixed: skip-link focus, checkout landmarks, footer contrast, target size, and the signed-out Stripe return keeping its order through login;
+  - after the fixes, 0 axe violations across 54 page audits.
 - INCOMPLETE ITEMS:
-  - independent review;
-  - hosted deployment of 057;
-  - FULL_CUSTOMER_JOURNEY rerun on the current schema;
-  - browser/device/assistive-technology review of the homepage and learner changes;
-  - the open findings in docs/51 §5.
-- KNOWN FAILURES: none in the gates. `npm run build` with `.env.local` as-is still needs an HTTPS `APP_URL` (known, pre-existing).
-- BLOCKERS: the journey is BLOCKED because `ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX` (matching the single active hosted controller key) and the `ACCEPTANCE_WRITE_ENABLED` operator opt-in are not configured. No key was provisioned.
-- NEXT EXACT ACTION: independent review of the LR-BASELINE-01 worktree diff. Then, separately and only with authorisation: commit by concern, open PRs with green CI, deploy 057 to `ducelio-acceptance`, and have the operator run `npm run acceptance:journey` with the controller key.
+  - independent review, then commit/PR/CI;
+  - deploy 058 to `ducelio-acceptance`;
+  - the operator-run `acceptance:stripe` (Stripe test secrets, commerce key, opt-ins, manual sandbox payment);
+  - approval for `acceptance:commerce-revocation`;
+  - a real Stripe test-mode refund harness (gap);
+  - network-delivered webhooks (needs a staging deployment);
+  - real iOS/Android device and screen-reader QA;
+  - LR-09 support channel and favicon asset.
+- KNOWN FAILURES: `npm audit --omit=dev` reports the same two pre-existing high advisories as `main` (`sharp`, `source-map-js`), tracked under LR-06. No other gate failure.
+- NEXT EXACT ACTION: independent review of the LR-03 patch.
 
 PREVIOUS CHECKPOINT RECORD: AC-6, Sarah post-session feedback and the admin teaching-quality surface (migration 055), independently reviewed and merged through PR #60 (merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`). See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
 
