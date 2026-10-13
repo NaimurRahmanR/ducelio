@@ -1,6 +1,7 @@
-import Link from "next/link";
 import { Brand, Card, ButtonLink } from "@/components/ui";
-import { requireActor } from "@/server/identity";
+import { redirect } from "next/navigation";
+import { getCurrentActor, requireActor } from "@/server/identity";
+import { safeAuthDestination } from "@/domain/auth";
 import { reconcileCommercialV1Order } from "@/server/commercial-v1-commerce";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +17,19 @@ export default async function Page({
 }: {
   searchParams: Promise<{ order?: string; session_id?: string }>;
 }) {
-  await requireActor("student");
   const params = await searchParams;
+  // LR-03: a buyer whose sign-in lapsed during Stripe Checkout keeps this
+  // exact order through login (a validated, rebuilt return destination)
+  // instead of landing on a generic page. Signed-in actors still pass the
+  // same student gate as before.
+  if (!(await getCurrentActor().catch(() => null))) {
+    const back = safeAuthDestination(
+      `/checkout/success?order=${encodeURIComponent(params.order ?? "")}&session_id=${encodeURIComponent(params.session_id ?? "")}`,
+      "",
+    );
+    redirect(back ? `/login?next=${encodeURIComponent(back)}` : "/login");
+  }
+  await requireActor("student");
 
   let state:
     | { kind: "missing" }
@@ -64,7 +76,7 @@ export default async function Page({
       <header className="courses-header">
         <Brand />
       </header>
-      <div className="checkout-result">
+      <main id="main" tabIndex={-1} className="checkout-result">
         <Card>
           {state.kind === "fulfilled" ? (
             <>
@@ -147,11 +159,11 @@ export default async function Page({
               </p>
             </>
           )}
-          <p className="muted">
-            <Link href="/courses">Back to courses</Link>
-          </p>
+          <ButtonLink href="/courses" secondary>
+            Back to courses
+          </ButtonLink>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }

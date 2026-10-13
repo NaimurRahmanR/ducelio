@@ -13,7 +13,7 @@ export default function Page() {
       <header className="courses-header">
         <Brand />
       </header>
-      <div className="checkout-result">
+      <main id="main" tabIndex={-1} className="checkout-result">
         <Card>
           <h1>Checkout was not completed here</h1>
           <p>
@@ -26,7 +26,7 @@ export default function Page() {
             Back to courses <span aria-hidden="true">→</span>
           </Link>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }

@@ -24,7 +24,7 @@ export default async function Page() {
           </Link>
         </nav>
       </header>
-      <main id="main">
+      <main id="main" tabIndex={-1}>
         <div className="foundation-copy">
           <Badge tone="gold">DUCELIO ACADEMY</Badge>
           <h1>Real courses. Real progress.</h1>

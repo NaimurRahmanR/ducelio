@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireActor: vi.fn(),
+  getCurrentActor: vi.fn(),
   listCommercialV1Offers: vi.fn(),
   getCommercialV1Offer: vi.fn(),
   createCommercialV1Checkout: vi.fn(),
@@ -10,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   notFound: vi.fn(),
   redirect: vi.fn(),
 }));
-vi.mock("@/server/identity", () => ({ requireActor: mocks.requireActor }));
+vi.mock("@/server/identity", () => ({
+  requireActor: mocks.requireActor,
+  getCurrentActor: mocks.getCurrentActor,
+}));
 vi.mock("@/server/commercial-v1-commerce", () => ({
   listCommercialV1Offers: mocks.listCommercialV1Offers,
   getCommercialV1Offer: mocks.getCommercialV1Offer,
@@ -94,6 +98,11 @@ const baseOffer = {
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.commerceConfig.mockReturnValue({ configured: true });
+  mocks.getCurrentActor.mockResolvedValue({
+    id: "learner-1",
+    displayName: "Alex",
+    roles: ["STUDENT"],
+  });
 });
 
 describe("page: /courses", () => {
@@ -291,6 +300,37 @@ describe("action: startCheckout", () => {
 });
 
 describe("page: /checkout/success", () => {
+  // LR-03: a buyer whose sign-in lapsed during Stripe Checkout keeps the
+  // exact order through login instead of losing it.
+  const ORDER = "10000000-0000-4000-8000-000000000001";
+  it("sends a signed-out buyer to login with this exact order as the validated return", async () => {
+    mocks.getCurrentActor.mockResolvedValue(null);
+    await expect(
+      SuccessPage({
+        searchParams: Promise.resolve({
+          order: ORDER,
+          session_id: "cs_test_a1B2",
+        }),
+      }),
+    ).rejects.toThrow("REDIRECT:");
+    expect(mocks.redirect).toHaveBeenCalledExactlyOnceWith(
+      "/login?next=" +
+        encodeURIComponent(
+          `/checkout/success?order=${ORDER}&session_id=cs_test_a1B2`,
+        ),
+    );
+    expect(mocks.reconcileCommercialV1Order).not.toHaveBeenCalled();
+  });
+  it("sends a signed-out visitor with unusable parameters to plain login", async () => {
+    mocks.getCurrentActor.mockResolvedValue(null);
+    await expect(
+      SuccessPage({
+        searchParams: Promise.resolve({ order: "x", session_id: "/admin" }),
+      }),
+    ).rejects.toThrow("REDIRECT:/login");
+    expect(mocks.redirect).toHaveBeenCalledExactlyOnceWith("/login");
+    expect(mocks.reconcileCommercialV1Order).not.toHaveBeenCalled();
+  });
   it("refunded redundant payment is shown without claiming course access was revoked", async () => {
     mocks.reconcileCommercialV1Order.mockResolvedValue({
       ok: false,

@@ -135,7 +135,7 @@ export function StaffShell({
           )}
         </div>
       </header>
-      <main id="main" className="staff-main">
+      <main id="main" tabIndex={-1} className="staff-main">
         <div className="page-heading">
           <div>
             <p className="eyebrow">

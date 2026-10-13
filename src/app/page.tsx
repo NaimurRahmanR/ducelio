@@ -54,7 +54,7 @@ export default async function Home() {
         </nav>
       </header>
 
-      <main id="main">
+      <main id="main" tabIndex={-1}>
         <section className="launch-hero" aria-labelledby="home-heading">
           <Badge tone="gold">DUCELIO ACADEMY</Badge>
           <h1 id="home-heading">Your ambition. Guided to mastery.</h1>

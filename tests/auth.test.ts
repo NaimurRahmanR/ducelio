@@ -72,6 +72,34 @@ describe("authentication application boundaries", () => {
     );
     expect(safeAuthDestination("/student#section")).toBe("/student");
   });
+  // LR-03: the one query-bearing destination, so a buyer whose sign-in lapsed
+  // during Stripe Checkout returns to reconcile the exact order.
+  const ORDER = "10000000-0000-4000-8000-000000000001";
+  const SUCCESS = `/checkout/success?order=${ORDER}&session_id=cs_test_a1B2c3`;
+  it("keeps a checkout success return with exactly a valid order and session id, rebuilt canonically", () => {
+    expect(safeAuthDestination(SUCCESS)).toBe(SUCCESS);
+    expect(
+      safeAuthDestination(
+        `/checkout/success?session_id=cs_live_Z9&order=${ORDER}`,
+      ),
+    ).toBe(`/checkout/success?order=${ORDER}&session_id=cs_live_Z9`);
+  });
+  it("rejects every other checkout success shape", () => {
+    for (const path of [
+      "/checkout/success",
+      `/checkout/success?order=${ORDER}`,
+      `${SUCCESS}&next=/admin`,
+      `${SUCCESS}&order=${ORDER}`,
+      `${SUCCESS}#fragment`,
+      `/checkout/success?order=not-a-uuid&session_id=cs_test_a1`,
+      `/checkout/success?order=${ORDER}&session_id=pi_123`,
+      `/checkout/success?order=${ORDER}&session_id=cs_test_a1%26next%3D%2Fadmin`,
+      `/checkout/success?order=${ORDER}&session_id=cs_test_a1/../../admin`,
+      `//evil.example/checkout/success?order=${ORDER}&session_id=cs_test_a1`,
+      `/checkout/success/?order=${ORDER}&session_id=cs_test_a1`,
+    ])
+      expect(safeAuthDestination(path)).toBe("/student");
+  });
   it("requires bounded signup fields and a long password", () => {
     expect(
       signUpSchema.safeParse({
