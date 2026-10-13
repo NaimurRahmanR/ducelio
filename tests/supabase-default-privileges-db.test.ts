@@ -13,6 +13,9 @@ import { testDatabase } from "./db-helper";
 let db: PGlite;
 // The same chain under the same defaults, stopped before migration 057.
 let before: PGlite;
+// Exactly the chain through 057, so the impact suite measures 057 alone
+// even after later migrations are added.
+let at057: PGlite;
 
 // Reviewed public RPCs the migrations themselves grant to anon (catalogue
 // reads and the HMAC-attested commerce controller surface).
@@ -90,14 +93,15 @@ async function resetRole() {
 }
 
 beforeAll(async () => {
-  [db, before] = await Promise.all([
+  [db, before, at057] = await Promise.all([
     testDatabase({ supabaseDefaultPrivileges: true }),
     testDatabase({ supabaseDefaultPrivileges: true, throughMigration: 56 }),
+    testDatabase({ supabaseDefaultPrivileges: true, throughMigration: 57 }),
   ]);
 });
 
 afterAll(async () => {
-  await Promise.all([db?.close(), before?.close()]);
+  await Promise.all([db?.close(), before?.close(), at057?.close()]);
 });
 
 describe("effective function privileges under hosted Supabase defaults", () => {
@@ -137,7 +141,7 @@ describe("effective function privileges under hosted Supabase defaults", () => {
 
 describe("security impact of migration 057 (before vs after, same defaults)", () => {
   it("revokes exactly the hosted-observed drift and nothing else", async () => {
-    const [pre, post] = [await snapshot(before), await snapshot(db)];
+    const [pre, post] = [await snapshot(before), await snapshot(at057)];
     expect([...post.keys()].sort()).toEqual([...pre.keys()].sort());
     const changed = [...pre.keys()]
       .filter(
@@ -222,9 +226,9 @@ describe("security impact of migration 057 (before vs after, same defaults)", ()
            order by 1`,
         )
         .then((result) => result.rows);
-    expect(await tableGrants(db)).toEqual(await tableGrants(before));
-    expect(await sequenceGrants(db)).toEqual(await sequenceGrants(before));
-    const triggers = await triggerFunctions(db);
+    expect(await tableGrants(at057)).toEqual(await tableGrants(before));
+    expect(await sequenceGrants(at057)).toEqual(await sequenceGrants(before));
+    const triggers = await triggerFunctions(at057);
     expect(triggers.length).toBeGreaterThan(0);
     expect(triggers).toEqual(await triggerFunctions(before));
   });
@@ -238,7 +242,7 @@ describe("security impact of migration 057 (before vs after, same defaults)", ()
            order by 1, 2`,
         )
         .then((result) => result.rows);
-    const after = await defaults(db);
+    const after = await defaults(at057);
     expect(after).not.toEqual([]);
     expect(after).toEqual(await defaults(before));
   });

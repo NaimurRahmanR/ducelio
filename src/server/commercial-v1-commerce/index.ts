@@ -26,6 +26,7 @@ import { createSupabase } from "../supabase";
 import { config, commerceConfig } from "@/lib/env";
 import { getCommerceProvider } from "./provider";
 import { attestCommerceFulfillment } from "./authority";
+import { attestCheckoutSessionReplacement } from "./operations-authority";
 
 export async function listCommercialV1Offers() {
   const client = await createSupabase();
@@ -182,7 +183,7 @@ export async function createCommercialV1Checkout(
   campaignCode?: unknown,
 ): Promise<CommercialV1CheckoutResult> {
   const slug = offerSlugSchema.parse(offerSlug);
-  await requireActor("student");
+  const actor = await requireActor("student");
   const client = await createSupabase();
 
   let order:
@@ -323,6 +324,32 @@ export async function createCommercialV1Checkout(
           url: bound.url,
           orderId: order.orderId,
         };
+      }
+      // LR-03 (migration 058): Stripe expired the bound session unpaid and
+      // has since forgotten its idempotency key, so the call above created a
+      // new session for this order. Only Stripe's own EXPIRED + UNPAID report
+      // for a session of THIS order lets the attested replacement rebind the
+      // order to the new session; every other closed state still fails
+      // closed below.
+      if (
+        bound.status === "EXPIRED" &&
+        bound.paymentStatus === "UNPAID" &&
+        bound.metadataOrderId === order.orderId
+      ) {
+        const replaced = await attestCheckoutSessionReplacement({
+          learnerId: actor.id,
+          orderId: order.orderId,
+          expiredSessionId: attachResult.existingSessionId,
+          replacementSessionId: checkout.sessionId,
+        });
+        if (replaced.ok) {
+          return {
+            ok: true,
+            kind: "CHECKOUT",
+            url: checkout.url,
+            orderId: order.orderId,
+          };
+        }
       }
     } catch {
       /* fail closed below */
