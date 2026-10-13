@@ -2194,3 +2194,117 @@ label {
     margin-bottom: 0.6rem;
   }
 }
+
+/* Public homepage (LR-BASELINE-01). Scoped to .launch-* so no admin or
+   learner surface changes; built from the existing tokens and components. */
+.launch-hero {
+  margin: 1.5rem 0 3.5rem;
+  padding: clamp(2.5rem, 6vw, 5rem);
+  border-radius: 20px;
+  background: linear-gradient(130deg, var(--navy), #214f72);
+  color: white;
+}
+.launch-hero h1 {
+  max-width: 820px;
+  margin: 1.25rem 0 1rem;
+  font-size: clamp(2.4rem, 5.5vw, 4.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+.launch-hero p {
+  max-width: 640px;
+  color: #e1ecf3;
+  font-size: 1.125rem;
+}
+.launch-hero .badge.gold {
+  background: #f5e3af;
+  color: #5c4108;
+}
+.launch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+}
+.launch-hero .button {
+  background: var(--gold);
+  color: var(--navy);
+}
+.launch-hero .button:hover {
+  background: #e6cb8c;
+}
+.launch-hero .button.secondary {
+  background: transparent;
+  color: white;
+  border-color: #c8d9e5;
+}
+.launch-hero .button.secondary:hover {
+  background: #ffffff1f;
+}
+.launch-hero :focus-visible {
+  outline-color: #f5e3af;
+}
+.launch-section {
+  margin-bottom: 3.5rem;
+}
+.launch-section h2 {
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  margin-bottom: 1.25rem;
+}
+.launch-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: launch-step;
+}
+.launch-steps li {
+  counter-increment: launch-step;
+  position: relative;
+  padding: 1.5rem 1.5rem 1.5rem 4.25rem;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.launch-steps li::before {
+  content: counter(launch-step);
+  position: absolute;
+  top: 1.35rem;
+  left: 1.5rem;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: var(--navy);
+  color: white;
+  font-weight: 650;
+}
+.launch-steps strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--navy);
+}
+.launch-more {
+  margin-top: 1.5rem;
+}
+.launch-footer {
+  border-top: 1px solid var(--line);
+  padding: 1.5rem 0 1rem;
+}
+.launch-footer .courses-nav a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .launch-hero {
+    margin: 0.5rem 0 2.5rem;
+    padding: 2rem 1.25rem;
+    border-radius: 14px;
+  }
+  .launch-actions .button {
+    width: 100%;
+  }
+}

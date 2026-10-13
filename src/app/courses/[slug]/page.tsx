@@ -6,6 +6,7 @@ import { getCommercialV1Offer } from "@/server/commercial-v1-commerce";
 import { commerceConfig } from "@/lib/env";
 import { DELIVERY_PLAN_DEFINITIONS } from "@/domain/commercial-v1-launch";
 import { formatOfferPrice } from "@/domain/commercial-v1-commerce";
+import { CohortStartDate } from "@/components/offer-card";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,7 @@ export default async function Page({
           <Link href="/courses">All courses</Link>
         </nav>
       </header>
-      <div className="course-detail">
+      <main id="main" className="course-detail">
         <div className="course-detail-main">
           <div className="section-heading">
             <Badge tone="gold">{offer.examinationBody}</Badge>
@@ -43,9 +44,8 @@ export default async function Page({
           <p className="muted">{offer.qualificationName}</p>
           {offer.summary && <p>{offer.summary}</p>}
           <p className="muted">
-            Next cohort starts{" "}
-            {new Date(offer.cohortStartsOn).toLocaleDateString()} · structured
-            over {deliveryPlan.weeks} weeks.
+            <CohortStartDate date={offer.cohortStartsOn} /> · structured over{" "}
+            {deliveryPlan.weeks} weeks.
           </p>
         </div>
         <Card className="course-buy-card">
@@ -114,7 +114,7 @@ export default async function Page({
             is granted and your enrolment is confirmed.
           </p>
         </Card>
-      </div>
+      </main>
     </div>
   );
 }
