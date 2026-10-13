@@ -46,7 +46,7 @@ Historical evidence is kept separate from evidence executed in this checkpoint.
 **Fix (migration `202610130058_commercial_v1_expired_checkout_replacement.sql`, 001–057 unchanged):**
 
 - **Append-only provenance:** `commercial_v1_checkout_session_replacements`, with unique superseded and unique replacement session ids, RLS on, and every API privilege revoked.
-- **`guard_order` re-created with one exception.** A PENDING order may change its bound session **only** to the replacement recorded for the exact bound session. Every other change still raises.
+- **`guard_order` re-created from its latest definition (migration 039) with one exception.** A PENDING order may change its bound session **only** to the replacement recorded for the exact bound session. Every other change still raises, including 039's `campaign_redemption_id` immutability (see §3b).
 - **New attested RPC `replace_expired_commercial_v1_checkout_session`:**
   - HMAC-attested with the existing commerce controller key store, under its own tag `DUCELIO_COMMERCE_CHECKOUT_REBIND_HMAC_SHA256_V1` and the same freshness window;
   - strict payload (`learnerId`, `orderId`, `expiredSessionId`, `replacementSessionId`), with the learner bound to `current_app_user()` and ownership of the PENDING order required;
@@ -132,6 +132,48 @@ It ran **5/5 against a disposable local PostgreSQL 17.10** (the `embedded-postgr
 - The real-PostgreSQL suite ran on a superuser local cluster, not on the hosted non-superuser `postgres` role.
 - CI does not provide PostgreSQL. Adding a service container is a separate, reviewable CI change.
 - Hosted concurrency is not run without separate authorisation.
+
+### 3b. Deployment-preparation correction (after review acceptance at `9b16f82`)
+
+**Finding (HIGH, caught before deployment).** The read-only pre-deployment check compared the hosted `guard_order` with the repository. The hosted body is byte-identical to migration **039**, which added `or NEW.campaign_redemption_id is distinct from OLD.campaign_redemption_id` to the immutable financial identity of an order. The reviewed 058 had re-created `guard_order` from migration **034**'s body, so deploying it would have silently dropped that guard. A campaign redemption could then have been re-pointed on an existing order.
+
+**Correction.** 058 now re-creates `guard_order` from 039's definition plus only the provenance exception. Its SHA-256 changes from `51b16834…49f5` to `8da442c8…7a20`. No other object changed. `guard_order` is the only existing object 058 replaces; only 034, 039 and 058 define it.
+
+**Tests.** Two tests were added to the database suite (now 21):
+
+- a structural test: 058's body, with the exception collapsed, equals 039's body;
+- a behavioural test: changing an order's `campaign_redemption_id` after the full chain still raises `Commercial order financial identity is immutable`.
+
+Mutation check: dropping the 039 clause fails both tests, and dropping `created_at` immutability fails the structural test. The file was restored with its hash verified.
+
+**Consequence.** The reviewed head `9b16f82` must not be deployed. The correction needs independent re-review.
+
+### 3c. Codex continuation: local correction and verifier review (2026-10-13)
+
+The existing four-file correction was preserved. Review compared the complete 039 and 058 `guard_order` definitions, including trigger return type, PL/pgSQL, empty `search_path` and execution revocations. All earlier guards remain: order/learner/offer/activation/cohort/programme identity, amount/currency/provider/creation time, null-safe campaign redemption identity, deletion refusal, bound-session protection and fulfilled-order reopening refusal. The only exception is the exact recorded session replacement on an order whose old and new states are both PENDING. The attested RPC retains authenticated ownership, freshness/MAC checks, row locking, idempotency and atomic provenance/audit writes. Migrations 001–057 and application code are unchanged. The structural regression helper now fails explicitly if its definition marker or body delimiters are missing.
+
+**Verifier crash investigation.** The historical Claude log contains `12/12 checks passed` followed by `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\\win\\async.c, line 94` and `EXIT=127`. That execution is **not a clean pass**. On the installed Node 24.19.0, a credential-free loopback HTTP reproduction crashed in 5/5 forced-exit runs (Windows status `3221226505`, `0xC0000409`); the corresponding 5/5 natural-teardown runs exited 0. Import-only control runs did not crash. This supports removing `process.exit()`; it does not establish a clean hosted run or conclusively identify the internal Node race. See [Node's shutdown guidance](https://nodejs.org/docs/latest-v24.x/api/process.html#processexitcode) and the [upstream issue](https://github.com/nodejs/undici/issues/5680).
+
+**External files corrected locally:** `C:\Users\naimu\OneDrive\Desktop\lr-058-verify.mjs` and `lr-058-acceptance-procedure.md`. Originals were backed up under ignored `work/058-review/`. The verifier now uses `process.exitCode` and natural teardown; SQL_ONLY is the default, and hosted Auth/refusal probes require a separate explicit `--authorize-auth-probes` flag. Hash/project/marker failures stop execution. Target validation binds the acceptance project to its HTTPS origin and session-pooler user/host/database, requires certificate-verifying TLS, and refuses the insecure-TLS override. Snapshots use exclusive creation and version/project/migration binding; the order digest now includes every order column. The procedure requires the complete expected check summary **and normal exit 0**, classifies the historical crashed run as diagnostic evidence, and requires a fresh snapshot.
+
+**Offline verification:** 12/12 scenarios passed with actual expected exit codes (success 0, invalid arguments 2, failed preconditions 1). Default-mode tests refuse any Auth-module import. Simulated SQL_ONLY pre/post runs report 11/11 and 21/21; explicitly opted-in mock Auth runs report 12/12 and 25/25. These are stubs proving control flow, refusals and shutdown, **not hosted PostgreSQL/JWT/PostgREST acceptance**. Evidence and harnesses are in ignored `work/058-review/` and `.session-058-*.log` files.
+
+**Deployment safety findings:** the procedure's legacy `--db-url "$DBURL"` examples put credentials in process arguments; output masking cannot prevent that exposure, and the referenced mask was not supplied. Those steps are now explicitly blocked pending an independently reviewed, CLI-supported credential-safe invocation and target binding. The hosted harness also signs into Auth and must not be called read-only. Remaining verifier limitations: ledger normalisation is not byte-identical SQL comparison inside quoted strings, and privilege snapshots do not cover all column/schema privileges or all existing function bodies. No hosted verifier, Auth sign-in, deployment, Stripe call, key provisioning, commit, push or merge was performed in this continuation.
+
+**Final local gates (Node 24.19.0, npm 10.5.0, Windows):**
+
+| Gate                                       | Result                                                                                                                    | Exit |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- | ---- |
+| `VITEST_MAX_WORKERS=2 npm run check`       | lint and typecheck passed; 4,276 tests passed in 176 files; optional PostgreSQL file / 5 tests skipped in this invocation | 0    |
+| Optional PostgreSQL concurrency suite      | 5/5 passed on a fresh isolated PostgreSQL 17.10 cluster, loopback only; server shut down cleanly                          | 0    |
+| `npm run build`                            | production build passed, no environment override                                                                          | 0    |
+| `npm run format:check`                     | all matched files passed                                                                                                  | 0    |
+| `git diff --check`                         | clean                                                                                                                     | 0    |
+| External verifier syntax and offline cases | syntax passed; 12/12 offline cases passed, with expected success/refusal exit statuses                                    | 0    |
+
+The first full-check attempt was interrupted without a completed result; it is not counted as a pass. No duplicate full-test job was started while it was running. The two-worker rerun completed in 812.30 seconds. An initial optional-concurrency wrapper attempt could not find the packaged readiness utility; it shut down its own cluster and ran no tests. Readiness was then checked through `pg`, and the suite passed in 16.11 seconds. No repository test/configuration change was needed for either issue.
+
+Migration 058 SHA-256: `8da442c8841074f3d8d809c6b837ad949f2501d6e131d89023402c64afab7a20`. Final external verifier SHA-256: `c59ea0963951601bbe683eb73de7435886bd7ebaff59828672c446d7b2996071`. The only additional test edit beyond Claude's preserved correction is explicit marker/delimiter validation in the structural helper. No unrelated source, dependency, lockfile or earlier migration edits were introduced. HEAD remains `9b16f823c93696c9db255be2df0bbeb34722d307`; all changes remain local and uncommitted for independent review.
 
 ## 4. UX-02: real-browser evidence (executed)
 

@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   afterAll,
   afterEach,
@@ -193,6 +194,58 @@ describe("bound session invariant without an attested replacement", () => {
     expect(changed).toMatchObject({
       ok: false,
       message: "A bound Stripe checkout session cannot be replaced",
+    });
+  });
+});
+
+// Deployment-preparation finding: guard_order was last re-created by
+// migration 039 (campaign_redemption_id joined the immutable financial
+// identity). 058 must start from THAT definition and add only the
+// provenance exception -- never silently drop a later guard.
+function guardOrderBody(file: string, marker: string) {
+  const sql = readFileSync(`supabase/migrations/${file}`, "utf8");
+  const start = sql.indexOf(marker);
+  expect(start, `${file}: guard_order definition`).toBeGreaterThanOrEqual(0);
+  const open = sql.indexOf("$$", start);
+  expect(open, `${file}: function body opener`).toBeGreaterThan(start);
+  const close = sql.indexOf("$$", open + 2);
+  expect(close, `${file}: function body closer`).toBeGreaterThan(open + 2);
+  return sql.slice(open + 2, close);
+}
+describe("guard_order keeps every earlier immutability rule", () => {
+  it("is migration 039's definition plus only the provenance exception", () => {
+    const marker =
+      "create or replace function commercial_v1_commerce_private.guard_order() returns trigger";
+    const latest = guardOrderBody(
+      "202609180039_commercial_v1_campaign_redemption.sql",
+      marker,
+    );
+    const replaced = guardOrderBody(
+      "202610130058_commercial_v1_expired_checkout_replacement.sql",
+      marker,
+    );
+    // Collapse 058's provenance exception back to 039's unconditional raise.
+    const withoutException = replaced.replace(
+      /-- LR-03:[\s\S]*?raise exception 'A bound Stripe checkout session cannot be replaced';\s*end if;/,
+      "raise exception 'A bound Stripe checkout session cannot be replaced';",
+    );
+    expect(withoutException).not.toBe(replaced);
+    const flat = (body: string) => body.replace(/\s+/g, " ").trim();
+    expect(flat(withoutException)).toBe(flat(latest));
+  });
+
+  it("still refuses changing an order's campaign redemption (migration 039)", async () => {
+    await owner();
+    expect(
+      await attempt(() =>
+        f.db.query(
+          "update public.commercial_v1_orders set campaign_redemption_id=$2 where id=$1",
+          [orderId, randomUUID()],
+        ),
+      ),
+    ).toMatchObject({
+      ok: false,
+      message: "Commercial order financial identity is immutable",
     });
   });
 });

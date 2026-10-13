@@ -15,11 +15,13 @@
 --    time. Each session id can appear at most once on each side, so an
 --    expired session is superseded at most once and a replacement is never
 --    reused.
--- 2. guard_order (migration 034) is re-created with ONE added exception: a
---    PENDING order may change its bound session only to the exact
---    replacement recorded for the exact currently bound session. Every other
---    session change still raises 'A bound Stripe checkout session cannot be
---    replaced'. Financial identity, delete and reopen guards are unchanged.
+-- 2. guard_order is re-created from its LATEST definition (migration 039,
+--    which added campaign_redemption_id to the immutable financial identity)
+--    with ONE added exception: a PENDING order may change its bound session
+--    only to the exact replacement recorded for the exact currently bound
+--    session. Every other session change still raises 'A bound Stripe
+--    checkout session cannot be replaced'. Financial identity (including
+--    039's campaign_redemption_id), delete and reopen guards are unchanged.
 -- 3. public.replace_expired_commercial_v1_checkout_session is the only
 --    writer. It is HMAC-attested with the existing commerce controller key
 --    store under its own tag, DUCELIO_COMMERCE_CHECKOUT_REBIND_HMAC_SHA256_V1
@@ -75,7 +77,8 @@ begin
   if NEW.id<>OLD.id or NEW.learner_id<>OLD.learner_id or NEW.offer_id<>OLD.offer_id
     or NEW.activation_id<>OLD.activation_id or NEW.cohort_id<>OLD.cohort_id
     or NEW.programme_version_id<>OLD.programme_version_id or NEW.amount_minor<>OLD.amount_minor
-    or NEW.currency<>OLD.currency or NEW.provider<>OLD.provider or NEW.created_at<>OLD.created_at then
+    or NEW.currency<>OLD.currency or NEW.provider<>OLD.provider or NEW.created_at<>OLD.created_at
+    or NEW.campaign_redemption_id is distinct from OLD.campaign_redemption_id then
     raise exception 'Commercial order financial identity is immutable';
   end if;
   if OLD.provider_session_id is not null and NEW.provider_session_id is distinct from OLD.provider_session_id then

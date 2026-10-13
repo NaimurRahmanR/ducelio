@@ -4,15 +4,17 @@ This file is the high-level implementation status. Detailed checkpoint evidence 
 
 LAST COMPLETED CHECKPOINT: LR-BASELINE-01, merged through PRs #66–#70 (final `main` `0e21fdf0cb450f3a12e928c0c0cf49eab638ce9b`). Migration 057 is deployed to `ducelio-acceptance` (22/22 post-deployment checks; ledger 57). The independently verified FULL_CUSTOMER_JOURNEY run `1791863337177-6fr8jg` passed 10/0 (reviewer-entitlement access). See [docs/51](51-lr-baseline-01-hosted-baseline-and-ui-audit.md).
 
-CURRENT CHECKPOINT (partial, awaiting independent review): LR-03 + UX-02, paid customer journey and commercial website readiness, on the uncommitted branch `lr03/paid-journey-ux02` from `0e21fdf`. See [docs/52](52-lr03-paid-journey-and-commercial-ux.md).
+CURRENT CHECKPOINT (partial): LR-03 + UX-02, paid customer journey and commercial website readiness, on branch `lr03/paid-journey-ux02` (draft PR #71) from `0e21fdf`. Review accepted head `9b16f82`. Deployment preparation then found that 058 dropped migration 039's `campaign_redemption_id` immutability from `guard_order`. 058 is corrected with regression tests and needs re-review before any acceptance deployment (docs/52 §3b). See [docs/52](52-lr03-paid-journey-and-commercial-ux.md).
 
 - COMPLETED ITEMS:
   - payment-safety source review;
   - a HIGH defect fixed (a learner could never pay again after an abandoned checkout expired), with proposed migration `202610130058_commercial_v1_expired_checkout_replacement.sql` (attested, provenance-recorded replacement of an expired, unpaid session; 001–057 unchanged), 26 regression tests and 10/10 mutants killed;
   - real-browser UX-02 audit in installed Chrome at three viewports, with five confirmed defects fixed: skip-link focus, checkout landmarks, footer contrast, target size, and the signed-out Stripe return keeping its order through login;
   - after the fixes, 0 axe violations across 54 page audits.
+  - migration 058 correction continuation: all 039 `guard_order` safeguards preserved; structural test extraction hardened; lint/typecheck and 4,276 full-suite tests passed, plus 5/5 isolated local PostgreSQL races; build, formatting and diff whitespace passed (docs/52 §3c);
+  - external verifier/procedure corrected locally: SQL-only default, explicit Auth opt-in, fail-closed target/hash/marker checks, natural shutdown and exclusive bound snapshots; 12/12 offline cases passed. The historical crashed hosted verifier is not a clean pass. No hosted service was contacted by the validation tooling.
 - INCOMPLETE ITEMS:
-  - independent review, then commit/PR/CI;
+  - commit and push the migration 058 correction; verify fresh PR CI;
   - deploy 058 to `ducelio-acceptance`;
   - the operator-run `acceptance:stripe` (Stripe test secrets, commerce key, opt-ins, manual sandbox payment);
   - approval for `acceptance:commerce-revocation`;
@@ -20,8 +22,8 @@ CURRENT CHECKPOINT (partial, awaiting independent review): LR-03 + UX-02, paid c
   - network-delivered webhooks (needs a staging deployment);
   - real iOS/Android device and screen-reader QA;
   - LR-09 support channel and favicon asset.
-- KNOWN FAILURES: `npm audit --omit=dev` reports the same two pre-existing high advisories as `main` (`sharp`, `source-map-js`), tracked under LR-06. No other gate failure.
-- NEXT EXACT ACTION: independent review of the LR-03 patch.
+- KNOWN FAILURES / LIMITATIONS: historical audit evidence records the same two pre-existing high advisories as `main` (`sharp`, `source-map-js`), tracked under LR-06; audit was not rerun in this continuation. Current local quality gates pass. The corrected external verifier has not run hosted; deployment remains blocked pending a reviewed credential-safe CLI invocation (docs/52 §3c). Hosted acceptance and production requirements remain outstanding.
+- NEXT EXACT ACTION: commit and push the reviewed four-file correction to PR #71 and verify CI. The external verifier and deployment procedure require separate independent review before hosted use. Migration 058 remains undeployed and requires explicit operator authorisation.
 
 PREVIOUS CHECKPOINT RECORD: AC-6, Sarah post-session feedback and the admin teaching-quality surface (migration 055), independently reviewed and merged through PR #60 (merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`). See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
 
