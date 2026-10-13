@@ -1073,7 +1073,8 @@ describe("Sarah static boundaries", () => {
 
   it("adds exactly migration 054 and leaves no Sarah staff account in seed data", () => {
     const migrations = readdirSync(resolve("supabase/migrations")).sort();
-    // AC-6 (055) and AC-7 (056) are the only later, additive migrations.
+    // AC-6 (055), AC-7 (056) and the LR-BASELINE-01 privilege hardening
+    // (057, which touches no Sarah object) are the only later migrations.
     expect(
       migrations.slice(
         migrations.indexOf("202610060054_sarah_learner_guide.sql"),
@@ -1082,6 +1083,7 @@ describe("Sarah static boundaries", () => {
       "202610060054_sarah_learner_guide.sql",
       "202610060055_sarah_session_feedback.sql",
       "202610070056_sarah_course_guidance.sql",
+      "202610130057_supabase_default_privilege_hardening.sql",
     ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");
