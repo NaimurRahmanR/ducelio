@@ -178,6 +178,15 @@ const attachResultSchema = z.union([
   }),
 ]);
 
+const checkoutBindingSchema = z.union([
+  z.strictObject({
+    ok: z.literal(true),
+    state: z.enum(["PENDING", "FULFILLED"]),
+    sessionId: z.string().min(1).max(200).nullable(),
+  }),
+  z.strictObject({ ok: z.literal(false), code: z.string() }),
+]);
+
 export async function createCommercialV1Checkout(
   offerSlug: unknown,
   campaignCode?: unknown,
@@ -272,90 +281,111 @@ export async function createCommercialV1Checkout(
   const offerTitle = offer.ok ? offer.title : "Ducelio course";
 
   const provider = await getCommerceProvider();
-  let checkout: { sessionId: string; url: string };
-  try {
-    checkout = await provider.createCheckoutSession({
-      orderId: order.orderId,
-      amountMinor: order.amountMinor,
-      currency: order.currency,
-      offerTitle,
-      successUrl,
-      cancelUrl,
-      idempotencyKey: "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId,
-    });
-  } catch {
-    return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
-  }
+  const orderKey = "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId;
+  const sessionInput = (idempotencyKey: string) => ({
+    orderId: order.orderId,
+    amountMinor: order.amountMinor,
+    currency: order.currency,
+    offerTitle,
+    successUrl,
+    cancelUrl,
+    idempotencyKey,
+  });
+  const unavailable = {
+    ok: false as const,
+    code: "CHECKOUT_UNAVAILABLE" as const,
+  };
 
-  const { data: attachData, error: attachError } = await client.rpc(
-    "attach_commercial_v1_checkout_session",
-    { p_order_id: order.orderId, p_session_id: checkout.sessionId },
-  );
-  if (attachError) throw new Error("Checkout could not be bound to the order.");
-  const attachResult = attachResultSchema.parse(attachData);
-  if (attachResult.ok) {
-    return {
-      ok: true,
-      kind: "CHECKOUT",
-      url: checkout.url,
-      orderId: order.orderId,
-    };
-  }
-  if (
-    attachResult.code === "SESSION_ALREADY_BOUND" &&
-    attachResult.existingSessionId
-  ) {
-    if (attachResult.existingSessionId === checkout.sessionId) {
+  // LR-03 (migration 058, review finding 1). The authoritative bound session
+  // is read FIRST, through an owner-only database read, and only then is an
+  // idempotency key chosen -- Stripe may keep returning its cached response
+  // for the original order key long after that session expired. A URL is
+  // only ever returned for the database-bound session, freshly retrieved from
+  // Stripe as OPEN and UNPAID for this order: never an expired or superseded
+  // one. The loop is bounded; anything unexpected fails closed.
+  for (let step = 0; step < 3; step++) {
+    const { data: bindingData, error: bindingError } = await client.rpc(
+      "get_my_commercial_v1_checkout_binding",
+      { p_order_id: order.orderId },
+    );
+    if (bindingError) throw new Error("Checkout could not be loaded.");
+    const binding = checkoutBindingSchema.parse(bindingData);
+    if (!binding.ok || binding.state !== "PENDING") return unavailable;
+
+    if (!binding.sessionId) {
+      // First checkout for this order: the original order-level key.
+      let created: { sessionId: string; url: string };
+      try {
+        created = await provider.createCheckoutSession(sessionInput(orderKey));
+      } catch {
+        return unavailable;
+      }
+      const { data: attachData, error: attachError } = await client.rpc(
+        "attach_commercial_v1_checkout_session",
+        { p_order_id: order.orderId, p_session_id: created.sessionId },
+      );
+      if (attachError)
+        throw new Error("Checkout could not be bound to the order.");
+      const attached = attachResultSchema.parse(attachData);
+      if (!attached.ok && attached.code !== "SESSION_ALREADY_BOUND")
+        return unavailable;
+      continue; // re-read and verify whatever is now bound
+    }
+
+    let bound: Awaited<ReturnType<typeof provider.retrieveCheckoutSession>>;
+    try {
+      bound = await provider.retrieveCheckoutSession(binding.sessionId);
+    } catch {
+      return unavailable;
+    }
+    if (
+      bound.sessionId !== binding.sessionId ||
+      bound.metadataOrderId !== order.orderId
+    )
+      return unavailable;
+    if (
+      bound.status === "OPEN" &&
+      bound.paymentStatus === "UNPAID" &&
+      bound.url
+    )
       return {
         ok: true,
         kind: "CHECKOUT",
-        url: checkout.url,
+        url: bound.url,
         orderId: order.orderId,
       };
-    }
+    // Only a confirmed EXPIRED, unpaid session of this order may be
+    // replaced; completed, paid, unknown or mismatched ones never are.
+    if (bound.status !== "EXPIRED" || bound.paymentStatus !== "UNPAID")
+      return unavailable;
+    let replacement: { sessionId: string; url: string };
     try {
-      const bound = await provider.retrieveCheckoutSession(
-        attachResult.existingSessionId,
+      // One deterministic key per replacement generation: stable across
+      // concurrent attempts for this expired session, distinct from the
+      // original order key and from every later generation.
+      replacement = await provider.createCheckoutSession(
+        sessionInput(orderKey + ":REPLACES:" + binding.sessionId),
       );
-      if (bound.url) {
-        return {
-          ok: true,
-          kind: "CHECKOUT",
-          url: bound.url,
-          orderId: order.orderId,
-        };
-      }
-      // LR-03 (migration 058): Stripe expired the bound session unpaid and
-      // has since forgotten its idempotency key, so the call above created a
-      // new session for this order. Only Stripe's own EXPIRED + UNPAID report
-      // for a session of THIS order lets the attested replacement rebind the
-      // order to the new session; every other closed state still fails
-      // closed below.
-      if (
-        bound.status === "EXPIRED" &&
-        bound.paymentStatus === "UNPAID" &&
-        bound.metadataOrderId === order.orderId
-      ) {
-        const replaced = await attestCheckoutSessionReplacement({
-          learnerId: actor.id,
-          orderId: order.orderId,
-          expiredSessionId: attachResult.existingSessionId,
-          replacementSessionId: checkout.sessionId,
-        });
-        if (replaced.ok) {
-          return {
-            ok: true,
-            kind: "CHECKOUT",
-            url: checkout.url,
-            orderId: order.orderId,
-          };
-        }
-      }
     } catch {
-      /* fail closed below */
+      return unavailable;
     }
+    if (replacement.sessionId === binding.sessionId) return unavailable;
+    try {
+      const replaced = await attestCheckoutSessionReplacement({
+        learnerId: actor.id,
+        orderId: order.orderId,
+        expiredSessionId: binding.sessionId,
+        replacementSessionId: replacement.sessionId,
+      });
+      if (!replaced.ok && replaced.code !== "SESSION_CHANGED")
+        return unavailable;
+    } catch {
+      return unavailable;
+    }
+    // Re-read: the replacement is returned only once it is the bound
+    // session and Stripe reports it OPEN and UNPAID.
   }
-  return { ok: false, code: "CHECKOUT_UNAVAILABLE" };
+  return unavailable;
 }
 
 // Authenticated success-page reconciliation fallback (section 6). NEVER

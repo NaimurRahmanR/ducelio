@@ -1744,9 +1744,12 @@ describe("Stripe acceptance: production commerce code carries no acceptance hook
       "src/server/commercial-v1-commerce/index.ts",
       "utf8",
     );
+    // LR-03: the original order-level key is unchanged; an expired bound
+    // session is replaced under a separate, per-generation key.
     expect(index).toContain(
-      'idempotencyKey: "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId',
+      'const orderKey = "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId',
     );
+    expect(index).toContain('orderKey + ":REPLACES:" + binding.sessionId');
     const provider = readFileSync(
       "src/server/commercial-v1-commerce/stripe-provider.ts",
       "utf8",

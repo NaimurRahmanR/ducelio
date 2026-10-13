@@ -30,6 +30,38 @@ import {
 const orderId = "10000000-0000-4000-8000-000000000001";
 const activationId = "20000000-0000-4000-8000-000000000001";
 
+// LR-03 review finding 1: checkout now reads the authoritative bound session
+// first (get_my_commercial_v1_checkout_binding). This wraps a test's rpc mock
+// with a stateful binding: the owner read returns the bound session, and an
+// attach binds only when nothing is bound yet (as the database does).
+function withBinding(
+  rpc: (name: string, args?: Record<string, unknown>) => Promise<unknown>,
+  initial: string | null,
+) {
+  let bound = initial;
+  return vi.fn(async (name: string, args?: Record<string, unknown>) => {
+    if (name === "get_my_commercial_v1_checkout_binding")
+      return {
+        data: { ok: true, state: "PENDING", sessionId: bound },
+        error: null,
+      };
+    if (name === "attach_commercial_v1_checkout_session" && bound === null) {
+      bound = String(args?.p_session_id);
+      return { data: { ok: true, orderId: args?.p_order_id }, error: null };
+    }
+    return rpc(name, args);
+  });
+}
+const openSession = (id: string) => ({
+  sessionId: id,
+  paymentStatus: "UNPAID",
+  amountMinor: 19900,
+  currency: "GBP",
+  metadataOrderId: orderId,
+  url: "https://checkout.stripe.test/" + id,
+  status: "OPEN",
+});
+
 function configuredCommerce() {
   return {
     stripeSecretKey: "sk_test",
@@ -113,12 +145,15 @@ describe("server: createCommercialV1Checkout", () => {
       }
       throw new Error("unexpected rpc " + name);
     });
-    mocks.client.mockResolvedValue({ rpc });
+    mocks.client.mockResolvedValue({ rpc: withBinding(rpc, null) });
     const createCheckoutSession = vi.fn().mockResolvedValue({
       sessionId: "cs_test_fresh",
       url: "https://checkout.stripe.test/cs_test_fresh",
     });
-    mocks.getCommerceProvider.mockResolvedValue({ createCheckoutSession });
+    mocks.getCommerceProvider.mockResolvedValue({
+      createCheckoutSession,
+      retrieveCheckoutSession: vi.fn(async (id: string) => openSession(id)),
+    });
 
     const result = await createCommercialV1Checkout(
       "cybersecurity-foundations",
@@ -188,7 +223,9 @@ describe("server: createCommercialV1Checkout", () => {
       }
       throw new Error("unexpected rpc " + name);
     });
-    mocks.client.mockResolvedValue({ rpc });
+    mocks.client.mockResolvedValue({
+      rpc: withBinding(rpc, "cs_test_ALREADY_BOUND"),
+    });
     const createCheckoutSession = vi.fn().mockResolvedValue({
       sessionId: "cs_test_NEW_UNBOUND",
       url: "https://checkout.stripe.test/cs_test_NEW_UNBOUND",
@@ -200,6 +237,8 @@ describe("server: createCommercialV1Checkout", () => {
       currency: "GBP",
       metadataOrderId: orderId,
       url: "https://checkout.stripe.test/cs_test_ALREADY_BOUND",
+      // Binding-first checkout returns a URL only on Stripe's explicit OPEN.
+      status: "OPEN",
     });
     mocks.getCommerceProvider.mockResolvedValue({
       createCheckoutSession,
@@ -213,6 +252,9 @@ describe("server: createCommercialV1Checkout", () => {
     expect(retrieveCheckoutSession).toHaveBeenCalledWith(
       "cs_test_ALREADY_BOUND",
     );
+    // Binding-first: an open bound session is reused without creating any
+    // new Stripe session at all.
+    expect(createCheckoutSession).not.toHaveBeenCalled();
     expect(result).toEqual({
       ok: true,
       kind: "CHECKOUT",
@@ -269,7 +311,9 @@ describe("server: createCommercialV1Checkout", () => {
       }
       throw new Error("unexpected rpc " + name);
     });
-    mocks.client.mockResolvedValue({ rpc });
+    mocks.client.mockResolvedValue({
+      rpc: withBinding(rpc, "cs_test_EXPIRED"),
+    });
     const createCheckoutSession = vi.fn().mockResolvedValue({
       sessionId: "cs_test_NEW",
       url: "https://checkout.stripe.test/cs_test_NEW",
@@ -696,12 +740,15 @@ describe("server: PR24 campaign checkout branching", () => {
         return { data: { ok: true, orderId }, error: null };
       throw new Error("unexpected rpc " + name);
     });
-    mocks.client.mockResolvedValue({ rpc });
+    mocks.client.mockResolvedValue({ rpc: withBinding(rpc, null) });
     const createCheckoutSession = vi.fn().mockResolvedValue({
       sessionId: "cs_test_discounted",
       url: "https://checkout.stripe.test/cs_test_discounted",
     });
-    mocks.getCommerceProvider.mockResolvedValue({ createCheckoutSession });
+    mocks.getCommerceProvider.mockResolvedValue({
+      createCheckoutSession,
+      retrieveCheckoutSession: vi.fn(async (id: string) => openSession(id)),
+    });
 
     const result = await createCommercialV1Checkout(
       "cybersecurity-foundations",

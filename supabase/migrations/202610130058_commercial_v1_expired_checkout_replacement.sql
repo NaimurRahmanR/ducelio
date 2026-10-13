@@ -30,6 +30,12 @@
 --    calling learner, who must own the PENDING order. It is idempotent and
 --    audited (COMMERCIAL_V1_CHECKOUT_SESSION_REPLACED).
 --
+-- 4. public.get_my_commercial_v1_checkout_binding lets the owning learner
+--    read their own order's state and currently bound session id, so the
+--    server inspects the authoritative binding BEFORE choosing an
+--    idempotency key (review finding: Stripe may keep returning a cached,
+--    expired session for the original order key).
+--
 -- Fulfilment, reconciliation and refund authority are unchanged: they still
 -- accept only the order's currently bound session, so a payment can only
 -- ever complete against the live replacement.
@@ -170,6 +176,19 @@ revoke all on function public.replace_expired_commercial_v1_checkout_session(uui
 grant execute on function public.replace_expired_commercial_v1_checkout_session(uuid, text, bigint, bigint, text)
   to authenticated;
 
+create function public.get_my_commercial_v1_checkout_binding(p_order_id uuid)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare actor uuid := public.current_app_user(); o public.commercial_v1_orders%rowtype;
+begin
+  if actor is null then return jsonb_build_object('ok', false, 'code', 'UNAUTHENTICATED'); end if;
+  select * into o from public.commercial_v1_orders where id = p_order_id and learner_id = actor;
+  if not found then return jsonb_build_object('ok', false, 'code', 'NOT_FOUND_OR_FORBIDDEN'); end if;
+  return jsonb_build_object('ok', true, 'state', o.state, 'sessionId', o.provider_session_id);
+end $$;
+revoke all on function public.get_my_commercial_v1_checkout_binding(uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.get_my_commercial_v1_checkout_binding(uuid) to authenticated;
+
 -- Migration-time self-verification of exactly what this migration owns.
 do $$
 begin
@@ -177,6 +196,11 @@ begin
     or has_function_privilege('service_role', 'public.replace_expired_commercial_v1_checkout_session(uuid,text,bigint,bigint,text)', 'execute')
     or not has_function_privilege('authenticated', 'public.replace_expired_commercial_v1_checkout_session(uuid,text,bigint,bigint,text)', 'execute') then
     raise exception 'replace_expired_commercial_v1_checkout_session has unexpected privileges';
+  end if;
+  if has_function_privilege('anon', 'public.get_my_commercial_v1_checkout_binding(uuid)', 'execute')
+    or has_function_privilege('service_role', 'public.get_my_commercial_v1_checkout_binding(uuid)', 'execute')
+    or not has_function_privilege('authenticated', 'public.get_my_commercial_v1_checkout_binding(uuid)', 'execute') then
+    raise exception 'get_my_commercial_v1_checkout_binding has unexpected privileges';
   end if;
   if has_table_privilege('anon', 'public.commercial_v1_checkout_session_replacements', 'select')
     or has_table_privilege('authenticated', 'public.commercial_v1_checkout_session_replacements', 'select')

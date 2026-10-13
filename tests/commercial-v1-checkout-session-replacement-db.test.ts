@@ -291,6 +291,52 @@ describe("attested replacement of an expired session", () => {
   });
 });
 
+describe("owner-only checkout binding read", () => {
+  const read = () =>
+    value<Record<string, unknown>>(
+      "select public.get_my_commercial_v1_checkout_binding($1) as v",
+      [orderId],
+    );
+  it("returns the owner's order state and currently bound session", async () => {
+    await asUser(1);
+    expect(await read()).toEqual({
+      ok: true,
+      state: "PENDING",
+      sessionId: expiredSession,
+    });
+    await replace(payload());
+    await asUser(1);
+    expect(await read()).toEqual({
+      ok: true,
+      state: "PENDING",
+      sessionId: replacementSession,
+    });
+  });
+
+  it("never reveals another learner's binding", async () => {
+    await asUser(3);
+    expect(await read()).toEqual({
+      ok: false,
+      code: "NOT_FOUND_OR_FORBIDDEN",
+    });
+  });
+
+  it("is executable by authenticated only", async () => {
+    await owner();
+    const rows = (
+      await f.db.query<{ role: string; exec: boolean }>(
+        `select r as role, has_function_privilege(r, 'public.get_my_commercial_v1_checkout_binding(uuid)', 'execute') as exec
+         from unnest(array['anon','authenticated','service_role']) r order by r`,
+      )
+    ).rows;
+    expect(rows).toEqual([
+      { role: "anon", exec: false },
+      { role: "authenticated", exec: true },
+      { role: "service_role", exec: false },
+    ]);
+  });
+});
+
 describe("attestation and ownership", () => {
   it.each([
     ["a tampered MAC", { tamper: true }],
