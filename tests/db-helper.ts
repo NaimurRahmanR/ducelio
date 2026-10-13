@@ -3,11 +3,32 @@ import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 export async function testDatabase(
-  options: { throughMigration?: number } = {},
+  options: {
+    throughMigration?: number;
+    supabaseDefaultPrivileges?: boolean;
+  } = {},
 ) {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`create role anon nologin; create role authenticated nologin;
- create role service_role nologin bypassrls;
+ create role service_role nologin bypassrls;`);
+  // Hosted Supabase (verified on the acceptance project's pg_default_acl)
+  // grants every new public table, sequence and function to anon,
+  // authenticated and service_role explicitly, for both the migration role
+  // (postgres) and supabase_admin. `revoke ... from public` does not remove
+  // those explicit grants, so suites that make privilege claims opt in to
+  // this exact shape. The supabase_admin context exists so a suite can show
+  // that Ducelio's migrations leave it untouched.
+  if (options.supabaseDefaultPrivileges)
+    await db.exec(`
+ create role supabase_admin nologin;
+ grant create, usage on schema public to supabase_admin;
+ alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role;
+ alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role;
+ alter default privileges for role postgres in schema public grant execute on functions to anon, authenticated, service_role;
+ alter default privileges for role supabase_admin in schema public grant all on tables to postgres, anon, authenticated, service_role;
+ alter default privileges for role supabase_admin in schema public grant all on sequences to postgres, anon, authenticated, service_role;
+ alter default privileges for role supabase_admin in schema public grant execute on functions to postgres, anon, authenticated, service_role;`);
+  await db.exec(`
  -- Deliberately broad Supabase-like defaults, including private objects. The
  -- migration must revoke these rather than pass only under empty local ACLs.
  alter default privileges grant all on tables to service_role;
