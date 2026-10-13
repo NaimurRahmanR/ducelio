@@ -21,6 +21,19 @@ import { SarahIdentity, SARAH_IS_AI_NOTICE } from "./sarah-identity";
 import { randomUUID } from "node:crypto";
 import { listMySessionFeedbackOpportunities } from "@/server/session-feedback";
 import { SarahSessionFeedback } from "./sarah-session-feedback";
+import {
+  formatLearnerDateTime,
+  learnerDisplayTimeZone,
+} from "@/domain/learner-time";
+import { LearnerTimeRange } from "./learner-time-range";
+
+function sessionTone(status: string) {
+  return status === "SCHEDULED"
+    ? "green"
+    : status === "CANCELLED"
+      ? "gold"
+      : "muted";
+}
 
 export async function LiveStudent({ section = "" }: { section?: string }) {
   const { actor, enrolments, profile } = await getStudentAcademy();
@@ -59,6 +72,29 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
     attendance.map((record) => [record.session_id, record]),
   );
   const now = new Date();
+  const zone = learnerDisplayTimeZone(profile?.timezone);
+  const zoneNotice =
+    zone === profile?.timezone
+      ? `Times are shown in your profile time zone (${zone}).`
+      : "Times are shown in UTC because your profile time zone could not be used.";
+  const byStart = [...sessions].sort(
+    (a, b) => Date.parse(a.scheduled_start) - Date.parse(b.scheduled_start),
+  );
+  // Upcoming first (soonest at the top), then past classes, most recent first.
+  const sessionGroups = [
+    {
+      label: "Upcoming",
+      sessions: byStart.filter(
+        (session) => Date.parse(session.scheduled_end) >= now.getTime(),
+      ),
+    },
+    {
+      label: "Past",
+      sessions: byStart
+        .filter((session) => Date.parse(session.scheduled_end) < now.getTime())
+        .reverse(),
+    },
+  ];
   const titles: Record<string, string> = {
     "": "Your academy",
     programme: "Your programme",
@@ -119,6 +155,62 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             )}
           </Card>
         )}
+        {section === "calendar" && (
+          <Card>
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">YOUR SCHEDULE</p>
+                <h2>Class calendar</h2>
+              </div>
+              <Badge tone="muted">ALL SESSIONS</Badge>
+            </div>
+            <p className="muted">
+              {zoneNotice} Cancelled sessions remain visible for your records.
+            </p>
+            {sessions.length ? (
+              sessionGroups.map(
+                (group) =>
+                  group.sessions.length > 0 && (
+                    <section
+                      key={group.label}
+                      aria-label={`${group.label} classes`}
+                    >
+                      <h3>{group.label}</h3>
+                      {group.sessions.map((session) => (
+                        <div className="support-record" key={session.id}>
+                          <Badge tone={sessionTone(session.status)}>
+                            {session.status}
+                          </Badge>
+                          <h4>{session.lesson_title}</h4>
+                          <p>
+                            {session.programme_title} · {session.cohort_title}
+                          </p>
+                          <p>
+                            <LearnerTimeRange
+                              start={session.scheduled_start}
+                              end={session.scheduled_end}
+                              zone={zone}
+                            />
+                          </p>
+                          <p className="muted">
+                            Instructor: {session.instructor_name}
+                          </p>
+                        </div>
+                      ))}
+                    </section>
+                  ),
+              )
+            ) : (
+              <EmptyState title="No class sessions scheduled">
+                Your class dates will appear here when sessions are scheduled
+                for your cohort.
+              </EmptyState>
+            )}
+            <ButtonLink href="/student/classes" secondary>
+              Open classes and lesson access
+            </ButtonLink>
+          </Card>
+        )}
         {section === "classes" && (
           <>
             {feedback?.status === "OK" && feedback.opportunities.length > 0 && (
@@ -132,6 +224,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             )}
             <Card>
               <h2>Your class sessions</h2>
+              <p className="muted">{zoneNotice}</p>
               {sessions.length ? (
                 sessions.map((session) => {
                   const attendanceRecord = attendanceBySession.get(session.id);
@@ -177,11 +270,12 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                         {session.programme_title} · {session.cohort_title}
                       </p>
                       <p>
-                        {new Date(session.scheduled_start).toLocaleString()} ·{" "}
-                        {session.instructor_name}
-                      </p>
-                      <p className="muted">
-                        Ends {new Date(session.scheduled_end).toLocaleString()}
+                        <LearnerTimeRange
+                          start={session.scheduled_start}
+                          end={session.scheduled_end}
+                          zone={zone}
+                        />{" "}
+                        · {session.instructor_name}
                       </p>
                       {!attendanceRecord && session.status !== "CANCELLED" && (
                         <p className="muted">
@@ -196,7 +290,16 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                       {preview.kind === "FUTURE" && (
                         <p className="muted">
                           Starts at{" "}
-                          {new Date(session.scheduled_start).toLocaleString()}
+                          <time
+                            dateTime={new Date(
+                              session.scheduled_start,
+                            ).toISOString()}
+                          >
+                            {formatLearnerDateTime(
+                              session.scheduled_start,
+                              zone,
+                            )}
+                          </time>
                         </p>
                       )}
                       {preview.kind === "LIVE" && (
@@ -239,7 +342,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                     <p>{record.lessons.title}</p>
                     <p className="muted">
                       Segment {record.lesson_segments.position} · updated{" "}
-                      {new Date(record.updated_at).toLocaleString()}
+                      {formatLearnerDateTime(record.updated_at, zone)}
                     </p>
                   </div>
                 ))
@@ -277,8 +380,8 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                       {record.evidence_reference}
                     </p>
                     <p className="muted">
-                      Recorded {new Date(record.recorded_at).toLocaleString()}.
-                      Evidence is evaluated by policy before mastery changes.
+                      Recorded {formatLearnerDateTime(record.recorded_at, zone)}
+                      . Evidence is evaluated by policy before mastery changes.
                     </p>
                   </div>
                 ))
@@ -347,6 +450,19 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
         )}
         {section === "results" && (
           <Card>
+            <h2>Formal assessment results</h2>
+            <p className="muted">
+              See your graded course components, pending results and official
+              completion status in Course progress. The objective mastery
+              records below are separate from your formal course grades.
+            </p>
+            <ButtonLink href="/student/progress" secondary>
+              View graded results and course completion
+            </ButtonLink>
+          </Card>
+        )}
+        {section === "results" && (
+          <Card>
             <div className="section-heading">
               <div>
                 <p className="eyebrow">DETERMINISTIC OBJECTIVE STATE</p>
@@ -384,8 +500,8 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
                     {record.correct_kind_count} correct evidence kinds
                   </p>
                   <p className="muted">
-                    Evaluated {new Date(record.evaluated_at).toLocaleString()} ·{" "}
-                    {record.policy_version}
+                    Evaluated {formatLearnerDateTime(record.evaluated_at, zone)}{" "}
+                    · {record.policy_version}
                   </p>
                 </div>
               ))
@@ -518,6 +634,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
           "support",
           "study-plan",
           "profile",
+          "calendar",
           "classes",
           "notes",
           "results",
