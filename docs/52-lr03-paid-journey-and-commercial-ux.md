@@ -85,6 +85,54 @@ Historical evidence is kept separate from evidence executed in this checkpoint.
 
 **Reviewer decisions required.** This reverses the reviewed V2 choice to fail closed on any closed bound session (the old test still passes because every non-EXPIRED case remains fail-closed). It relaxes migration 034's invariant only through recorded provenance. It must be deployed to `ducelio-acceptance` and then production before the paid journey on new code relies on it.
 
+### 3a. Independent-review corrections (PR #71)
+
+**Finding 1 (HIGH): checkout stayed stuck while Stripe retained the original idempotency result.**
+
+The first version created a session with the original order key _before_ inspecting the bound session. If Stripe still holds that key, it returns the cached, expired session, so the replacement path never ran.
+
+The checkout now reads the binding first, through a new owner-only RPC `get_my_commercial_v1_checkout_binding(order)`. It is added to the undeployed migration 058, returns `{state, sessionId}` for the caller's own order only, and is granted to `authenticated` only with self-verification. Only then does the checkout choose a path, in a loop bounded to 3 steps:
+
+- **no bound session** → create under the original key `DUCELIO_COMMERCIAL_V1_ORDER:<order>`, attach, then re-verify;
+- **bound and Stripe-confirmed `OPEN` + `UNPAID` for this order** → reuse it, with no create call;
+- **bound and Stripe-confirmed `EXPIRED` + `UNPAID` for this order** → create under the replacement-generation key `DUCELIO_COMMERCIAL_V1_ORDER:<order>:REPLACES:<expired session>`, attest the replacement, then re-verify. The key is stable across concurrent attempts for one expired session, distinct from the original key and different for every later generation;
+- **anything else** (complete, paid, unknown, mismatched, missing evidence, or Stripe unreachable) → `CHECKOUT_UNAVAILABLE`.
+
+A URL is returned only for the database-bound session, freshly retrieved from Stripe as `OPEN` and `UNPAID`. It is never an expired or superseded URL.
+
+**Tests.** `commercial-v1-checkout-session-replacement-server.test.ts` (14) drives the real checkout against a stateful binding model and a fake Stripe adapter that **retains** idempotency keys. Recovery succeeds while the original key still returns the expired session, concurrent attempts converge on one replacement, generations use new keys, an always-expired replacement fails closed, and every refusal path is covered. Four existing server tests and one static pin were updated to the binding-first sequence; their assertions were preserved or strengthened, for example "reuse creates no new session". The database suite gained 3 tests for the binding read.
+
+**Finding 2 (MEDIUM): true concurrency.**
+
+`commercial-v1-checkout-session-replacement-pg-concurrency.test.ts` (5) runs over **independent connections to a real PostgreSQL server**. It applies the same migration chain (`tests/db-helper.ts` now exposes the exact statement list used for PGlite) and gives each scenario its own database copied from one template. A racer is counted as contending only after `pg_stat_activity` shows it blocked on a lock.
+
+| Scenario                                     | Result                                                                                 |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| 8 identical concurrent claims                | exactly 1 `REPLACED` and 7 `ALREADY_REPLACED`; one binding, one history row, one audit |
+| Conflicting claims                           | one wins; the other gets `SESSION_CHANGED`                                             |
+| Another learner's concurrent claim           | `NOT_FOUND_OR_FORBIDDEN`; never touches the order                                      |
+| Replacement vs fulfilment of the old session | never both (`INVALID_STATE` or `MISMATCHED_SESSION`)                                   |
+| Replay after completion                      | `ALREADY_REPLACED`; history stays append-only                                          |
+
+It ran **5/5 against a disposable local PostgreSQL 17.10** (the `embedded-postgres` binaries, installed outside the repository, loopback only). Without `DUCELIO_TEST_POSTGRES_URL` it is skipped, so CI does not run it.
+
+**Mutation checks: 6/6 killed.**
+
+| Fix | Mutant                      |
+| --- | --------------------------- |
+| 1   | original key reused         |
+| 1   | no re-read before returning |
+| 1   | no order-metadata check     |
+| 1   | old create-first flow       |
+| 2   | no row lock                 |
+| 2   | no idempotent path          |
+
+**Remaining.**
+
+- The real-PostgreSQL suite ran on a superuser local cluster, not on the hosted non-superuser `postgres` role.
+- CI does not provide PostgreSQL. Adding a service container is a separate, reviewable CI change.
+- Hosted concurrency is not run without separate authorisation.
+
 ## 4. UX-02: real-browser evidence (executed)
 
 **How it ran:**
