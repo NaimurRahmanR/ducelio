@@ -1,21 +1,23 @@
 # LR-03 + UX-02 — paid customer journey and commercial website readiness
 
-Status: **implemented locally, uncommitted, awaiting independent review.**
+Status: **committed and pushed to draft PR #71; hosted acceptance passed; awaiting independent review and the merge decision. Not production-ready.**
 
-- **Branch:** `lr03/paid-journey-ux02` (worktree `../ducelio-lr03`), from `main` `0e21fdf0cb450f3a12e928c0c0cf49eab638ce9b`.
-- **Migration:** proposes 058. It is **not** deployed; the hosted ledger is still 57.
-- **Not run:** no Stripe API call, no hosted write, no key installation.
+- **Branch:** `lr03/paid-journey-ux02` (worktree `../ducelio-lr03`), from `main` `0e21fdf0cb450f3a12e928c0c0cf49eab638ce9b`. Code head `3ec5c7ec3a70c3a307ea2015f8f62da0747dd53b`; GitHub CI (`quality`) is green on it.
+- **Migration 058:** deployed to the dedicated Supabase acceptance project `ducelio-acceptance` **only**; the hosted migration ledger is 58/58. Production is untouched.
+- **Hosted Stripe TEST-mode paid acceptance:** 7/7 PASS (§5b).
+- **Hosted expired-checkout recovery:** 73/73 PASS, exit 0, on 14 October 2026 (§5a).
+- **Still outstanding:** public Stripe network webhook delivery, live payment acceptance, real refund verification, and production deployment/readiness (§5).
 
-Historical evidence is kept separate from evidence executed in this checkpoint.
+Historical evidence is kept separate from evidence executed in this checkpoint. Sections 3a–3c are historical records of the review corrections, in the order they happened.
 
 ## 1. Baseline and environment
 
 - **Staging web deployment: none found.** GitHub records 0 deployments and 0 environments, and the Vercel inventory in #62 lists 0 projects. Real **network-delivered** Stripe webhooks therefore cannot be tested: there is no public HTTPS endpoint. Locally signed deliveries (the existing harness) prove the application webhook boundary only.
-- **Hosted (read-only, 2026-10-13):**
+- **Hosted (read-only, 2026-10-13, at the start of this checkpoint; historical):**
   - one active commerce controller key, installed 2026-09-28 for the earlier Stripe run (its secret is not in any local store);
   - two active academic controller keys;
   - two commercial orders.
-- **Local configuration:** missing `STRIPE_SECRET_KEY` (test), `STRIPE_WEBHOOK_SECRET`, `COMMERCE_CONTROLLER_KEY_ID`/`_HMAC_KEY_HEX` and `ACCEPTANCE_STRIPE_TEST_OPT_IN`.
+- **Local configuration at the start of this checkpoint (historical; the operator later supplied these outside the repository for the hosted runs in §5):** missing `STRIPE_SECRET_KEY` (test), `STRIPE_WEBHOOK_SECRET`, `COMMERCE_CONTROLLER_KEY_ID`/`_HMAC_KEY_HEX` and `ACCEPTANCE_STRIPE_TEST_OPT_IN`.
 - **Historical (not re-run):** `acceptance:stripe` 7/7 PASS (PR #36 era, docs/38 §6), and FULL_CUSTOMER_JOURNEY run `1791863337177-6fr8jg` 10 PASS / 0 FAIL (reviewer-entitlement access).
 
 ## 2. Payment-safety review (source)
@@ -27,7 +29,7 @@ Historical evidence is kept separate from evidence executed in this checkpoint.
 | Signature-verified webhooks                | `stripe.webhooks.constructEvent`; an invalid or missing signature → 400 with no state change; events are re-verified by retrieving the session from Stripe. OK                             |
 | Unpaid redirect grants nothing             | The success page reconciles server-side; `NOT_PAID` changes nothing. OK                                                                                                                    |
 | Idempotent fulfilment                      | Unique provider event ids; the order is locked first; webhook and reconciliation converge on one authority. OK                                                                             |
-| Exactly one paid entitlement and enrolment | Database-enforced; previously evidenced by STRIPE_TEST 7/7 (historical). OK                                                                                                                |
+| Exactly one paid entitlement and enrolment | Database-enforced; evidenced by STRIPE_TEST 7/7 (historical, and again in §5b). OK                                                                                                         |
 | Failed or cancelled payments               | No fulfilment without `paid`; the cancel page makes no payment claim. OK                                                                                                                   |
 | Refunds                                    | Only a **full** verified refund revokes, through the attested REFUND operation; partial refunds → `PARTIAL_REFUND_REVIEW`; history retained (migration 045). OK, unit-tested only (see §5) |
 | **Retry after an abandoned checkout**      | **DEFECT (HIGH), fixed below**                                                                                                                                                             |
@@ -41,7 +43,7 @@ Historical evidence is kept separate from evidence executed in this checkpoint.
 - Stripe expires a Checkout Session (default 24 hours) and forgets the idempotency key (about 24 hours).
 - On a later attempt Stripe creates a new session, `attach` returns `SESSION_ALREADY_BOUND`, and the bound session has no URL. Checkout therefore failed closed with "Card checkout is currently unavailable" **for that course, permanently**.
 
-**Hosted evidence that the state occurs:** order `acceptance-stripe-paid-1790562535691-4e5750` has been PENDING for 374 hours, bound to an expired `cs_test_` session. It was left untouched.
+**Hosted evidence that the state occurs (historical, observed 2026-10-13):** order `fee16194-0c99-4d6b-bf74-de6f98404764`, for offer `acceptance-stripe-paid-1790562535691-4e5750`, had been PENDING for 374 hours, bound to an expired `cs_test_` session. It was left untouched until the authorised hosted recovery run, which rebound it safely (§5a).
 
 **Fix (migration `202610130058_commercial_v1_expired_checkout_replacement.sql`, 001–057 unchanged):**
 
@@ -83,7 +85,7 @@ Historical evidence is kept separate from evidence executed in this checkpoint.
   | Server | replace another order's session             |
   | Server | wrong learner                               |
 
-**Reviewer decisions required.** This reverses the reviewed V2 choice to fail closed on any closed bound session (the old test still passes because every non-EXPIRED case remains fail-closed). It relaxes migration 034's invariant only through recorded provenance. It must be deployed to `ducelio-acceptance` and then production before the paid journey on new code relies on it.
+**Reviewer decisions required.** This reverses the reviewed V2 choice to fail closed on any closed bound session (the old test still passes because every non-EXPIRED case remains fail-closed). It relaxes migration 034's invariant only through recorded provenance. It is now deployed to `ducelio-acceptance` (§5); production deployment is still required before the paid journey on new code relies on it in production.
 
 ### 3a. Independent-review corrections (PR #71)
 
@@ -91,7 +93,7 @@ Historical evidence is kept separate from evidence executed in this checkpoint.
 
 The first version created a session with the original order key _before_ inspecting the bound session. If Stripe still holds that key, it returns the cached, expired session, so the replacement path never ran.
 
-The checkout now reads the binding first, through a new owner-only RPC `get_my_commercial_v1_checkout_binding(order)`. It is added to the undeployed migration 058, returns `{state, sessionId}` for the caller's own order only, and is granted to `authenticated` only with self-verification. Only then does the checkout choose a path, in a loop bounded to 3 steps:
+The checkout now reads the binding first, through a new owner-only RPC `get_my_commercial_v1_checkout_binding(order)`. It is added to migration 058 (undeployed at the time; since deployed to acceptance), returns `{state, sessionId}` for the caller's own order only, and is granted to `authenticated` only with self-verification. Only then does the checkout choose a path, in a loop bounded to 3 steps:
 
 - **no bound session** → create under the original key `DUCELIO_COMMERCIAL_V1_ORDER:<order>`, attach, then re-verify;
 - **bound and Stripe-confirmed `OPEN` + `UNPAID` for this order** → reuse it, with no create call;
@@ -131,7 +133,7 @@ It ran **5/5 against a disposable local PostgreSQL 17.10** (the `embedded-postgr
 
 - The real-PostgreSQL suite ran on a superuser local cluster, not on the hosted non-superuser `postgres` role.
 - CI does not provide PostgreSQL. Adding a service container is a separate, reviewable CI change.
-- Hosted concurrency is not run without separate authorisation.
+- Hosted concurrency is not run without separate authorisation. It is still not run: the hosted recovery in §5a exercised sequential retries only.
 
 ### 3b. Deployment-preparation correction (after review acceptance at `9b16f82`)
 
@@ -146,9 +148,11 @@ It ran **5/5 against a disposable local PostgreSQL 17.10** (the `embedded-postgr
 
 Mutation check: dropping the 039 clause fails both tests, and dropping `created_at` immutability fails the structural test. The file was restored with its hash verified.
 
-**Consequence.** The reviewed head `9b16f82` must not be deployed. The correction needs independent re-review.
+**Consequence (historical).** The reviewed head `9b16f82` must not be deployed, and the correction needed independent re-review. The correction was then committed as `4116885` and pushed to PR #71; the corrected file (SHA-256 `8da442c8…7a20`) is the one deployed to acceptance.
 
-### 3c. Codex continuation: local correction and verifier review (2026-10-13)
+### 3c. Codex continuation: local correction and verifier review (2026-10-13, historical)
+
+_Historical record, written before the commit, push, deployment and hosted runs. Its statements that changes were uncommitted, that 058 was undeployed and that no hosted run had happened describe that moment only; §5 records what followed._
 
 The existing four-file correction was preserved. Review compared the complete 039 and 058 `guard_order` definitions, including trigger return type, PL/pgSQL, empty `search_path` and execution revocations. All earlier guards remain: order/learner/offer/activation/cohort/programme identity, amount/currency/provider/creation time, null-safe campaign redemption identity, deletion refusal, bound-session protection and fulfilled-order reopening refusal. The only exception is the exact recorded session replacement on an order whose old and new states are both PENDING. The attested RPC retains authenticated ownership, freshness/MAC checks, row locking, idempotency and atomic provenance/audit writes. Migrations 001–057 and application code are unchanged. The structural regression helper now fails explicitly if its definition marker or body delimiters are missing.
 
@@ -227,15 +231,43 @@ Migration 058 SHA-256: `8da442c8841074f3d8d809c6b837ad949f2501d6e131d89023402c64
 - Auth pages carry two `h1`s (the brand story and the form).
 - The checkout copy says "contact support" and "check your email for a receipt", but no public support channel exists and Stripe receipts depend on dashboard settings (LR-09).
 
-## 5. Hosted paid acceptance: prerequisites and approvals (NOT executed)
+## 5. Hosted acceptance (executed on `ducelio-acceptance` only)
 
-| Item                                                                 | State                                                                                                                                                          | Needed                                                                                                                                                                      |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `STRIPE_SECRET_KEY` (`sk_test_`), `STRIPE_WEBHOOK_SECRET` (`whsec_`) | missing                                                                                                                                                        | operator-supplied Stripe **test-mode** sandbox secrets in an operator-controlled file outside the repository/OneDrive                                                       |
-| Commerce controller key                                              | 1 hosted key (2026-09-28); its secret is unavailable                                                                                                           | the operator supplies the original, or approves installing a **new commerce-only** key via `commercial_v1_commerce_private.install_controller_key` (never the academic key) |
-| `ACCEPTANCE_STRIPE_TEST_OPT_IN=true` + `--authorize-stripe-test`     | missing                                                                                                                                                        | explicit approval of the Stripe test run, its fixtures and one manual sandbox payment                                                                                       |
-| `ACCEPTANCE_WRITE_ENABLED=true`                                      | missing                                                                                                                                                        | explicit approval of the permanent run-tagged fixture writes                                                                                                                |
-| Interactive terminal                                                 | the agent shell is not a TTY                                                                                                                                   | **the operator runs `npm run acceptance:stripe -- --authorize-stripe-test`** and completes the payment with Stripe's documented test card in a private window               |
-| Migration 058                                                        | not deployed                                                                                                                                                   | review, then deploy to `ducelio-acceptance` before testing the new retry path hosted                                                                                        |
-| Refund/revocation                                                    | `acceptance:commerce-revocation` covers **admin access revocation** through the same `revoke_entitlement` helper a full refund uses; it makes no Stripe refund | approval to run it (writes). There is **no existing harness for a real Stripe test-mode refund event**: refund webhook handling is unit-tested only (gap)                   |
-| Network-delivered webhooks                                           | no staging deployment                                                                                                                                          | a deployed HTTPS staging app bound to `ducelio-acceptance` with a Stripe test webhook endpoint                                                                              |
+All hosted work below ran against the dedicated Supabase acceptance project `ducelio-acceptance` and a Stripe **TEST-mode** account, using operator-supplied secrets held outside the repository. Production was not touched. No real card or real money was used.
+
+| Item                        | Result                                                                                                                                                                                                             |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Migration 058               | Deployed to `ducelio-acceptance` only. Hosted migration ledger 58/58, ending `202610130058`; the hosted `guard_order` is byte-identical to the repository's corrected 058 definition (read-only check, 2026-10-14) |
+| Stripe TEST paid acceptance | `acceptance:stripe` **7/7 PASS** (operator-run), §5b                                                                                                                                                               |
+| Expired-checkout recovery   | **73/73 PASS, exit 0** (14 October 2026), §5a                                                                                                                                                                      |
+| Local suite                 | 4,277 tests passed after `3ec5c7e` (§3c records the earlier 4,276 run); the optional real-PostgreSQL concurrency suite 5/5 (§3a)                                                                                   |
+| GitHub CI                   | `quality` green on `3ec5c7e`                                                                                                                                                                                       |
+
+### 5a. Hosted expired-checkout recovery (14 October 2026)
+
+A one-time, explicitly authorised run of an external driver kept outside the repository (not part of this PR). It drove the **production** `createCommercialV1Checkout` through the existing loopback acceptance route, signed in as the synthetic acceptance learner, at PR head `3ec5c7e` with migration 058 SHA-256 `8da442c8…7a20`. Every assertion was fail-fast. Result: **73/73 checks passed, exit 0.**
+
+- **Fixture:** the existing PENDING order `fee16194-0c99-4d6b-bf74-de6f98404764` (offer `acceptance-stripe-paid-1790562535691-4e5750`, 100 GBP, no campaign). Before the write, Stripe reported its bound session `cs_test_a1hCvtd2…` as **expired** and **unpaid**, in test mode, naming this order with matching amount and currency. Expiry was never simulated in the database.
+- **Recovery:** the learner's retry rebound the **same order** to a new session `cs_test_a1xxcxoj…`, which Stripe reported **open** and **unpaid**, card-only, with the exact amount, currency, `metadata.orderId` and `client_reference_id`. The returned URL named that bound session. The original session stayed expired and unpaid.
+- **Records:** exactly **one** provenance row (original → replacement, by the owning learner) and exactly **one** `COMMERCIAL_V1_CHECKOUT_SESSION_REPLACED` audit event carrying both session ids. No other audit event and no second order.
+- **Financial identity unchanged:** amount, currency, offer, activation, cohort, campaign and owner.
+- **Idempotent retry:** a second retry returned the same order and the same bound session and wrote nothing. An exhausted Stripe listing showed exactly one Checkout Session created for the order during the run.
+- **Fail-closed checks:** reconciling against the superseded session returned `NOT_PAID` and fulfilled nothing. The foreign learner could not read the binding (`NOT_FOUND_OR_FORBIDDEN`); a validly signed claim for their own identity was refused (`NOT_FOUND_OR_FORBIDDEN`); and one impersonating the owner was refused (`ACTOR_MISMATCH`). None of these probes changed any record.
+- **No payment, entitlement or enrolment** resulted from the recovery. The order remains PENDING and unfulfilled.
+- **Previously fulfilled orders unaffected:** full-row digests of the three fulfilled orders and their entitlements, payment events, refunds, webhook receipts, audit events and provenance were identical before and after.
+- **Evidence:** `lr03-recovery-20261014-004229.json`, retained locally **outside the repository**. It holds identifiers, states, counts and digests only; no secrets and no checkout URLs.
+
+### 5b. Hosted Stripe TEST-mode paid acceptance
+
+`npm run acceptance:stripe -- --authorize-stripe-test` was run by the operator against `ducelio-acceptance` with Stripe test-mode secrets, the commerce controller key and the explicit opt-ins, including the harness's one manual sandbox payment with Stripe's documented test card: **7/7 PASS**. Commit `3ec5c7e` aligned two harness assertions with the production webhook route's existing response (`{ received: true, reconciled: true }`); the webhook route itself is unchanged by this PR.
+
+### 5c. Still outstanding (not claimed)
+
+| Item                       | State                                                                                                                                                                                                                                         |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Network-delivered webhooks | **Not verified.** There is no staging deployment, so Stripe has never delivered a webhook over the public network to a Ducelio endpoint. The webhook surfaces above sign a genuine test event locally and prove the application boundary only |
+| Live payments              | **Not verified.** Only Stripe TEST mode has been exercised; there is no live-money acceptance                                                                                                                                                 |
+| Refunds                    | **Not verified with a real refund.** There is no harness for a real Stripe test-mode refund event; refund webhook handling is unit-tested only. `acceptance:commerce-revocation` (admin access revocation) still needs its own approval       |
+| Hosted concurrency         | Not run hosted; the 5/5 concurrency evidence is local PostgreSQL only (§3a)                                                                                                                                                                   |
+| Production                 | 058 is **not** deployed to production, and no production readiness is claimed. Production deployment needs a reviewed, credential-safe procedure (§3c)                                                                                        |
+| Devices and support        | Real iOS/Android device and screen-reader QA (§4); LR-09 support channel and favicon                                                                                                                                                          |
