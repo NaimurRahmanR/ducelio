@@ -38,6 +38,21 @@ export function formatOfferPrice(amountMinor: number, currency: string) {
   }).format(amountMinor / 100);
 }
 
+// The calendar date of an offer's authoritative cohort start (a database
+// `date`, serialised YYYY-MM-DD: a day, not an instant). Formatted in UTC so
+// the stored day is reproduced exactly and the server's own time zone can
+// never shift it, and in en-GB so it is never read as an ambiguous US-style
+// numeric date.
+export function formatCohortStartDate(date: string) {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.getTime()))
+    return date;
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "long",
+    timeZone: "UTC",
+  }).format(parsed);
+}
+
 // Independent of commerce entitlement: the CANONICAL academic enrolments
 // table's own status for the current viewer's exact cohort (V2 correction,
 // finding 4) -- a learner can be legitimately enrolled (a comped/free seat)
