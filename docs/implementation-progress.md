@@ -2,9 +2,35 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-LAST COMPLETED CHECKPOINT: AC-6, Sarah post-session feedback and the admin teaching-quality surface (migration 055), independently reviewed and merged through PR #60 (merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`). Migrations 054 and 055 are **not** deployed to hosted acceptance; this does not block local AC-7 work. See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
+LAST COMPLETED CHECKPOINT: AC-7, merged through PR #61 (merge `00ab7317171eb16f121f8106a2061e553233f71d` on `main`). Hosted acceptance now records all 56 migrations (verified 2026-10-13, see LR-BASELINE-01).
 
-CURRENT CHECKPOINT (partial): AC-7, Sarah course guidance with a hard learner-support / commercial data firewall, on `feat/ac7-sarah-course-guidance` from base `b33da08b3ce4bd9e918230bf7940c5f1bfb58889`. Migration `202610070056_sarah_course_guidance.sql` (001–055 unchanged). **Implemented and locally validated, independently reviewed and approved for commit/PR; still uncommitted and unmerged at this point. Migration 056 is not deployed, and neither are 054 and 055. No hosted or live-provider AC-7 evidence exists. Not production-ready.** See [AC-7 design and evidence](49-agent-behaviour-ac7-sarah-course-guidance.md).
+CURRENT CHECKPOINT (partial; first independent review returned CHANGES REQUIRED, corrections applied, awaiting re-review): LR-BASELINE-01, hosted baseline resolution and initial website readiness, on the uncommitted review worktree branch `review/lr-baseline-01` from `00ab731`. See [LR-BASELINE-01 evidence and audit](51-lr-baseline-01-hosted-baseline-and-ui-audit.md).
+
+- COMPLETED ITEMS:
+  - read-only hosted reconciliation: 56/56 ledger statements identical to the repository; objects, RLS, private schemas and `search_path` verified; environment identity verified on both paths;
+  - preflight (12 configured, 0 malformed) and `acceptance:hosted`: HOSTED_DATABASE, MIGRATIONS and RLS_ACL PASS, the rest BLOCKED or NOT_RUN;
+  - a confirmed HIGH privilege defect (hosted `authenticated`/`anon` EXECUTE on the internal `apply_objective_mastery_policy`, reproduced locally) and proposed migration `202610130057_supabase_default_privilege_hardening.sql` (001–056 unchanged). After review it adds:
+    - a long-term default-privilege control for functions `postgres` creates, with `PUBLIC` explicitly preserved in `extensions`/`supabase_migrations` and Supabase-role defaults untouched;
+    - a dependency review of the 52 `anon` revocations;
+    - a before/after privilege matrix against the live hosted catalogue (53 functions change, none gains a privilege);
+    - 14 regression/impact tests;
+    - 6/6 mutants killed;
+  - corrected homepage (PR #63), catalogue and learner Calendar/Results/time-zone/breadcrumb (PR #65), with rendered tests. After review: start/end as two `<time>` instants, and neutral cohort-date wording;
+  - `format:check` root cause: `json`/`yml` were unpinned in `.gitattributes` under Windows `core.autocrlf=true`. Fixed with three `eol=lf` lines (no content change);
+  - the page-by-page findings matrix.
+- INCOMPLETE ITEMS:
+  - independent review;
+  - hosted deployment of 057;
+  - FULL_CUSTOMER_JOURNEY rerun on the current schema;
+  - browser/device/assistive-technology review of the homepage and learner changes;
+  - the open findings in docs/51 §5.
+- KNOWN FAILURES: none in the gates. `npm run build` with `.env.local` as-is still needs an HTTPS `APP_URL` (known, pre-existing).
+- BLOCKERS: the journey is BLOCKED because `ACADEMIC_EXECUTION_KEY_ID`/`ACADEMIC_EXECUTION_HMAC_KEY_HEX` (matching the single active hosted controller key) and the `ACCEPTANCE_WRITE_ENABLED` operator opt-in are not configured. No key was provisioned.
+- NEXT EXACT ACTION: independent review of the LR-BASELINE-01 worktree diff. Then, separately and only with authorisation: commit by concern, open PRs with green CI, deploy 057 to `ducelio-acceptance`, and have the operator run `npm run acceptance:journey` with the controller key.
+
+PREVIOUS CHECKPOINT RECORD: AC-6, Sarah post-session feedback and the admin teaching-quality surface (migration 055), independently reviewed and merged through PR #60 (merge `b33da08b3ce4bd9e918230bf7940c5f1bfb58889` on `main`). See [AC-6 design and evidence](48-agent-behaviour-ac6-sarah-feedback.md).
+
+AC-7 RECORD (as written before its merge): AC-7, Sarah course guidance with a hard learner-support / commercial data firewall, on `feat/ac7-sarah-course-guidance` from base `b33da08b3ce4bd9e918230bf7940c5f1bfb58889`. Migration `202610070056_sarah_course_guidance.sql` (001–055 unchanged). **Implemented and locally validated, independently reviewed and approved for commit/PR; still uncommitted and unmerged at this point. Migration 056 is not deployed, and neither are 054 and 055. No hosted or live-provider AC-7 evidence exists. Not production-ready.** See [AC-7 design and evidence](49-agent-behaviour-ac7-sarah-course-guidance.md).
 
 AC-7 is the **final** checkpoint of the AC-1 → AC-7 Agent / Model control and Governed Academic Agent Behaviour workstream. Once it is merged, the workstream is **implemented** (locally validated, reviewed and merged). That is **not** a claim that the platform is production-proven: the hosted, live-provider, concurrency, browser/accessibility and retention items of every checkpoint remain outstanding (see INCOMPLETE ITEMS below and each checkpoint record).
 
