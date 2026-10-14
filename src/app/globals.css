@@ -93,6 +93,11 @@ em {
 .skip-link:focus {
   top: 1rem;
 }
+/* The skip link moves focus to the page's main landmark (tabindex=-1);
+   the landmark itself is not an interactive control, so no ring. */
+main[tabindex="-1"]:focus {
+  outline: none;
+}
 .brand {
   display: inline-flex;
   gap: 0.7rem;
@@ -403,6 +408,8 @@ label {
   margin: 1.5rem 0;
 }
 .auth-switch a {
+  display: inline-block;
+  padding: 0.35rem 0.15rem;
   color: var(--blue);
   font-weight: 600;
 }
@@ -682,7 +689,7 @@ label {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
-  color: #617386;
+  color: var(--muted);
   padding: 1.3rem 2.6rem;
   font-size: 0.75rem;
   border-top: 1px solid var(--line);

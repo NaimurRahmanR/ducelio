@@ -226,7 +226,7 @@ export function AcademyShell({
             </Link>
           </div>
         )}
-        <main id="main" className="workspace">
+        <main id="main" tabIndex={-1} className="workspace">
           {children}
         </main>
         <footer className="workspace-footer">

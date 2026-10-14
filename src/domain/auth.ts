@@ -29,8 +29,9 @@ export const signUpSchema = signInSchema.extend({
 // 2. safeAuthDestination then checks the resulting pathname against a
 //    SMALL, EXPLICIT allowlist of destinations an existing Ducelio auth
 //    flow actually needs -- the default learner home, the password-
-//    recovery destination, the public course catalogue, and one specific
-//    published course page. Any other same-origin path (/admin, /api/...,
+//    recovery destination, the public course catalogue, one specific
+//    published course page, and (LR-03) the checkout success return for one
+//    validated order and session. Any other same-origin path (/admin, /api/...,
 //    an internal implementation route, an unrecognised path) still falls
 //    back to the default -- being same-origin is necessary, never
 //    sufficient.
@@ -52,6 +53,28 @@ function parseSameOriginPath(value: string | null | undefined): string | null {
 }
 const OFFER_SLUG_SEGMENT = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const ALLOWED_AUTH_PATHS = new Set(["/student", "/reset-password", "/courses"]);
+const CHECKOUT_ORDER =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CHECKOUT_SESSION = /^cs_(test|live)_[A-Za-z0-9]{1,190}$/;
+// LR-03: the ONE destination that keeps a query. A buyer whose sign-in
+// lapsed during Stripe Checkout returns to the success page, which must
+// survive login to reconcile that exact order. Accepted only with exactly
+// `order` (UUID) and `session_id` (Stripe Checkout Session id), each once,
+// and no fragment; it is rebuilt from the validated values, never passed
+// through. The success page still requires the signed-in owner of the
+// order and verifies payment server-side.
+function checkoutSuccessDestination(resolved: string) {
+  const url = new URL(resolved, LOCAL_PATH_ORIGIN);
+  if (url.hash) return null;
+  const keys = [...url.searchParams.keys()];
+  if (keys.length !== 2 || new Set(keys).size !== 2) return null;
+  const order = url.searchParams.get("order");
+  const session = url.searchParams.get("session_id");
+  if (!order || !session) return null;
+  if (!CHECKOUT_ORDER.test(order) || !CHECKOUT_SESSION.test(session))
+    return null;
+  return `/checkout/success?order=${order}&session_id=${session}`;
+}
 export function safeAuthDestination(
   value: string | null | undefined,
   fallback = "/student",
@@ -60,7 +83,8 @@ export function safeAuthDestination(
   if (!resolved) return fallback;
   // Query/hash are never part of the allowlisted destinations themselves --
   // dropped rather than merely ignored, so nothing downstream can be
-  // steered by an unexamined suffix.
+  // steered by an unexamined suffix. The single exception is the checkout
+  // success page below, whose two values are validated and rebuilt.
   const rawPathname = resolved.split(/[?#]/)[0];
   // V3 correction (defect 2): "/courses/" (a bare trailing slash, no slug)
   // is the SAME bounded public catalogue destination as "/courses" --
@@ -68,6 +92,8 @@ export function safeAuthDestination(
   // allowlist below only ever needs the one canonical entry.
   const pathname = rawPathname === "/courses/" ? "/courses" : rawPathname;
   if (ALLOWED_AUTH_PATHS.has(pathname)) return pathname;
+  if (pathname === "/checkout/success")
+    return checkoutSuccessDestination(resolved) ?? fallback;
   const course = /^\/courses\/([a-z0-9-]{3,80})$/.exec(pathname);
   if (course && OFFER_SLUG_SEGMENT.test(course[1])) return pathname;
   return fallback;

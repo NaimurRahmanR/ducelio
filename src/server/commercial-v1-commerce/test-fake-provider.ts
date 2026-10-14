@@ -24,6 +24,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
       currency: string;
       status: PaymentStatus;
       open: boolean;
+      expired: boolean;
     }
   >();
   // V2 correction (finding 1): mirrors Stripe's own idempotency-key
@@ -92,6 +93,21 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
     existing.open = false;
   }
 
+  // Test helper: simulate Stripe expiring an unpaid session (default 24
+  // hours after creation): no URL, lifecycle status EXPIRED.
+  expireSession(sessionId: string) {
+    const existing = this.#sessions.get(sessionId);
+    if (!existing) throw new Error(`Unknown fake session ${sessionId}`);
+    existing.open = false;
+    existing.expired = true;
+  }
+
+  // Test helper: simulate Stripe pruning an idempotency key (about 24
+  // hours), after which the same key creates a NEW session.
+  forgetIdempotencyKey(idempotencyKey: string) {
+    this.#idempotency.delete(idempotencyKey);
+  }
+
   async createCheckoutSession(
     input: CreateCheckoutInput,
   ): Promise<CreateCheckoutResult> {
@@ -112,6 +128,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
       currency: input.currency,
       status: "UNPAID",
       open: true,
+      expired: false,
     });
     this.#idempotency.set(input.idempotencyKey, sessionId);
     return { sessionId, url: `https://checkout.fake.test/${sessionId}` };
@@ -127,6 +144,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
         currency: null,
         metadataOrderId: null,
         url: null,
+        status: null,
       };
     }
     return {
@@ -136,6 +154,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
       currency: session.currency,
       metadataOrderId: session.orderId,
       url: session.open ? `https://checkout.fake.test/${sessionId}` : null,
+      status: session.open ? "OPEN" : session.expired ? "EXPIRED" : "COMPLETE",
     };
   }
 

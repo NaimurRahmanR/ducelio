@@ -34,7 +34,7 @@ export default async function Page({
           <Link href="/courses">All courses</Link>
         </nav>
       </header>
-      <main id="main" className="course-detail">
+      <main id="main" tabIndex={-1} className="course-detail">
         <div className="course-detail-main">
           <div className="section-heading">
             <Badge tone="gold">{offer.examinationBody}</Badge>

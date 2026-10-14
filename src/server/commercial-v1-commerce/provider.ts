@@ -32,7 +32,11 @@ export type RetrievedCheckout = {
   // Null once the session is no longer open/payable (expired, completed
   // and closed, etc.) -- never fabricated.
   url: string | null;
+  // The provider's own session lifecycle. Only an EXPIRED, unpaid session
+  // may be replaced (LR-03, migration 058); null when not reported.
+  status: CheckoutSessionStatus | null;
 };
+export type CheckoutSessionStatus = "OPEN" | "COMPLETE" | "EXPIRED";
 
 export type VerifiedWebhookEvent = {
   eventType?: string;

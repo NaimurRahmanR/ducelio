@@ -75,7 +75,7 @@ export function AuthPage({
         </div>
         <p className="auth-footer">Your ambition. Guided to mastery.</p>
       </aside>
-      <main id="main" className="auth-main">
+      <main id="main" tabIndex={-1} className="auth-main">
         <div className="auth-mobile-brand">
           <Brand />
         </div>

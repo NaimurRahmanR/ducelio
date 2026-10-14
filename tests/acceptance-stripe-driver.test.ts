@@ -231,6 +231,7 @@ type StripeEvent = {
 type Flags = {
   reconcileGrantsUnpaid?: boolean;
   webhookIgnoresSignature?: boolean;
+  webhookReportsUnresolved?: boolean;
   duplicateCreatesEvent?: boolean;
   reviewerCreatesOrder?: boolean;
   acceptZeroPrice?: boolean;
@@ -635,7 +636,10 @@ function createWorld(flags: Flags = {}) {
         s.payment_status === "paid" ? "PAID" : "UNPAID",
       );
       webhookPosts.push({ status: 200 });
-      return reply(200, { received: true });
+      return reply(200, {
+        received: true,
+        reconciled: !flags.webhookReportsUnresolved,
+      });
     }
     throw new Error(`Unexpected network request to ${path}.`);
   }
@@ -1415,6 +1419,16 @@ describe("Stripe acceptance driver: each surface fails closed against a dishones
     );
   });
 
+  it("rejects HTTP 200 receipts without reconciliation", async () => {
+    const { by } = await run({ webhookReportsUnresolved: true });
+    expect(by[SURFACES.SIGNED_WEBHOOK_FULFILLMENT].status).toBe("FAIL");
+    expect(
+      by[SURFACES.SIGNED_WEBHOOK_FULFILLMENT].details?.join(" "),
+    ).toContain("did not accept and reconcile");
+    expect(by[SURFACES.DUPLICATE_WEBHOOK_IDEMPOTENCY].status).toBe("BLOCKED");
+    expect(by[SURFACES.RECONCILIATION_REPLAY].status).toBe("BLOCKED");
+  });
+
   it("P: a duplicate delivery that records a second payment event FAILs idempotency", async () => {
     const { by } = await run({ duplicateCreatesEvent: true });
     expect(by[SURFACES.SIGNED_WEBHOOK_FULFILLMENT].status).toBe("PASS");
@@ -1744,9 +1758,12 @@ describe("Stripe acceptance: production commerce code carries no acceptance hook
       "src/server/commercial-v1-commerce/index.ts",
       "utf8",
     );
+    // LR-03: the original order-level key is unchanged; an expired bound
+    // session is replaced under a separate, per-generation key.
     expect(index).toContain(
-      'idempotencyKey: "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId',
+      'const orderKey = "DUCELIO_COMMERCIAL_V1_ORDER:" + order.orderId',
     );
+    expect(index).toContain('orderKey + ":REPLACES:" + binding.sessionId');
     const provider = readFileSync(
       "src/server/commercial-v1-commerce/stripe-provider.ts",
       "utf8",

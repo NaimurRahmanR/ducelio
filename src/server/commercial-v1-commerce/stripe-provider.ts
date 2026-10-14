@@ -2,6 +2,7 @@ import "server-only";
 import Stripe from "stripe";
 import { commerceConfig } from "@/lib/env";
 import type {
+  CheckoutSessionStatus,
   CommerceProvider,
   CreateCheckoutInput,
   CreateCheckoutResult,
@@ -26,6 +27,15 @@ function mapPaymentStatus(
   if (status === "paid") return "PAID";
   if (status === "no_payment_required") return "NO_PAYMENT_REQUIRED";
   return "UNPAID";
+}
+
+function mapSessionStatus(
+  status: Stripe.Checkout.Session.Status | null,
+): CheckoutSessionStatus | null {
+  if (status === "open") return "OPEN";
+  if (status === "complete") return "COMPLETE";
+  if (status === "expired") return "EXPIRED";
+  return null;
 }
 
 export class StripeCommerceProvider implements CommerceProvider {
@@ -96,6 +106,7 @@ export class StripeCommerceProvider implements CommerceProvider {
       metadataOrderId:
         session.metadata?.orderId ?? session.client_reference_id ?? null,
       url: session.url,
+      status: mapSessionStatus(session.status),
     };
   }
 
@@ -236,6 +247,7 @@ export class StripeCommerceProvider implements CommerceProvider {
       metadataOrderId:
         session.metadata?.orderId ?? session.client_reference_id ?? null,
       url: session.url,
+      status: mapSessionStatus(session.status),
       chargeId: verifiedCharge?.id ?? null,
       capturedMinor: verifiedCharge?.amount_captured ?? null,
       refundedMinor,

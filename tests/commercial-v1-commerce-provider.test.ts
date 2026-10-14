@@ -115,6 +115,7 @@ describe("FakeCommerceProviderAdapter deterministic behaviour", () => {
       currency: null,
       metadataOrderId: null,
       url: null,
+      status: null,
     });
   });
 
