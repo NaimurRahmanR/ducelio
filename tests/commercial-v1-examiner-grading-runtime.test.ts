@@ -98,6 +98,8 @@ function assessmentContext(overrides: Record<string, unknown> = {}) {
         responseBody: "My answer.",
       },
     ],
+    objectiveMarks: [],
+    objectiveQuestionCount: 0,
     ...overrides,
   };
 }

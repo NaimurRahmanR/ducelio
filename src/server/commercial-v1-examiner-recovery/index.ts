@@ -2,8 +2,11 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { zeroUsage, type RuntimeResult } from "@/domain/academic-runtime";
 import {
+  examinerProviderContext,
+  examinerRequiresProvider,
   examinerUsageReportSchema,
   mapExaminerAssessmentRuntimeResultToFinalizeCommand,
+  mapExaminerDeterministicAssessmentToFinalizeCommand,
   mapExaminerLabRuntimeResultToFinalizeCommand,
 } from "@/domain/commercial-v1-examiner-grading";
 import {
@@ -124,11 +127,37 @@ async function recover(
       snapshot,
       identity.recoveryReason,
     );
+    // CP2: objective marks are DB-computed; with no free-text answer to
+    // judge, recovery finalizes without any provider call.
+    if (
+      protectedContext.kind === "ASSESSMENT" &&
+      !examinerRequiresProvider(protectedContext.context)
+    )
+      return outcome(
+        (
+          await attestRecoveryCommand(snapshot.executionId, {
+            ...identity,
+            operation: "FINALIZE",
+            snapshot,
+            ...mapExaminerDeterministicAssessmentToFinalizeCommand(
+              protectedContext.context,
+            ),
+          })
+        ).snapshot,
+        false,
+      );
     const adapter = resolveAdapterForProfile(profile);
     providerEntered = true;
     providerResult = await runGovernedProviderExecution(
       adapter,
-      { role: "EXAMINER", capability, context: protectedContext.context },
+      {
+        role: "EXAMINER",
+        capability,
+        context:
+          protectedContext.kind === "ASSESSMENT"
+            ? examinerProviderContext(protectedContext.context)
+            : protectedContext.context,
+      },
       profile.budgetPolicy,
     );
     const finalize =

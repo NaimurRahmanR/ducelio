@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { testDatabase } from "./db-helper";
 import { buildPackage } from "./activation-fixture";
-import { validateCoursePackage } from "@/domain/course-package";
+import {
+  validateCoursePackage,
+  type CoursePackage,
+} from "@/domain/course-package";
 
 export const learner = "10000000-0000-4000-8000-000000000001";
 export const administrator = "10000000-0000-4000-8000-000000000002";
@@ -68,6 +71,9 @@ export async function buildAssessmentPolicyFixture(opts: {
   // QUIZ_1 question count (default 1). The database package validator caps
   // a template at 100 questions, so 100 is the largest valid assessment.
   quiz1QuestionCount?: number;
+  // CP2: replace QUIZ_1's questions (e.g. objective/mixed synthetic sets),
+  // still validated and activated through the real package pipeline.
+  quiz1Questions?: CoursePackage["assessmentTemplates"][number]["questions"];
   // PR16A: normal learner-initiated Examiner grading is now programme-
   // version config governed at AUTHORIZE (migration 036). By default this
   // fixture still saves EXAMINER explicitly disabled (unchanged pre-PR16A
@@ -222,6 +228,8 @@ export async function buildAssessmentPolicyFixture(opts: {
         prompt: `QUIZ_1 question ${position}`,
       });
   }
+  if (opts.quiz1Questions)
+    pkg.assessmentTemplates[0].questions = opts.quiz1Questions;
   if (opts.additionalQuizQuestion) {
     const quiz = pkg.assessmentTemplates[0];
     quiz.questions.push({

@@ -7,9 +7,9 @@ export async function StudentAssessmentSection() {
     <StudentAssessments
       assessments={data.assessments}
       attempts={data.attempts}
-      responses={data.responses}
       activityState={data.activityState}
       activeQuestions={data.activeQuestions}
+      serverNow={data.serverNow}
     />
   );
 }

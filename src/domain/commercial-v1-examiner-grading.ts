@@ -170,10 +170,63 @@ export const examinerAssessmentContextSchema = z.strictObject({
       responseBody: z.string(),
     }),
   ),
+  // CP2 (migration 059): answered OBJECTIVE questions never appear in
+  // `questions` above. Their marks are computed by the database scorer
+  // from the protected key and arrive here instead; the provider never
+  // receives them (see examinerProviderContext).
+  objectiveMarks: z.array(examinerAssessmentMarkSchema),
+  objectiveQuestionCount: z.number().int().min(0),
 });
 export type ExaminerAssessmentContext = z.infer<
   typeof examinerAssessmentContextSchema
 >;
+
+// The exact pre-CP2 context shape, which is all a provider ever receives.
+// For an assessment with no objective questions it is identical to what
+// was sent before migration 059.
+export function examinerProviderContext(context: ExaminerAssessmentContext) {
+  const {
+    objectiveMarks: _marks,
+    objectiveQuestionCount: _count,
+    ...providerContext
+  } = context;
+  void _marks;
+  void _count;
+  return providerContext;
+}
+
+// A provider call is needed only when free-text answers exist to judge. An
+// assessment without objective questions keeps its existing behaviour (the
+// provider is consulted even for an empty answered set).
+export function examinerRequiresProvider(
+  context: ExaminerAssessmentContext,
+): boolean {
+  return context.questions.length > 0 || context.objectiveQuestionCount === 0;
+}
+
+// Deterministic-only grade: every answered question is objective, so no
+// provider call is made and usage is truthfully zero. The database still
+// re-scores each mark at FINALIZE (guard_objective_question_mark).
+export function mapExaminerDeterministicAssessmentToFinalizeCommand(
+  context: ExaminerAssessmentContext,
+): ExaminerFinalizeCommand {
+  return {
+    state: "SUCCEEDED",
+    reason: "GRADED",
+    budgetStage: null,
+    usage: {
+      providerCalls: 0,
+      attempts: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      estimatedCostMicrousd: 0,
+      elapsedMs: 0,
+    },
+    gradeDigest: computeExaminerAssessmentGradeDigest(context.objectiveMarks),
+    assessmentMarks: [...context.objectiveMarks],
+    labMarksAwarded: null,
+  };
+}
 
 export const examinerLabContextSchema = z.strictObject({
   submissionId: z.uuid(),
@@ -462,13 +515,16 @@ export function mapExaminerAssessmentRuntimeResultToFinalizeCommand(
         labMarksAwarded: null,
       };
     }
+    // Provider marks cover exactly the answered free-text questions; the
+    // DB-computed objective marks complete the answered set.
+    const marks = [...parsed.output.marks, ...context.objectiveMarks];
     return {
       state: "SUCCEEDED",
       reason: "GRADED",
       budgetStage: null,
       usage,
-      gradeDigest: computeExaminerAssessmentGradeDigest(parsed.output.marks),
-      assessmentMarks: parsed.output.marks,
+      gradeDigest: computeExaminerAssessmentGradeDigest(marks),
+      assessmentMarks: marks,
       labMarksAwarded: null,
     };
   }

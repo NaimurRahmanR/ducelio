@@ -171,6 +171,8 @@ describe("Server-side independent mark validation against authoritative context"
         responseBody: "r",
       },
     ],
+    objectiveMarks: [],
+    objectiveQuestionCount: 0,
   };
   it("rejects marks for a foreign question id", () => {
     expect(
@@ -239,6 +241,8 @@ describe("RuntimeResult -> FINALIZE command mapping", () => {
         responseBody: "r",
       },
     ],
+    objectiveMarks: [],
+    objectiveQuestionCount: 0,
   };
   it("Blocker 3: an out-of-envelope known usage (already observed, never fabricated) produces NO finalize command -- never a synthetic zero-usage one", () => {
     const outOfEnvelopeUsage = {
@@ -515,6 +519,8 @@ describe("Protected context schemas never carry provider/execution metadata beyo
       title: "t",
       instructions: "i",
       questions: [],
+      objectiveMarks: [],
+      objectiveQuestionCount: 0,
     };
     expect(examinerAssessmentContextSchema.safeParse(base).success).toBe(true);
     expect(

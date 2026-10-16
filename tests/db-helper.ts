@@ -10,8 +10,11 @@ type TestDatabaseOptions = {
 
 // Roles are cluster-wide on a real PostgreSQL server (they outlive any one
 // test database), so creation is idempotent; PGlite behaves identically.
+// Two suites creating the same role at the same instant on one server can
+// lose the race on the pg_authid unique index (unique_violation) rather than
+// see duplicate_object; either way the role exists, so both are ignored.
 const role = (name: string, attributes: string) =>
-  `do $$ begin create role ${name} ${attributes}; exception when duplicate_object then null; end $$;`;
+  `do $$ begin create role ${name} ${attributes}; exception when duplicate_object or unique_violation then null; end $$;`;
 
 // The exact SQL sequence every test database is built from: preamble,
 // migrations in order, then the seed. PGlite (testDatabase) and the

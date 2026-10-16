@@ -2,6 +2,14 @@ import { getMyCourseworkScope } from "./course-activation";
 import "server-only";
 import { z } from "zod";
 import type { RecordCommercialV1ResponseResult } from "@/domain/commercial-v1-assessment-policy";
+import {
+  answerKeyIssues,
+  interactionIssues,
+  isObjectiveQuestionType,
+  objectiveQuestionTypeSchema,
+  questionTypeSchema,
+  type QuestionType,
+} from "@/domain/assessment-question-types";
 import { recordCommercialV1AssessmentResponse } from "./commercial-v1-assessment-policy";
 import { requireActor, requireAnyRole } from "./identity";
 import { createSupabase } from "./supabase";
@@ -167,17 +175,33 @@ export async function getAssessmentWorkspace() {
   });
   const questionsByAssessment: Record<
     string,
-    z.infer<typeof questionSchema>[]
+    (z.infer<typeof questionSchema> & { question_type: QuestionType })[]
   > = {};
   for (const assessment of parsedAssessments) {
-    const { data, error } = await client.rpc(
-      "list_assessment_authoring_questions",
-      {
+    const [questions, interactions] = await Promise.all([
+      client.rpc("list_assessment_authoring_questions", {
         p_assessment_id: assessment.id,
-      },
+      }),
+      // Types only: the authoring list never carries answer keys.
+      client.rpc("list_assessment_authoring_interactions", {
+        p_assessment_id: assessment.id,
+      }),
+    ]);
+    if (questions.error || interactions.error)
+      throw new Error("Assessment questions could not be loaded.");
+    const types = new Map(
+      z
+        .array(interactionRowSchema)
+        .parse(interactions.data)
+        .map((row) => [row.question_id, row.question_type] as const),
     );
-    if (error) throw new Error("Assessment questions could not be loaded.");
-    questionsByAssessment[assessment.id] = z.array(questionSchema).parse(data);
+    questionsByAssessment[assessment.id] = z
+      .array(questionSchema)
+      .parse(questions.data)
+      .map((question) => ({
+        ...question,
+        question_type: types.get(question.id) ?? "FREE_TEXT",
+      }));
   }
 
   return {
@@ -247,6 +271,78 @@ export async function addAssessmentQuestion(input: unknown) {
     p_marking_guidance: payload.markingGuidance,
     p_reason: payload.reason,
   });
+  if (error) throw new Error("Assessment question could not be added.");
+  return z.uuid().parse(data);
+}
+
+const jsonObjectText = z
+  .string()
+  .trim()
+  .min(2)
+  .max(65536)
+  .transform((text, ctx) => {
+    try {
+      return JSON.parse(text) as unknown;
+    } catch {
+      ctx.addIssue({ code: "custom", message: "Invalid JSON." });
+      return z.NEVER;
+    }
+  });
+
+const objectiveQuestionSchema = z.object({
+  assessmentId: z.uuid(),
+  position: z.coerce.number().int().positive(),
+  prompt: z.string().trim().min(1).max(12000),
+  maxMarks: z.coerce.number().int().min(1).max(100),
+  questionType: objectiveQuestionTypeSchema,
+  interaction: jsonObjectText,
+  answerKey: jsonObjectText,
+  // Protected rationale shown only to staff reviewers.
+  expectedAnswer: z.string().trim().min(1).max(12000),
+  markingGuidance: z.string().trim().max(12000).nullable(),
+  reason: z.string().trim().min(5).max(300),
+});
+
+export class ObjectiveQuestionDefinitionError extends Error {
+  constructor() {
+    super("The objective question definition is invalid.");
+    this.name = "ObjectiveQuestionDefinitionError";
+  }
+}
+
+// CP2 governed authoring for the five objective types. The same domain
+// rules the package validator uses run here first (so an author gets a
+// clear refusal without a round trip); the database independently
+// re-validates the definition and key and is the authority. Neither the
+// key nor any submitted value is ever echoed in an error.
+export async function addObjectiveAssessmentQuestion(input: unknown) {
+  const payload = objectiveQuestionSchema.parse(input);
+  if (
+    interactionIssues(payload.questionType, payload.interaction).length ||
+    answerKeyIssues(
+      payload.questionType,
+      payload.interaction,
+      payload.answerKey,
+    ).length
+  )
+    throw new ObjectiveQuestionDefinitionError();
+  await requireAnyRole(["INSTRUCTOR", "ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
+  const client = await createSupabase();
+  const { data, error } = await client.rpc(
+    "add_objective_assessment_question",
+    {
+      p_assessment_id: payload.assessmentId,
+      p_position: payload.position,
+      p_prompt: payload.prompt,
+      p_max_marks: payload.maxMarks,
+      p_question_type: payload.questionType,
+      p_interaction: payload.interaction,
+      p_answer_key: payload.answerKey,
+      p_expected_answer: payload.expectedAnswer,
+      p_marking_guidance: payload.markingGuidance,
+      p_reason: payload.reason,
+    },
+  );
   if (error) throw new Error("Assessment question could not be added.");
   return z.uuid().parse(data);
 }
@@ -324,7 +420,8 @@ export async function getStudentAssessments() {
       attempts: [],
       responses: [],
       activityState: "NORMAL" as const,
-      activeQuestions: [],
+      activeQuestions: [] as ActiveExamQuestion[],
+      serverNow: new Date().toISOString(),
     };
   const client = await createSupabase();
   // A Commercial V1-governed attempt whose deadline has elapsed (or whose
@@ -433,7 +530,7 @@ export async function getStudentAssessments() {
   const activeAttempt = parsedAttempts.find(
     (attempt) => attempt.state === "ACTIVE",
   );
-  let activeQuestions: z.infer<typeof questionSchema>[] = [];
+  let activeQuestions: ActiveExamQuestion[] = [];
   if (activeAttempt) {
     const { data, error } = await client.rpc(
       "get_active_assessment_questions",
@@ -441,7 +538,13 @@ export async function getStudentAssessments() {
         p_assessment_id: activeAttempt.assessment_id,
       },
     );
-    if (!error) activeQuestions = z.array(questionSchema).parse(data);
+    if (!error)
+      activeQuestions = await withExamState(
+        client,
+        activeAttempt,
+        z.array(questionSchema).parse(data),
+        activityState,
+      );
     // While the server itself reports a live controlled attempt, the
     // learner UI renders that attempt's protected-content shell and its
     // Submit button (src/components/student-assessments.tsx). Silently
@@ -460,7 +563,76 @@ export async function getStudentAssessments() {
     responses: z.array(responseSchema).parse(responses.data),
     activityState,
     activeQuestions,
+    // Display calibration only: the countdown measures against server time
+    // rather than the browser clock. Expiry itself is decided solely by the
+    // database (assessment_attempts.expires_at).
+    serverNow: new Date().toISOString(),
   };
+}
+
+const interactionRowSchema = z.object({
+  question_id: z.uuid(),
+  question_type: objectiveQuestionTypeSchema,
+  definition: z.unknown(),
+});
+const examStateRowSchema = z.object({
+  question_id: z.uuid(),
+  question_type: questionTypeSchema,
+  definition: z.unknown().nullable(),
+  saved_body: z.string().nullable(),
+  revision_count: z.number().int().min(0),
+});
+
+export type ActiveExamQuestion = z.infer<typeof questionSchema> & {
+  question_type: QuestionType;
+  interaction: unknown;
+  saved_body: string | null;
+  revision_count: number;
+};
+
+// CP2: attaches, for the learner's OWN active attempt, each question's type
+// and learner-visible interaction (never the answer key) plus the learner's
+// latest saved answer, so a refresh resumes exactly where they left off.
+// One gated RPC (get_active_assessment_exam_state, migration 059) applies
+// the same release gate as get_active_assessment_questions. Any read
+// failure, mismatch or malformed definition fails closed while the attempt
+// is live.
+async function withExamState(
+  client: Awaited<ReturnType<typeof createSupabase>>,
+  attempt: z.infer<typeof attemptSchema>,
+  questions: z.infer<typeof questionSchema>[],
+  activityState: "NORMAL" | "CONTROLLED_ASSESSMENT_ACTIVE",
+): Promise<ActiveExamQuestion[]> {
+  const { data, error } = await client.rpc("get_active_assessment_exam_state", {
+    p_assessment_id: attempt.assessment_id,
+  });
+  if (error) {
+    if (activityState === "CONTROLLED_ASSESSMENT_ACTIVE")
+      throw new Error("Your assessments could not be loaded.");
+    return [];
+  }
+  const state = new Map(
+    z
+      .array(examStateRowSchema)
+      .parse(data)
+      .map((row) => [row.question_id, row] as const),
+  );
+  return questions.map((question) => {
+    const row = state.get(question.id);
+    if (!row) throw new Error("Your assessments could not be loaded.");
+    if (
+      isObjectiveQuestionType(row.question_type) &&
+      interactionIssues(row.question_type, row.definition).length
+    )
+      throw new Error("Your assessments could not be loaded.");
+    return {
+      ...question,
+      question_type: row.question_type,
+      interaction: row.definition,
+      saved_body: row.saved_body,
+      revision_count: row.revision_count,
+    };
+  });
 }
 
 export async function startAssessmentAttempt(assessmentId: unknown) {

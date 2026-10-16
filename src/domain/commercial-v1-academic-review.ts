@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { objectiveQuestionTypeSchema } from "./assessment-question-types";
 
 // Human academic review / manual first grade (migration
 // 202610020047_commercial_v1_human_academic_review.sql). The database is the
@@ -63,6 +64,17 @@ const reviewQuestionSchema = z.strictObject({
   markingGuidance: z.string().nullable(),
   answered: z.boolean(),
   responseBody: z.string().nullable(),
+  // CP2 (migration 059): objective questions carry their learner-visible
+  // definition and the database scorer's mark. The reviewer cannot change
+  // that mark; the database rejects any other value for the question.
+  objective: z
+    .strictObject({
+      questionType: objectiveQuestionTypeSchema,
+      interaction: z.unknown(),
+      deterministicMarks: z.number().int().min(0),
+    })
+    .nullable()
+    .default(null),
 });
 export type AcademicReviewQuestion = z.infer<typeof reviewQuestionSchema>;
 

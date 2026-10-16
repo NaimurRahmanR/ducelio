@@ -4,7 +4,10 @@ import {
   EXAMINER_CAPABILITY_TARGET_KIND,
   EXAMINER_EXECUTION_DB_CEILING,
   ExaminerExecutionDenied,
+  examinerProviderContext,
+  examinerRequiresProvider,
   gradeControlledAssessmentInputSchema,
+  mapExaminerDeterministicAssessmentToFinalizeCommand,
   gradePracticalLabInputSchema,
   mapExaminerAssessmentRuntimeResultToFinalizeCommand,
   mapExaminerLabRuntimeResultToFinalizeCommand,
@@ -189,9 +192,26 @@ async function gradeExaminerTarget(
         enrolmentId: snapshot.enrolmentId!,
         activationId: snapshot.activationId!,
       });
+      // CP2: objective marks come from the database scorer; the provider
+      // only ever judges answered free-text questions.
+      if (!examinerRequiresProvider(context)) {
+        const finalized = await attestExaminerExecutionCommand(
+          snapshot.executionId,
+          {
+            operation: "FINALIZE",
+            ...identity,
+            ...mapExaminerDeterministicAssessmentToFinalizeCommand(context),
+          },
+        );
+        return mapSnapshotToResult(finalized.snapshot, true);
+      }
       providerResult = await runGovernedProviderExecution(
         adapter,
-        { role: "EXAMINER", capability, context },
+        {
+          role: "EXAMINER",
+          capability,
+          context: examinerProviderContext(context),
+        },
         profile.budgetPolicy,
       );
       const finalizeCommand =

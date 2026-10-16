@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { coursePackageSchema, type AgentConfiguration } from "./course-package";
 import {
+  questionTypeSchema,
+  type QuestionType,
+} from "./assessment-question-types";
+import {
   agentRoleSchema,
   type AgentConfigRecord,
 } from "./academic-agent-config";
@@ -189,6 +193,8 @@ const safeAssessment = template
           position: z.number().int(),
           maxMarks: z.number().int(),
           objectiveRefs: z.array(z.string()),
+          // CP2: the type is not protected; definitions/keys never pass here.
+          questionType: questionTypeSchema.optional(),
         }),
       )
       .max(100),
@@ -197,6 +203,14 @@ const safeAssessment = template
     ...metadata,
     questionCount: questions.length,
     totalMarks: questions.reduce((n, q) => n + q.maxMarks, 0),
+    questionTypeCounts: questions.reduce<Partial<Record<QuestionType, number>>>(
+      (counts, q) => {
+        const type = q.questionType ?? "FREE_TEXT";
+        counts[type] = (counts[type] ?? 0) + 1;
+        return counts;
+      },
+      {},
+    ),
   }));
 export const operatorPreviewSchema = coursePackageSchema
   .omit({ reason: true, assessmentTemplates: true })
@@ -255,6 +269,24 @@ export function safeValidationIssues(
     "timezone",
     "expectedAnswer",
     "markingGuidance",
+    "questionType",
+    "interaction",
+    "answerKey",
+    "options",
+    "items",
+    "targets",
+    "steps",
+    "fields",
+    "scenario",
+    "requiredSelections",
+    "scoringRule",
+    "allowTargetReuse",
+    "correctOptionId",
+    "correctOptionIds",
+    "mapping",
+    "correctOrder",
+    "values",
+    "id",
     "prompt",
     "maxMarks",
     "durationMinutes",

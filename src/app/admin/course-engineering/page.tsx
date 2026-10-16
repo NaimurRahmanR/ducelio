@@ -13,6 +13,10 @@ import {
 } from "@/server/agent-behaviour-config";
 import { isBehaviourRole } from "@/domain/agent-behaviour";
 import {
+  QUESTION_TYPE_LABELS,
+  type QuestionType,
+} from "@/domain/assessment-question-types";
+import {
   agentRoleSchema,
   type AgentConfigRecord,
 } from "@/domain/academic-agent-config";
@@ -480,7 +484,13 @@ function CoursePreview({ preview: p }: { preview: OperatorPreview }) {
         <p key={a.key}>
           {a.title} · lesson {a.lessonRef} · {a.durationMinutes} minutes ·{" "}
           {a.attemptsAllowed} attempt(s) · {a.questionCount} questions ·{" "}
-          {a.totalMarks} marks
+          {a.totalMarks} marks ·{" "}
+          {Object.entries(a.questionTypeCounts)
+            .map(
+              ([type, count]) =>
+                `${count} ${QUESTION_TYPE_LABELS[type as QuestionType].toLowerCase()}`,
+            )
+            .join(", ")}
         </p>
       ))}
       <h3>Proposed schedule defaults</h3>

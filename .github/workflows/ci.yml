@@ -35,3 +35,67 @@ jobs:
 
       - name: Build production app
         run: npm run build
+
+  # True multi-connection PostgreSQL concurrency (PGlite is single-connection).
+  # A disposable service container with a CI-only credential that protects
+  # nothing; never hosted Supabase or any shared database. The job fails if
+  # PostgreSQL is unreachable or if the suites do not actually execute.
+  postgres-concurrency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ducelio_ci_disposable_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      DUCELIO_TEST_POSTGRES_URL: postgres://postgres:ducelio_ci_disposable_only@127.0.0.1:5432/postgres
+      DUCELIO_REQUIRE_PG_CONCURRENCY: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Require a reachable PostgreSQL server
+        run: |
+          pg_isready -h 127.0.0.1 -p 5432 -U postgres
+          node -e "const pg=require('pg');const c=new pg.Client({connectionString:process.env.DUCELIO_TEST_POSTGRES_URL});c.connect().then(()=>c.query('select version()')).then(r=>{console.log(r.rows[0].version);return c.end()}).catch(e=>{console.error(e.message);process.exit(1)})"
+
+      # The suites share one cluster (and its cluster-wide roles), so they run
+      # one file at a time; each file still races its own connections.
+      - name: Run real-PostgreSQL concurrency suites
+        run: >-
+          npx vitest run
+          tests/commercial-v1-checkout-session-replacement-pg-concurrency.test.ts
+          tests/interactive-exam-pg-concurrency.test.ts
+          --no-file-parallelism
+          --reporter=default --reporter=json
+          --outputFile.json=pg-concurrency-report.json
+
+      - name: Fail unless every concurrency test actually executed and passed
+        if: always()
+        run: >-
+          node scripts/ci/assert-pg-concurrency-report.mjs
+          pg-concurrency-report.json 14
+          tests/commercial-v1-checkout-session-replacement-pg-concurrency.test.ts
+          tests/interactive-exam-pg-concurrency.test.ts

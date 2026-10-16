@@ -3,8 +3,11 @@ import { randomUUID } from "node:crypto";
 import { zeroUsage, type RuntimeResult } from "@/domain/academic-runtime";
 import {
   EXAMINER_RUNTIME_PROFILE_REF,
+  examinerProviderContext,
+  examinerRequiresProvider,
   examinerUsageReportSchema,
   mapExaminerAssessmentRuntimeResultToFinalizeCommand,
+  mapExaminerDeterministicAssessmentToFinalizeCommand,
   mapExaminerLabRuntimeResultToFinalizeCommand,
 } from "@/domain/commercial-v1-examiner-grading";
 import {
@@ -86,10 +89,35 @@ async function regrade(
       snapshot,
       identity.requestReason,
     );
+    // CP2: objective marks are DB-computed; with no free-text answer to
+    // judge, the regrade finalizes without any provider call.
+    if (
+      protectedContext.kind === "ASSESSMENT" &&
+      !examinerRequiresProvider(protectedContext.context)
+    )
+      return outcome(
+        (
+          await attestRegradeCommand(snapshot.executionId, {
+            ...identity,
+            operation: "FINALIZE",
+            snapshot,
+            ...mapExaminerDeterministicAssessmentToFinalizeCommand(
+              protectedContext.context,
+            ),
+          })
+        ).snapshot,
+      );
     providerEntered = true;
     providerResult = await runGovernedProviderExecution(
       resolveAdapterForProfile(profile),
-      { role: "EXAMINER", capability, context: protectedContext.context },
+      {
+        role: "EXAMINER",
+        capability,
+        context:
+          protectedContext.kind === "ASSESSMENT"
+            ? examinerProviderContext(protectedContext.context)
+            : protectedContext.context,
+      },
       profile.budgetPolicy,
     );
     const finalize =

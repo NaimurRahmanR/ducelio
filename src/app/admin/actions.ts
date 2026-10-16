@@ -19,8 +19,10 @@ import { recordLearningEvidence } from "@/server/learning-evidence";
 import { createAssignment, changeAssignmentStatus } from "@/server/assignments";
 import {
   addAssessmentQuestion,
+  addObjectiveAssessmentQuestion,
   changeAssessmentStatus,
   createAssessment,
+  ObjectiveQuestionDefinitionError,
 } from "@/server/assessments";
 
 export type ProgrammeActionState = { error?: string; message?: string };
@@ -361,6 +363,39 @@ export async function addProtectedAssessmentQuestion(
   }
   revalidatePath("/admin");
   return { message: "Protected assessment question added." };
+}
+
+// CP2: objective question authoring. The browser editor serialises the
+// learner-visible interaction and the protected answer key; the server and
+// then the database validate both. Refusals never echo submitted content.
+export async function addObjectiveQuestion(
+  _state: AssessmentActionState,
+  form: FormData,
+): Promise<AssessmentActionState> {
+  try {
+    const rawGuidance = String(form.get("markingGuidance") ?? "").trim();
+    await addObjectiveAssessmentQuestion({
+      assessmentId: form.get("assessmentId"),
+      position: form.get("position"),
+      prompt: form.get("prompt"),
+      maxMarks: form.get("maxMarks"),
+      questionType: form.get("questionType"),
+      interaction: form.get("interaction"),
+      answerKey: form.get("answerKey"),
+      expectedAnswer: form.get("expectedAnswer"),
+      markingGuidance: rawGuidance || null,
+      reason: form.get("reason"),
+    });
+  } catch (error) {
+    return {
+      error:
+        error instanceof ObjectiveQuestionDefinitionError
+          ? "The question options, targets, steps or settings, or the answer key that goes with them, are incomplete or inconsistent. Every choice needs a label, identifiers must be unique, and the answer key must use only the defined choices."
+          : "Unable to add this objective question. Check the draft assessment, question position, marks, rationale and permissions.",
+    };
+  }
+  revalidatePath("/admin");
+  return { message: "Objective assessment question added." };
 }
 
 export async function publishOrCloseAssessment(

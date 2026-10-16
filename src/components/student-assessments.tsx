@@ -3,10 +3,9 @@
 import { useActionState } from "react";
 import {
   beginControlledAssessment,
-  finishControlledAssessment,
-  saveControlledAssessmentResponse,
   type AssessmentActionState,
 } from "@/app/student/actions";
+import { ExamWorkspace, type ExamQuestion } from "./exam-workspace";
 import { Badge, Card, EmptyState } from "./ui";
 
 type Assessment = {
@@ -32,103 +31,36 @@ type Attempt = {
   submitted_at: string | null;
 };
 
-type Question = {
-  id: string;
-  position: number;
-  prompt: string;
-  max_marks: number;
-};
-type Response = {
-  id: string;
-  attempt_id: string;
-  question_id: string;
-  revision_number: number;
-  recorded_at: string;
-};
-
 function ActionMessage({ state }: { state: AssessmentActionState }) {
   if (state.error) return <p className="notice error">{state.error}</p>;
   if (state.message) return <p className="notice">{state.message}</p>;
   return null;
 }
 
-function AssessmentResponseForm({
-  attempt,
-  question,
-  responses,
-}: {
-  attempt: Attempt;
-  question: Question;
-  responses: Response[];
-}) {
-  const [state, action, pending] = useActionState<
-    AssessmentActionState,
-    FormData
-  >(saveControlledAssessmentResponse, {});
-  const revisions = responses.filter(
-    (response) =>
-      response.attempt_id === attempt.id &&
-      response.question_id === question.id,
-  );
-  const nextRevisionKey = `assessment:${attempt.id}:question:${question.id}:revision:${revisions.length + 1}`;
-
-  return (
-    <div className="support-record">
-      <Badge tone="blue">QUESTION {question.position}</Badge>
-      <h3>{question.prompt}</h3>
-      <p className="muted">
-        Maximum {question.max_marks} marks · {revisions.length} saved revision
-        {revisions.length === 1 ? "" : "s"}
-      </p>
-      <ActionMessage state={state} />
-      <form action={action} className="support-form">
-        <input type="hidden" name="attemptId" value={attempt.id} />
-        <input type="hidden" name="questionId" value={question.id} />
-        <input type="hidden" name="idempotencyKey" value={nextRevisionKey} />
-        <textarea
-          name="body"
-          rows={8}
-          maxLength={20000}
-          placeholder="Your assessment response"
-          required
-        />
-        <p className="muted">
-          Save retries are deduplicated automatically. Each later revision gets
-          a new internal reference after the previous save is recorded.
-        </p>
-        <button className="button" disabled={pending}>
-          {pending ? "Saving…" : "Save response revision"}
-        </button>
-      </form>
-    </div>
-  );
-}
-
 export function StudentAssessments({
   assessments,
   attempts,
-  responses,
   activityState,
   activeQuestions,
+  serverNow,
 }: {
   assessments: Assessment[];
   attempts: Attempt[];
-  responses: Response[];
   activityState: "NORMAL" | "CONTROLLED_ASSESSMENT_ACTIVE";
-  activeQuestions: Question[];
+  activeQuestions: ExamQuestion[];
+  serverNow: string;
 }) {
   const [startState, startAction, starting] = useActionState<
     AssessmentActionState,
     FormData
   >(beginControlledAssessment, {});
-  const [finishState, finishAction, finishing] = useActionState<
-    AssessmentActionState,
-    FormData
-  >(finishControlledAssessment, {});
   const activeAttempt =
     activityState === "CONTROLLED_ASSESSMENT_ACTIVE"
       ? attempts.find((attempt) => attempt.state === "ACTIVE")
       : undefined;
+  const activeAssessment = activeAttempt
+    ? assessments.find((a) => a.id === activeAttempt.assessment_id)
+    : undefined;
 
   return (
     <>
@@ -205,37 +137,15 @@ export function StudentAssessments({
         )}
       </Card>
 
-      {activeAttempt && (
-        <Card>
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">ACTIVE ATTEMPT</p>
-              <h2>Protected assessment content</h2>
-            </div>
-            <Badge tone="gold">ATTEMPT {activeAttempt.attempt_number}</Badge>
-          </div>
-          <p className="muted">
-            Attempt expires{" "}
-            {new Date(activeAttempt.expires_at).toLocaleString()}. Response
-            saves are append-only revisions; only the latest submitted academic
-            record should later be interpreted by a grading workflow.
-          </p>
-          {activeQuestions.map((question) => (
-            <AssessmentResponseForm
-              key={question.id}
-              attempt={activeAttempt}
-              question={question}
-              responses={responses}
-            />
-          ))}
-          <ActionMessage state={finishState} />
-          <form action={finishAction}>
-            <input type="hidden" name="attemptId" value={activeAttempt.id} />
-            <button className="button" disabled={finishing}>
-              {finishing ? "Submitting…" : "Submit assessment attempt"}
-            </button>
-          </form>
-        </Card>
+      {activeAttempt && activeAssessment && (
+        <ExamWorkspace
+          key={activeAttempt.id}
+          title={activeAssessment.title}
+          instructions={activeAssessment.instructions}
+          attempt={activeAttempt}
+          questions={activeQuestions}
+          serverNow={serverNow}
+        />
       )}
     </>
   );

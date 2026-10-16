@@ -29,12 +29,22 @@ export async function owner(f: AssessmentPolicyFixture) {
 // wall-clock hours, same constraint documented in
 // commercial-v1-examiner-recovery-fixture.ts), so tests use QUIZ_1 unless a
 // scenario explicitly needs otherwise.
-export async function submissionGradingFixture() {
+export async function submissionGradingFixture(
+  opts: {
+    quiz1Questions?: Parameters<
+      typeof buildAssessmentPolicyFixture
+    >[0]["quiz1Questions"];
+    escalateToAcademicReview?: boolean;
+  } = {},
+) {
   const f = await buildAssessmentPolicyFixture({
     withLabs: true,
+    quiz1Questions: opts.quiz1Questions,
     examinerAgentConfig: {
       capabilities: ["grade_controlled_assessment", "grade_practical_lab"],
-      escalationPolicy: "NONE",
+      escalationPolicy: opts.escalateToAcademicReview
+        ? "ACADEMIC_REVIEW"
+        : "NONE",
     },
   });
   await owner(f);

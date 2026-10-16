@@ -66,6 +66,9 @@ const rpcKeys: Record<string, string[]> = {
   my_coursework_scope: [],
   start_assessment_attempt: ["p_assessment_id"],
   get_active_assessment_questions: ["p_assessment_id"],
+  // CP2: the learner exam state (type, learner-visible definition, own
+  // latest saved answer), gated exactly like the protected questions.
+  get_active_assessment_exam_state: ["p_assessment_id"],
   // recordAssessmentResponse now probes the Commercial V1 governed writer
   // first (a non-governed activation like this fixture's answers
   // NOT_COMMERCIAL_V1_GOVERNED) and only then uses the legacy writer; the
@@ -101,7 +104,9 @@ function client() {
             ? JSON.stringify(args[k])
             : args[k],
         );
-        const question = name === "get_active_assessment_questions";
+        const question =
+          name === "get_active_assessment_questions" ||
+          name === "get_active_assessment_exam_state";
         const result = await f.db.query<{ data: unknown }>(
           "select " +
             (question ? "row_to_json(q)" : "q") +
@@ -415,6 +420,7 @@ describe("course activation real server/DB composition", () => {
       responses: [],
       activityState: "NORMAL",
       activeQuestions: [],
+      serverNow: expect.any(String),
     });
   });
   it("rejects malformed inputs before any RPC and normalizes transport failure", async () => {

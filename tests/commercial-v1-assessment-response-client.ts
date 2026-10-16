@@ -21,6 +21,8 @@ export const ASSESSMENT_RPC_PARAMS: Record<string, string[]> = {
   current_academic_activity_state: [],
   start_assessment_attempt: ["p_assessment_id"],
   get_active_assessment_questions: ["p_assessment_id"],
+  // CP2: the learner exam state, gated exactly like the protected questions.
+  get_active_assessment_exam_state: ["p_assessment_id"],
   record_assessment_response: [
     "p_attempt_id",
     "p_question_id",
@@ -135,7 +137,9 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
       try {
         const params = ASSESSMENT_RPC_PARAMS[name].map((k) => args[k]);
         const placeholders = params.map((_, i) => "$" + (i + 1)).join(",");
-        const table = name === "get_active_assessment_questions";
+        const table =
+          name === "get_active_assessment_questions" ||
+          name === "get_active_assessment_exam_state";
         const result = await db.query<{ data: unknown }>(
           table
             ? `select row_to_json(q) as data from public.${name}(${placeholders}) q`

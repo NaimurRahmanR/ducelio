@@ -2,6 +2,17 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
+CURRENT CHECKPOINT (implemented locally, awaiting independent review; NOT committed, pushed or deployed): CP2 interactive examination engine, on branch `feat/cp2-interactive-exam-engine` from `main` `dd5e27a` (which includes the merged CP1 dependency-security fix, PR #72; post-merge main CI green). See [docs/53](53-cp2-interactive-examination-engine.md).
+
+- COMPLETED ITEMS: migration `202610160059_interactive_examination_engine.sql` (001–058 unchanged); five deterministically scored objective types (single select, multiple select, PBQ matching, PBQ ordering, PBQ configuration) alongside unchanged free text; additive `COURSE_PACKAGE_V1` question extension validated in TypeScript and SQL; protected definition/key storage with no role privileges; gated learner release; response validation in both writers; one grading chain with a table guard binding all five mark writers; Examiner provider context excludes objective questions; human review locked to deterministic marks; learner exam workspace; staff authoring editor; new tests (domain, PGlite + real orchestrator, UI/actions).
+- CP2B ITEMS: real-PostgreSQL concurrency suite (8 scenarios) passing locally on a disposable PostgreSQL 16.14 server together with the existing 5 (13/13, three consecutive runs); one PostgreSQL-only defect fixed in migration 059 (deferred key-presence trigger now SECURITY DEFINER); dedicated `postgres-concurrency` CI job added with false-green protection (not yet run in GitHub Actions); real-Chrome component harness verification 42/42 (not an authenticated end-to-end journey).
+- CP2C ITEMS: the collision-prone 32-bit browser save checksum was replaced by a server-derived SHA-256 key over the exact body; regressions at unit, action, PGlite and real-PostgreSQL levels; database idempotency rule and migration 059 unchanged.
+- INCOMPLETE ITEMS: independent review; commit/PR and the first GitHub Actions run of the PostgreSQL job; hosted acceptance of migration 059 (not applied anywhere hosted); an authenticated end-to-end browser journey (needs Supabase Auth/PostgREST); axe/device audit.
+- KNOWN FAILURES: none in the local gates at the time of writing (see the checkpoint report for exact results).
+- NEXT EXACT ACTION: independent review of the local CP2 diff; then, only if approved, commit, push, open a PR and require green CI. The final Security+ course package must not be generated without the exact separate approval.
+
+PREVIOUS CHECKPOINT RECORDS (historical, unchanged):
+
 LAST COMPLETED CHECKPOINT: LR-BASELINE-01, merged through PRs #66–#70 (final `main` `0e21fdf0cb450f3a12e928c0c0cf49eab638ce9b`). Migration 057 is deployed to `ducelio-acceptance` (22/22 post-deployment checks; ledger 57). The independently verified FULL_CUSTOMER_JOURNEY run `1791863337177-6fr8jg` passed 10/0 (reviewer-entitlement access). See [docs/51](51-lr-baseline-01-hosted-baseline-and-ui-audit.md).
 
 CURRENT CHECKPOINT (implemented, hosted acceptance passed, awaiting independent review and merge): LR-03 + UX-02, paid customer journey and commercial website readiness, on branch `lr03/paid-journey-ux02` (draft PR #71) from `0e21fdf`. Code head `3ec5c7ec3a70c3a307ea2015f8f62da0747dd53b`, with GitHub CI green; this record is updated by a later docs-only commit. **Not production-ready.** See [docs/52](52-lr03-paid-journey-and-commercial-ux.md).
