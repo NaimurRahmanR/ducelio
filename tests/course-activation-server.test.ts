@@ -22,6 +22,7 @@ import {
   type CapabilityDbState,
 } from "./capability-db-client";
 import { buildPackage } from "./activation-fixture";
+import { postgrestSelectQuery } from "./postgrest-select-query";
 import { validateCoursePackage } from "@/domain/course-package";
 const mocks = vi.hoisted(() => ({ client: vi.fn() }));
 vi.mock("@/server/supabase", () => ({ createSupabase: mocks.client }));
@@ -140,82 +141,38 @@ function client() {
         ].includes(table)
       )
         return base.from(table);
-      const filters: string[] = [];
-      const params: unknown[] = [];
-      let limit = 1000;
-      const fields: Record<string, string> = {
-        assignments:
-          "t.id,t.title,t.instructions,t.opens_at,t.due_at,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
-        assessments:
-          "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
-        programme_versions: "t.id,t.label,t.title_snapshot",
-        assignment_submissions:
-          "t.id,t.assignment_id,t.attempt_number,t.submitted_at",
-        assessment_attempts:
-          "t.id,t.assessment_id,t.attempt_number,t.state,t.started_at,t.expires_at,t.submitted_at",
-        assessment_responses:
-          "t.id,t.attempt_id,t.question_id,t.revision_number,t.recorded_at",
-      };
-      const query = {
-        select() {
-          return query;
-        },
-        in(col: string, values: unknown[]) {
-          if (!["cohort_id", "status", "id"].includes(col))
-            throw new Error("Unsupported filter");
-          // Regression guard (Blocker 2 correction): real Supabase/PostgREST
-          // does not guarantee an empty `.in()` array behaves like PGlite's
-          // `= any('{}')` would. Production code must short-circuit before
-          // ever constructing this filter with zero values -- this adapter
-          // must fail loudly if it doesn't, never silently accept it.
-          if (values.length === 0)
-            throw new Error(
-              "Unsafe empty .in() filter: production code must short-circuit before this point.",
-            );
-          params.push(values);
-          filters.push("t." + col + "=any($" + params.length + ")");
-          return query;
-        },
-        eq(col: string, value: unknown) {
-          if (col !== "student_id") throw new Error("Unsupported filter");
-          params.push(value);
-          filters.push("t.student_id=$" + params.length);
-          return query;
-        },
-        order() {
-          return query;
-        },
-        limit(n: number) {
-          limit = n;
-          return query;
-        },
-        then(
-          resolve: (v: unknown) => unknown,
-          reject: (e: unknown) => unknown,
-        ) {
-          const join =
-            table === "assignments" || table === "assessments"
-              ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
-              : "";
-          return f.db
-            .query<{ data: unknown }>(
-              "select row_to_json(q) as data from (select " +
-                fields[table] +
-                " from public." +
-                table +
-                " t" +
-                join +
-                (filters.length ? " where " + filters.join(" and ") : "") +
-                " limit " +
-                limit +
-                ") q",
-              params,
-            )
-            .then((r) => ({ data: r.rows.map((x) => x.data), error: null }))
-            .then(resolve, reject);
-        },
-      };
-      return query;
+      return postgrestSelectQuery({
+        db: f.db,
+        table,
+        columns: (
+          {
+            assignments:
+              "t.id,t.title,t.instructions,t.opens_at,t.due_at,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
+            assessments:
+              "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
+            programme_versions: "t.id,t.label,t.title_snapshot",
+            assignment_submissions:
+              "t.id,t.assignment_id,t.attempt_number,t.submitted_at",
+            assessment_attempts:
+              "t.id,t.assessment_id,t.attempt_number,t.state,t.started_at,t.expires_at,t.submitted_at",
+            assessment_responses:
+              "t.id,t.attempt_id,t.question_id,t.revision_number,t.recorded_at",
+          } as Record<string, string>
+        )[table],
+        join:
+          table === "assignments" || table === "assessments"
+            ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
+            : "",
+        filterColumns: [
+          "cohort_id",
+          "status",
+          "id",
+          "assessment_id",
+          "student_id",
+          "state",
+          "attempt_id",
+        ],
+      });
     },
   };
 }
@@ -411,10 +368,17 @@ describe("course activation real server/DB composition", () => {
     const assessments = await getStudentAssessments();
     expect(assessments).toEqual({
       assessments: [],
+      activeAssessment: null,
       attempts: [],
       responses: [],
       activityState: "NORMAL",
       activeQuestions: [],
+      pagination: {
+        page: 1,
+        pageSize: 25,
+        hasPreviousPage: false,
+        hasNextPage: false,
+      },
     });
   });
   it("rejects malformed inputs before any RPC and normalizes transport failure", async () => {

@@ -6,6 +6,11 @@ import { resolve } from "node:path";
 type TestDatabaseOptions = {
   throughMigration?: number;
   supabaseDefaultPrivileges?: boolean;
+  // Migration files that are not (yet) in supabase/migrations, applied in
+  // order after the repository chain and before the seed -- exactly where
+  // they will sit once merged. Used by the CP2 deployment-bridge suite to
+  // run this application against the reviewed migration 059.
+  extraMigrationFiles?: string[];
 };
 
 // Roles are cluster-wide on a real PostgreSQL server (they outlive any one
@@ -68,6 +73,8 @@ export async function testDatabaseStatements(
     `);
     statements.push(await readFile(resolve(root, file), "utf8"));
   }
+  for (const file of options.extraMigrationFiles ?? [])
+    statements.push(await readFile(resolve(file), "utf8"));
   statements.push(await readFile(resolve("supabase/seed.sql"), "utf8"));
   return statements;
 }

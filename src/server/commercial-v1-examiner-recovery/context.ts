@@ -1,8 +1,9 @@
 import "server-only";
 import { z } from "zod";
 import {
-  examinerAssessmentContextSchema,
+  examinerAssessmentContextWireSchema,
   examinerLabContextSchema,
+  legacyExaminerAssessmentContext,
 } from "@/domain/commercial-v1-examiner-grading";
 import {
   RecoveryDenied,
@@ -26,7 +27,7 @@ export async function getRecoveryContext(
     sourceExecutionId: snapshot.sourceExecutionId,
   });
   if (snapshot.targetKind === "ASSESSMENT_ATTEMPT") {
-    const parsed = examinerAssessmentContextSchema
+    const parsed = examinerAssessmentContextWireSchema
       .extend({ ok: z.literal(true) })
       .safeParse(data);
     if (
@@ -35,11 +36,15 @@ export async function getRecoveryContext(
       parsed.data.component !== snapshot.component
     )
       throw new RecoveryDenied("SERVICE_UNAVAILABLE");
-    const context = examinerAssessmentContextSchema.parse(
-      Object.fromEntries(
-        Object.entries(parsed.data).filter(([k]) => k !== "ok"),
+    // CP2 bridge (migration 059): objective questions are never graded here.
+    const context = legacyExaminerAssessmentContext(
+      examinerAssessmentContextWireSchema.parse(
+        Object.fromEntries(
+          Object.entries(parsed.data).filter(([k]) => k !== "ok"),
+        ),
       ),
     );
+    if (!context) throw new RecoveryDenied("SERVICE_UNAVAILABLE");
     return { kind: "ASSESSMENT" as const, context };
   }
   const parsed = examinerLabContextSchema

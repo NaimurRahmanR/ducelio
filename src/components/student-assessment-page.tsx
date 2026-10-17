@@ -2,7 +2,7 @@ import { AcademyShell } from "./academy-shell";
 import { StudentAssessmentSection } from "./student-assessment-section";
 import { getStudentAcademy } from "@/server/academy";
 
-export async function StudentAssessmentPage() {
+export async function StudentAssessmentPage({ page }: { page: number }) {
   const { actor } = await getStudentAcademy();
   return (
     <AcademyShell name={actor.displayName} roles={actor.roles}>
@@ -16,7 +16,7 @@ export async function StudentAssessmentPage() {
         </div>
       </div>
       <div className="section-content">
-        <StudentAssessmentSection />
+        <StudentAssessmentSection page={page} />
       </div>
     </AcademyShell>
   );

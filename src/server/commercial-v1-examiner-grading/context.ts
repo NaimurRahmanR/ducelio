@@ -1,9 +1,10 @@
 import "server-only";
 import { z } from "zod";
 import {
-  examinerAssessmentContextSchema,
+  examinerAssessmentContextWireSchema,
   examinerLabContextSchema,
   ExaminerExecutionDenied,
+  legacyExaminerAssessmentContext,
   type ExaminerAssessmentContext,
   type ExaminerLabContext,
 } from "@/domain/commercial-v1-examiner-grading";
@@ -14,7 +15,7 @@ const denialSchema = z.strictObject({ ok: z.literal(false), code: z.string() });
 const assessmentResultSchema = z.union([
   z.strictObject({
     ok: z.literal(true),
-    ...examinerAssessmentContextSchema.shape,
+    ...examinerAssessmentContextWireSchema.shape,
   }),
   denialSchema,
 ]);
@@ -51,8 +52,14 @@ export async function getExaminerAssessmentContext(
   if (error) throw new ExaminerExecutionDenied("SERVICE_UNAVAILABLE");
   const result = assessmentResultSchema.parse(data);
   if (!result.ok) throw new ExaminerExecutionDenied("EXECUTION_UNAVAILABLE");
-  const { ok: _ok, ...context } = result;
+  const { ok: _ok, ...wire } = result;
   void _ok;
+  // CP2 bridge: an assessment containing objective questions (migration
+  // 059) is refused before any provider call; the orchestrator records a
+  // truthful FAILED execution with zero usage, recoverable later through
+  // the reviewed recovery path by an application that grades them.
+  const context = legacyExaminerAssessmentContext(wire);
+  if (!context) throw new ExaminerExecutionDenied("SERVICE_UNAVAILABLE");
   return context;
 }
 

@@ -4,6 +4,8 @@ import { testDatabase } from "./db-helper";
 import { buildPackage } from "./activation-fixture";
 import { validateCoursePackage } from "@/domain/course-package";
 
+export const MIGRATION_059_FIXTURE =
+  "tests/fixtures/cp2-migration-059-interactive-examination-engine.sql";
 export const learner = "10000000-0000-4000-8000-000000000001";
 export const administrator = "10000000-0000-4000-8000-000000000002";
 export const foreignLearner = "10000000-0000-4000-8000-000000000003";
@@ -68,6 +70,14 @@ export async function buildAssessmentPolicyFixture(opts: {
   // QUIZ_1 question count (default 1). The database package validator caps
   // a template at 100 questions, so 100 is the largest valid assessment.
   quiz1QuestionCount?: number;
+  // CP2 deployment bridge: build the database through migration 059 (the
+  // reviewed, pinned copy in tests/fixtures) on top of this repository's
+  // chain, and optionally replace QUIZ_1's questions AFTER this
+  // application's TypeScript package validation -- this application cannot
+  // author objective questions itself; the database package validator and
+  // activation of migration 059 still validate and materialise them.
+  migration059?: boolean;
+  quiz1QuestionsAfterValidation?: Record<string, unknown>[];
   // PR16A: normal learner-initiated Examiner grading is now programme-
   // version config governed at AUTHORIZE (migration 036). By default this
   // fixture still saves EXAMINER explicitly disabled (unchanged pre-PR16A
@@ -85,7 +95,10 @@ export async function buildAssessmentPolicyFixture(opts: {
 }) {
   const db =
     opts.db ??
-    (await testDatabase({ throughMigration: opts.throughMigration }));
+    (await testDatabase({
+      throughMigration: opts.throughMigration,
+      extraMigrationFiles: opts.migration059 ? [MIGRATION_059_FIXTURE] : [],
+    }));
   if (!opts.db) {
     await db.exec("alter table auth.users disable trigger academy_identity");
     for (const [n, id] of [
@@ -236,13 +249,23 @@ export async function buildAssessmentPolicyFixture(opts: {
     throw new Error(
       `Invalid assessment-policy fixture package: ${JSON.stringify(validated.errors)}`,
     );
+  const imported: unknown = opts.quiz1QuestionsAfterValidation
+    ? {
+        ...pkg,
+        assessmentTemplates: pkg.assessmentTemplates.map((template, idx) =>
+          idx === 0
+            ? { ...template, questions: opts.quiz1QuestionsAfterValidation }
+            : template,
+        ),
+      }
+    : pkg;
   const importId = await value(
     db,
     "select public.import_course_package($1,1,$2,$3::jsonb,$4) as v",
     [
       pkg.packageKey,
       pkg.schemaVersion,
-      JSON.stringify(pkg),
+      JSON.stringify(imported),
       "Policy fixture import",
     ],
   );
