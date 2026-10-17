@@ -63,6 +63,13 @@ const reviewQuestionSchema = z.strictObject({
   markingGuidance: z.string().nullable(),
   answered: z.boolean(),
   responseBody: z.string().nullable(),
+  // CP2 deployment bridge: migration 059 annotates every question with
+  // `objective` (null for a free-text question). Only null is accepted
+  // here; an objective question's locked deterministic mark cannot be
+  // reviewed by this application, so such a case fails closed
+  // (SERVICE_UNAVAILABLE) instead of being shown as free text. The database
+  // also refuses any human mark that differs from the deterministic one.
+  objective: z.null().optional(),
 });
 export type AcademicReviewQuestion = z.infer<typeof reviewQuestionSchema>;
 

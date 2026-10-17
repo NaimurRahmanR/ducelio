@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import {
   beginControlledAssessment,
@@ -104,18 +105,60 @@ function AssessmentResponseForm({
   );
 }
 
+type AssessmentPagination = {
+  page: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
+const assessmentPageHref = (page: number) =>
+  page === 1 ? "/student/assessments" : `/student/assessments?page=${page}`;
+
+// Newest assessments come first; older ones are one page away. An active
+// attempt is shown below whichever page is open.
+function AssessmentPageLinks({
+  pagination,
+}: {
+  pagination?: AssessmentPagination;
+}) {
+  if (!pagination || (!pagination.hasPreviousPage && !pagination.hasNextPage))
+    return null;
+  return (
+    <nav aria-label="Assessment pages" className="launch-actions">
+      {pagination.hasPreviousPage && (
+        <Link
+          className="button secondary"
+          href={assessmentPageHref(pagination.page - 1)}
+        >
+          Newer assessments
+        </Link>
+      )}
+      {pagination.hasNextPage && (
+        <Link
+          className="button secondary"
+          href={assessmentPageHref(pagination.page + 1)}
+        >
+          Older assessments
+        </Link>
+      )}
+    </nav>
+  );
+}
+
 export function StudentAssessments({
   assessments,
   attempts,
   responses,
   activityState,
   activeQuestions,
+  pagination,
 }: {
   assessments: Assessment[];
   attempts: Attempt[];
   responses: Response[];
   activityState: "NORMAL" | "CONTROLLED_ASSESSMENT_ACTIVE";
   activeQuestions: Question[];
+  pagination?: AssessmentPagination;
 }) {
   const [startState, startAction, starting] = useActionState<
     AssessmentActionState,
@@ -198,11 +241,16 @@ export function StudentAssessments({
               </div>
             );
           })
+        ) : pagination && pagination.page > 1 ? (
+          <EmptyState title="No older assessments">
+            There are no assessments on this page.
+          </EmptyState>
         ) : (
           <EmptyState title="No controlled assessments available">
             Published assessments for your enrolled cohort will appear here.
           </EmptyState>
         )}
+        <AssessmentPageLinks pagination={pagination} />
       </Card>
 
       {activeAttempt && (

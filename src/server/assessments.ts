@@ -308,8 +308,44 @@ const studentAssessmentRowSchema = z.object({
   lessons: z.object({ title: z.string() }),
 });
 
-export async function getStudentAssessments() {
+// Learner assessment list pagination. The projection used to read the 100
+// EARLIEST assessments (opens_at ascending), so a learner with more than 100
+// visible assessments never saw newly published ones; it also read the 100
+// newest attempts and the 1000 newest responses across ALL attempts, which
+// could under-count a listed assessment's attempts. It now reads:
+//   * one page of assessments, newest first (opens_at, then id, both
+//     descending -- a total order, so pages never overlap or skip);
+//   * the learner's own ACTIVE attempt and its assessment independently of
+//     the page, so an active attempt is always visible and resumable;
+//   * attempts only for the assessments on the page (each allows at most 5);
+//   * response revisions only for the active attempt.
+// Every read stays under the learner's own session and RLS. A read that
+// reaches its cap fails closed instead of presenting a truncated history.
+export const STUDENT_ASSESSMENT_PAGE_SIZE = 25;
+export const STUDENT_ASSESSMENT_MAX_PAGE = 1000;
+// Both caps (plus the one overflow row each read requests) stay below
+// hosted PostgREST's max-rows ceiling (1000 by default), so an overflow is
+// always observable rather than silently truncated by the server. A page
+// lists at most 25 assessments x 5 allowed attempts = 125 attempts.
+const PAGE_ATTEMPT_CAP = 500;
+const ACTIVE_RESPONSE_CAP = 900;
+
+// The page number from an untrusted query string: digits only, 1..1000;
+// anything else is page 1.
+export function studentAssessmentPage(value: unknown): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== "string" || !/^[1-9][0-9]{0,3}$/.test(raw)) return 1;
+  return Math.min(Number(raw), STUDENT_ASSESSMENT_MAX_PAGE);
+}
+
+const STUDENT_ASSESSMENT_COLUMNS =
+  "id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,programme_version_id,lessons(title)";
+const STUDENT_ATTEMPT_COLUMNS =
+  "id,assessment_id,attempt_number,state,started_at,expires_at,submitted_at";
+
+export async function getStudentAssessments(options: { page?: number } = {}) {
   await requireActor("student");
+  const page = studentAssessmentPage(String(options.page ?? 1));
   const scope = await getMyCourseworkScope();
   // A legitimate STUDENT with zero enrolments has an empty cohort scope. Real
   // Supabase/PostgREST does not guarantee `.in("cohort_id", [])` behaves like
@@ -321,10 +357,17 @@ export async function getStudentAssessments() {
   if (scope.cohortIds.length === 0)
     return {
       assessments: [],
+      activeAssessment: null,
       attempts: [],
       responses: [],
       activityState: "NORMAL" as const,
       activeQuestions: [],
+      pagination: {
+        page,
+        pageSize: STUDENT_ASSESSMENT_PAGE_SIZE,
+        hasPreviousPage: page > 1,
+        hasNextPage: false,
+      },
     };
   const client = await createSupabase();
   // A Commercial V1-governed attempt whose deadline has elapsed (or whose
@@ -345,30 +388,24 @@ export async function getStudentAssessments() {
   // for that select, which made this whole projection fail). The version
   // snapshot is therefore read separately below, under the learner's own
   // RLS, by the programme_version_id each visible assessment carries.
-  const [assessments, attempts, responses, firstActivity] = await Promise.all([
+  const offset = (page - 1) * STUDENT_ASSESSMENT_PAGE_SIZE;
+  const [assessments, activeAttempts, firstActivity] = await Promise.all([
     client
       .from("assessments")
-      .select(
-        "id,title,instructions,opens_at,closes_at,duration_minutes,attempts_allowed,status,programme_version_id,lessons(title)",
-      )
+      .select(STUDENT_ASSESSMENT_COLUMNS)
       .in("cohort_id", scope.cohortIds)
       .in("status", ["PUBLISHED", "CLOSED"])
-      .order("opens_at", { ascending: true })
-      .limit(100),
+      .order("opens_at", { ascending: false })
+      .order("id", { ascending: false })
+      // One row beyond the page shows whether an older page exists.
+      .range(offset, offset + STUDENT_ASSESSMENT_PAGE_SIZE),
     client
       .from("assessment_attempts")
-      .select(
-        "id,assessment_id,attempt_number,state,started_at,expires_at,submitted_at",
-      )
+      .select(STUDENT_ATTEMPT_COLUMNS)
       .eq("student_id", scope.actorId)
+      .eq("state", "ACTIVE")
       .order("started_at", { ascending: false })
-      .limit(100),
-    client
-      .from("assessment_responses")
-      .select("id,attempt_id,question_id,revision_number,recorded_at")
-      .eq("student_id", scope.actorId)
-      .order("recorded_at", { ascending: false })
-      .limit(1000),
+      .limit(1),
     client.rpc("current_academic_activity_state"),
   ]);
 
@@ -376,8 +413,8 @@ export async function getStudentAssessments() {
   // first failing one in this fixed order when several fail).
   if (assessments.error)
     throw new StudentAssessmentReadFailure("READ_ASSESSMENTS");
-  if (attempts.error) throw new StudentAssessmentReadFailure("READ_ATTEMPTS");
-  if (responses.error) throw new StudentAssessmentReadFailure("READ_RESPONSES");
+  if (activeAttempts.error)
+    throw new StudentAssessmentReadFailure("READ_ATTEMPTS");
   // current_academic_activity_state is a STABLE, side-effect-free read. The
   // client sends every .rpc() as a POST, which postgrest-js does not
   // automatically retry, unlike eligible GET table reads. A client-side
@@ -392,11 +429,72 @@ export async function getStudentAssessments() {
       : firstActivity;
   if (activity.error) throw new StudentAssessmentReadFailure("ACTIVITY");
 
-  const assessmentRows = z
+  const fetchedRows = z
     .array(studentAssessmentRowSchema)
     .parse(assessments.data);
+  const pageRows = fetchedRows.slice(0, STUDENT_ASSESSMENT_PAGE_SIZE);
+  const activeAttempt = z
+    .array(attemptSchema)
+    .max(1)
+    .parse(activeAttempts.data)[0];
+  const pageIds = pageRows.map((row) => row.id);
+
+  // The active attempt's assessment, when it is not on this page.
+  let activeRow = activeAttempt
+    ? pageRows.find((row) => row.id === activeAttempt.assessment_id)
+    : undefined;
+  if (activeAttempt && !activeRow) {
+    const { data, error } = await client
+      .from("assessments")
+      .select(STUDENT_ASSESSMENT_COLUMNS)
+      .in("cohort_id", scope.cohortIds)
+      .in("id", [activeAttempt.assessment_id])
+      .limit(1);
+    if (error) throw new StudentAssessmentReadFailure("READ_ASSESSMENTS");
+    activeRow = z.array(studentAssessmentRowSchema).parse(data)[0];
+  }
+
+  const [pageAttempts, activeResponses] = await Promise.all([
+    pageIds.length
+      ? client
+          .from("assessment_attempts")
+          .select(STUDENT_ATTEMPT_COLUMNS)
+          .eq("student_id", scope.actorId)
+          .in("assessment_id", pageIds)
+          .order("started_at", { ascending: false })
+          .limit(PAGE_ATTEMPT_CAP + 1)
+      : Promise.resolve({ data: [], error: null }),
+    activeAttempt
+      ? client
+          .from("assessment_responses")
+          .select("id,attempt_id,question_id,revision_number,recorded_at")
+          .eq("student_id", scope.actorId)
+          .eq("attempt_id", activeAttempt.id)
+          .order("recorded_at", { ascending: false })
+          .limit(ACTIVE_RESPONSE_CAP + 1)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (pageAttempts.error)
+    throw new StudentAssessmentReadFailure("READ_ATTEMPTS");
+  if (activeResponses.error)
+    throw new StudentAssessmentReadFailure("READ_RESPONSES");
+  const listedAttempts = z.array(attemptSchema).parse(pageAttempts.data);
+  if (listedAttempts.length > PAGE_ATTEMPT_CAP)
+    throw new StudentAssessmentReadFailure("READ_ATTEMPTS");
+  const responses = z.array(responseSchema).parse(activeResponses.data);
+  if (responses.length > ACTIVE_RESPONSE_CAP)
+    throw new StudentAssessmentReadFailure("READ_RESPONSES");
+  const parsedAttempts =
+    activeAttempt && !listedAttempts.some((a) => a.id === activeAttempt.id)
+      ? [activeAttempt, ...listedAttempts]
+      : listedAttempts;
+
   const versionIds = [
-    ...new Set(assessmentRows.map((row) => row.programme_version_id)),
+    ...new Set(
+      [...pageRows, ...(activeRow ? [activeRow] : [])].map(
+        (row) => row.programme_version_id,
+      ),
+    ),
   ];
   const versions = new Map<
     string,
@@ -418,21 +516,19 @@ export async function getStudentAssessments() {
   }
   // Fail closed: never render an assessment without the version snapshot
   // the learner is entitled to see for it.
-  const visibleAssessments = assessmentRows.map(
-    ({ programme_version_id, ...row }) => {
-      const version = versions.get(programme_version_id);
-      if (!version) throw new Error("Your assessments could not be loaded.");
-      return { ...row, programme_versions: version };
-    },
-  );
+  const withVersion = ({
+    programme_version_id,
+    ...row
+  }: z.infer<typeof studentAssessmentRowSchema>) => {
+    const version = versions.get(programme_version_id);
+    if (!version) throw new Error("Your assessments could not be loaded.");
+    return { ...row, programme_versions: version };
+  };
+  const visibleAssessments = pageRows.map(withVersion);
 
-  const parsedAttempts = z.array(attemptSchema).parse(attempts.data);
   const activityState = z
     .enum(["NORMAL", "CONTROLLED_ASSESSMENT_ACTIVE"])
     .parse(activity.data);
-  const activeAttempt = parsedAttempts.find(
-    (attempt) => attempt.state === "ACTIVE",
-  );
   let activeQuestions: z.infer<typeof questionSchema>[] = [];
   if (activeAttempt) {
     const { data, error } = await client.rpc(
@@ -456,10 +552,17 @@ export async function getStudentAssessments() {
 
   return {
     assessments: visibleAssessments,
+    activeAssessment: activeRow ? withVersion(activeRow) : null,
     attempts: parsedAttempts,
-    responses: z.array(responseSchema).parse(responses.data),
+    responses,
     activityState,
     activeQuestions,
+    pagination: {
+      page,
+      pageSize: STUDENT_ASSESSMENT_PAGE_SIZE,
+      hasPreviousPage: page > 1,
+      hasNextPage: fetchedRows.length > STUDENT_ASSESSMENT_PAGE_SIZE,
+    },
   };
 }
 

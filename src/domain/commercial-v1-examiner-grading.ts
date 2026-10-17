@@ -175,6 +175,38 @@ export type ExaminerAssessmentContext = z.infer<
   typeof examinerAssessmentContextSchema
 >;
 
+// CP2 deployment bridge. Migration 059 (interactive examination engine)
+// wraps every assessment CONTEXT_READ and adds exactly two keys to a
+// successful context: `objectiveMarks` (DB-computed marks of answered
+// objective questions, which it removes from `questions`) and
+// `objectiveQuestionCount` (objective questions in the assessment). This
+// application predates objective questions, so it accepts precisely three
+// wire shapes and nothing broader:
+//   * the pre-059 shape (neither key);
+//   * the 059 shape for an assessment with no objective questions
+//     (objectiveQuestionCount 0 and objectiveMarks []), where `questions`
+//     is byte-for-byte the pre-059 set;
+//   * anything else -- one key without the other, a non-zero count, any
+//     objective mark -- is refused (null), so an objective question is never
+//     graded through this Examiner and never silently dropped from a grade.
+// Every other key stays strict. The result is the exact pre-059 context, so
+// the provider request is unchanged.
+export const examinerAssessmentContextWireSchema =
+  examinerAssessmentContextSchema.extend({
+    objectiveMarks: z.array(examinerAssessmentMarkSchema).optional(),
+    objectiveQuestionCount: z.number().int().min(0).optional(),
+  });
+export function legacyExaminerAssessmentContext(
+  wire: z.infer<typeof examinerAssessmentContextWireSchema>,
+): ExaminerAssessmentContext | null {
+  const { objectiveMarks, objectiveQuestionCount, ...context } = wire;
+  if (objectiveMarks === undefined && objectiveQuestionCount === undefined)
+    return context;
+  if (objectiveQuestionCount === 0 && objectiveMarks?.length === 0)
+    return context;
+  return null;
+}
+
 export const examinerLabContextSchema = z.strictObject({
   submissionId: z.uuid(),
   practicalId: z.uuid(),
