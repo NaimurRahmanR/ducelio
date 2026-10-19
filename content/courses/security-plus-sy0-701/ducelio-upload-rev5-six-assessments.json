@@ -3808,101 +3808,1281 @@
     },
     {
       "key": "quiz-3",
-      "title": "Quiz 3 — Architecture and Security Operations (draft conversion pending)",
-      "instructions": "Written application practice; NOT an official-format Security+ examination simulation. Answer each question independently, in your own words.",
+      "title": "Quiz 3 — Architecture and Security Operations",
+      "instructions": "Original Security+ exam-style draft questions; no official sponsorship. Independent content/key/source review is required before any learner release.",
       "lessonRef": "lesson-4-3",
       "durationMinutes": 30,
       "attemptsAllowed": 1,
       "questions": [
         {
           "position": 1,
-          "prompt": "List the four stages of the vulnerability-management cycle in order.",
-          "maxMarks": 10,
-          "expectedAnswer": "Scanning, prioritisation, remediation, validation.",
-          "markingGuidance": "Full marks require all four stages named in the correct order.",
+          "lessonRef": "lesson-3-1",
+          "prompt": "A cloud deployment template accidentally makes an internal storage service public. What preventive check best catches this?",
+          "maxMarks": 1,
+          "expectedAnswer": "Policy-as-code and reviewed configuration.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
-            "obj-4-3-a"
-          ]
+            "obj-3-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3000a",
+                "label": "Disable all code reviews"
+              },
+              {
+                "id": "q3000b",
+                "label": "Wait for customer complaints"
+              },
+              {
+                "id": "q3000c",
+                "label": "Policy-as-code and reviewed configuration"
+              },
+              {
+                "id": "q3000d",
+                "label": "Remove asset inventory"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3000c"
+          }
         },
         {
           "position": 2,
-          "prompt": "Why might a critical-severity vulnerability on an internal-only system be a lower practical priority than a moderate-severity vulnerability on an internet-facing system?",
-          "maxMarks": 10,
-          "expectedAnswer": "Exploitability depends on reachability as well as severity; a vulnerability that is not exposed to an untrusted network is harder for a remote attacker to reach, so exposure must be weighed alongside raw severity when prioritising.",
-          "markingGuidance": "Full marks require the answer to explain the role of exposure/reachability, not just restate severity.",
+          "lessonRef": "lesson-3-1",
+          "prompt": "A containerised workload runs as root and accepts untrusted images. What improvement is most appropriate?",
+          "maxMarks": 1,
+          "expectedAnswer": "Harden host and runtime and verify image provenance.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
-            "obj-4-3-a"
-          ]
+            "obj-3-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3001a",
+                "label": "Assume containers are physically isolated"
+              },
+              {
+                "id": "q3001b",
+                "label": "Disable image scanning"
+              },
+              {
+                "id": "q3001c",
+                "label": "Share host administrator credentials"
+              },
+              {
+                "id": "q3001d",
+                "label": "Harden host and runtime and verify image provenance"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3001d"
+          }
         },
         {
           "position": 3,
-          "prompt": "What is a compensating control, and when would a team use one instead of patching directly?",
-          "maxMarks": 10,
-          "expectedAnswer": "A compensating control is an alternative safeguard used when the primary fix (such as a patch) cannot be applied immediately; a team might use one when a patch is not yet available or would break a critical system, to reduce risk in the meantime.",
-          "markingGuidance": "Full marks require both the definition and a valid reason for use.",
+          "lessonRef": "lesson-3-1",
+          "prompt": "A company connects a datacentre to a cloud network. Which controls need deliberate design?",
+          "maxMarks": 1,
+          "expectedAnswer": "Cross-boundary segmentation, routing and identity.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
-            "obj-4-3-a"
-          ]
+            "obj-3-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3002a",
+                "label": "Cross-boundary segmentation, routing and identity"
+              },
+              {
+                "id": "q3002b",
+                "label": "One common shared password"
+              },
+              {
+                "id": "q3002c",
+                "label": "Unrestricted default peering"
+              },
+              {
+                "id": "q3002d",
+                "label": "No logging"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3002a"
+          }
         },
         {
           "position": 4,
-          "prompt": "Why is the validation step necessary after remediation has been applied?",
-          "maxMarks": 10,
-          "expectedAnswer": "Validation confirms the fix actually closed the vulnerability; without it, a remediation step that was applied but did not work as intended could be mistakenly treated as resolved.",
-          "markingGuidance": "Full marks require the answer to explain that an unverified fix cannot be trusted to have worked.",
+          "lessonRef": "lesson-3-2",
+          "prompt": "A public API is targeted with extreme request rates. Which security capability can limit abuse?",
+          "maxMarks": 1,
+          "expectedAnswer": "Rate limiting with application-aware controls.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-3-2-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3003a",
+                "label": "Removing TLS"
+              },
+              {
+                "id": "q3003b",
+                "label": "Rate limiting with application-aware controls"
+              },
+              {
+                "id": "q3003c",
+                "label": "Printing password policies"
+              },
+              {
+                "id": "q3003d",
+                "label": "Unrestricted access"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3003b"
+          }
+        },
+        {
+          "position": 5,
+          "lessonRef": "lesson-3-2",
+          "prompt": "Guest Wi-Fi devices can access the accounting servers. Which change best limits risk?",
+          "maxMarks": 1,
+          "expectedAnswer": "Segregate guest traffic and restrict routing.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-3-2-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3004a",
+                "label": "Use one flat VLAN"
+              },
+              {
+                "id": "q3004b",
+                "label": "Grant guest accounts administrative rights"
+              },
+              {
+                "id": "q3004c",
+                "label": "Segregate guest traffic and restrict routing"
+              },
+              {
+                "id": "q3004d",
+                "label": "Disable authentication"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3004c"
+          }
+        },
+        {
+          "position": 6,
+          "lessonRef": "lesson-3-3",
+          "prompt": "A confidential file is published through a permanent anonymous download link. Which action reduces exposure?",
+          "maxMarks": 1,
+          "expectedAnswer": "Restrict recipient access and expire the share.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-3-3-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3005a",
+                "label": "Turn off audit logs"
+              },
+              {
+                "id": "q3005b",
+                "label": "Increase anonymous access"
+              },
+              {
+                "id": "q3005c",
+                "label": "Replace encryption with compression"
+              },
+              {
+                "id": "q3005d",
+                "label": "Restrict recipient access and expire the share"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3005d"
+          }
+        },
+        {
+          "position": 7,
+          "lessonRef": "lesson-3-3",
+          "prompt": "Why should a registration service collect only necessary personal information?",
+          "maxMarks": 1,
+          "expectedAnswer": "It reduces unnecessary data exposure and handling obligations.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-3-3-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3006a",
+                "label": "It reduces unnecessary data exposure and handling obligations"
+              },
+              {
+                "id": "q3006b",
+                "label": "It guarantees breach immunity"
+              },
+              {
+                "id": "q3006c",
+                "label": "It replaces authorisation"
+              },
+              {
+                "id": "q3006d",
+                "label": "It eliminates backups"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3006a"
+          }
+        },
+        {
+          "position": 8,
+          "lessonRef": "lesson-3-4",
+          "prompt": "An alternate facility has space and power but no installed servers. What type of site is it?",
+          "maxMarks": 1,
+          "expectedAnswer": "Cold site.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-3-4-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3007a",
+                "label": "Hot site"
+              },
+              {
+                "id": "q3007b",
+                "label": "Cold site"
+              },
+              {
+                "id": "q3007c",
+                "label": "Active-active production site"
+              },
+              {
+                "id": "q3007d",
+                "label": "Always-on replication node"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3007b"
+          }
+        },
+        {
+          "position": 9,
+          "lessonRef": "lesson-3-4",
+          "prompt": "A restoration rehearsal reveals the recovered service has outdated identity settings. What is the best response?",
+          "maxMarks": 1,
+          "expectedAnswer": "Improve recovery configuration and test procedures.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-3-4-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3008a",
+                "label": "Only update marketing slides"
+              },
+              {
+                "id": "q3008b",
+                "label": "Ignore the discrepancy"
+              },
+              {
+                "id": "q3008c",
+                "label": "Improve recovery configuration and test procedures"
+              },
+              {
+                "id": "q3008d",
+                "label": "Delete restoration evidence"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3008c"
+          }
+        },
+        {
+          "position": 10,
+          "lessonRef": "lesson-4-1",
+          "prompt": "A Linux host exposes password-based SSH contrary to an approved key-only baseline. What needs correction?",
+          "maxMarks": 1,
+          "expectedAnswer": "SSH authentication configuration against baseline.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3009a",
+                "label": "Office badge colours"
+              },
+              {
+                "id": "q3009b",
+                "label": "Storage labels"
+              },
+              {
+                "id": "q3009c",
+                "label": "Backups only"
+              },
+              {
+                "id": "q3009d",
+                "label": "SSH authentication configuration against baseline"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3009d"
+          }
+        },
+        {
+          "position": 11,
+          "lessonRef": "lesson-4-1",
+          "prompt": "A server starts an unused remote administration daemon on boot. How should it be hardened?",
+          "maxMarks": 1,
+          "expectedAnswer": "Disable the unnecessary service under change control.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3010a",
+                "label": "Disable the unnecessary service under change control"
+              },
+              {
+                "id": "q3010b",
+                "label": "Expose it broadly"
+              },
+              {
+                "id": "q3010c",
+                "label": "Rename it only"
+              },
+              {
+                "id": "q3010d",
+                "label": "Leave vendor credentials"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3010a"
+          }
+        },
+        {
+          "position": 12,
+          "lessonRef": "lesson-4-1",
+          "prompt": "Endpoints repeatedly drift from approved security settings. Which ongoing control helps?",
+          "maxMarks": 1,
+          "expectedAnswer": "Configuration compliance monitoring.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3011a",
+                "label": "One-time procurement only"
+              },
+              {
+                "id": "q3011b",
+                "label": "Configuration compliance monitoring"
+              },
+              {
+                "id": "q3011c",
+                "label": "Deleting configuration history"
+              },
+              {
+                "id": "q3011d",
+                "label": "No patch review"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3011b"
+          }
+        },
+        {
+          "position": 13,
+          "lessonRef": "lesson-4-2",
+          "prompt": "Why assign a named owner and classification to portable storage?",
+          "maxMarks": 1,
+          "expectedAnswer": "Lifecycle accountability and appropriate protection.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-2-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3012a",
+                "label": "To make encryption impossible"
+              },
+              {
+                "id": "q3012b",
+                "label": "To eliminate secure disposal"
+              },
+              {
+                "id": "q3012c",
+                "label": "Lifecycle accountability and appropriate protection"
+              },
+              {
+                "id": "q3012d",
+                "label": "To stop recording inventory"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3012c"
+          }
+        },
+        {
+          "position": 14,
+          "lessonRef": "lesson-4-2",
+          "prompt": "An untracked virtual machine holds customer records. What should be established promptly?",
+          "maxMarks": 1,
+          "expectedAnswer": "Ownership, classification and managed safeguards.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-2-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3013a",
+                "label": "An anonymous public share"
+              },
+              {
+                "id": "q3013b",
+                "label": "Deletion of logs"
+              },
+              {
+                "id": "q3013c",
+                "label": "An assumption of zero risk"
+              },
+              {
+                "id": "q3013d",
+                "label": "Ownership, classification and managed safeguards"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3013d"
+          }
+        },
+        {
+          "position": 15,
+          "lessonRef": "lesson-4-3",
+          "prompt": "An exploited public gateway has a moderate base score while an isolated test asset has a higher one. Which should be assessed first for remediation?",
+          "maxMarks": 1,
+          "expectedAnswer": "The exposed, actively exploited business-critical gateway.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
             "obj-4-3-a"
-          ]
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3014a",
+                "label": "The exposed, actively exploited business-critical gateway"
+              },
+              {
+                "id": "q3014b",
+                "label": "Only the numerically highest score"
+              },
+              {
+                "id": "q3014c",
+                "label": "The asset with the shortest hostname"
+              },
+              {
+                "id": "q3014d",
+                "label": "Neither until the annual audit"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3014a"
+          }
+        },
+        {
+          "position": 16,
+          "lessonRef": "lesson-4-3",
+          "prompt": "What evidence most defensibly closes a vulnerability remediation record?",
+          "maxMarks": 1,
+          "expectedAnswer": "A verified rescan or equivalent validation tied to the asset.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-3-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3015a",
+                "label": "A verbal claim only"
+              },
+              {
+                "id": "q3015b",
+                "label": "A verified rescan or equivalent validation tied to the asset"
+              },
+              {
+                "id": "q3015c",
+                "label": "Removal of the ticket without testing"
+              },
+              {
+                "id": "q3015d",
+                "label": "The vendor's promotional page"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3015b"
+          }
+        },
+        {
+          "position": 17,
+          "lessonRef": "lesson-4-3",
+          "prompt": "A legacy vulnerability exception is formally accepted. What documentation is essential?",
+          "maxMarks": 1,
+          "expectedAnswer": "Risk owner, justification, controls and review date.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-3-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3016a",
+                "label": "Indefinite undocumented waiver"
+              },
+              {
+                "id": "q3016b",
+                "label": "Removal of asset inventory"
+              },
+              {
+                "id": "q3016c",
+                "label": "Risk owner, justification, controls and review date"
+              },
+              {
+                "id": "q3016d",
+                "label": "Permanent suppression of monitoring"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3016c"
+          }
+        },
+        {
+          "position": 18,
+          "lessonRef": "lesson-4-3",
+          "prompt": "Authenticated vulnerability scans may reveal which information more reliably than anonymous network probes?",
+          "maxMarks": 1,
+          "expectedAnswer": "Installed software and configuration weaknesses.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-3-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q3017a",
+                "label": "Only external IP geolocation"
+              },
+              {
+                "id": "q3017b",
+                "label": "Physical badge colour"
+              },
+              {
+                "id": "q3017c",
+                "label": "The vendor's financial outlook"
+              },
+              {
+                "id": "q3017d",
+                "label": "Installed software and configuration weaknesses"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q3017d"
+          }
         }
       ]
     },
     {
       "key": "quiz-4",
-      "title": "Quiz 4 — Security Operations and Governance (draft conversion pending)",
-      "instructions": "Written application practice; NOT an official-format Security+ examination simulation. Answer each question independently, in your own words.",
+      "title": "Quiz 4 — Security Operations and Governance",
+      "instructions": "Original Security+ exam-style draft questions; no official sponsorship. Independent content/key/source review is required before any learner release.",
       "lessonRef": "lesson-4-8",
       "durationMinutes": 30,
       "attemptsAllowed": 1,
       "questions": [
         {
           "position": 1,
-          "prompt": "List the incident-response lifecycle stages in order.",
-          "maxMarks": 10,
-          "expectedAnswer": "Preparation, detection, analysis, containment, eradication, recovery, lessons learned.",
-          "markingGuidance": "Full marks require all stages named in the correct order; partial marks for correct stages in the wrong order.",
+          "lessonRef": "lesson-4-4",
+          "prompt": "A central security platform stops receiving logs from many endpoints. Which alert identifies this blind spot?",
+          "maxMarks": 1,
+          "expectedAnswer": "Ingestion-health and missing-source monitoring.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
-            "obj-4-8-a"
-          ]
+            "obj-4-4-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4000a",
+                "label": "An assumption that silence means safety"
+              },
+              {
+                "id": "q4000b",
+                "label": "Deleting old timestamps"
+              },
+              {
+                "id": "q4000c",
+                "label": "Ingestion-health and missing-source monitoring"
+              },
+              {
+                "id": "q4000d",
+                "label": "Disabling integrity checks"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4000c"
+          }
         },
         {
           "position": 2,
-          "prompt": "What is the difference between containment and eradication?",
-          "maxMarks": 10,
-          "expectedAnswer": "Containment limits further damage while an incident is still active, without necessarily removing the root cause; eradication removes the root cause itself, such as deleting malware or closing the exploited vulnerability.",
-          "markingGuidance": "Full marks require both stages correctly distinguished.",
+          "lessonRef": "lesson-4-4",
+          "prompt": "An analyst combines endpoint, proxy and sign-in records into one incident timeline. Which capability is being used?",
+          "maxMarks": 1,
+          "expectedAnswer": "Cross-source event correlation.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
-            "obj-4-8-a"
-          ]
+            "obj-4-4-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4001a",
+                "label": "Offline password printing"
+              },
+              {
+                "id": "q4001b",
+                "label": "Disk defragmentation"
+              },
+              {
+                "id": "q4001c",
+                "label": "Physical fencing only"
+              },
+              {
+                "id": "q4001d",
+                "label": "Cross-source event correlation"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4001d"
+          }
         },
         {
           "position": 3,
-          "prompt": "What is the purpose of a tabletop exercise, and why is it performed without touching real systems?",
-          "maxMarks": 10,
-          "expectedAnswer": "A tabletop exercise rehearses the incident-response lifecycle as a structured discussion using a hypothetical scenario; it does not touch real systems so that gaps in the plan can be found safely, without the risk or cost of disrupting live operations.",
-          "markingGuidance": "Full marks require both the purpose and the reason for avoiding real systems.",
+          "lessonRef": "lesson-4-5",
+          "prompt": "A network sensor reports suspicious packets but cannot block forwarding traffic. What is it?",
+          "maxMarks": 1,
+          "expectedAnswer": "An IDS.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
-            "obj-4-8-a"
-          ]
+            "obj-4-5-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4002a",
+                "label": "An IDS"
+              },
+              {
+                "id": "q4002b",
+                "label": "An inline blocking IPS"
+              },
+              {
+                "id": "q4002c",
+                "label": "A key vault"
+              },
+              {
+                "id": "q4002d",
+                "label": "A backup generator"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4002a"
+          }
         },
         {
           "position": 4,
-          "prompt": "Why does the lessons-learned stage matter even after an incident has already been fully recovered from?",
-          "maxMarks": 10,
-          "expectedAnswer": "Lessons learned reviews what happened and updates playbooks and controls so that a similar incident is prevented or handled better in the future; without it, the same gap that allowed this incident could allow a repeat.",
-          "markingGuidance": "Full marks require the answer to connect the review to future prevention/improvement, not just note that a review happens.",
+          "lessonRef": "lesson-4-5",
+          "prompt": "A sensitive host should send traffic only to approved external destinations. Which technical measure enforces this?",
+          "maxMarks": 1,
+          "expectedAnswer": "Restrictive egress firewall rules.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-5-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4003a",
+                "label": "Any-any outbound rules"
+              },
+              {
+                "id": "q4003b",
+                "label": "Restrictive egress firewall rules"
+              },
+              {
+                "id": "q4003c",
+                "label": "Removing segmentation"
+              },
+              {
+                "id": "q4003d",
+                "label": "Disabling DNS logs"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4003b"
+          }
+        },
+        {
+          "position": 5,
+          "lessonRef": "lesson-4-6",
+          "prompt": "A contractor finishes work and still has an active VPN session. What should the offboarding process do?",
+          "maxMarks": 1,
+          "expectedAnswer": "Revoke access and terminate the session.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-6-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4004a",
+                "label": "Preserve access indefinitely"
+              },
+              {
+                "id": "q4004b",
+                "label": "Share credentials"
+              },
+              {
+                "id": "q4004c",
+                "label": "Revoke access and terminate the session"
+              },
+              {
+                "id": "q4004d",
+                "label": "Disable inventory updates"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4004c"
+          }
+        },
+        {
+          "position": 6,
+          "lessonRef": "lesson-4-6",
+          "prompt": "A requestor can approve their own permanent privileged access. Which safeguard is missing?",
+          "maxMarks": 1,
+          "expectedAnswer": "Separation of duties and independent approval.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-6-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4005a",
+                "label": "Data compression"
+              },
+              {
+                "id": "q4005b",
+                "label": "Disk replication"
+              },
+              {
+                "id": "q4005c",
+                "label": "Key size optimisation"
+              },
+              {
+                "id": "q4005d",
+                "label": "Separation of duties and independent approval"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4005d"
+          }
+        },
+        {
+          "position": 7,
+          "lessonRef": "lesson-4-7",
+          "prompt": "A SOAR playbook automatically isolates computers after alerts. Which control helps prevent harmful false positives?",
+          "maxMarks": 1,
+          "expectedAnswer": "Risk-based approval and reversible execution.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-7-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4006a",
+                "label": "Risk-based approval and reversible execution"
+              },
+              {
+                "id": "q4006b",
+                "label": "No audit trail"
+              },
+              {
+                "id": "q4006c",
+                "label": "Unbounded recursive actions"
+              },
+              {
+                "id": "q4006d",
+                "label": "Anonymous triggers"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4006a"
+          }
+        },
+        {
+          "position": 8,
+          "lessonRef": "lesson-4-7",
+          "prompt": "An API retry creates duplicate security tickets. What software property reduces duplicates?",
+          "maxMarks": 1,
+          "expectedAnswer": "Idempotency using stable event identifiers.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-7-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4007a",
+                "label": "Infinite retry loops"
+              },
+              {
+                "id": "q4007b",
+                "label": "Idempotency using stable event identifiers"
+              },
+              {
+                "id": "q4007c",
+                "label": "Shared public secrets"
+              },
+              {
+                "id": "q4007d",
+                "label": "Removal of input checks"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4007b"
+          }
+        },
+        {
+          "position": 9,
+          "lessonRef": "lesson-4-8",
+          "prompt": "An affected endpoint is needed for forensic analysis. What should responders do?",
+          "maxMarks": 1,
+          "expectedAnswer": "Contain it using documented evidence-preserving procedures.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
           "objectiveRefs": [
             "obj-4-8-a"
-          ]
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4008a",
+                "label": "Immediately wipe without approval"
+              },
+              {
+                "id": "q4008b",
+                "label": "Delete monitoring events"
+              },
+              {
+                "id": "q4008c",
+                "label": "Contain it using documented evidence-preserving procedures"
+              },
+              {
+                "id": "q4008d",
+                "label": "Assume the alert proves attribution"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4008c"
+          }
+        },
+        {
+          "position": 10,
+          "lessonRef": "lesson-4-9",
+          "prompt": "How can investigators later detect modification of an acquired disk image?",
+          "maxMarks": 1,
+          "expectedAnswer": "Record and verify a cryptographic hash.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-4-9-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4009a",
+                "label": "Edit the original image"
+              },
+              {
+                "id": "q4009b",
+                "label": "Use only a filename"
+              },
+              {
+                "id": "q4009c",
+                "label": "Publish the image anonymously"
+              },
+              {
+                "id": "q4009d",
+                "label": "Record and verify a cryptographic hash"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4009d"
+          }
+        },
+        {
+          "position": 11,
+          "lessonRef": "lesson-5-1",
+          "prompt": "A board asks whether approved security policy is actually operating. What evidence is relevant?",
+          "maxMarks": 1,
+          "expectedAnswer": "Assigned control owners, metrics and review records.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4010a",
+                "label": "Assigned control owners, metrics and review records"
+              },
+              {
+                "id": "q4010b",
+                "label": "Unrecorded verbal promises"
+              },
+              {
+                "id": "q4010c",
+                "label": "No exception tracking"
+              },
+              {
+                "id": "q4010d",
+                "label": "Hidden policy edits"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4010a"
+          }
+        },
+        {
+          "position": 12,
+          "lessonRef": "lesson-5-1",
+          "prompt": "Why should procedures and standards be under version control?",
+          "maxMarks": 1,
+          "expectedAnswer": "To retain an attributable approved change history.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-1-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4011a",
+                "label": "To guarantee zero breaches"
+              },
+              {
+                "id": "q4011b",
+                "label": "To retain an attributable approved change history"
+              },
+              {
+                "id": "q4011c",
+                "label": "To eliminate staff onboarding"
+              },
+              {
+                "id": "q4011d",
+                "label": "To bypass oversight"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4011b"
+          }
+        },
+        {
+          "position": 13,
+          "lessonRef": "lesson-5-2",
+          "prompt": "A system has an SLE of $20,000 and an ARO of 0.2. What is the ALE?",
+          "maxMarks": 1,
+          "expectedAnswer": "$4,000.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-2-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4012a",
+                "label": "$100,000"
+              },
+              {
+                "id": "q4012b",
+                "label": "$20,000"
+              },
+              {
+                "id": "q4012c",
+                "label": "$4,000"
+              },
+              {
+                "id": "q4012d",
+                "label": "$1,000"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4012c"
+          }
+        },
+        {
+          "position": 14,
+          "lessonRef": "lesson-5-2",
+          "prompt": "A risk owner formally decides to tolerate a limited documented residual risk. What response is it?",
+          "maxMarks": 1,
+          "expectedAnswer": "Risk acceptance.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-2-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4013a",
+                "label": "Risk transfer only"
+              },
+              {
+                "id": "q4013b",
+                "label": "Risk avoidance automatically"
+              },
+              {
+                "id": "q4013c",
+                "label": "Incident eradication"
+              },
+              {
+                "id": "q4013d",
+                "label": "Risk acceptance"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4013d"
+          }
+        },
+        {
+          "position": 15,
+          "lessonRef": "lesson-5-3",
+          "prompt": "A supplier uses another processor for personal data. What must vendor review address?",
+          "maxMarks": 1,
+          "expectedAnswer": "Subprocessor obligations and security oversight.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-3-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4014a",
+                "label": "Subprocessor obligations and security oversight"
+              },
+              {
+                "id": "q4014b",
+                "label": "Company logo colours"
+              },
+              {
+                "id": "q4014c",
+                "label": "Office chair types"
+              },
+              {
+                "id": "q4014d",
+                "label": "Trade-show sponsorship"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4014a"
+          }
+        },
+        {
+          "position": 16,
+          "lessonRef": "lesson-5-4",
+          "prompt": "A proposed control conflicts with a binding legal retention duty. What is needed?",
+          "maxMarks": 1,
+          "expectedAnswer": "Reconcile design with applicable law and contracts.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-4-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4015a",
+                "label": "Ignore the legal duty"
+              },
+              {
+                "id": "q4015b",
+                "label": "Reconcile design with applicable law and contracts"
+              },
+              {
+                "id": "q4015c",
+                "label": "Treat encryption as proof of compliance"
+              },
+              {
+                "id": "q4015d",
+                "label": "Change records secretly"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4015b"
+          }
+        },
+        {
+          "position": 17,
+          "lessonRef": "lesson-5-5",
+          "prompt": "An audit repeatedly finds unchecked privileged access. Which follow-up is appropriate?",
+          "maxMarks": 1,
+          "expectedAnswer": "Corrective-action ownership and effectiveness evidence.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-5-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4016a",
+                "label": "Delete the findings"
+              },
+              {
+                "id": "q4016b",
+                "label": "Disable privileged logging"
+              },
+              {
+                "id": "q4016c",
+                "label": "Corrective-action ownership and effectiveness evidence"
+              },
+              {
+                "id": "q4016d",
+                "label": "Reclassify them as successes"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4016c"
+          }
+        },
+        {
+          "position": 18,
+          "lessonRef": "lesson-5-6",
+          "prompt": "A phishing programme teaches staff to report suspicious requests. What metric better reflects effectiveness?",
+          "maxMarks": 1,
+          "expectedAnswer": "Observed reporting and follow-up outcomes.",
+          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "objectiveRefs": [
+            "obj-5-6-a"
+          ],
+          "questionType": "SINGLE_SELECT",
+          "interaction": {
+            "options": [
+              {
+                "id": "q4017a",
+                "label": "Only the number of posters"
+              },
+              {
+                "id": "q4017b",
+                "label": "Slide background colour"
+              },
+              {
+                "id": "q4017c",
+                "label": "Speaker microphone model"
+              },
+              {
+                "id": "q4017d",
+                "label": "Observed reporting and follow-up outcomes"
+              }
+            ]
+          },
+          "answerKey": {
+            "correctOptionId": "q4017d"
+          }
         }
       ]
     },
