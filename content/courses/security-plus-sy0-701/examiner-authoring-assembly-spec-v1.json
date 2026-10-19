@@ -1,0 +1,196 @@
+{
+  "schemaVersion": "DUCELIO_EXAMINER_AUTHORING_ASSEMBLY_SPEC_V1",
+  "status": "DESIGN_ONLY_NOT_IMPLEMENTED",
+  "purpose": "Implement controlled AI-generated original item drafting, independent verification, approved-bank exam-form assembly and safe learner-specific examination delivery for Ducelio certification courses.",
+  "scope": {
+    "certification": "CompTIA Security+ SY0-701 preparation (no issuer endorsement)",
+    "exampleCoursePackageRevision": 5,
+    "approvalStatus": "ACADEMIC_DRAFT_UNREVIEWED",
+    "officialObjectivesSourceState": "Existing course cites CompTIA SY0-701 objectives document v5.0. Reverify authentic current issuer document/version and reconcile exact objective/subobjective coverage before any formal publication.",
+    "publisherAuthority": "CompTIA for scope and public format. Original primary authorities such as NIST, CISA and official technology/standards publishers may support detailed explanations when individually approved."
+  },
+  "assessmentPlan": [
+    {
+      "key": "quiz-1",
+      "countPerAttempt": 20,
+      "durationMinutes": 25,
+      "requiredInitialUniqueApprovedBank": 80,
+      "coverage": "Module 1; lesson/objective-constrained",
+      "formatPolicy": "Exam-style single-select and multiple-select MCQs, with PBQs"
+    },
+    {
+      "key": "quiz-2",
+      "countPerAttempt": 20,
+      "durationMinutes": 25,
+      "requiredInitialUniqueApprovedBank": 80,
+      "coverage": "Module 2; lesson/objective-constrained",
+      "formatPolicy": "Exam-style single-select and multiple-select MCQs, with PBQs"
+    },
+    {
+      "key": "midterm",
+      "countPerAttempt": 50,
+      "durationMinutes": 60,
+      "requiredInitialUniqueApprovedBank": 200,
+      "coverage": "Modules 1-3 cumulative, balanced across covered objectives",
+      "formatPolicy": "Exam-style single-select and multiple-select MCQs, with PBQs"
+    },
+    {
+      "key": "quiz-3",
+      "countPerAttempt": 20,
+      "durationMinutes": 25,
+      "requiredInitialUniqueApprovedBank": 80,
+      "coverage": "Module 3 and early Module 4",
+      "formatPolicy": "Exam-style single-select and multiple-select MCQs, with PBQs"
+    },
+    {
+      "key": "quiz-4",
+      "countPerAttempt": 20,
+      "durationMinutes": 25,
+      "requiredInitialUniqueApprovedBank": 80,
+      "coverage": "Module 4 later topics and Module 5",
+      "formatPolicy": "Exam-style single-select and multiple-select MCQs, with PBQs"
+    },
+    {
+      "key": "final",
+      "countPerAttempt": 90,
+      "durationMinutes": 90,
+      "requiredInitialUniqueApprovedBank": 360,
+      "coverage": "All five domains according to issuer's published 12%,22%,18%,28%,20% weighting; draft 90-item form uses 11,20,16,25,18 questions",
+      "formatPolicy": "Published maximum 90 questions in 90 minutes; original MCQ/PBQ interactions; never claim exact unpublished PBQ mix or official scoring algorithm"
+    }
+  ],
+  "bankTargets": {
+    "presentedPerCompleteJourney": 220,
+    "initialUniqueApprovedQuestionTarget": 880,
+    "exposuresFor50StudentsOnOneAttemptEach": 11000,
+    "remarks": "Target 4x diversity per assessment; may use pooled items with explicit overlap tracking but do not double count one item as unique. These are internal product targets, not issuer rules. The rev5 upload contains only one fixed 220-item form across six assessments."
+  },
+  "roles": {
+    "AI_EXAMINER_AUTHOR": "Propose original DRAFT item templates from approved scope. Does not approve, publish or grade active tests during authoring.",
+    "ACADEMIC_REVIEWER": "Independent accountable reviewer confirms technical truth, objective mapping, completeness, answer-key validity, distractor quality, originality and rights.",
+    "DETERMINISTIC_FORM_ASSEMBLER": "Server-side, non-LLM selection from APPROVED immutable item versions only; stores a fixed form for each exam attempt.",
+    "EXAMINER_GRADER": "Existing live academic runtime role: grade_controlled_assessment and grade_practical_lab. No authority to self-authorise new generation capability or override objective marks."
+  },
+  "requiredNewServerCapabilities": [
+    "draft_exam_items_from_approved_sources",
+    "propose_item_revisions_and_evidence",
+    "request_independent_item_review",
+    "preview_exam_form_as_staff",
+    "assemble_and_freeze_approved_exam_form_for_attempt"
+  ],
+  "capabilityWarning": "New capability names are PROPOSALS, not entries in current runtime role or database allowlist. Implement explicit server-side authz and DB policy for each; user-controlled course JSON alone cannot grant them.",
+  "generationContract": {
+    "inputs": [
+      "issuer_exam_code",
+      "approved_immutable_certification_blueprint_revision",
+      "approved_objective_id_and_subtopic",
+      "allowed_primary_source_ids_and_exact_locators",
+      "difficulty_and_cognitive_skill",
+      "item_type_and_scoring_rule",
+      "unique_item_target_count",
+      "style_originality_constraints",
+      "budget_and_provider_profile"
+    ],
+    "allowedQuestionTypes": [
+      "SINGLE_SELECT",
+      "MULTIPLE_SELECT",
+      "PBQ_MATCHING",
+      "PBQ_ORDERING",
+      "PBQ_CONFIGURATION",
+      "FREE_TEXT_FOR_UNGRADED_PRACTICE_ONLY_IF_PERMITTED"
+    ],
+    "output": [
+      "original_question_stem",
+      "learner_visible_interaction",
+      "protected_answer_key",
+      "expected_answer_and_review_rationale",
+      "precise_claim_level_source_locators",
+      "official_objective_ids",
+      "suggested_difficulty_and_skill",
+      "draft_revision_and_provenance"
+    ],
+    "prohibitions": [
+      "No live student-time AI improvisation of formal test questions or protected keys.",
+      "Never ask model to reproduce leaked or genuine proprietary questions.",
+      "Reject citation IDs not in the approved source registry.",
+      "No external search or model general knowledge as authoritative answer source.",
+      "No model-provided self-approval or self-assigned reviewer identity.",
+      "Do not upload official answer keys or protected exam bank outside authorised scoring boundaries."
+    ]
+  },
+  "reviewGate": {
+    "states": [
+      "DRAFT",
+      "TECHNICAL_REVIEW_REQUIRED",
+      "SOURCE_INSUFFICIENT",
+      "REVISION_REQUIRED",
+      "APPROVED",
+      "REJECTED",
+      "RETIRED",
+      "SUPERSEDED"
+    ],
+    "rules": [
+      "No item APPROVED without distinct authorised human academic reviewer and valid source evidence.",
+      "Each question and all distractors must be evaluated for unambiguous wording, one correct answer or exact multiple-answer cardinality, PBQ completeness and scoring correctness.",
+      "Check semantic similarity against approved original Ducelio items and known restricted/leaked sources without storing copyrighted third-party exam questions.",
+      "Verify every claim and answer against actual approved primary-source passage, not mere existence of a URL.",
+      "Hash approved item+key+source review; material edits invalidate approval.",
+      "Do not expose protected answers, rubric or examiner-only evidence to learners.",
+      "Authoring and approval must not use the same authority identity."
+    ]
+  },
+  "formAssembly": {
+    "algorithm": "Deterministic server-side constrained selection or audited randomised draw from only approved immutable items; no generative AI at learner exam start.",
+    "constraints": [
+      "Correct exam identifier and immutable published blueprint.",
+      "Exact count and database-enforced duration per selected assessment.",
+      "Explicit objective coverage including 11,20,16,25,18 counts on 90-item SY0-701 demo full mock unless issuer releases a new policy.",
+      "Enforce correct types and complete keys, unambiguous scoring policies and no duplicates within a form.",
+      "Prefer questions the learner has not already encountered where the bank permits; expose inability to meet constraint rather than silently relaxing.",
+      "Track objective-level and item-level exposure, difficulty and repeated-variant patterns.",
+      "Randomise choice order only while updating the protected key and keeping permitted pedagogical constraints.",
+      "Store fixed item IDs/revisions, seed and form hash before start; reloads and retries return same form.",
+      "No unaudited reassembly of a started attempt; preserve protected answer firewall.",
+      "Rejection on insufficient reviewed question pool rather than generation of last-minute formal questions."
+    ]
+  },
+  "learnerExamRuntime": {
+    "timing": "Server/database authoritative attempt start, expiry and idempotent submission; client countdown is display only.",
+    "assistance": "Block tutoring/hints/professor protected-assistance calls for that learner's active formal examination at server admission; enforce capability separation.",
+    "saving": "Persist responses, verify acknowledgement, preserve resumption, and reject late changes.",
+    "grading": "Deterministic objective scoring in protected DB; examiner uses constrained rubric for written items and escalates uncertainty. No model-authored overwrites of objective scores.",
+    "reporting": "Ducelio practice score and objective breakdown only, with explicit separation from undisclosed CompTIA scaled passing-score conversion.",
+    "ui": "Question navigation and save status; flag for review only after independently implemented and tested; accessible keyboard/screen-reader behaviour."
+  },
+  "acceptance": {
+    "positive": [
+      "Generate a technically reviewed MCQ, multiple-select, matching, ordering and configuration draft with valid source locator.",
+      "Approve distinct human-reviewed item and assemble a frozen form satisfying all verified constraints.",
+      "Two learners receive defensible different forms where bank diversity supports it; same learner refresh retains exact saved form.",
+      "Correct 20/20/50/20/20/90 counts and all timestamps."
+    ],
+    "negative": [
+      "Reject missing source claims, outdated issuer version, invalid objective map, malformed answer key or ambiguous answer.",
+      "Reject fake human approval, agent self-approval, generated formal question during exam, key leakage and unauthorised model capability.",
+      "Reject stale/retired item, duplicate item in exam form, unsupported format, wrong count/expired time, cross-learner form exposure.",
+      "Reject direct RPC bypass and insufficient approved bank; never silently substitute unreviewed generation."
+    ],
+    "independentReviewRequired": true
+  },
+  "compatibility": {
+    "courseEngineeringImporter": "COURSE_PACKAGE_V1 accepts fixed assessmentTemplates only; spec file is NOT importable as a course package.",
+    "cp2Status": "CP2 question types exist in PR #73; open and unmerged. The new authoring/dynamic form-assembly features do not yet exist.",
+    "existingExaminerCapabilities": [
+      "grade_controlled_assessment",
+      "grade_practical_lab"
+    ],
+    "migrationPolicy": "Additive, versioned implementation separate from rev5 content; test isolated database before any merge/deployment; no bypass of course prepublication governance."
+  },
+  "deliveryState": {
+    "fixedCoursePackageJson": "Prepared in sibling ducelio-upload-rev5-six-assessments.json (academic draft)",
+    "dynamicQuestionGeneration": "NOT IMPLEMENTED",
+    "learnerSpecificAssembly": "NOT IMPLEMENTED",
+    "academicSourceReview": "NOT COMPLETED",
+    "productionReady": false
+  }
+}
