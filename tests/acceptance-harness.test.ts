@@ -2620,9 +2620,15 @@ describe("acceptance harness: TLS is never unconditionally insecure (independent
       /ssl:\s*\{\s*rejectUnauthorized:\s*false\s*\}\s*,?\s*\n\s*\}\);/,
     );
     expect(text).toContain("ACCEPTANCE_DATABASE_INSECURE_TLS");
-    expect(text).toContain(
-      "insecureTls ? { ssl: { rejectUnauthorized: false } } : {}",
+    expect(text).toMatch(
+      /insecureTls\s*\?\s*\{\s*ssl:\s*\{\s*rejectUnauthorized:\s*false\s*\}\s*\}\s*:\s*\{\}/,
     );
+    // CP2F: the hosted pooler refuses the opt-in, requires a CA and checks
+    // the socket is authorized after connecting.
+    expect(text).toContain("ACCEPTANCE_HOSTED_INSECURE_TLS_REFUSED");
+    expect(text).toContain("ACCEPTANCE_TLS_CA_REQUIRED");
+    expect(text).toContain("rejectUnauthorized: true");
+    expect(text).toContain("ACCEPTANCE_TLS_VERIFICATION_FAILED");
   });
 
   it("ACCEPTANCE_DATABASE_INSECURE_TLS is a known acceptance-tooling-only preflight variable", async () => {

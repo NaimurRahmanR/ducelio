@@ -119,4 +119,31 @@ describe("learner assessment page links", () => {
     expect(html).toContain("Synthetic instructions");
     expect(html).toContain("Synthetic question");
   });
+
+  // Ported from the CP2F worktree.
+  it("never opens a workspace for an active-assessment row that does not match the active attempt", () => {
+    const html = renderToStaticMarkup(
+      createElement(StudentAssessments, {
+        assessments: [],
+        activeAssessment: assessment,
+        attempts: [
+          {
+            id: "00000000-0000-4000-8000-0000000000a1",
+            assessment_id: "00000000-0000-4000-8000-0000000000ff",
+            attempt_number: 1,
+            state: "ACTIVE",
+            started_at: "2026-10-15T00:00:00Z",
+            expires_at: "2026-10-15T00:30:00Z",
+            submitted_at: null,
+          },
+        ],
+        activityState: "CONTROLLED_ASSESSMENT_ACTIVE",
+        activeQuestions: [],
+        serverNow: "2026-10-15T00:05:00Z",
+        pagination: { page: 1, hasPreviousPage: false, hasNextPage: false },
+      }),
+    );
+    expect(html).not.toContain("Synthetic assessment");
+    expect(html).not.toContain("Synthetic instructions");
+  });
 });

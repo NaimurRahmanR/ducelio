@@ -46,6 +46,8 @@
 // Read-only introspection (functionExists/tableExists/triggerExists,
 // migration verification) never calls this gate and remains available
 // with ACCEPTANCE_DATABASE_URL alone.
+import { readFileSync } from "node:fs";
+import { TLSSocket } from "node:tls";
 import pg from "pg";
 import { isConfigured } from "./env.mjs";
 
@@ -151,11 +153,40 @@ export async function connect() {
   // own clearly-labelled INSECURE entry in `npm run acceptance:preflight`.
   const insecureTls =
     process.env.ACCEPTANCE_DATABASE_INSECURE_TLS?.trim() === "true";
+  const connectionUrl = new URL(process.env.ACCEPTANCE_DATABASE_URL);
+  const hostedPooler = connectionUrl.hostname.endsWith(".pooler.supabase.com");
+
+  if (hostedPooler && insecureTls)
+    throw new Error("ACCEPTANCE_HOSTED_INSECURE_TLS_REFUSED");
+  if (hostedPooler && !process.env.CP2F_CA_FILE?.trim())
+    throw new Error("ACCEPTANCE_TLS_CA_REQUIRED");
+
   const client = new pg.Client({
     connectionString: process.env.ACCEPTANCE_DATABASE_URL,
-    ...(insecureTls ? { ssl: { rejectUnauthorized: false } } : {}),
+    ...(hostedPooler
+      ? {
+          ssl: {
+            rejectUnauthorized: true,
+            ca: readFileSync(process.env.CP2F_CA_FILE, "utf8"),
+            servername: connectionUrl.hostname,
+          },
+        }
+      : insecureTls
+        ? { ssl: { rejectUnauthorized: false } }
+        : {}),
   });
+
   await client.connect();
+
+  if (
+    hostedPooler &&
+    (!(client.connection.stream instanceof TLSSocket) ||
+      client.connection.stream.authorized !== true)
+  ) {
+    await client.end();
+    throw new Error("ACCEPTANCE_TLS_VERIFICATION_FAILED");
+  }
+
   return client;
 }
 

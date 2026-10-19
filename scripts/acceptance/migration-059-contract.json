@@ -1,0 +1,72 @@
+{
+  "functionsAdded": [
+    "assessment_interaction_private.answer_key_is_valid(p_type text, p_definition jsonb, p_key jsonb)",
+    "assessment_interaction_private.attach(p_question_id uuid, p_assessment_id uuid, p_type text, p_definition jsonb, p_key jsonb, p_actor uuid)",
+    "assessment_interaction_private.audit_objective_definition()",
+    "assessment_interaction_private.choice_ids(p_value jsonb, p_min integer, p_max integer)",
+    "assessment_interaction_private.examiner_context(p_result jsonb)",
+    "assessment_interaction_private.field_options(p_definition jsonb, p_field_id text)",
+    "assessment_interaction_private.get_commercial_v1_academic_review_case(p_case_id uuid)",
+    "assessment_interaction_private.get_commercial_v1_examiner_assessment_context(p_key_id uuid, p_execution_id uuid, p_attempt_id uuid, p_enrolment_id uuid, p_activation_id uuid, p_issued_at bigint, p_expires_at bigint, p_mac text)",
+    "assessment_interaction_private.govern_commercial_v1_examiner_recovery(p_key_id uuid, p_execution_id uuid, p_source_execution_id uuid, p_recovery_reason text, p_capability text, p_target_kind text, p_student_id uuid, p_attempt_id uuid, p_submission_id uuid, p_enrolment_id uuid, p_activation_id uuid, p_operation text, p_state text, p_reason text, p_budget_stage text, p_max_calls integer, p_max_output integer, p_max_cost bigint, p_calls integer, p_attempts integer, p_input integer, p_output integer, p_cost bigint, p_elapsed integer, p_grade_digest text, p_issued_at bigint, p_expires_at bigint, p_mac text, p_assessment_marks jsonb, p_lab_marks_awarded integer)",
+    "assessment_interaction_private.govern_commercial_v1_examiner_regrade(p_key_id uuid, p_execution_id uuid, p_source_id uuid, p_request_reason text, p_capability text, p_target_kind text, p_student_id uuid, p_attempt_id uuid, p_submission_id uuid, p_enrolment_id uuid, p_activation_id uuid, p_operation text, p_state text, p_reason text, p_budget_stage text, p_max_calls integer, p_max_output integer, p_max_cost bigint, p_calls integer, p_attempts integer, p_input integer, p_output integer, p_cost bigint, p_elapsed integer, p_grade_digest text, p_issued_at bigint, p_expires_at bigint, p_mac text, p_assessment_marks jsonb, p_lab_marks_awarded integer)",
+    "assessment_interaction_private.guard_interaction()",
+    "assessment_interaction_private.guard_objective_key()",
+    "assessment_interaction_private.guard_objective_question_mark()",
+    "assessment_interaction_private.id_array(p_value jsonb, p_min integer, p_max integer)",
+    "assessment_interaction_private.int_value(p_value jsonb)",
+    "assessment_interaction_private.interaction_is_valid(p_type text, p_definition jsonb)",
+    "assessment_interaction_private.is_choice_id(p_value jsonb)",
+    "assessment_interaction_private.keys_are(p_value jsonb, p_keys text[])",
+    "assessment_interaction_private.label_ok(p_value jsonb, p_max integer)",
+    "assessment_interaction_private.objective_marks(p_attempt_id uuid, p_question_id uuid)",
+    "assessment_interaction_private.require_objective_key()",
+    "assessment_interaction_private.response_acceptable(p_attempt_id uuid, p_question_id uuid, p_body text)",
+    "assessment_interaction_private.response_is_valid(p_type text, p_definition jsonb, p_body text)",
+    "assessment_interaction_private.same_set(p_a text[], p_b text[])",
+    "assessment_interaction_private.score_response(p_type text, p_definition jsonb, p_key jsonb, p_max_marks integer, p_body text)",
+    "assessment_interaction_private.string_in(p_value jsonb, p_allowed text[])",
+    "course_engineering_private.assert_full_package_valid_v037(p_package_key text, p_package_revision integer, p_schema_version text, p_package jsonb)",
+    "course_engineering_private.assert_objective_question_extensions(p_package jsonb)",
+    "course_engineering_private.without_objective_question_extensions(p_package jsonb)",
+    "public.add_objective_assessment_question(p_assessment_id uuid, p_position integer, p_prompt text, p_max_marks integer, p_question_type text, p_interaction jsonb, p_answer_key jsonb, p_expected_answer text, p_marking_guidance text, p_reason text)",
+    "public.get_active_assessment_exam_state(p_assessment_id uuid)",
+    "public.list_assessment_authoring_interactions(p_assessment_id uuid)"
+  ],
+  "functionsChanged": [
+    "course_engineering_private.assert_full_package_valid(p_package_key text, p_package_revision integer, p_schema_version text, p_package jsonb)",
+    "course_engineering_private.redact_answer_keys(p_package jsonb)",
+    "public.activate_course_package(p_import_id uuid, p_cohort_id uuid, p_instructor_id uuid, p_assignments jsonb, p_assessments jsonb, p_reason text)",
+    "public.get_commercial_v1_academic_review_case(p_case_id uuid)",
+    "public.get_commercial_v1_examiner_assessment_context(p_key_id uuid, p_execution_id uuid, p_attempt_id uuid, p_enrolment_id uuid, p_activation_id uuid, p_issued_at bigint, p_expires_at bigint, p_mac text)",
+    "public.govern_commercial_v1_examiner_recovery(p_key_id uuid, p_execution_id uuid, p_source_execution_id uuid, p_recovery_reason text, p_capability text, p_target_kind text, p_student_id uuid, p_attempt_id uuid, p_submission_id uuid, p_enrolment_id uuid, p_activation_id uuid, p_operation text, p_state text, p_reason text, p_budget_stage text, p_max_calls integer, p_max_output integer, p_max_cost bigint, p_calls integer, p_attempts integer, p_input integer, p_output integer, p_cost bigint, p_elapsed integer, p_grade_digest text, p_issued_at bigint, p_expires_at bigint, p_mac text, p_assessment_marks jsonb, p_lab_marks_awarded integer)",
+    "public.govern_commercial_v1_examiner_regrade(p_key_id uuid, p_execution_id uuid, p_source_id uuid, p_request_reason text, p_capability text, p_target_kind text, p_student_id uuid, p_attempt_id uuid, p_submission_id uuid, p_enrolment_id uuid, p_activation_id uuid, p_operation text, p_state text, p_reason text, p_budget_stage text, p_max_calls integer, p_max_output integer, p_max_cost bigint, p_calls integer, p_attempts integer, p_input integer, p_output integer, p_cost bigint, p_elapsed integer, p_grade_digest text, p_issued_at bigint, p_expires_at bigint, p_mac text, p_assessment_marks jsonb, p_lab_marks_awarded integer)",
+    "public.record_assessment_response(p_attempt_id uuid, p_question_id uuid, p_body text, p_idempotency_key text)",
+    "public.record_commercial_v1_assessment_response(p_attempt_id uuid, p_question_id uuid, p_body text, p_idempotency_key text)"
+  ],
+  "tablesAdded": [
+    "assessment_question_interactions",
+    "assessment_question_objective_keys"
+  ],
+  "columnsAdded": [
+    "assessment_question_interactions.assessment_id",
+    "assessment_question_interactions.created_at",
+    "assessment_question_interactions.created_by",
+    "assessment_question_interactions.definition",
+    "assessment_question_interactions.question_id",
+    "assessment_question_interactions.question_type",
+    "assessment_question_objective_keys.answer_key",
+    "assessment_question_objective_keys.created_at",
+    "assessment_question_objective_keys.created_by",
+    "assessment_question_objective_keys.question_id"
+  ],
+  "triggersAdded": [
+    "assessment_question_interactions.audit_change",
+    "assessment_question_interactions.guard_interaction",
+    "assessment_question_interactions.require_objective_key",
+    "assessment_question_objective_keys.audit_change",
+    "assessment_question_objective_keys.guard_objective_key",
+    "commercial_v1_assessment_question_marks.guard_objective_question_mark"
+  ],
+  "schemasAdded": ["assessment_interaction_private"]
+}

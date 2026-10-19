@@ -244,6 +244,13 @@ describe("learner assessment pagination at hosted scale", () => {
         const active = view.attempts.filter((a) => a.state === "ACTIVE");
         expect(active.map((a) => a.id)).toEqual([attemptId]);
         expect(view.activeQuestions.map((q) => q.id)).toEqual([question.id]);
+        // CP2 resume: the authoritative latest answer and revision count
+        // come from get_active_assessment_exam_state, whatever page is open.
+        expect(view.activeQuestions[0]).toMatchObject({
+          question_type: "FREE_TEXT",
+          saved_body: "Third answer",
+          revision_count: 3,
+        });
         // Only the active attempt's revisions, complete and in order --
         // never the 1000+ historical revisions of other attempts.
         expect(

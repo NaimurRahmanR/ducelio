@@ -101,7 +101,7 @@ Files:
 ## Deployment order
 
 1. Bridge PR → review → merge. Vercel deploys `main` (the bridge), which still runs on 058.
-2. Apply 059 (docs/55 procedure). The bridge keeps grading and review working, and refuses objective content.
+2. Apply 059 (docs/56 procedure). The bridge keeps grading and review working, and refuses objective content.
 3. Run hosted acceptance with the CP2 application (local loopback server).
 4. Merge CP2 onto the bridge. Vercel deploys CP2.
 

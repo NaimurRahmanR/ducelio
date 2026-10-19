@@ -65,7 +65,9 @@ const state: SubmissionGradingClientState = newSubmissionGradingClientState();
 
 beforeAll(async () => {
   f = await submissionGradingFixture();
-  stub = await startProviderStub();
+  // Identifier recording (opt-in) lets this suite pin exactly which
+  // questions and context keys reached the provider.
+  stub = await startProviderStub({ identifiers: true });
 }, 60000);
 afterAll(async () => {
   await stub?.close();
@@ -184,6 +186,18 @@ describe("examiner-app acceptance route: real grading lifecycle against the migr
         capability: "grade_controlled_assessment",
         attemptId,
         outcome: "GRADED",
+        // Identifiers only: the one answered question, and exactly the
+        // pre-CP2 context key set (no objectiveMarks/objectiveQuestionCount
+        // ever reaches the provider).
+        questionIds: [await questionIdOf(f, f.assessmentIds.QUIZ_1)],
+        contextKeys: [
+          "assessmentId",
+          "attemptId",
+          "component",
+          "instructions",
+          "questions",
+          "title",
+        ],
       },
     ]);
 
