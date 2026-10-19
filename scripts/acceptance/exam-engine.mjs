@@ -701,6 +701,7 @@ export async function runExamEngineAcceptance({
           problems.push(
             `The page reported ${page.consoleErrors.length} script error(s).`,
           );
+        mkdirSync(evidenceDir, { recursive: true });
         await page.screenshot(
           join(evidenceDir, `cp2-quiz1-${session.runId}.png`),
         );
