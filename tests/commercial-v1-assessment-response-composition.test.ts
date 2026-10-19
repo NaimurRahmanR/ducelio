@@ -863,6 +863,10 @@ describe("getStudentAssessments: bounded read-stage diagnostic", () => {
     "an error result from the %s request maps to exactly that stage, with a generic message and no upstream text",
     async (stage, seam) => {
       await beginRead();
+      // Response revisions are read only for the learner's own active
+      // attempt, so that stage needs a live attempt to be reached.
+      if (stage === "READ_RESPONSES")
+        await startAssessmentAttempt(f.assessmentIds.QUIZ_1);
       Object.assign(state, seam);
       const error = await readFailure();
       expect(error.stage).toBe(stage);
@@ -1048,10 +1052,13 @@ describe("getStudentAssessments: one bounded retry of a transport-failed ACTIVIT
       ACTIVITY,
       ACTIVITY,
     ]);
-    // The table reads ran once each; only the activity RPC was repeated.
+    // The table reads ran exactly as without the failure; only the activity
+    // RPC was repeated. Attempts are read twice by design (the learner's
+    // active attempt, then the listed page's attempts); with no active
+    // attempt no response revisions are read.
     expect(reads("assessments")).toBe(1);
-    expect(reads("assessment_attempts")).toBe(1);
-    expect(reads("assessment_responses")).toBe(1);
+    expect(reads("assessment_attempts")).toBe(2);
+    expect(reads("assessment_responses")).toBe(0);
   });
 
   it("2. ACTIVITY transport failures on both calls => exactly two calls, then StudentAssessmentReadFailure(ACTIVITY); never a loop", async () => {
@@ -1117,6 +1124,9 @@ describe("getStudentAssessments: one bounded retry of a transport-failed ACTIVIT
   ] as const)(
     "4. a transport failure (status 0) of the %s request is never retried",
     async (stage, name) => {
+      // Response revisions are read only for a live attempt.
+      if (stage === "READ_RESPONSES")
+        await startCommittedAs(1, f.assessmentIds.QUIZ_1);
       await beginReadAs(1);
       state.transportFail = { name, times: 1 };
 

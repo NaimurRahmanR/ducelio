@@ -1,4 +1,5 @@
 import type { PGlite } from "@electric-sql/pglite";
+import { postgrestSelectQuery } from "./postgrest-select-query";
 import {
   capabilityDbClient,
   type CapabilityDbState,
@@ -106,6 +107,16 @@ export async function actAs(
   };
 }
 
+// Every column the learner projections filter on.
+const LEARNER_FILTER_COLUMNS = [
+  "cohort_id",
+  "status",
+  "id",
+  "assessment_id",
+  "student_id",
+  "state",
+  "attempt_id",
+] as const;
 const TABLE_FIELDS: Record<string, string> = {
   assessments:
     "t.id,t.title,t.instructions,t.opens_at,t.closes_at,t.duration_minutes,t.attempts_allowed,t.status,t.programme_version_id,json_build_object('title',l.title) as lessons",
@@ -167,70 +178,25 @@ export function assessmentClient(db: PGlite, state: AssessmentClientState) {
     },
     from(table: string) {
       if (!(table in TABLE_FIELDS)) return base.from(table);
-      const filters: string[] = [];
-      const params: unknown[] = [];
-      let limit = 1000;
-      const query = {
-        select(value: string) {
-          state.selects?.push({ table, select: value });
-          return query;
-        },
-        in(col: string, values: unknown[]) {
-          if (!["cohort_id", "status", "id"].includes(col))
-            throw new Error("Unsupported filter");
-          if (values.length === 0) throw new Error("Unsafe empty .in() filter");
-          params.push(values);
-          filters.push("t." + col + "=any($" + params.length + ")");
-          return query;
-        },
-        eq(col: string, value: unknown) {
-          if (col !== "student_id") throw new Error("Unsupported filter");
-          params.push(value);
-          filters.push("t.student_id=$" + params.length);
-          return query;
-        },
-        order() {
-          return query;
-        },
-        limit(n: number) {
-          limit = n;
-          return query;
-        },
-        then(
-          resolve: (v: unknown) => unknown,
-          reject: (e: unknown) => unknown,
-        ) {
-          const transport = transportFailure(state, table);
-          if (transport)
-            return Promise.resolve(transport).then(resolve, reject);
-          if (state.failTableRead === table)
-            return Promise.resolve({
-              data: null,
-              error: upstreamError("PostgREST read failure sentinel"),
-            }).then(resolve, reject);
-          const join =
-            table === "assessments"
-              ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
-              : "";
-          return db
-            .query<{ data: unknown }>(
-              "select row_to_json(q) as data from (select " +
-                TABLE_FIELDS[table] +
-                " from public." +
-                table +
-                " t" +
-                join +
-                (filters.length ? " where " + filters.join(" and ") : "") +
-                " limit " +
-                limit +
-                ") q",
-              params,
-            )
-            .then((r) => ({ data: r.rows.map((x) => x.data), error: null }))
-            .then(resolve, reject);
-        },
-      };
-      return query;
+      return postgrestSelectQuery({
+        db,
+        table,
+        columns: TABLE_FIELDS[table],
+        join:
+          table === "assessments"
+            ? " join public.lessons l on l.id=t.lesson_id and l.programme_version_id=t.programme_version_id"
+            : "",
+        filterColumns: LEARNER_FILTER_COLUMNS,
+        onSelect: (select) => state.selects?.push({ table, select }),
+        intercept: () =>
+          transportFailure(state, table) ??
+          (state.failTableRead === table
+            ? {
+                data: null,
+                error: upstreamError("PostgREST read failure sentinel"),
+              }
+            : undefined),
+      });
     },
   };
 }

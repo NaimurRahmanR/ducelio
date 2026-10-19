@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import {
   beginControlledAssessment,
@@ -37,18 +38,64 @@ function ActionMessage({ state }: { state: AssessmentActionState }) {
   return null;
 }
 
+type AssessmentPagination = {
+  page: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
+const assessmentPageHref = (page: number) =>
+  page === 1 ? "/student/assessments" : `/student/assessments?page=${page}`;
+
+// Newest assessments come first; older ones are one page away. An active
+// attempt is shown below whichever page is open.
+function AssessmentPageLinks({
+  pagination,
+}: {
+  pagination?: AssessmentPagination;
+}) {
+  if (!pagination || (!pagination.hasPreviousPage && !pagination.hasNextPage))
+    return null;
+  return (
+    <nav aria-label="Assessment pages" className="launch-actions">
+      {pagination.hasPreviousPage && (
+        <Link
+          className="button secondary"
+          href={assessmentPageHref(pagination.page - 1)}
+        >
+          Newer assessments
+        </Link>
+      )}
+      {pagination.hasNextPage && (
+        <Link
+          className="button secondary"
+          href={assessmentPageHref(pagination.page + 1)}
+        >
+          Older assessments
+        </Link>
+      )}
+    </nav>
+  );
+}
+
 export function StudentAssessments({
   assessments,
+  activeAssessment: pageIndependentActiveAssessment = null,
   attempts,
   activityState,
   activeQuestions,
   serverNow,
+  pagination,
 }: {
   assessments: Assessment[];
+  // The live attempt's assessment, read independently of the page, so the
+  // exam workspace still renders when that assessment is on another page.
+  activeAssessment?: Assessment | null;
   attempts: Attempt[];
   activityState: "NORMAL" | "CONTROLLED_ASSESSMENT_ACTIVE";
   activeQuestions: ExamQuestion[];
   serverNow: string;
+  pagination?: AssessmentPagination;
 }) {
   const [startState, startAction, starting] = useActionState<
     AssessmentActionState,
@@ -59,7 +106,9 @@ export function StudentAssessments({
       ? attempts.find((attempt) => attempt.state === "ACTIVE")
       : undefined;
   const activeAssessment = activeAttempt
-    ? assessments.find((a) => a.id === activeAttempt.assessment_id)
+    ? pageIndependentActiveAssessment?.id === activeAttempt.assessment_id
+      ? pageIndependentActiveAssessment
+      : assessments.find((a) => a.id === activeAttempt.assessment_id)
     : undefined;
 
   return (
@@ -130,11 +179,16 @@ export function StudentAssessments({
               </div>
             );
           })
+        ) : pagination && pagination.page > 1 ? (
+          <EmptyState title="No older assessments">
+            There are no assessments on this page.
+          </EmptyState>
         ) : (
           <EmptyState title="No controlled assessments available">
             Published assessments for your enrolled cohort will appear here.
           </EmptyState>
         )}
+        <AssessmentPageLinks pagination={pagination} />
       </Card>
 
       {activeAttempt && activeAssessment && (
