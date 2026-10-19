@@ -1187,36 +1187,41 @@
         {
           "position": 7,
           "lessonRef": "lesson-1-2",
-          "prompt": "A software package changes without permission while being transferred. Which security property was lost?",
+          "prompt": "Which TWO practices support identity-aware, least-privilege access to sensitive records?",
           "maxMarks": 1,
-          "expectedAnswer": "Integrity.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Verify identity using approved authentication factors; Authorise the specific operation against the user's role.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-1-2-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q1006a",
-                "label": "Authenticity of users"
+                "id": "s10a",
+                "label": "Verify identity using approved authentication factors"
               },
               {
-                "id": "q1006b",
-                "label": "Integrity"
+                "id": "s10b",
+                "label": "Authorise the specific operation against the user's role"
               },
               {
-                "id": "q1006c",
-                "label": "Availability"
+                "id": "s10c",
+                "label": "Treat all on-premises users as automatically trusted"
               },
               {
-                "id": "q1006d",
-                "label": "Confidentiality only"
+                "id": "s10d",
+                "label": "Turn off records of privileged exports"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q1006b"
+            "correctOptionIds": [
+              "s10a",
+              "s10b"
+            ]
           }
         },
         {
@@ -1581,36 +1586,41 @@
         {
           "position": 17,
           "lessonRef": "lesson-1-4",
-          "prompt": "Comparing a trusted SHA-256 digest with a downloaded file primarily checks what?",
+          "prompt": "Which TWO measures directly help protect the integrity and authenticity of software updates?",
           "maxMarks": 1,
-          "expectedAnswer": "Integrity.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Verify a digital signature against a trusted signer; Retrieve the expected signing trust chain from an authorised source.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-1-4-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q1015a",
-                "label": "Integrity"
+                "id": "s11a",
+                "label": "Disable all certificate checks"
               },
               {
-                "id": "q1015b",
-                "label": "Availability"
+                "id": "s11b",
+                "label": "Verify a digital signature against a trusted signer"
               },
               {
-                "id": "q1015c",
-                "label": "Confidentiality"
+                "id": "s11c",
+                "label": "Retrieve the expected signing trust chain from an authorised source"
               },
               {
-                "id": "q1015d",
-                "label": "Physical access"
+                "id": "s11d",
+                "label": "Trust any file that has a familiar-looking icon"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q1015a"
+            "correctOptionIds": [
+              "s11b",
+              "s11c"
+            ]
           }
         },
         {
@@ -1931,36 +1941,41 @@
         {
           "position": 6,
           "lessonRef": "lesson-2-2",
-          "prompt": "Fraudulent payroll instructions arrive through SMS. What delivery method is this?",
+          "prompt": "Which TWO observations are strong warning signs of a fraudulent supplier-payment request?",
           "maxMarks": 1,
-          "expectedAnswer": "Smishing.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "A sender domain closely imitates the real supplier's domain; An unexpected urgent change of bank account details.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-2-2-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q2005a",
-                "label": "Tailgating"
+                "id": "s12a",
+                "label": "A change verified using an independently known supplier contact"
               },
               {
-                "id": "q2005b",
-                "label": "Shoulder surfing"
+                "id": "s12b",
+                "label": "An approved purchase order matched to internal records"
               },
               {
-                "id": "q2005c",
-                "label": "Smishing"
+                "id": "s12c",
+                "label": "A sender domain closely imitates the real supplier's domain"
               },
               {
-                "id": "q2005d",
-                "label": "Vishing"
+                "id": "s12d",
+                "label": "An unexpected urgent change of bank account details"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q2005c"
+            "correctOptionIds": [
+              "s12c",
+              "s12d"
+            ]
           }
         },
         {
@@ -2357,36 +2372,41 @@
         {
           "position": 18,
           "lessonRef": "lesson-2-5",
-          "prompt": "A normal desktop user is assigned permanent local administrator rights. What mitigates this?",
+          "prompt": "Which TWO defences help limit lateral movement after an endpoint compromise?",
           "maxMarks": 1,
-          "expectedAnswer": "Remove unnecessary privileges.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Apply restrictive inter-segment access controls; Enforce least-privilege service identities.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-2-5-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q2016a",
-                "label": "Give all staff root accounts"
+                "id": "s13a",
+                "label": "Enforce least-privilege service identities"
               },
               {
-                "id": "q2016b",
-                "label": "Stop patching"
+                "id": "s13b",
+                "label": "Permit unrestricted east-west traffic"
               },
               {
-                "id": "q2016c",
-                "label": "Disable access reviews"
+                "id": "s13c",
+                "label": "Give every workstation the same privileged credential"
               },
               {
-                "id": "q2016d",
-                "label": "Remove unnecessary privileges"
+                "id": "s13d",
+                "label": "Apply restrictive inter-segment access controls"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q2016d"
+            "correctOptionIds": [
+              "s13a",
+              "s13d"
+            ]
           }
         },
         {
@@ -2812,36 +2832,41 @@
         {
           "position": 10,
           "lessonRef": "lesson-1-3",
-          "prompt": "An unapproved maintenance-window change causes a policy deviation. How should it be handled?",
+          "prompt": "Which TWO records support an accountable emergency production change?",
           "maxMarks": 1,
-          "expectedAnswer": "Document and review the exception.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Authorised justification and identity of approver; Post-change verification and retrospective review.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-1-3-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "mid009a",
-                "label": "Delete change history"
+                "id": "s14a",
+                "label": "Authorised justification and identity of approver"
               },
               {
-                "id": "mid009b",
-                "label": "Skip retrospective approval"
+                "id": "s14b",
+                "label": "Post-change verification and retrospective review"
               },
               {
-                "id": "mid009c",
-                "label": "Disable alarms"
+                "id": "s14c",
+                "label": "Deletion of before-and-after configuration records"
               },
               {
-                "id": "mid009d",
-                "label": "Document and review the exception"
+                "id": "s14d",
+                "label": "A promise that further review is unnecessary"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "mid009d"
+            "correctOptionIds": [
+              "s14a",
+              "s14b"
+            ]
           }
         },
         {
@@ -3257,36 +3282,41 @@
         {
           "position": 22,
           "lessonRef": "lesson-2-3",
-          "prompt": "A login page displays secret database connection strings on failure. What is the defect?",
+          "prompt": "Which TWO controls directly reduce common SQL injection risk?",
           "maxMarks": 1,
-          "expectedAnswer": "Sensitive information disclosure.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Use parameterised SQL queries; Restrict the database account to necessary privileges.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-2-3-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "mid020a",
-                "label": "Sensitive information disclosure"
+                "id": "s15a",
+                "label": "Give the application full database administrator rights"
               },
               {
-                "id": "mid020b",
-                "label": "High availability"
+                "id": "s15b",
+                "label": "Use parameterised SQL queries"
               },
               {
-                "id": "mid020c",
-                "label": "Correct log minimisation"
+                "id": "s15c",
+                "label": "Restrict the database account to necessary privileges"
               },
               {
-                "id": "mid020d",
-                "label": "Physical tampering"
+                "id": "s15d",
+                "label": "Construct SQL strings using raw user values"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "mid020a"
+            "correctOptionIds": [
+              "s15b",
+              "s15c"
+            ]
           }
         },
         {
@@ -3867,36 +3897,41 @@
         {
           "position": 38,
           "lessonRef": "lesson-3-2",
-          "prompt": "An organisation isolates public web servers from private databases. Which architecture pattern is relevant?",
+          "prompt": "Which TWO choices improve security of a public web tier and a private database tier?",
           "maxMarks": 1,
-          "expectedAnswer": "Screened subnet or DMZ.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Segment the tiers with explicitly restricted routing; Protect web requests with appropriate application-aware filtering.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-3-2-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "mid034a",
-                "label": "Credential spraying"
+                "id": "s16a",
+                "label": "Expose database management ports to anonymous internet users"
               },
               {
-                "id": "mid034b",
-                "label": "Tape rotation"
+                "id": "s16b",
+                "label": "Allow broad any-any access between all networks"
               },
               {
-                "id": "mid034c",
-                "label": "Screened subnet or DMZ"
+                "id": "s16c",
+                "label": "Segment the tiers with explicitly restricted routing"
               },
               {
-                "id": "mid034d",
-                "label": "Unrestricted flat network"
+                "id": "s16d",
+                "label": "Protect web requests with appropriate application-aware filtering"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "mid034c"
+            "correctOptionIds": [
+              "s16c",
+              "s16d"
+            ]
           }
         },
         {
@@ -4147,36 +4182,41 @@
         {
           "position": 46,
           "lessonRef": "lesson-3-4",
-          "prompt": "A service must be restored within four hours of a disaster. Which metric is defined?",
+          "prompt": "Which TWO practices make recovery planning more dependable?",
           "maxMarks": 1,
-          "expectedAnswer": "RTO.",
-          "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
+          "expectedAnswer": "Test restoration against defined recovery objectives; Keep protected backup copies isolated from production compromise.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-3-4-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "mid042a",
-                "label": "ARO"
+                "id": "s17a",
+                "label": "Keep protected backup copies isolated from production compromise"
               },
               {
-                "id": "mid042b",
-                "label": "SLE"
+                "id": "s17b",
+                "label": "Use the sole online backup under the compromised administrator credentials"
               },
               {
-                "id": "mid042c",
-                "label": "RTO"
+                "id": "s17c",
+                "label": "Assume a backup-job success notice proves restoration"
               },
               {
-                "id": "mid042d",
-                "label": "RPO"
+                "id": "s17d",
+                "label": "Test restoration against defined recovery objectives"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "mid042c"
+            "correctOptionIds": [
+              "s17a",
+              "s17d"
+            ]
           }
         },
         {
@@ -4351,7 +4391,7 @@
       "title": "Quiz 3 — Architecture and Security Operations",
       "instructions": "Original Security+ exam-style draft questions; no official sponsorship. Independent content/key/source review is required before any learner release.",
       "lessonRef": "lesson-4-3",
-      "durationMinutes": 30,
+      "durationMinutes": 25,
       "attemptsAllowed": 1,
       "questions": [
         {
@@ -4592,36 +4632,41 @@
         {
           "position": 7,
           "lessonRef": "lesson-3-3",
-          "prompt": "A confidential file is published through a permanent anonymous download link. Which action reduces exposure?",
+          "prompt": "Which TWO actions reduce exposure when sharing confidential documents?",
           "maxMarks": 1,
-          "expectedAnswer": "Restrict recipient access and expire the share.",
-          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "expectedAnswer": "Require explicitly approved recipient access; Apply expiry and access review to externally shared links.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-3-3-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q3005a",
-                "label": "Turn off audit logs"
+                "id": "s18a",
+                "label": "Require explicitly approved recipient access"
               },
               {
-                "id": "q3005b",
-                "label": "Increase anonymous access"
+                "id": "s18b",
+                "label": "Apply expiry and access review to externally shared links"
               },
               {
-                "id": "q3005c",
-                "label": "Replace encryption with compression"
+                "id": "s18c",
+                "label": "Publish permanent anonymous sharing links"
               },
               {
-                "id": "q3005d",
-                "label": "Restrict recipient access and expire the share"
+                "id": "s18d",
+                "label": "Remove audit visibility for shared documents"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q3005d"
+            "correctOptionIds": [
+              "s18a",
+              "s18b"
+            ]
           }
         },
         {
@@ -4986,36 +5031,41 @@
         {
           "position": 17,
           "lessonRef": "lesson-4-3",
-          "prompt": "An exploited public gateway has a moderate base score while an isolated test asset has a higher one. Which should be assessed first for remediation?",
+          "prompt": "Which TWO factors belong in risk-based vulnerability prioritisation?",
           "maxMarks": 1,
-          "expectedAnswer": "The exposed, actively exploited business-critical gateway.",
-          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "expectedAnswer": "Evidence of active exploitation and external exposure; Business criticality and availability of mitigating controls.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-4-3-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q3014a",
-                "label": "The exposed, actively exploited business-critical gateway"
+                "id": "s19a",
+                "label": "The colour of the patch dashboard"
               },
               {
-                "id": "q3014b",
-                "label": "Only the numerically highest score"
+                "id": "s19b",
+                "label": "Evidence of active exploitation and external exposure"
               },
               {
-                "id": "q3014c",
-                "label": "The asset with the shortest hostname"
+                "id": "s19c",
+                "label": "Business criticality and availability of mitigating controls"
               },
               {
-                "id": "q3014d",
-                "label": "Neither until the annual audit"
+                "id": "s19d",
+                "label": "Asset hostname length"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q3014a"
+            "correctOptionIds": [
+              "s19b",
+              "s19c"
+            ]
           }
         },
         {
@@ -5130,42 +5180,47 @@
       "title": "Quiz 4 — Security Operations and Governance",
       "instructions": "Original Security+ exam-style draft questions; no official sponsorship. Independent content/key/source review is required before any learner release.",
       "lessonRef": "lesson-4-8",
-      "durationMinutes": 30,
+      "durationMinutes": 25,
       "attemptsAllowed": 1,
       "questions": [
         {
           "position": 1,
           "lessonRef": "lesson-4-4",
-          "prompt": "A central security platform stops receiving logs from many endpoints. Which alert identifies this blind spot?",
+          "prompt": "Which TWO measures improve the reliability of incident event timelines?",
           "maxMarks": 1,
-          "expectedAnswer": "Ingestion-health and missing-source monitoring.",
-          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "expectedAnswer": "Synchronise timestamps from an approved clock source; Detect missing telemetry and protect log integrity.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-4-4-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q4000a",
-                "label": "An assumption that silence means safety"
+                "id": "s20a",
+                "label": "Let routine users rewrite centralised logs"
               },
               {
-                "id": "q4000b",
-                "label": "Deleting old timestamps"
+                "id": "s20b",
+                "label": "Assume empty logs prove there was no intrusion"
               },
               {
-                "id": "q4000c",
-                "label": "Ingestion-health and missing-source monitoring"
+                "id": "s20c",
+                "label": "Synchronise timestamps from an approved clock source"
               },
               {
-                "id": "q4000d",
-                "label": "Disabling integrity checks"
+                "id": "s20d",
+                "label": "Detect missing telemetry and protect log integrity"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q4000c"
+            "correctOptionIds": [
+              "s20c",
+              "s20d"
+            ]
           }
         },
         {
@@ -5727,36 +5782,41 @@
         {
           "position": 17,
           "lessonRef": "lesson-5-3",
-          "prompt": "A supplier uses another processor for personal data. What must vendor review address?",
+          "prompt": "Which TWO practices support responsible onboarding of a SaaS vendor handling sensitive data?",
           "maxMarks": 1,
-          "expectedAnswer": "Subprocessor obligations and security oversight.",
-          "markingGuidance": "Single best answer; academic and evidence review required before release.",
+          "expectedAnswer": "Assess relevant security controls and breach-notification duties; Record contractual data-processing and access responsibilities.",
+          "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
           "objectiveRefs": [
             "obj-5-3-a"
           ],
-          "questionType": "SINGLE_SELECT",
+          "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
               {
-                "id": "q4014a",
-                "label": "Subprocessor obligations and security oversight"
+                "id": "s21a",
+                "label": "Record contractual data-processing and access responsibilities"
               },
               {
-                "id": "q4014b",
-                "label": "Company logo colours"
+                "id": "s21b",
+                "label": "Judge suitability only by brand popularity"
               },
               {
-                "id": "q4014c",
-                "label": "Office chair types"
+                "id": "s21c",
+                "label": "Skip review because the supplier is large"
               },
               {
-                "id": "q4014d",
-                "label": "Trade-show sponsorship"
+                "id": "s21d",
+                "label": "Assess relevant security controls and breach-notification duties"
               }
-            ]
+            ],
+            "requiredSelections": 2,
+            "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionId": "q4014a"
+            "correctOptionIds": [
+              "s21a",
+              "s21d"
+            ]
           }
         },
         {
