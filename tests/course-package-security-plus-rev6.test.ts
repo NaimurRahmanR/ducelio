@@ -25,10 +25,14 @@ describe("Security+ revision 6 upload contract", () => {
     expect(pkg.packageKey).toBe("security-plus-sy0-701");
     expect(pkg.packageRevision).toBe(6);
     expect(pkg.modules).toHaveLength(5);
-    expect(pkg.modules.flatMap((m: { lessons: unknown[] }) => m.lessons)).toHaveLength(28);
-    expect(pkg.assessmentTemplates.map((a: { questions: unknown[] }) => a.questions.length)).toEqual([
-      20, 20, 50, 20, 20, 90,
-    ]);
+    expect(
+      pkg.modules.flatMap((m: { lessons: unknown[] }) => m.lessons),
+    ).toHaveLength(28);
+    expect(
+      pkg.assessmentTemplates.map(
+        (a: { questions: unknown[] }) => a.questions.length,
+      ),
+    ).toEqual([20, 20, 50, 20, 20, 90]);
     expect(pkg.reason.length).toBeLessThanOrEqual(300);
     expect(bytes.length).toBeLessThanOrEqual(512 * 1024);
   });

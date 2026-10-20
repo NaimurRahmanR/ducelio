@@ -75,9 +75,7 @@
               "title": "Zero Trust Control-Plane Walkthrough",
               "instructions": "A remote employee's laptop, already inside the corporate VPN, requests access to a finance database it has never accessed before. Using Zero Trust principles, list three checks that should still happen before access is granted, and explain why network location (being on the VPN) is not sufficient on its own.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-1-2-a"
-              ]
+              "objectiveRefs": ["obj-1-2-a"]
             }
           ]
         },
@@ -140,9 +138,7 @@
               "title": "Certificate and TLS Handshake Inspection Lab",
               "instructions": "Using a browser's built-in certificate viewer against a public HTTPS site of your choice, record the certificate's subject, issuer, validity dates and the negotiated TLS protocol version and cipher suite. Explain, in your own words, which cryptographic primitive (symmetric, asymmetric or hashing) is responsible for each of: encrypting the bulk data, establishing the shared session key, and proving the certificate has not been tampered with. Do not attempt to intercept, decrypt or tamper with traffic you do not own; this lab is observational only.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-1-4-a"
-              ]
+              "objectiveRefs": ["obj-1-4-a"]
             }
           ]
         }
@@ -181,9 +177,7 @@
               "title": "Threat Actor Profiling Exercise",
               "instructions": "For each of three described incidents (a leaked customer database offered for sale on a forum, a defaced public website with a political message, and a former employee deleting shared files after resignation), identify the most likely threat-actor type and justify your answer using motivation and access level.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-2-1-a"
-              ]
+              "objectiveRefs": ["obj-2-1-a"]
             }
           ]
         },
@@ -269,9 +263,7 @@
               "title": "Indicator Triage Exercise",
               "instructions": "You are given four short log excerpts: (1) one account with 40 failed logins in five minutes, (2) a workstation suddenly using 95% CPU overnight with no scheduled job running, (3) a login from a country the employee has never travelled to, occurring two minutes after their normal login from their home city, and (4) a spike in DNS queries to a newly registered domain. For each, name the most likely underlying cause and the first triage step you would take.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-2-4-a"
-              ]
+              "objectiveRefs": ["obj-2-4-a"]
             }
           ]
         },
@@ -333,9 +325,7 @@
               "title": "Cloud Shared-Responsibility Mapping Lab",
               "instructions": "A company runs a customer-facing web application on a public cloud provider's infrastructure-as-a-service offering, using the provider's managed database service and its own custom application code. For each of the following, state whether the CUSTOMER, the PROVIDER, or BOTH are responsible: physical data-centre security, the guest operating-system patches on a virtual machine the customer manages, the managed database's underlying software patching, the application's own authentication logic, and network firewall rules the customer configures. Justify any 'both' answer.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-3-1-a"
-              ]
+              "objectiveRefs": ["obj-3-1-a"]
             }
           ]
         },
@@ -367,9 +357,7 @@
               "title": "Network Segmentation Design Lab",
               "instructions": "A small organisation currently has one flat network containing its public website server, its employee workstations, its finance database and a guest Wi-Fi access point, all on the same subnet. Propose a segmented design: list the zones you would create, which of the four assets belongs in each zone, and one control you would place at each zone boundary. Explain the specific risk your design removes compared to the current flat network.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-3-2-a"
-              ]
+              "objectiveRefs": ["obj-3-2-a"]
             }
           ]
         },
@@ -424,9 +412,7 @@
               "title": "Backup and Recovery Strategy Lab",
               "instructions": "An organisation's finance database must be recoverable within 4 hours (recovery time objective) with no more than 15 minutes of data loss (recovery point objective). Propose a backup schedule and recovery-site type that could meet these targets, and explain why a weekly full backup to a single on-site drive would fail to meet them.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-3-4-a"
-              ]
+              "objectiveRefs": ["obj-3-4-a"]
             }
           ]
         }
@@ -465,9 +451,7 @@
               "title": "Endpoint Hardening Baseline Lab",
               "instructions": "You are given a description of a newly imaged workstation: default administrator account still enabled, remote desktop open to the whole internal network, no host firewall configured, and three unused legacy protocols still running. Propose a hardening checklist of at least five specific changes, and for each explain which attack it is intended to prevent.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-4-1-a"
-              ]
+              "objectiveRefs": ["obj-4-1-a"]
             }
           ]
         },
@@ -522,9 +506,7 @@
               "title": "Vulnerability Prioritisation Lab",
               "instructions": "You receive a scan report listing four findings: (1) a critical remote-code-execution flaw on an internet-facing web server, (2) a critical flaw on a database server reachable only from one internal management subnet, (3) a moderate misconfiguration on an internal file server, and (4) a low-severity informational finding on a printer. Rank these four for remediation order and justify your ranking using both severity and exposure.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-4-3-a"
-              ]
+              "objectiveRefs": ["obj-4-3-a"]
             }
           ]
         },
@@ -556,9 +538,7 @@
               "title": "SIEM Log Investigation Lab",
               "instructions": "You are given a short set of correlated log excerpts showing: a successful VPN login from an unusual country, followed within two minutes by a login to an internal file server the same user has never accessed before, followed by a large outbound data transfer to an external address. Write a two-to-three sentence investigation summary describing what likely happened and the order of events, and list the first two containment actions you would take.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-4-4-a"
-              ]
+              "objectiveRefs": ["obj-4-4-a"]
             }
           ]
         },
@@ -590,9 +570,7 @@
               "title": "Firewall Rule Set Analysis Lab",
               "instructions": "You are given a simplified five-rule firewall configuration for a small business, including one rule allowing 'any source, any destination, any port' inbound that a previous administrator added during troubleshooting and never removed. Identify which rule(s) violate least-privilege network access, explain the specific risk each poses, and propose a corrected, more specific replacement for the overly permissive rule.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-4-5-a"
-              ]
+              "objectiveRefs": ["obj-4-5-a"]
             }
           ]
         },
@@ -624,9 +602,7 @@
               "title": "Access Control Configuration Review Lab",
               "instructions": "You are given a described list of six employee accounts and their current permissions, including a marketing employee with database-administrator rights left over from a past project, and a former contractor's account that is still active. Identify every entry that violates least privilege, and for each, state the specific corrective action (revoke, downgrade, deprovision) you would take.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-4-6-a"
-              ]
+              "objectiveRefs": ["obj-4-6-a"]
             }
           ]
         },
@@ -681,9 +657,7 @@
               "title": "Incident Response Evidence Analysis Lab",
               "instructions": "You are given a described incident timeline (initial phishing email, a compromised account, lateral movement to a file server, and a burst of file-encryption activity consistent with ransomware) along with a short list of available evidence items (email headers, authentication logs, file-server access logs, and a memory capture from the affected file server). For each lifecycle stage from detection through recovery, name the evidence item most useful to that stage and explain why.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-4-8-a"
-              ]
+              "objectiveRefs": ["obj-4-8-a"]
             }
           ]
         },
@@ -768,9 +742,7 @@
               "title": "Quantitative Risk Calculation Exercise",
               "instructions": "A described data-breach scenario has an estimated single loss expectancy of $50,000 and an estimated annualised rate of occurrence of 0.2 (expected once every five years). Calculate the annualised loss expectancy, and state whether a proposed control costing $8,000 per year to reduce the annualised rate of occurrence to 0.05 appears cost-justified, showing your reasoning.",
               "position": 1,
-              "objectiveRefs": [
-                "obj-5-2-a"
-              ]
+              "objectiveRefs": ["obj-5-2-a"]
             }
           ]
         },
@@ -875,9 +847,7 @@
       "title": "Security Control Mapping Assignment",
       "instructions": "Select three safeguards used in a typical small-business office (for example a badge reader, an acceptable-use policy, and a locked server cabinet). For each safeguard, identify its security control category and its control type, then justify your classification in two to three original sentences.",
       "lessonRef": "lesson-1-1",
-      "objectiveRefs": [
-        "obj-1-1-a"
-      ],
+      "objectiveRefs": ["obj-1-1-a"],
       "rubric": [
         {
           "description": "Correctly identifies the control category for all three safeguards",
@@ -898,9 +868,7 @@
       "title": "Incident Response Playbook Assignment",
       "instructions": "Draft a one-page incident-response playbook outline for a described phishing-led account-compromise scenario, covering preparation, detection, analysis, containment, eradication, recovery and lessons-learned steps in your own words. Each stage should include at least one concrete action specific to the scenario, not a generic restatement of the stage name.",
       "lessonRef": "lesson-4-8",
-      "objectiveRefs": [
-        "obj-4-8-a"
-      ],
+      "objectiveRefs": ["obj-4-8-a"],
       "rubric": [
         {
           "description": "All seven lifecycle stages are present and correctly sequenced",
@@ -921,9 +889,7 @@
       "title": "Vendor Risk Assessment Assignment",
       "instructions": "Evaluate a described third-party payment-processing vendor against three risk criteria of your choice (for example data-handling practices, incident-notification commitments, and audit history). Recommend whether the organisation should proceed, proceed with conditions, or decline the vendor relationship, and justify the recommendation.",
       "lessonRef": "lesson-5-3",
-      "objectiveRefs": [
-        "obj-5-3-a"
-      ],
+      "objectiveRefs": ["obj-5-3-a"],
       "rubric": [
         {
           "description": "Selects three relevant, well-explained risk criteria",
@@ -956,9 +922,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Managerial.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -991,9 +955,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Preventive.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1026,9 +988,7 @@
           "maxMarks": 4,
           "expectedAnswer": "An electronic lock refuses entry to an unbadged visitor → Preventive; An event alert identifies an attempted policy breach → Detective; A system is restored from a validated image after malware → Corrective; A posted warning discourages unauthorised entry → Deterrent",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -1086,9 +1046,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Deterrent.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1121,9 +1079,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Corrective.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1156,9 +1112,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Directive.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1191,9 +1145,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Verify identity using approved authentication factors; Authorise the specific operation against the user's role.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -1218,10 +1170,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s10a",
-              "s10b"
-            ]
+            "correctOptionIds": ["s10a", "s10b"]
           }
         },
         {
@@ -1231,9 +1180,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Availability.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1266,9 +1213,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Accounting.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1301,9 +1246,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Authentication.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1336,9 +1279,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Deny access through authorisation rules.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1371,9 +1312,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Affected services, risk and a recovery plan.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1406,9 +1345,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Preserve accountability and enable retrospective review.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1441,9 +1378,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A designated authorised approver.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1476,9 +1411,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Password verifier storage → Salted password-specific hash; Software update authenticity → Validate a trusted digital signature; Browser-to-service confidentiality → TLS with valid server authentication",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "PBQ_CONFIGURATION",
           "interaction": {
             "scenario": "An organisation must protect stored passwords, signed updates, and private data sent to a web service. Choose the best corresponding security measure.",
@@ -1555,9 +1488,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Approved rollback steps.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1590,9 +1521,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Verify a digital signature against a trusted signer; Retrieve the expected signing trust chain from an authorised source.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -1617,10 +1546,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s11b",
-              "s11c"
-            ]
+            "correctOptionIds": ["s11b", "s11c"]
           }
         },
         {
@@ -1630,9 +1556,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Untrusted server impersonation.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1665,9 +1589,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Asymmetric key agreement.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1700,9 +1622,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Revoke or rotate it using key-management procedures.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1745,9 +1665,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Financial gain.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1780,9 +1698,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Shadow IT.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1815,9 +1731,7 @@
           "maxMarks": 4,
           "expectedAnswer": "A fraudulent text message contains a fake sign-in link → Smishing; A caller impersonates technical support and requests an MFA code → Vishing; A fake supplier invoice arrives in an impersonated email → Phishing; A person follows staff through a secure doorway without a badge → Tailgating",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -1875,9 +1789,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Unskilled opportunist.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1910,9 +1822,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Malicious insider.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -1945,9 +1855,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A sender domain closely imitates the real supplier's domain; An unexpected urgent change of bank account details.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -1972,10 +1880,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s12c",
-              "s12d"
-            ]
+            "correctOptionIds": ["s12c", "s12d"]
           }
         },
         {
@@ -1985,9 +1890,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Tailgating.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2020,9 +1923,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Credential phishing.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2055,9 +1956,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Attack surface.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2090,9 +1989,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Path traversal.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2125,9 +2022,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Broken object-level authorisation.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2160,9 +2055,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Vulnerable software dependency.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2195,9 +2088,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Cloud access misconfiguration.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2230,9 +2121,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Suspicious network indicator.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2265,9 +2154,7 @@
           "maxMarks": 4,
           "expectedAnswer": "1. Confirm the exposed vulnerable asset and current evidence; 2. Prioritise remediation using exploitability and business impact; 3. Apply the approved patch or compensating control; 4. Validate that the exposure was resolved and document the result",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "PBQ_ORDERING",
           "interaction": {
             "steps": [
@@ -2291,12 +2178,7 @@
             "scoringRule": "PER_POSITION_PROPORTIONAL"
           },
           "answerKey": {
-            "correctOrder": [
-              "p4k00",
-              "p4k17",
-              "p4k34",
-              "p4k51"
-            ]
+            "correctOrder": ["p4k00", "p4k17", "p4k34", "p4k51"]
           }
         },
         {
@@ -2306,9 +2188,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Cryptojacking.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2341,9 +2221,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Incident containment and triage.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2376,9 +2254,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Apply restrictive inter-segment access controls; Enforce least-privilege service identities.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -2403,10 +2279,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s13a",
-              "s13d"
-            ]
+            "correctOptionIds": ["s13a", "s13d"]
           }
         },
         {
@@ -2416,9 +2289,7 @@
           "maxMarks": 1,
           "expectedAnswer": "To identify attack-surface reduction and patch needs.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2451,9 +2322,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Document residual risk and compensating controls.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2496,9 +2365,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Detective.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2531,9 +2398,7 @@
           "maxMarks": 4,
           "expectedAnswer": "An identity service verifies a sign-in factor → Authentication; A service checks whether the verified user may export files → Authorisation; The audit system records who exported files and when → Accounting; An access request is re-evaluated against context and policy → Zero Trust request evaluation",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -2591,9 +2456,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Operational.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2626,9 +2489,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Managerial.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2661,9 +2522,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Physical.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2696,9 +2555,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Integrity.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2731,9 +2588,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Authentication using different factors.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2766,9 +2621,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Attributable audit logging.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2801,9 +2654,7 @@
           "maxMarks": 1,
           "expectedAnswer": "At relevant access requests under policy.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2836,9 +2687,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Authorised justification and identity of approver; Post-change verification and retrospective review.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -2863,10 +2712,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s14a",
-              "s14b"
-            ]
+            "correctOptionIds": ["s14a", "s14b"]
           }
         },
         {
@@ -2876,9 +2722,7 @@
           "maxMarks": 4,
           "expectedAnswer": "A user changes a resource identifier and reads another customer's record → Broken object-level authorisation; Untrusted input is joined into a database query → SQL injection; The application reads files outside its intended folder from user-provided paths → Path traversal; An untrusted value executes as script inside another user's web page → Cross-site scripting",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -2936,9 +2780,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Change record and post-implementation review.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -2971,9 +2813,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Validate a trusted digital signature.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3006,9 +2846,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Reduce identical-hash and precomputed-table risks.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3041,9 +2879,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Financial extortion.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3076,9 +2912,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Authorised security assessor.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3111,9 +2945,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Abuse of trusted insider privileges.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3146,9 +2978,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Removable media and social engineering.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3181,9 +3011,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Domain impersonation.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3216,9 +3044,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Shoulder surfing.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3251,9 +3077,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Verify identity via approved independent procedures.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3286,9 +3110,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Use parameterised SQL queries; Restrict the database account to necessary privileges.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -3313,10 +3135,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s15b",
-              "s15c"
-            ]
+            "correctOptionIds": ["s15b", "s15c"]
           }
         },
         {
@@ -3326,9 +3145,7 @@
           "maxMarks": 4,
           "expectedAnswer": "1. Correlate alerts and confirm the affected asset; 2. Record relevant indicators and collect volatile evidence as appropriate; 3. Contain confirmed or strongly suspected malicious communication; 4. Escalate for eradication, recovery and later lessons learned",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "PBQ_ORDERING",
           "interaction": {
             "steps": [
@@ -3352,12 +3169,7 @@
             "scoringRule": "PER_POSITION_PROPORTIONAL"
           },
           "answerKey": {
-            "correctOrder": [
-              "p7k00",
-              "p7k17",
-              "p7k34",
-              "p7k51"
-            ]
+            "correctOrder": ["p7k00", "p7k17", "p7k34", "p7k51"]
           }
         },
         {
@@ -3367,9 +3179,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Weak cryptographic configuration.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3402,9 +3212,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Unpatched device vulnerability.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3437,9 +3245,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Memory-safety vulnerability.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3472,9 +3278,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Possible credential attack.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3507,9 +3311,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Malware persistence or unauthorised change.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3542,9 +3344,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Investigate correlated telemetry and possible abuse.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3577,9 +3377,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Restrict east-west access with segmentation.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3612,9 +3410,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Use a purpose-specific least-privilege identity.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3647,9 +3443,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Threat activity, exposure and business impact.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3682,9 +3476,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Shared responsibility.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3717,9 +3509,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Encryption while transferring records → Validated TLS; Protection while records are stored → Encryption at rest with governed keys; Sharing policy → Restrict recipients and apply access expiry",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "PBQ_CONFIGURATION",
           "interaction": {
             "scenario": "A company must store protected customer records, transfer them securely, and prevent broad anonymous redistribution.",
@@ -3796,9 +3586,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Repeatable and auditable configuration changes.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3831,9 +3619,7 @@
           "maxMarks": 1,
           "expectedAnswer": "The customer organisation under shared obligations.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3866,9 +3652,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Overprivileged workload identity.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3901,9 +3685,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Segment the tiers with explicitly restricted routing; Protect web requests with appropriate application-aware filtering.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -3928,10 +3710,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s16c",
-              "s16d"
-            ]
+            "correctOptionIds": ["s16c", "s16d"]
           }
         },
         {
@@ -3941,9 +3720,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Block traffic in the forwarding path.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -3976,9 +3753,7 @@
           "maxMarks": 1,
           "expectedAnswer": "HTTPS with validated TLS.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4011,9 +3786,7 @@
           "maxMarks": 1,
           "expectedAnswer": "VPN tunnelling.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4046,9 +3819,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Tokenisation.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4081,9 +3852,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Classification and access control.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4116,9 +3885,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Data loss prevention.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4151,9 +3918,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Confidentiality.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4186,9 +3951,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Test restoration against defined recovery objectives; Keep protected backup copies isolated from production compromise.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -4213,10 +3976,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s17a",
-              "s17d"
-            ]
+            "correctOptionIds": ["s17a", "s17d"]
           }
         },
         {
@@ -4226,9 +3986,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Maximum acceptable time until service resumes → Recovery time objective; Maximum acceptable data loss expressed as time → Recovery point objective; Preconfigured equipment needing some restoration before operating → Warm recovery site; Periodically verifying restored data and service function → Restoration testing",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -4286,9 +4044,7 @@
           "maxMarks": 1,
           "expectedAnswer": "RPO.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4321,9 +4077,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Hot site.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4356,9 +4110,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A production compromise could destroy backups.",
           "markingGuidance": "Select the one correct answer. Draft item requiring independent technical, key and source review.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4401,9 +4153,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Policy-as-code and reviewed configuration.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4436,9 +4186,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Harden host and runtime and verify image provenance.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4471,9 +4219,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Block unwanted traffic directly in the forwarding path → Inline IPS; Observe copies of traffic without blocking packets → Passive IDS or network tap; Filter malicious application-layer requests to a public site → Web application firewall; Restrict network access between production and guest devices → Segmentation and ACL rules",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -4531,9 +4277,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Cross-boundary segmentation, routing and identity.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4566,9 +4310,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Rate limiting with application-aware controls.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4601,9 +4343,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Segregate guest traffic and restrict routing.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4636,9 +4376,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Require explicitly approved recipient access; Apply expiry and access review to externally shared links.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -4663,10 +4401,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s18a",
-              "s18b"
-            ]
+            "correctOptionIds": ["s18a", "s18b"]
           }
         },
         {
@@ -4676,9 +4411,7 @@
           "maxMarks": 1,
           "expectedAnswer": "It reduces unnecessary data exposure and handling obligations.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4711,9 +4444,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Cold site.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4746,9 +4477,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Improve recovery configuration and test procedures.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4781,9 +4510,7 @@
           "maxMarks": 1,
           "expectedAnswer": "SSH authentication configuration against baseline.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-1-a"
-          ],
+          "objectiveRefs": ["obj-4-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4816,9 +4543,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Disable the unnecessary service under change control.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-1-a"
-          ],
+          "objectiveRefs": ["obj-4-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4851,9 +4576,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Configuration compliance monitoring.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-1-a"
-          ],
+          "objectiveRefs": ["obj-4-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4886,9 +4609,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Lifecycle accountability and appropriate protection.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-2-a"
-          ],
+          "objectiveRefs": ["obj-4-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -4921,9 +4642,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Short-term mitigation → Restrict exposure and monitor the affected service; Accountable exception → Record a named risk owner and time-limited approval; Follow-up evidence → Validate mitigation and reassess as fixes become available",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "PBQ_CONFIGURATION",
           "interaction": {
             "scenario": "An exposed business system has a known vulnerability; no supported vendor patch is currently available. Choose the safest governance actions.",
@@ -5000,9 +4719,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Ownership, classification and managed safeguards.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-2-a"
-          ],
+          "objectiveRefs": ["obj-4-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5035,9 +4752,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Evidence of active exploitation and external exposure; Business criticality and availability of mitigating controls.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -5062,10 +4777,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s19b",
-              "s19c"
-            ]
+            "correctOptionIds": ["s19b", "s19c"]
           }
         },
         {
@@ -5075,9 +4787,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A verified rescan or equivalent validation tied to the asset.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5110,9 +4820,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Risk owner, justification, controls and review date.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5145,9 +4853,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Installed software and configuration weaknesses.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5190,9 +4896,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Synchronise timestamps from an approved clock source; Detect missing telemetry and protect log integrity.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-4-4-a"
-          ],
+          "objectiveRefs": ["obj-4-4-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -5217,10 +4921,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s20c",
-              "s20d"
-            ]
+            "correctOptionIds": ["s20c", "s20d"]
           }
         },
         {
@@ -5230,9 +4931,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Cross-source event correlation.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-4-a"
-          ],
+          "objectiveRefs": ["obj-4-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5265,9 +4964,7 @@
           "maxMarks": 4,
           "expectedAnswer": "1. Verify the authorised offboarding notice and effective time; 2. Disable access and revoke active sessions at the effective time; 3. Recover or disable assigned access factors and privileged credentials; 4. Record completion and independently verify entitlements are removed",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-4-6-a"
-          ],
+          "objectiveRefs": ["obj-4-6-a"],
           "questionType": "PBQ_ORDERING",
           "interaction": {
             "steps": [
@@ -5291,12 +4988,7 @@
             "scoringRule": "PER_POSITION_PROPORTIONAL"
           },
           "answerKey": {
-            "correctOrder": [
-              "p12k00",
-              "p12k17",
-              "p12k34",
-              "p12k51"
-            ]
+            "correctOrder": ["p12k00", "p12k17", "p12k34", "p12k51"]
           }
         },
         {
@@ -5306,9 +4998,7 @@
           "maxMarks": 1,
           "expectedAnswer": "An IDS.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-5-a"
-          ],
+          "objectiveRefs": ["obj-4-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5341,9 +5031,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Restrictive egress firewall rules.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-5-a"
-          ],
+          "objectiveRefs": ["obj-4-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5376,9 +5064,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Revoke access and terminate the session.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-6-a"
-          ],
+          "objectiveRefs": ["obj-4-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5411,9 +5097,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Separation of duties and independent approval.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-6-a"
-          ],
+          "objectiveRefs": ["obj-4-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5446,9 +5130,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Risk-based approval and reversible execution.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-7-a"
-          ],
+          "objectiveRefs": ["obj-4-7-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5481,9 +5163,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Idempotency using stable event identifiers.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-7-a"
-          ],
+          "objectiveRefs": ["obj-4-7-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5516,9 +5196,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Contain it using documented evidence-preserving procedures.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-8-a"
-          ],
+          "objectiveRefs": ["obj-4-8-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5551,9 +5229,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Record and verify a cryptographic hash.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-4-9-a"
-          ],
+          "objectiveRefs": ["obj-4-9-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5586,9 +5262,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Assigned control owners, metrics and review records.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-1-a"
-          ],
+          "objectiveRefs": ["obj-5-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5621,9 +5295,7 @@
           "maxMarks": 1,
           "expectedAnswer": "To retain an attributable approved change history.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-1-a"
-          ],
+          "objectiveRefs": ["obj-5-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5656,9 +5328,7 @@
           "maxMarks": 1,
           "expectedAnswer": "$4,000.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-2-a"
-          ],
+          "objectiveRefs": ["obj-5-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5691,9 +5361,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Define measurable uptime and response commitments → Service-level agreement; Check security and privacy controls before granting sensitive access → Supplier due diligence; Track the supplier's remediation of identified control deficiencies → Third-party risk treatment; Plan data retrieval and secure termination when a contract ends → Exit and transition planning",
           "markingGuidance": "Equal proportional marks per correct item, position or field, rounded down. No unreviewed scoring change permitted.",
-          "objectiveRefs": [
-            "obj-5-3-a"
-          ],
+          "objectiveRefs": ["obj-5-3-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -5751,9 +5419,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Risk acceptance.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-2-a"
-          ],
+          "objectiveRefs": ["obj-5-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5786,9 +5452,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Assess relevant security controls and breach-notification duties; Record contractual data-processing and access responsibilities.",
           "markingGuidance": "Both correct options must be selected; any wrong or missing selection earns zero. Independent review required.",
-          "objectiveRefs": [
-            "obj-5-3-a"
-          ],
+          "objectiveRefs": ["obj-5-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -5813,10 +5477,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "s21a",
-              "s21d"
-            ]
+            "correctOptionIds": ["s21a", "s21d"]
           }
         },
         {
@@ -5826,9 +5487,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Reconcile design with applicable law and contracts.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-4-a"
-          ],
+          "objectiveRefs": ["obj-5-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5861,9 +5520,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Corrective-action ownership and effectiveness evidence.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-5-a"
-          ],
+          "objectiveRefs": ["obj-5-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5896,9 +5553,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Observed reporting and follow-up outcomes.",
           "markingGuidance": "Single best answer; academic and evidence review required before release.",
-          "objectiveRefs": [
-            "obj-5-6-a"
-          ],
+          "objectiveRefs": ["obj-5-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5941,9 +5596,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Physical.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -5976,9 +5629,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Agreed service expectations and responsibilities.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-3-a"
-          ],
+          "objectiveRefs": ["obj-5-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6011,9 +5662,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A correctly ordered firewall access rule.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-5-a"
-          ],
+          "objectiveRefs": ["obj-4-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6046,9 +5695,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Correctly configured TLS.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6081,9 +5728,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A suspicious indicator requiring investigation.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6116,9 +5761,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Digital signatures.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6151,9 +5794,7 @@
           "maxMarks": 1,
           "expectedAnswer": "External auditors are organisationally independent of the auditee; internal auditors may work within the organisation.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-5-a"
-          ],
+          "objectiveRefs": ["obj-5-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6186,9 +5827,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Consistent and timely triage initiation.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-7-a"
-          ],
+          "objectiveRefs": ["obj-4-7-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6221,9 +5860,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Change or remove default credentials.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-1-a"
-          ],
+          "objectiveRefs": ["obj-4-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6256,9 +5893,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Least privilege.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6291,9 +5926,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Nation-state actor.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6326,9 +5959,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Threats, systems, policies and employee roles change over time.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-6-a"
-          ],
+          "objectiveRefs": ["obj-5-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6361,9 +5992,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Timestamped DNS, proxy and network connection logs.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-9-a"
-          ],
+          "objectiveRefs": ["obj-4-9-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6396,9 +6025,7 @@
           "maxMarks": 1,
           "expectedAnswer": "An inventory with an identified owner and classification.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-2-a"
-          ],
+          "objectiveRefs": ["obj-4-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6431,9 +6058,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Serverless computing.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6466,9 +6091,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Vishing with impersonation.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6501,9 +6124,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Risk transfer through insurance or contractual arrangements.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-2-a"
-          ],
+          "objectiveRefs": ["obj-5-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6536,9 +6157,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Accurate synchronised timestamps.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-4-a"
-          ],
+          "objectiveRefs": ["obj-4-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6571,9 +6190,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Tokenisation.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6606,9 +6223,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Time-of-check/time-of-use race.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6641,9 +6256,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Authorization.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6676,9 +6289,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Legal, regulatory, financial and reputational exposure.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-4-a"
-          ],
+          "objectiveRefs": ["obj-5-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6711,9 +6322,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Review and remove access no longer required by the former role; Grant only the newly approved permissions needed for the new role.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-4-6-a"
-          ],
+          "objectiveRefs": ["obj-4-6-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -6738,10 +6347,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m60a",
-              "m60b"
-            ]
+            "correctOptionIds": ["m60a", "m60b"]
           }
         },
         {
@@ -6751,9 +6357,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Warm site.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6786,9 +6390,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Impossible travel.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6821,9 +6423,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Symmetric encryption with a securely managed key.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6856,9 +6456,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Targeted practical coaching and follow-up measurement.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-6-a"
-          ],
+          "objectiveRefs": ["obj-5-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6891,9 +6489,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Contain ongoing harm while preserving necessary evidence.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-8-a"
-          ],
+          "objectiveRefs": ["obj-4-8-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6926,9 +6522,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Approved media sanitisation and asset-record update.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-2-a"
-          ],
+          "objectiveRefs": ["obj-4-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6961,9 +6555,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Infrastructure as code.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -6996,9 +6588,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Available resources and operational sophistication.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7031,9 +6621,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Assign documented asset/data owners and responsibilities.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-1-a"
-          ],
+          "objectiveRefs": ["obj-5-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7066,9 +6654,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Authenticated scanning can provide deeper configuration and installed-software visibility.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7101,9 +6687,7 @@
           "maxMarks": 1,
           "expectedAnswer": "VPN plus a tightly controlled jump host.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7136,9 +6720,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Use parameterised database queries; Validate and constrain input against the application's expected form.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -7163,10 +6745,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m19b",
-              "m19c"
-            ]
+            "correctOptionIds": ["m19b", "m19c"]
           }
         },
         {
@@ -7176,9 +6755,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Detective.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7211,9 +6788,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Periodic reassessment with remediation obligations and exit plans.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-3-a"
-          ],
+          "objectiveRefs": ["obj-5-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7246,9 +6821,7 @@
           "maxMarks": 1,
           "expectedAnswer": "An IPS can block matching traffic in the forwarding path.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-5-a"
-          ],
+          "objectiveRefs": ["obj-4-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7281,9 +6854,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Keep appropriately isolated or immutable backup copies; Perform periodic restoration tests and check recovered data.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -7308,10 +6879,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m41a",
-              "m41d"
-            ]
+            "correctOptionIds": ["m41a", "m41d"]
           }
         },
         {
@@ -7321,9 +6889,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Password spraying.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7356,9 +6922,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Obtain authorised approval and record the change; Document and test a rollback plan.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -7383,10 +6947,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m7b",
-              "m7c"
-            ]
+            "correctOptionIds": ["m7b", "m7c"]
           }
         },
         {
@@ -7396,9 +6957,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Documented differences and prioritised improvement actions.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-5-a"
-          ],
+          "objectiveRefs": ["obj-5-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7431,9 +6990,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Defined authorisation, scope, audit trail and rollback/override path.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-7-a"
-          ],
+          "objectiveRefs": ["obj-4-7-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7466,9 +7023,7 @@
           "maxMarks": 1,
           "expectedAnswer": "It defines a reviewable, repeatable approved starting configuration.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-1-a"
-          ],
+          "objectiveRefs": ["obj-4-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7501,9 +7056,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Test, deploy and verify the patch under change control.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7536,9 +7089,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Malicious insider.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7571,9 +7122,7 @@
           "maxMarks": 1,
           "expectedAnswer": "An authorised business risk owner.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-1-a"
-          ],
+          "objectiveRefs": ["obj-5-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7606,9 +7155,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Use exploitability, exposure and business criticality, not base score alone.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7641,9 +7188,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Web application firewall.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7676,9 +7221,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Disable unneeded services and close unnecessary exposed ports.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7711,9 +7254,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Evidence of relevant vendor security controls and breach notification commitments; Contractual responsibilities for data protection and access.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-5-3-a"
-          ],
+          "objectiveRefs": ["obj-5-3-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -7738,10 +7279,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m73a",
-              "m73d"
-            ]
+            "correctOptionIds": ["m73a", "m73d"]
           }
         },
         {
@@ -7751,9 +7289,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Network flow records and packet captures.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-4-a"
-          ],
+          "objectiveRefs": ["obj-4-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7786,9 +7322,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Data classification and access governance.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7821,9 +7355,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Zero-day vulnerability.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7856,9 +7388,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Evaluate identity, device posture and policy for that request.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-2-a"
-          ],
+          "objectiveRefs": ["obj-1-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7891,9 +7421,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Auditable records allow responsible parties to demonstrate operation of controls.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-4-a"
-          ],
+          "objectiveRefs": ["obj-5-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7926,9 +7454,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Just-in-time privileged access.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-6-a"
-          ],
+          "objectiveRefs": ["obj-4-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7961,9 +7487,7 @@
           "maxMarks": 1,
           "expectedAnswer": "They provide evidence that data and systems can actually be recovered.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -7996,9 +7520,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Segment sensitive workloads behind explicit access rules; Apply least-privilege identity and network permissions.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -8023,10 +7545,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m27b",
-              "m27c"
-            ]
+            "correctOptionIds": ["m27b", "m27c"]
           }
         },
         {
@@ -8036,9 +7555,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A salted, purpose-built password hashing scheme.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8071,9 +7588,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Verify unusual payment requests via an independently known contact channel.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-6-a"
-          ],
+          "objectiveRefs": ["obj-5-6-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8106,9 +7621,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Chain of custody.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-9-a"
-          ],
+          "objectiveRefs": ["obj-4-9-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8141,9 +7654,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Who owns the asset and whether it is authorised.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-2-a"
-          ],
+          "objectiveRefs": ["obj-4-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8176,9 +7687,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Microservices.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8211,9 +7720,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Unexpected urgency to open a credential-collection link; An unusual sender domain that only resembles the employer.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -8238,10 +7745,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m15b",
-              "m15c"
-            ]
+            "correctOptionIds": ["m15b", "m15c"]
           }
         },
         {
@@ -8251,9 +7755,7 @@
           "maxMarks": 1,
           "expectedAnswer": "$10,000.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-2-a"
-          ],
+          "objectiveRefs": ["obj-5-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8286,9 +7788,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Synchronise system clocks using a trusted time source; Protect log integrity and retain events from relevant systems.",
           "markingGuidance": "Two selections required. All-or-nothing rubric for this mock item; subject to independent review.",
-          "objectiveRefs": [
-            "obj-4-4-a"
-          ],
+          "objectiveRefs": ["obj-4-4-a"],
           "questionType": "MULTIPLE_SELECT",
           "interaction": {
             "options": [
@@ -8313,10 +7813,7 @@
             "scoringRule": "ALL_OR_NOTHING"
           },
           "answerKey": {
-            "correctOptionIds": [
-              "m54c",
-              "m54d"
-            ]
+            "correctOptionIds": ["m54c", "m54d"]
           }
         },
         {
@@ -8326,9 +7823,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Data at rest.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-3-a"
-          ],
+          "objectiveRefs": ["obj-3-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8361,9 +7856,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Cross-site scripting.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-3-a"
-          ],
+          "objectiveRefs": ["obj-2-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8396,9 +7889,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Compensating.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-1-a"
-          ],
+          "objectiveRefs": ["obj-1-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8431,9 +7922,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Which laws, contractual duties and data-processing roles actually apply.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-4-a"
-          ],
+          "objectiveRefs": ["obj-5-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8466,9 +7955,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Web application firewall.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-5-a"
-          ],
+          "objectiveRefs": ["obj-4-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8501,9 +7988,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Recovery time objective.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-4-a"
-          ],
+          "objectiveRefs": ["obj-3-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8536,9 +8021,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Ransomware.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-4-a"
-          ],
+          "objectiveRefs": ["obj-2-4-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8571,9 +8054,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Separation of duties.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-1-3-a"
-          ],
+          "objectiveRefs": ["obj-1-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8606,9 +8087,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Assign a corrective action, owner, deadline and verified evidence of effectiveness.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-5-a"
-          ],
+          "objectiveRefs": ["obj-5-5-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8641,9 +8120,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Idempotent action handling.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-7-a"
-          ],
+          "objectiveRefs": ["obj-4-7-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8676,9 +8153,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Configuration compliance monitoring.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-1-a"
-          ],
+          "objectiveRefs": ["obj-4-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8711,9 +8186,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Securing guest operating systems and configured workloads.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-1-a"
-          ],
+          "objectiveRefs": ["obj-3-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8746,9 +8219,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Hacktivism.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-1-a"
-          ],
+          "objectiveRefs": ["obj-2-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8781,9 +8252,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Policies set direction; procedures define how work is performed.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-5-1-a"
-          ],
+          "objectiveRefs": ["obj-5-1-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8816,9 +8285,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Validate the affected asset through appropriate rescan or verification.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-4-3-a"
-          ],
+          "objectiveRefs": ["obj-4-3-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8851,9 +8318,7 @@
           "maxMarks": 1,
           "expectedAnswer": "A passive network tap or mirrored port.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8886,9 +8351,7 @@
           "maxMarks": 1,
           "expectedAnswer": "Supply-chain compromise.",
           "markingGuidance": "One mark for the sole correct option; other options earn zero. Item requires independent technical review before academic release.",
-          "objectiveRefs": [
-            "obj-2-2-a"
-          ],
+          "objectiveRefs": ["obj-2-2-a"],
           "questionType": "SINGLE_SELECT",
           "interaction": {
             "options": [
@@ -8921,9 +8384,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Detect and triage -> contain affected hosts -> eradicate malware and close entry point -> recover validated systems.",
           "markingGuidance": "Original Ducelio demonstration item. Credit is awarded according to the disclosed interaction scoring rule. Independent review required before publication.",
-          "objectiveRefs": [
-            "obj-4-8-a"
-          ],
+          "objectiveRefs": ["obj-4-8-a"],
           "questionType": "PBQ_ORDERING",
           "interaction": {
             "steps": [
@@ -8947,12 +8408,7 @@
             "scoringRule": "PER_POSITION_PROPORTIONAL"
           },
           "answerKey": {
-            "correctOrder": [
-              "r6a",
-              "r9d",
-              "r1t",
-              "r4f"
-            ]
+            "correctOrder": ["r6a", "r9d", "r1t", "r4f"]
           }
         },
         {
@@ -8962,9 +8418,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Permit inbound TCP 443; deny direct internet management; WAF for web requests; send security logs to SIEM.",
           "markingGuidance": "Original Ducelio demonstration item. Credit is awarded according to the disclosed interaction scoring rule. Independent review required before publication.",
-          "objectiveRefs": [
-            "obj-3-2-a"
-          ],
+          "objectiveRefs": ["obj-3-2-a"],
           "questionType": "PBQ_CONFIGURATION",
           "interaction": {
             "scenario": "An internet-facing e-commerce website must accept encrypted customer sessions while administration remains private. Choose secure baseline settings; this is a bounded configuration exercise and does not execute network commands.",
@@ -9060,9 +8514,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Confidentiality of bulk data -> symmetric encryption; integrity fingerprint -> cryptographic hash; proof of signer -> digital signature; verified identity binding to public key -> certificate.",
           "markingGuidance": "Original Ducelio demonstration item. Credit is awarded according to the disclosed interaction scoring rule. Independent review required before publication.",
-          "objectiveRefs": [
-            "obj-1-4-a"
-          ],
+          "objectiveRefs": ["obj-1-4-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -9120,9 +8572,7 @@
           "maxMarks": 4,
           "expectedAnswer": "SLE=$40,000; ARO=0.25; ALE=$10,000; response=treat with tested controls and record residual risk.",
           "markingGuidance": "Original Ducelio demonstration item. Credit is awarded according to the disclosed interaction scoring rule. Independent review required before publication.",
-          "objectiveRefs": [
-            "obj-5-2-a"
-          ],
+          "objectiveRefs": ["obj-5-2-a"],
           "questionType": "PBQ_CONFIGURATION",
           "interaction": {
             "scenario": "A cyber incident is estimated to cost $40,000 each time and to occur, on average, once every four years. Treat probability estimates as planning assumptions, not certainties.",
@@ -9218,9 +8668,7 @@
           "maxMarks": 4,
           "expectedAnswer": "New hire -> provision scoped access; role change -> adjust access; termination -> revoke access; temporary admin need -> time-bounded privileged access.",
           "markingGuidance": "Original Ducelio demonstration item. Credit is awarded according to the disclosed interaction scoring rule. Independent review required before publication.",
-          "objectiveRefs": [
-            "obj-4-6-a"
-          ],
+          "objectiveRefs": ["obj-4-6-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -9278,9 +8726,7 @@
           "maxMarks": 4,
           "expectedAnswer": "Unnecessary exposed service -> disable service; lateral movement -> segmentation; excessive permissions -> least privilege; missing security updates -> patch management.",
           "markingGuidance": "Original Ducelio demonstration item. Credit is awarded according to the disclosed interaction scoring rule. Independent review required before publication.",
-          "objectiveRefs": [
-            "obj-2-5-a"
-          ],
+          "objectiveRefs": ["obj-2-5-a"],
           "questionType": "PBQ_MATCHING",
           "interaction": {
             "items": [
@@ -9335,11 +8781,7 @@
     }
   ],
   "schedulingDefaults": {
-    "studyDays": [
-      1,
-      3,
-      5
-    ],
+    "studyDays": [1, 3, 5],
     "localStartTime": "19:00",
     "timezone": "America/New_York"
   },
@@ -9388,19 +8830,14 @@
       "enabled": true,
       "modelProfileRef": "EXAMINER_COMMERCIAL_V1",
       "instructionalNotes": "Grade controlled-assessment attempts and practical-lab submissions against this course's own original questions, expected answers and marking guidance only.",
-      "capabilities": [
-        "grade_controlled_assessment",
-        "grade_practical_lab"
-      ],
+      "capabilities": ["grade_controlled_assessment", "grade_practical_lab"],
       "escalationPolicy": "NONE"
     },
     "COUNSELLOR": {
       "enabled": true,
       "modelProfileRef": null,
       "instructionalNotes": "Provide persistent, non-academic learner support for Security+ students. Counsellor remains non-provider-backed in Commercial V1 and owns no grade, enrolment or curriculum authority.",
-      "capabilities": [
-        "get_current_learner_context"
-      ],
+      "capabilities": ["get_current_learner_context"],
       "escalationPolicy": "NONE"
     }
   },
