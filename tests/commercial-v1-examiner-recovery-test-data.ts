@@ -57,6 +57,8 @@ export const assessmentContext = {
       responseBody: "Protected response",
     },
   ],
+  objectiveMarks: [],
+  objectiveQuestionCount: 0,
 };
 export const labContext = {
   submissionId: uuid(10),

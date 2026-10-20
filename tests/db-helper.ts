@@ -6,17 +6,15 @@ import { resolve } from "node:path";
 type TestDatabaseOptions = {
   throughMigration?: number;
   supabaseDefaultPrivileges?: boolean;
-  // Migration files that are not (yet) in supabase/migrations, applied in
-  // order after the repository chain and before the seed -- exactly where
-  // they will sit once merged. Used by the CP2 deployment-bridge suite to
-  // run this application against the reviewed migration 059.
-  extraMigrationFiles?: string[];
 };
 
 // Roles are cluster-wide on a real PostgreSQL server (they outlive any one
 // test database), so creation is idempotent; PGlite behaves identically.
+// Two suites creating the same role at the same instant on one server can
+// lose the race on the pg_authid unique index (unique_violation) rather than
+// see duplicate_object; either way the role exists, so both are ignored.
 const role = (name: string, attributes: string) =>
-  `do $$ begin create role ${name} ${attributes}; exception when duplicate_object then null; end $$;`;
+  `do $$ begin create role ${name} ${attributes}; exception when duplicate_object or unique_violation then null; end $$;`;
 
 // The exact SQL sequence every test database is built from: preamble,
 // migrations in order, then the seed. PGlite (testDatabase) and the
@@ -73,8 +71,6 @@ export async function testDatabaseStatements(
     `);
     statements.push(await readFile(resolve(root, file), "utf8"));
   }
-  for (const file of options.extraMigrationFiles ?? [])
-    statements.push(await readFile(resolve(file), "utf8"));
   statements.push(await readFile(resolve("supabase/seed.sql"), "utf8"));
   return statements;
 }

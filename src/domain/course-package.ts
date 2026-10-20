@@ -4,6 +4,12 @@ import {
   roleCapabilityCatalogue,
 } from "./academic-capability-policy";
 import { validateRoleModelProfileRef } from "./academic-runtime-profile";
+import {
+  answerKeyIssues,
+  interactionIssues,
+  isObjectiveQuestionType,
+  questionTypeSchema,
+} from "./assessment-question-types";
 
 // Commercial V1 Course & Agent Engineering: versioned package/manifest contract.
 // Pure domain module: no node/server built-ins, no database access. A package
@@ -116,16 +122,66 @@ const assignmentTemplateSchema = z.strictObject({
   rubric: z.array(rubricCriterionSchema).min(1).max(50),
 });
 
-const assessmentQuestionTemplateSchema = z.strictObject({
-  // Omitted in legacy V1: inherit the assessment anchor lesson.
-  lessonRef: localRef.optional(),
-  position,
-  prompt: boundedText,
-  maxMarks: z.number().int().min(1).max(100),
-  expectedAnswer: boundedText,
-  markingGuidance: z.string().trim().min(1).max(12000).nullable(),
-  objectiveRefs: z.array(localRef).min(1).max(50),
-});
+const assessmentQuestionTemplateSchema = z
+  .strictObject({
+    // Omitted in legacy V1: inherit the assessment anchor lesson.
+    lessonRef: localRef.optional(),
+    position,
+    prompt: boundedText,
+    maxMarks: z.number().int().min(1).max(100),
+    // For an objective question this is the protected rationale shown only
+    // to staff reviewers; marks come from answerKey, never from this text.
+    expectedAnswer: boundedText,
+    markingGuidance: z.string().trim().min(1).max(12000).nullable(),
+    objectiveRefs: z.array(localRef).min(1).max(50),
+    // CP2 additive V1 extension (migration 059). Omitted => FREE_TEXT, so
+    // every existing package keeps its exact meaning. `interaction` is the
+    // learner-visible definition; `answerKey` is protected and is stripped
+    // by the database preview redaction like expectedAnswer.
+    questionType: questionTypeSchema.optional(),
+    interaction: z.unknown().optional(),
+    answerKey: z.unknown().optional(),
+  })
+  .superRefine((question, ctx) => {
+    const type = question.questionType ?? "FREE_TEXT";
+    if (!isObjectiveQuestionType(type)) {
+      for (const field of ["interaction", "answerKey"] as const)
+        if (question[field] !== undefined)
+          ctx.addIssue({
+            code: "custom",
+            path: [field],
+            message: `A free-text question cannot declare ${field}.`,
+          });
+      return;
+    }
+    for (const field of ["interaction", "answerKey"] as const)
+      if (question[field] === undefined)
+        ctx.addIssue({
+          code: "custom",
+          path: [field],
+          message: `An objective question requires ${field}.`,
+        });
+    if (question.interaction === undefined || question.answerKey === undefined)
+      return;
+    const interaction = interactionIssues(type, question.interaction);
+    for (const i of interaction)
+      ctx.addIssue({
+        code: "custom",
+        path: ["interaction", ...i.path],
+        message: i.message,
+      });
+    if (interaction.length) return;
+    for (const i of answerKeyIssues(
+      type,
+      question.interaction,
+      question.answerKey,
+    ))
+      ctx.addIssue({
+        code: "custom",
+        path: ["answerKey", ...i.path],
+        message: i.message,
+      });
+  });
 
 // Controlled-assessment content. Answer keys/marking guidance never leave the
 // package/staging layer unredacted toward a learner-readable surface; the

@@ -30,15 +30,16 @@ export async function owner(f: AssessmentPolicyFixture) {
 // commercial-v1-examiner-recovery-fixture.ts), so tests use QUIZ_1 unless a
 // scenario explicitly needs otherwise.
 export async function submissionGradingFixture(
-  opts: Pick<
-    Parameters<typeof buildAssessmentPolicyFixture>[0],
-    "migration059" | "quiz1QuestionsAfterValidation"
-  > & { escalateToAcademicReview?: boolean } = {},
+  opts: {
+    quiz1Questions?: Parameters<
+      typeof buildAssessmentPolicyFixture
+    >[0]["quiz1Questions"];
+    escalateToAcademicReview?: boolean;
+  } = {},
 ) {
   const f = await buildAssessmentPolicyFixture({
     withLabs: true,
-    migration059: opts.migration059,
-    quiz1QuestionsAfterValidation: opts.quiz1QuestionsAfterValidation,
+    quiz1Questions: opts.quiz1Questions,
     examinerAgentConfig: {
       capabilities: ["grade_controlled_assessment", "grade_practical_lab"],
       escalationPolicy: opts.escalateToAcademicReview

@@ -1,4 +1,5 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
+import { examinerProviderContext } from "@/domain/commercial-v1-examiner-grading";
 import {
   snapshot,
   labSnapshot,
@@ -124,8 +125,9 @@ describe("dedicated regrade orchestrator", () => {
       ]);
       expect(mocks.runtime).toHaveBeenCalledTimes(1);
       const providerInput = mocks.runtime.mock.calls[0][1];
+      // CP2: the provider receives exactly the pre-CP2 context shape.
       expect(providerInput.context).toEqual(
-        lab ? labContext : assessmentContext,
+        lab ? labContext : examinerProviderContext(assessmentContext),
       );
       expect(JSON.stringify(providerInput)).not.toContain(input.reason);
       expect(providerInput).not.toHaveProperty("snapshot");

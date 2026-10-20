@@ -1,9 +1,8 @@
 import "server-only";
 import { z } from "zod";
 import {
-  examinerAssessmentContextWireSchema,
+  examinerAssessmentContextSchema,
   examinerLabContextSchema,
-  legacyExaminerAssessmentContext,
 } from "@/domain/commercial-v1-examiner-grading";
 import {
   RegradeDenied,
@@ -23,7 +22,7 @@ export async function getRegradeContext(
   });
   // Strict B1 allowlist excludes old grades, outcomes, digest and admin reason.
   if (snapshot.targetKind === "ASSESSMENT_ATTEMPT") {
-    const parsed = examinerAssessmentContextWireSchema
+    const parsed = examinerAssessmentContextSchema
       .extend({ ok: z.literal(true) })
       .safeParse(data);
     if (
@@ -32,15 +31,11 @@ export async function getRegradeContext(
       parsed.data.component !== snapshot.component
     )
       throw new RegradeDenied("SERVICE_UNAVAILABLE");
-    // CP2 bridge (migration 059): objective questions are never graded here.
-    const context = legacyExaminerAssessmentContext(
-      examinerAssessmentContextWireSchema.parse(
-        Object.fromEntries(
-          Object.entries(parsed.data).filter(([k]) => k !== "ok"),
-        ),
+    const context = examinerAssessmentContextSchema.parse(
+      Object.fromEntries(
+        Object.entries(parsed.data).filter(([k]) => k !== "ok"),
       ),
     );
-    if (!context) throw new RegradeDenied("SERVICE_UNAVAILABLE");
     return { kind: "ASSESSMENT" as const, context };
   }
   const parsed = examinerLabContextSchema

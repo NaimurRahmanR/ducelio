@@ -9,6 +9,11 @@ import {
 } from "@/app/admin/actions";
 import { Badge, Card, EmptyState } from "./ui";
 import { LocalDateTimeField } from "./local-datetime-field";
+import { ObjectiveQuestionEditor } from "./objective-question-editor";
+import {
+  QUESTION_TYPE_LABELS,
+  type QuestionType,
+} from "@/domain/assessment-question-types";
 
 type Assessment = {
   id: string;
@@ -34,6 +39,7 @@ type Question = {
   position: number;
   prompt: string;
   max_marks: number;
+  question_type: QuestionType;
 };
 type Attempt = {
   id: string;
@@ -266,6 +272,27 @@ export function AssessmentWorkspace({
       </Card>
 
       <Card>
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">DETERMINISTICALLY SCORED</p>
+            <h2>Add objective question</h2>
+          </div>
+          <Badge tone="gold">PROTECTED KEY</Badge>
+        </div>
+        <p className="muted">
+          Multiple choice, multiple response and performance-based matching,
+          ordering and configuration questions. The answer key is stored
+          separately from learner-visible content and is never shown to
+          learners; marks are computed by the database from the published key.
+        </p>
+        <ObjectiveQuestionEditor
+          draftAssessments={assessments
+            .filter((a) => a.status === "DRAFT")
+            .map((a) => ({ id: a.id, title: a.title }))}
+        />
+      </Card>
+
+      <Card>
         <h2>Assessment register</h2>
         <Message state={statusState} />
         {assessments.length ? (
@@ -301,8 +328,9 @@ export function AssessmentWorkspace({
                 </p>
                 {questions.map((question) => (
                   <p className="muted" key={question.id}>
-                    Q{question.position}: {question.prompt} ·{" "}
-                    {question.max_marks} marks
+                    Q{question.position} ·{" "}
+                    {QUESTION_TYPE_LABELS[question.question_type]}:{" "}
+                    {question.prompt} · {question.max_marks} marks
                   </p>
                 ))}
                 {assessment.status !== "CLOSED" && (

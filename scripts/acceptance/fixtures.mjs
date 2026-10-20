@@ -426,7 +426,13 @@ export async function seedAcceptanceCourse(
         recoveryActorId: resolvedInstructorId,
       };
     });
-  const pkg = buildAcceptancePackage(runId, options);
+  // options.transformPackage (CP2 exam-engine acceptance only) replaces the
+  // synthetic question set and Examiner escalation before import; the
+  // hosted package validator and activation still validate everything.
+  const built = buildAcceptancePackage(runId, options);
+  const pkg = options.transformPackage
+    ? options.transformPackage(built)
+    : built;
   const call = async (name, args) => {
     const { data, error } = await admin.rpc(name, args);
     if (error)

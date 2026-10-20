@@ -123,6 +123,9 @@ function parseGovernedRequest(raw, journey = false) {
         ? input.context.attemptId
         : null,
     questions: bounded,
+    // CP2: identifiers only -- which questions and which top-level context
+    // keys the provider received (never their content).
+    contextKeys: Object.keys(input.context ?? {}).sort(),
     requestBytes: Buffer.byteLength(raw),
   };
 }
@@ -303,7 +306,17 @@ function awaitRelease(hold, res) {
 // recovery, regrade or lab) awards zero marks -- how the journey produces a
 // genuine below-pass-mark result through production grading. Journey call
 // records also carry the transport, model id, role and lab submission id.
-export async function startProviderStub({ journey = false } = {}) {
+// CP2 exam-engine acceptance only (both opt-in; the default records are
+// unchanged): `identifiers` adds each grading request's answered-question
+// ids and context key set (identifiers, never content) to its call record;
+// `inspect` is called in-process with each raw provider request so the
+// driver can scan it for protected markers -- its return value is ignored
+// and nothing it sees is stored by the stub.
+export async function startProviderStub({
+  journey = false,
+  inspect = null,
+  identifiers = false,
+} = {}) {
   const apiKey = `acceptance-stub-${randomBytes(24).toString("hex")}`;
   const contextHoldToken = randomBytes(32).toString("hex");
   const calls = [];
@@ -322,14 +335,27 @@ export async function startProviderStub({ journey = false } = {}) {
           role: request?.role ?? null,
           model: request?.model ?? null,
           outcome,
+          ...grading(request),
           ...extra,
         }
       : {
           capability: request?.capability ?? null,
           attemptId: request?.attemptId ?? null,
           outcome,
+          ...grading(request),
           ...extra,
         };
+  // Grading requests only: the answered-question ids and context key set.
+  function grading(request) {
+    return identifiers &&
+      Array.isArray(request?.questions) &&
+      request?.contextKeys
+      ? {
+          questionIds: request.questions.map((q) => q.questionId),
+          contextKeys: request.contextKeys,
+        }
+      : {};
+  }
   const arm = (queue, kind) => {
     const hold = createHold(kind);
     queue.push(hold);
@@ -370,6 +396,11 @@ export async function startProviderStub({ journey = false } = {}) {
     let request;
     try {
       const raw = await readBody(req);
+      try {
+        inspect?.(raw);
+      } catch {
+        // An inspection failure never changes the stub's answer.
+      }
       request = anthropic
         ? parseAnthropicRequest(raw)
         : parseGovernedRequest(raw, journey);

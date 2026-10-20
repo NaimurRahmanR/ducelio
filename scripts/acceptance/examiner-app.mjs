@@ -85,6 +85,12 @@ const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const NEXT_BIN = fileURLToPath(
   new URL("../../node_modules/next/dist/bin/next", import.meta.url),
 );
+// The checkout the acceptance app server runs: this file's own repository
+// and its own Next.js binary, never another worktree.
+export const APP_CHECKOUT = Object.freeze({
+  root: REPO_ROOT,
+  nextBin: NEXT_BIN,
+});
 const PRELOAD = fileURLToPath(
   new URL("./examiner-provider-redirect.mjs", import.meta.url),
 );
@@ -1005,6 +1011,8 @@ export async function openExaminerAppSession({
   startApp = startAppServer,
   contextHold = false,
   journey = false,
+  // CP2 exam-engine acceptance only: raw provider-request inspection.
+  inspectProviderRequest = null,
 } = {}) {
   let stub;
   let child;
@@ -1046,7 +1054,11 @@ export async function openExaminerAppSession({
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     try {
-      stub = await startProviderStub({ journey });
+      stub = await startProviderStub({
+        journey,
+        inspect: inspectProviderRequest,
+        identifiers: Boolean(inspectProviderRequest),
+      });
     } catch {
       return refuse("The local deterministic provider stub could not start.");
     }

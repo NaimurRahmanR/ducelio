@@ -110,6 +110,8 @@ function assessmentContext() {
         responseBody: "My answer.",
       },
     ],
+    objectiveMarks: [],
+    objectiveQuestionCount: 0,
   };
 }
 function successfulRuntimeResult(outputText: string) {

@@ -6,10 +6,11 @@ export async function StudentAssessmentSection({ page }: { page: number }) {
   return (
     <StudentAssessments
       assessments={data.assessments}
+      activeAssessment={data.activeAssessment}
       attempts={data.attempts}
-      responses={data.responses}
       activityState={data.activityState}
       activeQuestions={data.activeQuestions}
+      serverNow={data.serverNow}
       pagination={data.pagination}
     />
   );

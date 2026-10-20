@@ -7,6 +7,11 @@ import {
   startAssessmentAttempt,
 } from "@/server/assessments";
 import { submitControlledAssessmentAndGrade } from "@/server/commercial-v1-submission-grading";
+import { answerSaveIdempotencyKey } from "@/server/assessment-save-key";
+import {
+  canonicalResponseBody,
+  objectiveQuestionTypeSchema,
+} from "@/domain/assessment-question-types";
 
 export type AssignmentSubmissionActionState = {
   error?: string;
@@ -68,19 +73,42 @@ const RESPONSE_REFUSAL_MESSAGES = {
 const RESPONSE_GENERIC_ERROR =
   "Unable to save this response. Check the active attempt, protected question, time window and submission reference.";
 
+// CP2: an objective answer is re-serialised to its single canonical text so
+// a retried save replays idempotently. The declared type only selects the
+// serialiser; the database validates the body against the question's REAL
+// published type and refuses any mismatch. Free text passes through.
+function structuredBody(type: FormDataEntryValue | null, body: unknown) {
+  const parsedType = objectiveQuestionTypeSchema.safeParse(type);
+  if (!parsedType.success || typeof body !== "string") return body;
+  return canonicalResponseBody(parsedType.data, JSON.parse(body));
+}
+
 export async function saveControlledAssessmentResponse(
   _state: AssessmentActionState,
   form: FormData,
 ): Promise<AssessmentActionState> {
   let outcome;
   try {
+    const body = structuredBody(form.get("questionType"), form.get("body"));
+    // CP2C: the exam workspace posts only the revision slot it is answering;
+    // the key is derived here from SHA-256 of the exact body being saved
+    // (src/server/assessment-save-key.ts). An explicit key is still accepted
+    // for the pre-existing form contract.
+    const idempotencyKey = form.has("revisionSlot")
+      ? answerSaveIdempotencyKey({
+          attemptId: form.get("attemptId"),
+          questionId: form.get("questionId"),
+          revisionSlot: form.get("revisionSlot"),
+          body,
+        })
+      : form.get("idempotencyKey");
     // The server decides, from authoritative state, which response writer
     // handles the attempt. Nothing here (or in the form) selects it.
     outcome = await recordAssessmentResponse({
       attemptId: form.get("attemptId"),
       questionId: form.get("questionId"),
-      body: form.get("body"),
-      idempotencyKey: form.get("idempotencyKey"),
+      body,
+      idempotencyKey,
     });
   } catch {
     return { error: RESPONSE_GENERIC_ERROR };

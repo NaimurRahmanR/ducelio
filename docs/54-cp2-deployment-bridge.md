@@ -101,11 +101,21 @@ Files:
 ## Deployment order
 
 1. Bridge PR → review → merge. Vercel deploys `main` (the bridge), which still runs on 058.
-2. Apply 059 (docs/55 procedure). The bridge keeps grading and review working, and refuses objective content.
+2. Apply 059 (docs/56 procedure). The bridge keeps grading and review working, and refuses objective content.
 3. Run hosted acceptance with the CP2 application (local loopback server).
 4. Merge CP2 onto the bridge. Vercel deploys CP2.
 
 CP2 overlaps this branch in the domain/context/review files and in the fixtures. CP2's versions supersede the bridge's A changes, which CP2 already requires. B is ported to CP2.
+
+## Reconciliation with CP2 (local, uncommitted)
+
+When `main` (`79c16a2`, this bridge merged) is merged into CP2 (`6394982`, PR #73):
+
+- **A is superseded.** CP2's domain and review schemas are used, and the three Examiner context readers return to CP2's version. Git merges those three readers silently to the bridge version because CP2 never edited them; left as merged, they would refuse every objective assessment and break CP2's types.
+- **The bridge-only test and fixture are retired.** `tests/cp2-deployment-bridge-db.test.ts` tests the pre-CP2 application. `tests/fixtures/cp2-migration-059-interactive-examination-engine.sql` is byte-identical to the canonical migration (SHA-256 `2a200a89…f2f7`, also the pin in the retired test), which would otherwise be applied twice. The bridge's lasting guarantees stay covered by CP2's own suites: the provider never receives objective questions or keys, and a human mark cannot differ from the deterministic one.
+- **B is kept.** The pagination is kept with CP2's exam workspace and server time. One defect not flagged by Git is fixed: CP2 found the live exam's assessment only on the current page, so an active attempt whose assessment is on another page rendered no workspace. The page-independent `activeAssessment` is now passed through, with a UI regression test (mutation-checked).
+
+Deployment order is unchanged: migration 059 must be applied before the CP2 application is deployed.
 
 ## Local gates
 

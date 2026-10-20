@@ -412,6 +412,8 @@ describe("getAssessmentWorkspace", () => {
       {
         list_assignable_instructors: ok([]),
         list_assessment_authoring_questions: ok([question]),
+        // CP2: type metadata only (no answer keys); none is objective here.
+        list_assessment_authoring_interactions: ok([]),
       },
     );
 
@@ -452,7 +454,12 @@ describe("getAssessmentWorkspace", () => {
       },
     ]);
     expect(workspace.questionsByAssessment).toEqual(
-      Object.fromEntries(assessmentRows.map((row) => [row.id, [question]])),
+      Object.fromEntries(
+        assessmentRows.map((row) => [
+          row.id,
+          [{ ...question, question_type: "FREE_TEXT" }],
+        ]),
+      ),
     );
   });
 

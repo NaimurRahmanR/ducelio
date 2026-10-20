@@ -1040,7 +1040,9 @@ describe("getStudentAssessments: one bounded retry of a transport-failed ACTIVIT
 
     const view = await getStudentAssessments();
 
-    expect(view).toEqual(expected);
+    // serverNow is display-only clock calibration (CP2) and naturally
+    // differs between the two reads; every institutional field must match.
+    expect({ ...view, serverNow: expected.serverNow }).toEqual(expected);
     expect(view.activityState).toBe("NORMAL");
     expect(calls(ACTIVITY)).toBe(2);
     expect(state.transportFail.times).toBe(0);

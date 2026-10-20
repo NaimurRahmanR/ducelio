@@ -16,6 +16,7 @@ import type {
   operationsEngineerCapabilityCatalogue,
 } from "@/domain/platform-ai-policy";
 import {
+  examinerProviderContext,
   parseExaminerAssessmentProviderOutput,
   validateExaminerAssessmentMarks,
   type ExaminerAssessmentContext,
@@ -261,6 +262,8 @@ export const SYNTHETIC_EXAMINER_CONTEXT: ExaminerAssessmentContext = {
       responseBody: "5",
     },
   ],
+  objectiveMarks: [],
+  objectiveQuestionCount: 0,
 };
 
 // Typed against the existing domain authority (no second allowlist): the
@@ -312,7 +315,8 @@ function syntheticContext(
 ): Record<string, unknown> {
   switch (operation) {
     case "OPENAI_EXAMINER_SMOKE":
-      return SYNTHETIC_EXAMINER_CONTEXT;
+      // The provider receives exactly the pre-CP2 context shape.
+      return examinerProviderContext(SYNTHETIC_EXAMINER_CONTEXT);
     case "ANTHROPIC_LAB_SMOKE":
       return SYNTHETIC_LAB_CONTEXT;
     case "ANTHROPIC_OPERATIONS_ENGINEER_SMOKE":
