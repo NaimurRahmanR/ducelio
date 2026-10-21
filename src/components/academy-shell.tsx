@@ -21,6 +21,7 @@ import {
   Trophy,
   Award,
   MessageCircle,
+  Compass,
 } from "lucide-react";
 import { Brand } from "./ui";
 import { logout } from "@/app/auth/actions";
@@ -112,6 +113,18 @@ export function AcademyShell({
             </Link>
           );
         })}
+      {/* The one public catalogue, shared with the homepage. Browsing needs
+          no cohort assignment; enrolment keeps its own checkout rules. */}
+      <Link
+        className="nav-link"
+        href="/courses"
+        onClick={(e) =>
+          e.currentTarget.closest("details")?.removeAttribute("open")
+        }
+      >
+        <Compass size={18} strokeWidth={1.7} />
+        Browse courses
+      </Link>
     </>
   );
   return (

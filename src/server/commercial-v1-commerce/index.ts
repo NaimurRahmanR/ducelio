@@ -27,12 +27,37 @@ import { config, commerceConfig } from "@/lib/env";
 import { getCommerceProvider } from "./provider";
 import { attestCommerceFulfillment } from "./authority";
 import { attestCheckoutSessionReplacement } from "./operations-authority";
+import {
+  CatalogueUnavailableError,
+  catalogueFailure,
+  classifyInvalidResponse,
+  classifyRpcFailure,
+  logCatalogueFailure,
+  type CatalogueFailure,
+} from "./catalogue-diagnostics";
 
+// The public catalogue: every offer list_commercial_v1_offers reports as
+// PUBLISHED, for any programme. Each failure is classified and logged
+// server-side (catalogue-diagnostics.ts) before the one generic error.
 export async function listCommercialV1Offers() {
+  const fail = (failure: CatalogueFailure): never => {
+    logCatalogueFailure(failure);
+    throw new CatalogueUnavailableError(failure);
+  };
+  let configured: boolean;
+  try {
+    configured = config().configured;
+  } catch {
+    return fail(catalogueFailure("INVALID_CONFIGURATION"));
+  }
+  if (!configured) return fail(catalogueFailure("NOT_CONFIGURED"));
   const client = await createSupabase();
-  const { data, error } = await client.rpc("list_commercial_v1_offers");
-  if (error) throw new Error("Courses could not be loaded.");
-  return commercialV1OfferListSchema.parse(data);
+  const { data, error, status } = await client.rpc("list_commercial_v1_offers");
+  if (error) return fail(classifyRpcFailure(status, error));
+  const parsed = commercialV1OfferListSchema.safeParse(data);
+  if (!parsed.success)
+    return fail(classifyInvalidResponse(parsed.error.issues));
+  return parsed.data;
 }
 
 export async function getCommercialV1Offer(slug: unknown) {
