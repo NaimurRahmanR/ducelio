@@ -27,7 +27,9 @@ function wholeNumber(value: string | undefined) {
 }
 function outcome(code: "RESULT_CREATED" | "ALREADY_RESOLVED") {
   revalidatePath("/admin/academic-review");
+  revalidatePath("/admin", "layout");
   revalidatePath("/admin/activation/recovery");
+  revalidatePath("/admin", "layout");
   return {
     message:
       code === "RESULT_CREATED"

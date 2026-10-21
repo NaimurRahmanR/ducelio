@@ -1,3 +1,8 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import Link from "next/link";
 import {
   getAcademicResultsWorkspace,
@@ -406,6 +411,16 @@ export default async function Page({
 }: {
   searchParams: Promise<Params>;
 }) {
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="academy"
+        title="Academic results"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
   const filters = parseAcademicResultFilters(await searchParams);
   const { actor, page, options, pageSize, selected, record, progress } =
     await getAcademicResultsWorkspace(filters);

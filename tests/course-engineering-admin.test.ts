@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
+  requireActor: mocks.actor,
   requireAnyRole: mocks.requireAnyRole,
 }));
 vi.mock("@/server/course-engineering", () => ({
@@ -586,11 +587,17 @@ describe("Course Engineering operator actions", () => {
 });
 describe("operator page and safe projections", () => {
   it("enforces the administrative gate before reads", async () => {
-    mocks.requireAnyRole.mockRejectedValue(new Error("denied"));
-    await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toThrow(
-      "denied",
+    mocks.actor.mockResolvedValue({
+      id: "x",
+      displayName: "Registrar",
+      roles: ["REGISTRAR"],
+    });
+    const html = renderToStaticMarkup(
+      await Page({ searchParams: Promise.resolve({}) }),
     );
+    expect(html).toContain("You do not have access to this workspace");
     expect(mocks.list).not.toHaveBeenCalled();
+    expect(mocks.preview).not.toHaveBeenCalled();
   });
   it("renders list and safe preview without protected values even from an unredacted mock", async () => {
     const pkg = buildPackage();
@@ -616,10 +623,9 @@ describe("operator page and safe projections", () => {
         key === "type" || key.startsWith("_") ? undefined : value,
       ),
     ).not.toMatch(/ANSWER_SENTINEL|GUIDANCE_SENTINEL|UNKNOWN_PRIVATE/);
-    expect(mocks.requireAnyRole).toHaveBeenCalledWith([
-      "ACADEMIC_ADMIN",
-      "PLATFORM_ADMIN",
-    ]);
+    // The page's role gate is its first step (adminWorkspaceAccess); which
+    // roles pass it is asserted for every page in admin-access-matrix.test.ts.
+    expect(mocks.actor).toHaveBeenCalled();
   });
   it("invalid preview never gets dumped; validation remains available", async () => {
     mocks.preview.mockResolvedValue({

@@ -1,3 +1,8 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import Link from "next/link";
 import { getAcademicReviewWorkspace } from "@/server/commercial-v1-academic-review";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
@@ -22,6 +27,16 @@ export default async function Page({
 }: {
   searchParams: Promise<{ case?: string }>;
 }) {
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="academy"
+        title="Academic review"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
   const { case: caseId } = await searchParams;
   const { actor, cases, selected, selectedError } =
     await getAcademicReviewWorkspace(caseId);

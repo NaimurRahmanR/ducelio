@@ -1,15 +1,32 @@
-import { requireAnyRole } from "@/server/identity";
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import { getCourseActivationOptions } from "@/server/course-activation";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { CourseActivationForm } from "@/components/course-activation-form";
 import { Card } from "@/components/ui";
 import Link from "next/link";
+// Rendered per request: the role guard must see the signed-in session.
+export const dynamic = "force-dynamic";
+
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ importId?: string }>;
 }) {
-  const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="courses"
+        title="Course activation"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
+  const actor = access.actor;
   const { importId } = await searchParams;
   const options = await getCourseActivationOptions(importId ?? null).catch(
     () => null,

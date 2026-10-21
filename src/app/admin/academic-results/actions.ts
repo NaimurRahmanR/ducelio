@@ -36,6 +36,7 @@ export async function regradeAcademicResultAction(
       reason: text(form, "reason"),
     });
     revalidatePath("/admin/academic-results");
+    revalidatePath("/admin", "layout");
     if (result.status === "REGRADED" || result.status === "ALREADY_REGRADED")
       return {
         message: regradeOutcomeMessages[result.status],
@@ -57,6 +58,7 @@ export async function completeAcademicEnrolmentAction(
       reason: text(form, "reason"),
     });
     revalidatePath("/admin/academic-results");
+    revalidatePath("/admin", "layout");
     return result.ok
       ? { message: completionOutcomeMessages[result.code] }
       : { error: completionOutcomeMessages[result.code] };

@@ -4,12 +4,16 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   diagnose: vi.fn(),
   authorise: vi.fn(),
+  actor: vi.fn(),
 }));
 vi.mock("@/server/commercial-v1-commerce/operations", () => ({
   listCommerceOperations: mocks.list,
   diagnoseCommerceAccess: mocks.diagnose,
 }));
-vi.mock("@/server/identity", () => ({ requireAnyRole: mocks.authorise }));
+vi.mock("@/server/identity", () => ({
+  requireActor: mocks.actor,
+  requireAnyRole: mocks.authorise,
+}));
 vi.mock("@/server/commercial-v1-commerce", () => ({
   listCommercialV1Campaigns: async () => [],
   listCommercialV1OfferActivations: async () => [],
@@ -27,10 +31,15 @@ beforeEach(() => {
 });
 describe("admin commerce operational console", () => {
   it("page denies unauthorised access before retrieving commerce records", async () => {
-    mocks.authorise.mockRejectedValue(new Error("Access denied"));
-    await expect(
-      CommercePage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow("Access denied");
+    mocks.actor.mockResolvedValue({
+      id,
+      displayName: "Registrar",
+      roles: ["REGISTRAR"],
+    });
+    const html = renderToStaticMarkup(
+      await CommercePage({ searchParams: Promise.resolve({}) }),
+    );
+    expect(html).toContain("You do not have access to this workspace");
     expect(mocks.list).not.toHaveBeenCalled();
   });
   it("renders search and honest empty results", async () => {

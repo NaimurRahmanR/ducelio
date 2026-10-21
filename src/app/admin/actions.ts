@@ -54,7 +54,7 @@ export async function publishProgramme(
         "Unable to publish this version. Check its curriculum completeness and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { message: "Programme version published." };
 }
 
@@ -74,7 +74,7 @@ export async function addEnrolment(
         "Unable to create this enrolment. Check the learner, cohort, published curriculum, existing enrolment state and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Learner enrolment confirmed." };
 }
@@ -95,7 +95,7 @@ export async function updateEnrolmentStatus(
         "Unable to change this enrolment status. Check the requested transition and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Enrolment status updated." };
 }
@@ -116,7 +116,7 @@ export async function assignLearnerCounsellor(
         "Unable to assign this counsellor. Check the learner, staff role and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/support");
   revalidatePath("/student");
   return { message: "Counsellor assignment updated." };
@@ -143,7 +143,7 @@ export async function addClassSession(
           : "Unable to schedule this class. Check the cohort, lesson, instructor, times and conflicts.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Class session scheduled." };
 }
@@ -164,7 +164,7 @@ export async function updateClassSessionStatus(
         "Unable to change this class session status. Check the requested transition and timing.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Class session status updated." };
 }
@@ -186,7 +186,7 @@ export async function saveAttendance(
         "Unable to record attendance. Check the session timing, learner enrolment, requested status and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Attendance record saved." };
 }
@@ -209,7 +209,7 @@ export async function saveLessonProgress(
         "Unable to record lesson progress. Check the session, learner enrolment, planned segment and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Lesson progress saved." };
 }
@@ -236,7 +236,7 @@ export async function addLearningResource(
         "Unable to add this resource. Check the draft lesson, resource type, content or HTTPS URL, position and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student/notes");
   return { message: "Learning resource added." };
 }
@@ -262,7 +262,7 @@ export async function saveLearningEvidence(
         "Unable to record learning evidence. Check the session, learner, objective, provenance key and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student/classes");
   return { message: "Learning evidence recorded." };
 }
@@ -288,7 +288,7 @@ export async function addAssignment(
         "Unable to create this assignment. Check the cohort, lesson, instructor, coursework window and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { message: "Assignment draft created." };
 }
 
@@ -308,7 +308,7 @@ export async function publishOrCloseAssignment(
         "Unable to change this assignment status. Check the lifecycle transition and your permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student/assignments");
   return { message: "Assignment status updated." };
 }
@@ -336,7 +336,7 @@ export async function addControlledAssessment(
         "Unable to create this assessment. Check the cohort, lesson, instructor, release window, duration and permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { message: "Assessment draft created." };
 }
 
@@ -361,7 +361,7 @@ export async function addProtectedAssessmentQuestion(
         "Unable to add this protected question. Check the draft assessment, question position, marks, answer key and permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { message: "Protected assessment question added." };
 }
 
@@ -394,7 +394,7 @@ export async function addObjectiveQuestion(
           : "Unable to add this objective question. Check the draft assessment, question position, marks, rationale and permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   return { message: "Objective assessment question added." };
 }
 
@@ -414,7 +414,7 @@ export async function publishOrCloseAssessment(
         "Unable to change this assessment status. Check the protected-question requirements, lifecycle transition and permissions.",
     };
   }
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student/assessments");
   return { message: "Assessment status updated." };
 }

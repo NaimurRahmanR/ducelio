@@ -3,6 +3,7 @@ import { createSupabase } from "@/server/supabase";
 import { config } from "@/lib/env";
 import { safeAuthDestination } from "@/domain/auth";
 import { logOAuthCallback } from "@/server/oauth-diagnostics";
+import { signedInHome } from "@/server/sign-in-home";
 export async function GET(request: NextRequest) {
   const env = config();
   const code = request.nextUrl.searchParams.get("code");
@@ -23,13 +24,15 @@ export async function GET(request: NextRequest) {
       flowId ? { flowId } : undefined,
     );
     logOAuthCallback({ ...diagnostic, exchangeAttempted: true, error });
-    if (!error)
-      return NextResponse.redirect(
-        new URL(
-          safeAuthDestination(request.nextUrl.searchParams.get("next")),
-          env.appUrl,
-        ),
+    if (!error) {
+      const explicit = safeAuthDestination(
+        request.nextUrl.searchParams.get("next"),
+        "",
       );
+      return NextResponse.redirect(
+        new URL(explicit || (await signedInHome(client)), env.appUrl),
+      );
+    }
   } else
     logOAuthCallback({ ...diagnostic, exchangeAttempted: false, error: null });
   return NextResponse.redirect(

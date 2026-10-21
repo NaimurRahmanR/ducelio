@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { config } from "@/lib/env";
 import { createSupabase } from "@/server/supabase";
+import { signedInHome } from "@/server/sign-in-home";
 import {
   logOAuthStart,
   oauthDiagnosticsEnabled,
@@ -19,8 +20,12 @@ const unavailable = {
   error:
     "Sign-in is awaiting academy configuration. You can explore the demo below.",
 };
-const callback = (next = "/student") =>
-  config().appUrl + "/auth/callback?next=" + encodeURIComponent(next);
+// Without an explicit destination, the callback sends the account to its own
+// home (src/server/sign-in-home.ts).
+const callback = (next?: string) =>
+  config().appUrl +
+  "/auth/callback" +
+  (next ? "?next=" + encodeURIComponent(next) : "");
 // PR13 section 11: a commercial purchase's selected course/checkout
 // destination (?next=/courses/...) survives login/signup/email
 // verification. Validated to a same-origin local path (never trusted
@@ -29,12 +34,17 @@ function nextFromForm(data: FormData) {
   const raw = data.get("next");
   return safeAuthDestination(typeof raw === "string" ? raw : null);
 }
+// The validated destination only when one was actually requested.
+function explicitNextFromForm(data: FormData) {
+  const raw = data.get("next");
+  return safeAuthDestination(typeof raw === "string" ? raw : null, "");
+}
 export async function login(
   _state: AuthState,
   data: FormData,
 ): Promise<AuthState> {
   if (!config().configured) return unavailable;
-  const next = nextFromForm(data);
+  const next = explicitNextFromForm(data);
   const parsed = signInSchema.safeParse(Object.fromEntries(data));
   if (!parsed.success)
     return { error: "Enter a valid email address and password." };
@@ -50,7 +60,7 @@ export async function login(
     await client.auth.signOut();
     return { error: "Please verify your email before signing in." };
   }
-  redirect(next);
+  redirect(next || (await signedInHome(client)));
 }
 export async function signup(
   _state: AuthState,
@@ -149,7 +159,7 @@ export async function resetPassword(
 }
 export async function oauth(data: FormData) {
   const provider = data.get("provider");
-  const next = nextFromForm(data);
+  const next = explicitNextFromForm(data) || undefined;
   const env = config();
   if (
     (provider !== "google" && provider !== "linkedin_oidc") ||

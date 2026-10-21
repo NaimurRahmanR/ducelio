@@ -37,7 +37,7 @@ export async function runSessionOperation(
             })
           : null;
     if (!result) return { error: sessionRefusalMessages.INVALID_INPUT };
-    revalidatePath("/admin");
+    revalidatePath("/admin", "layout");
     revalidatePath("/student");
     return {
       message: `${result.replay ? "Existing request confirmed" : "Operation completed"}: ${result.sessionIds.length} session(s). Historical records retained. Request ${result.requestId}.`,

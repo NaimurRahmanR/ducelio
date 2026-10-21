@@ -100,3 +100,15 @@ export function safeAuthDestination(
 }
 export const confirmationTypeSchema = z.enum(["email", "recovery"]);
 export type AuthState = { error?: string; message?: string };
+
+// Where a newly signed-in account lands when no explicit, allowlisted return
+// destination was requested. Administrators reach the control centre first
+// (even if they also hold a learner role); learners keep /student. This only
+// picks a starting page: the destination enforces its own authority.
+const ADMIN_HOME_ROLES = ["ACADEMIC_ADMIN", "REGISTRAR", "PLATFORM_ADMIN"];
+export function signInHome(roles: readonly string[]) {
+  if (roles.some((role) => ADMIN_HOME_ROLES.includes(role))) return "/admin";
+  if (roles.includes("STUDENT")) return "/student";
+  if (roles.includes("COUNSELLOR")) return "/support";
+  return "/student";
+}

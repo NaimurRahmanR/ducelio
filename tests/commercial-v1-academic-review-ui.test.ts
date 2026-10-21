@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
+  requireActor: mocks.actor,
   requireAnyRole: mocks.requireAnyRole,
 }));
 vi.mock("@/server/supabase", () => ({

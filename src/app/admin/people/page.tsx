@@ -1,3 +1,8 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  PLATFORM_ADMIN_ROLES,
+} from "@/server/admin-access";
 import { getPeopleWorkspace } from "@/server/people";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { PersonControls } from "@/components/admin-people-forms";
@@ -30,6 +35,16 @@ export default async function Page({
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
+  const access = await adminWorkspaceAccess(PLATFORM_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="academy"
+        title="People and roles"
+        requires={PLATFORM_ADMIN_ROLES}
+      />
+    );
   const { q } = await searchParams;
   const { actor, query, directory, audit } = await getPeopleWorkspace(q);
   return (

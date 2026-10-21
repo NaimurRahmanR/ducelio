@@ -198,6 +198,15 @@ describe("OAuth start: Google and LinkedIn share one PKCE server-action mechanis
     },
   );
 
+  it("without a return destination, asks Supabase to return to the bare APP_URL callback", async () => {
+    // The account's own home is chosen after the exchange (signedInHome);
+    // the callback URL itself carries no default destination.
+    const authorize = await startOAuth("google");
+    expect(authorize.searchParams.get("redirect_to")).toBe(
+      `${APP_URL}/auth/callback`,
+    );
+  });
+
   it("an unavailable provider never starts a flow or writes a verifier", async () => {
     await expect(oauth(oauthForm("github"))).rejects.toThrow(
       "REDIRECT:/login?error=provider-unavailable",

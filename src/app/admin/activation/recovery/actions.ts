@@ -29,6 +29,7 @@ export async function recoverExaminerTargetAction(
       reason: form.get("reason"),
     });
     revalidatePath("/admin/activation/recovery");
+    revalidatePath("/admin", "layout");
     return { status: result.status };
   } catch {
     return { error: "This recovery action could not be completed." };

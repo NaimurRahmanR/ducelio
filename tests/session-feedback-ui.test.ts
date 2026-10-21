@@ -387,7 +387,11 @@ describe("admin teaching quality", () => {
       "STUDENT",
     ] as const)
       expect(adminSectionsForRoles([role])).not.toContain("Sessions");
-    const page = readFileSync(resolve("src/app/admin/page.tsx"), "utf8");
+    // The records workspaces moved into Academy Operations unchanged.
+    const page = readFileSync(
+      resolve("src/components/academy-records.tsx"),
+      "utf8",
+    );
     expect(page).toMatch(
       /section === "Sessions"\s*\?\s*await getTeachingQuality\(/,
     );

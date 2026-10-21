@@ -16,11 +16,18 @@ export type CommerceSearchParams = Record<
   string,
   string | string[] | undefined
 >;
-function href(params: Record<string, string | number | undefined>) {
-  const query = new URLSearchParams();
+// The console is shown both at /admin/commerce and inside Sales & Commerce;
+// links keep the user on whichever page embeds it (per render, no shared
+// module state).
+function hrefFor(
+  path: string,
+  base: Record<string, string>,
+  params: Record<string, string | number | undefined>,
+) {
+  const query = new URLSearchParams(base);
   for (const [k, v] of Object.entries(params))
     if (v !== undefined) query.set(k, String(v));
-  return "/admin/commerce?" + query.toString();
+  return path + "?" + query.toString();
 }
 function Diagnosis({ data: d }: { data: CommerceDiagnosis }) {
   const items = [
@@ -151,9 +158,15 @@ function Diagnosis({ data: d }: { data: CommerceDiagnosis }) {
 }
 export async function CommerceOperationsConsole({
   params,
+  basePath = "/admin/commerce",
+  baseParams = {},
 }: {
   params: CommerceSearchParams;
+  basePath?: string;
+  baseParams?: Record<string, string>;
 }) {
+  const href = (params: Record<string, string | number | undefined>) =>
+    hrefFor(basePath, baseParams, params);
   const view = commerceViewSchema.catch("orders").parse(params.view);
   const query = typeof params.q === "string" ? params.q.slice(0, 100) : "";
   const offset = z.coerce
@@ -192,7 +205,7 @@ export async function CommerceOperationsConsole({
   return (
     <>
       <Card>
-        <h1>Commerce operations</h1>
+        <h2>Commerce operations</h2>
         <nav aria-label="Commerce sections">
           {Object.entries(tabs).map(([key, label]) => (
             <Link
@@ -222,7 +235,10 @@ export async function CommerceOperationsConsole({
             a missing order.
           </p>
         )}
-        <form method="get">
+        <form method="get" action={basePath}>
+          {Object.entries(baseParams).map(([k, v]) => (
+            <input key={k} type="hidden" name={k} value={v} />
+          ))}
           <input type="hidden" name="view" value={view} />
           {learner.success && (
             <input type="hidden" name="learner" value={learner.data} />
