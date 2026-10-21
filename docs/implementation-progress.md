@@ -1031,6 +1031,125 @@ Branch `feat/agent-model-control` from `main` `d6bf283`. Migration `202610050050
 
 AC-1 is foundation work only. It makes the current agent and model state truthful and stops published or enrolled academic configuration from being silently rewritten. It adds no AI behaviour, prompt, handoff, class note, classroom memory or Sarah runtime, and changes no provider or model assignment. Agent / Model and Behaviour work is not complete.
 
+## Admin control centre, corrective checkpoint and local release qualification (2026-10-21)
+
+Branch `feat/admin-control-centre` from `main` `040bce6`. **Uncommitted; awaiting review.** No migration, hosted database change, credential or payment configuration change. The public website is unchanged.
+
+**Control centre.** Five workspaces: Dashboard `/admin`, Courses `/admin/courses` (with `/admin/courses/[packageKey]`), Operations Engineer `/admin/operations-engineer`, Sales & Commerce `/admin/sales` and Academy Operations `/admin/academy`. The former `/admin?section=…` URLs redirect into Academy Operations with their filters. Every figure comes from an existing governed read; a failed source is shown as unavailable, never as zero.
+
+**Corrective checkpoint.**
+
+- **Access.** The failed People refusal was a genuine, correct authorisation refusal (service and database both deny an academic administrator), shown as an error page.
+  - Every sensitive admin page now starts with `adminWorkspaceAccess` (`src/server/admin-access.ts`) before reading anything:
+    - signed out: redirected to `/login`;
+    - no administrative role: redirected to `/login?error=forbidden`;
+    - an administrator without the page's role: an in-shell refusal that loads nothing.
+  - Services and RLS still enforce independently.
+  - The activation pages are now `force-dynamic`, so the guard runs per request.
+- **Sign-in destination.**
+  - Without an explicit destination, password and callback sign-in send administrators to `/admin`, learners to `/student` and counsellor-only accounts to `/support`. This is chosen from the account's own role grants (`src/server/sign-in-home.ts`).
+  - The return-destination allowlist is unchanged and still rejects `/admin`.
+- **Operations Engineer execution.**
+  - When `perform()` throws, the outcome is decided by re-reading the records:
+    - change confirmed: SUCCEEDED, "not applied twice";
+    - change confirmed absent: FAILED;
+    - re-read itself fails: UNCERTAIN, with "do not retry yet".
+  - The in-memory guards are documented as per-instance only, not idempotency. Each proposal states its cross-instance duplicate protection.
+- **Test records.**
+  - Dashboard, Courses, Sales and Operations Engineer lists separate acceptance-test and staging records from business figures, and show the excluded counts with the naming rule (`src/domain/admin-test-records.ts`).
+  - The orders and exceptions registers are labelled as operational registers that include test traffic.
+  - Settled revenue is still not reported.
+
+**Local release qualification.**
+
+- **Operations Engineer duplicate protection, checked against each governed RPC.**
+  - Database-protected, enabled:
+    - publish offer: unique index on one published offer per activation, and unique slug;
+    - create campaign: unique code;
+    - archive campaign: row lock, and the campaign must be ACTIVE.
+  - Only partly protected, now **disabled in the Operations Engineer** (`OPERATIONS_ENGINEER_DISABLED`):
+    - `archive_commercial_v1_offer` takes no row lock, so two simultaneous calls each write an audit event;
+    - `run_course_package_test` inserts a run on every call;
+    - cohort status (`admin_change_cohort_status`): stale-proposal replay, below.
+  - For each disabled change, prepare and execute both refuse before any state read, the AI interpreter is not offered it, and the console links to its dedicated form, which is unchanged.
+  - An invariant test ties the disabled set to the "partial" protection level.
+- **Cohort status stale-proposal replay (fixed by disabling).**
+  - A close proposal bound only to the current status became executable again after OPEN → CLOSED → OPEN within its 15-minute lifetime. A temporary test, removed after the run, reproduced it against the previous code: the same proposal, confirmed again on a fresh instance after a reopen, executed a second time.
+  - No reliable revision exists without a migration:
+    - `cohorts` has no version, `updated_at` or status-change timestamp, and `admin_cohort_workspace` exposes none;
+    - the per-update audit events are readable by platform administrators only (RLS), so academic administrators cannot use them as change evidence without widening that boundary;
+    - archiving a cohort's offer on close is monotonic, but only when the cohort has a published offer.
+  - Cohort status is therefore disabled in the Operations Engineer. The Cohorts workspace (`/admin/cohorts`, `admin_change_cohort_status`) is unchanged.
+  - Regression tests cover: no proposal and no read; OPEN → CLOSED → OPEN replay on a fresh instance; repeated confirmation with altered contents in every state; a stale proposal refused before any check; and no AI path.
+- **"Already applied" is now exact.**
+  - Publish offer matches the delivery, slug, price and currency.
+  - Create campaign matches the offer, kind, limit, window and price.
+  - A different offer or campaign that won a race is reported as FAILED, never as this proposal's success.
+- **Operations Engineer choice lists** put real records first and label acceptance-test records.
+- **Course detail section bar** wraps instead of hiding sections in a sideways scroll. It is no longer sticky below 960 px.
+
+**Validation (local).**
+
+- **`npm run check`:** lint and typecheck clean; 4,693 tests passed and 14 skipped, across 200 files.
+  - The 14 skipped are the two real-PostgreSQL concurrency suites.
+  - The suite includes the access matrix (112 cases: 7 actor kinds × 16 pages, each refusal checked to load nothing), sign-in destination, test-record split, and the Operations Engineer failure modes:
+    - unauthorised actor, missing or invalid input, unsupported action;
+    - altered, stale and expired proposals;
+    - duplicate and simultaneous confirmation;
+    - cross-instance replay and race, race lost to a different record;
+    - partial failure, verification-read failure, unreadable state;
+    - missing AI provider, and disabled actions.
+- **`npm run format:check`:** passed.
+- **`npm run build`:** compiled. In this worktree the build also loads an untracked, gitignored `.env.local` (acceptance-environment values, not created by this work), whose `APP_URL` is plain HTTP.
+  - With that file present, prerendering `/student` stops at the existing production guard "Configured production authentication requires an HTTPS APP_URL" (`src/lib/env.ts`, unchanged from `main`).
+  - With an HTTPS `APP_URL` in the process environment, as on a hosted deployment, the build passes and all 16 admin routes are dynamic.
+- **Real PostgreSQL concurrency: NOT RUN.** No local PostgreSQL server, Docker or WSL distribution is installed, and installing one was out of scope. `DUCELIO_TEST_POSTGRES_URL` is therefore unset and the two suites (14 tests) skipped.
+- **Browser runs against the hosted acceptance backend, read-only.** No operation was confirmed and no hosted record was changed.
+  - Development server: 116/116 checks.
+  - Production build (`next start` behind a local TLS front, HTTPS `APP_URL`): 125/125 checks, covering:
+    - anonymous, learner and non-admin staff refusals on 16 admin routes;
+    - sign-in destinations, safe return destinations, session persistence, and Secure/HttpOnly/SameSite=Lax session cookies;
+    - six learner pages;
+    - all workspaces, tabs and technical pages;
+    - the People refusal, not-found and empty states;
+    - the Security+ SY0-701 revision 6 lifecycle;
+    - the six Operations Engineer reads, and one proposal prepared and discarded unconfirmed;
+    - keyboard focus and keyboard selection;
+    - layout at 1366, 820 and 390 px, with no console errors.
+  - Only the acceptance ADMIN (academic administrator), LEARNER and UNRELATED_STAFF accounts exist. Registrar, platform administrator, instructor and counsellor are covered by the unit matrix only.
+- **Security+ SY0-701 revision 6** (read-only) shows exactly the expected state:
+  - Import, validation, configuration, test and curriculum publication complete;
+  - delivery activation is the next action;
+  - offer and public catalogue blocked;
+  - its only cohort ("ecurity+ SY0-701 — Staging Acceptance", a hosted data typo) is flagged staging/acceptance;
+  - no re-upload is requested.
+
+**Required before production (not done here).**
+
+- **Durable cross-instance at-most-once execution** (required to re-enable archive offer and course test runs in the Operations Engineer).
+  - The table: `operations_engineer_executions`, holding `proposal_id` (unique), `actor_id`, `action_id`, `input_hash`, `status` (PENDING/DONE/FAILED), `claimed_at` and `finished_at`.
+  - Two RPCs, admin-only, under RLS:
+    - a claim RPC (`INSERT … ON CONFLICT DO NOTHING RETURNING`) called before execution;
+    - a finish RPC, with a recovery path for stale PENDING claims.
+  - Acceptance tests: two simultaneous claims on real PostgreSQL produce exactly one execution and one audit event; a stale claim is recovered; RLS denies other roles.
+- **Proposal binding.** The proposal ID is an unkeyed integrity hash. It stops altered or stale confirmations, but it is not an authorisation token. Authority is the server-side role check plus re-validation.
+- **Cohort status revision** (required to re-enable cohort status in the Operations Engineer; not created).
+  - The migration: `cohorts.status_revision bigint not null default 0`, incremented by the existing `guard_cohort_lifecycle` trigger path on every status change.
+  - It must be exposed in `admin_cohort_workspace`, and `admin_change_cohort_status` needs an optional `p_expected_revision` that refuses `STALE_REVISION` when it does not match. The row is already locked `FOR UPDATE`.
+  - The proposal fingerprint would include the revision.
+  - Tests: the revision is monotonic across OPEN → CLOSED → OPEN; a stale revision is refused in the database; a concurrent change on real PostgreSQL refuses the loser.
+- **Missing database support.**
+  - A recorded test/purpose flag for programmes, cohorts and offers, to replace the naming rule.
+  - A reviewed settled-revenue aggregate: verified PAID payment events minus refunds, per currency and period.
+  - Organisation tenancy.
+- **Not yet exercised.**
+  - The AI interpretation path. It needs `ANTHROPIC_API_KEY` on the server; no local key exists. Without it the page states "AI interpretation not configured" and every typed operation still works.
+  - Hosted environment values (Vercel): there is no `vercel.json` or `.vercel` locally, and no new environment variable is required by this work.
+  - REGISTRAR and PLATFORM_ADMIN in the browser (no acceptance accounts exist; covered by the unit matrix).
+- **Hosted state, left unchanged as instructed.** The 15 published acceptance-test offers remain published and visible in the public catalogue.
+
+**Next action.** Owner review of the local diff. On approval: commit, open the release PR and run CI, including the dedicated real-PostgreSQL concurrency job.
+
 ## Current scope boundary
 
 **Correction pass (independent review):** this section previously stated "No AI academic actor is integrated," which is no longer accurate now that a real, governed PROFESSOR execution path, a real learner-facing classroom UI and a real reviewed production runtime profile (`PROFESSOR_COMMERCIAL_V1`) all exist and are wired together end to end. Its later wording "no hosted provider has yet passed live acceptance" is also stale. Since PR22, Commercial V1 routes natively through `OPENAI_API_KEY`/`ANTHROPIC_API_KEY` (the `ACADEMIC_PROVIDER_*` pair is only the legacy generic gateway, used by no current production profile); without a key `resolveAdapterForProfile` returns `null` and execution fails closed to `NO_PROVIDER_CONFIGURED`. As recorded in the 2026-09-27 evidence reconciliation (docs/38 section 5), exactly three surfaces are **LIVE-PROVIDER-TESTED**, each through one explicitly authorized `npm run acceptance:live-provider` request: OpenAI Examiner (`EXAMINER_COMMERCIAL_V1` / `gpt-5.6-luna`), Anthropic Lab (`LAB_INSTRUCTOR_COMMERCIAL_V1` / `claude-sonnet-5`) and Anthropic Operations Engineer (`OPERATIONS_ENGINEER_PLATFORM_V1` / `claude-opus-5-5`). Professor, Tutor and Counsellor have **not** been individually live-provider-tested. None of these is **PRODUCTION-PROVEN**, and a live smoke is not evidence of grading or instructional quality. The deterministic backend remains authoritative regardless: PROFESSOR's own output is never written into any institutional record. `MASTERY_V1` is evidence-based and does not infer mastery from engagement. `SUPPORT_V1` uses reviewed authoritative conditions and does not infer inactivity/motivation/risk from behavioural telemetry. Controlled-assessment protected content is released from server-owned attempt state and every AI tool (PROFESSOR now live-composed, and any future role) must call the technical activity firewall.

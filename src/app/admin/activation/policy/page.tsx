@@ -1,4 +1,8 @@
-import { requireAnyRole } from "@/server/identity";
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import { listCommercialV1Activations } from "@/server/course-activation";
 import { getCommercialV1PolicySetupOptions } from "@/server/commercial-v1-assessment-policy";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
@@ -18,12 +22,25 @@ import {
 // never types or pastes an activation UUID anywhere on this page; the
 // selected activation's real id is carried as an opaque value in the GET
 // query string, exactly like `importId` already works on /admin/activation.
+// Rendered per request: the role guard must see the signed-in session.
+export const dynamic = "force-dynamic";
+
 export default async function Page({
   searchParams,
 }: {
   searchParams: Promise<{ activationId?: string }>;
 }) {
-  const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="courses"
+        title="Grading and result policy setup"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
+  const actor = access.actor;
   const { activationId } = await searchParams;
   const { activations } = await listCommercialV1Activations().catch(() => ({
     activations: [],

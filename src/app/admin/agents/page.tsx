@@ -1,3 +1,8 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import Link from "next/link";
 import {
   getAgentControlPlane,
@@ -307,6 +312,16 @@ export default async function Page({
 }: {
   searchParams: Promise<Params>;
 }) {
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="academy"
+        title="AI agent configuration"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
   const cursor = parseAgentControlCursor(await searchParams);
   const { actor, plane } = await getAgentControlPlane(cursor);
   const next = plane.page.nextCursor;

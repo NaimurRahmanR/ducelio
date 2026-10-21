@@ -25,7 +25,7 @@ export async function correctEnrolmentRecord(
     };
   }
 
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student");
   return { message: "Enrolment correction recorded." };
 }
@@ -47,7 +47,7 @@ export async function correctAttendanceRecord(
     };
   }
 
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
   revalidatePath("/student/classes");
   return { message: "Attendance correction recorded." };
 }

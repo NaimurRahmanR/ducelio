@@ -16,7 +16,7 @@ export async function runDeterministicSupportScan(
     const result = await refreshDeterministicSupportTriggers(
       form.get("reason"),
     );
-    revalidatePath("/admin");
+    revalidatePath("/admin", "layout");
     revalidatePath("/support");
     revalidatePath("/student/notifications");
     revalidatePath("/student/support");

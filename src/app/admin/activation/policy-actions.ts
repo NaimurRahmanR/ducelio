@@ -13,6 +13,7 @@ export type PolicyActionState = { error?: string; message?: string };
 
 function refresh(activationId: string) {
   revalidatePath("/admin/activation/policy?activationId=" + activationId);
+  revalidatePath("/admin", "layout");
 }
 
 // Binds one real assessment row to one of the six fixed formal components.

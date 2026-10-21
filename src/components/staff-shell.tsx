@@ -4,6 +4,22 @@ import { Brand, Badge } from "./ui";
 import { logout } from "@/app/auth/actions";
 import type { ReactNode } from "react";
 import type { Role } from "@/domain/academy";
+import { AdminShell, destinationForSection } from "./admin-shell";
+
+// Titles for the pre-existing technical routes when shown inside the admin
+// control centre. Their content, forms and server checks are unchanged.
+const TECHNICAL_TITLES: Record<string, string> = {
+  People: "People and roles",
+  Cohorts: "Cohorts",
+  "Course Engineering": "Course engineering",
+  Activation: "Course activation",
+  "Policy setup": "Grading and result policy setup",
+  "Grade recovery": "Examiner grade recovery",
+  "Academic review": "Academic review",
+  "Academic results": "Academic results",
+  Agents: "AI agent configuration",
+  Commerce: "Commerce operations",
+};
 
 // Workspace sections rendered inside /admin?section=. Cohorts and
 // Announcements were placeholders; Cohorts is now the real /admin/cohorts
@@ -116,6 +132,19 @@ export function StaffShell({
   sections?: readonly string[];
   roles?: Role[];
 }) {
+  if (kind === "admin" && !demo)
+    return (
+      <AdminShell
+        active={destinationForSection(section)}
+        name={name}
+        roles={roles}
+        title={TECHNICAL_TITLES[section] ?? section}
+        technical={TECHNICAL_TITLES[section] ?? section}
+        description="Technical workspace. Its forms call the same governed services as before."
+      >
+        <div className="ac-technical">{children}</div>
+      </AdminShell>
+    );
   const controlRoutes = demo ? [] : adminControlRoutesForRoles(roles);
   const base = demo ? "/demo/admin" : "/admin";
   return (

@@ -158,6 +158,11 @@ export const operationsEngineerCapabilityCatalogue = Object.freeze([
   "propose_fix",
   "propose_pull_request",
   "draft_release_notes",
+  // Admin control centre: interprets an administrator request into one
+  // typed proposal from the closed action registry
+  // (src/domain/operations-engineer.ts). Proposal-only: the model executes
+  // nothing; the confirming administrator does, through governed services.
+  "interpret_operations_request",
 ] as const);
 
 export function isCounsellorCapabilityAllowed(

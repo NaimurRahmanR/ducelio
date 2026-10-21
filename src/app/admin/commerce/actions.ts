@@ -34,6 +34,7 @@ export async function commerceOperationAction(
             : null;
     if (!result) return { error: "Choose a valid commerce operation." };
     revalidatePath("/admin/commerce");
+    revalidatePath("/admin", "layout");
     const labels: Record<string, string> = {
       FULFILLED: "Payment verified and access fulfilled.",
       ALREADY_FULFILLED: "Already fulfilled. Active access confirmed.",
@@ -98,6 +99,7 @@ export async function publishOfferAction(
       reason: data.get("reason"),
     });
     revalidatePath("/admin/commerce");
+    revalidatePath("/admin", "layout");
     revalidatePath("/courses");
     return {
       message:
@@ -121,6 +123,7 @@ export async function archiveOfferAction(
       reason: data.get("reason"),
     });
     revalidatePath("/admin/commerce");
+    revalidatePath("/admin", "layout");
     revalidatePath("/courses");
     return {
       message:
@@ -180,6 +183,7 @@ export async function createCampaignAction(
       return { error: "Choose a valid campaign kind." };
     }
     revalidatePath("/admin/commerce");
+    revalidatePath("/admin", "layout");
     return {
       message:
         "Campaign created. The code can now be redeemed within its configured window and limit.",
@@ -202,6 +206,7 @@ export async function archiveCampaignAction(
       reason: data.get("reason"),
     });
     revalidatePath("/admin/commerce");
+    revalidatePath("/admin", "layout");
     return {
       message:
         "Campaign archived. Existing redemptions keep their immutable provenance.",

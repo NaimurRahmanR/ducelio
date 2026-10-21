@@ -44,6 +44,7 @@ async function authorized() {
 }
 function refresh() {
   revalidatePath("/admin/course-engineering");
+  revalidatePath("/admin", "layout");
 }
 export async function importPackageAction(
   _state: CourseEngineeringState,

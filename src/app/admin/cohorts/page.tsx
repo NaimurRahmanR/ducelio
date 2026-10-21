@@ -1,3 +1,8 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import Link from "next/link";
 import { getCohortWorkspace } from "@/server/cohorts";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
@@ -27,6 +32,16 @@ export default async function Page({
 }: {
   searchParams: Promise<{ cohort?: string }>;
 }) {
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="courses"
+        title="Cohorts"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
   const { cohort: selectedId } = await searchParams;
   const { actor, workspace, roster } = await getCohortWorkspace(selectedId);
   const selected = workspace.cohorts.find((c) => c.id === selectedId) ?? null;

@@ -37,6 +37,7 @@ export async function saveStaffProfileAction(
       reason: text(form, "reason"),
     });
     revalidatePath("/admin/people");
+    revalidatePath("/admin", "layout");
     return {
       message: result.created
         ? "Staff profile created."
@@ -60,6 +61,7 @@ export async function grantRoleAction(
       reason: text(form, "reason"),
     });
     revalidatePath("/admin/people");
+    revalidatePath("/admin", "layout");
     return {
       message: result.changed
         ? `${roleLabel(result.role)} granted.`
@@ -81,6 +83,7 @@ export async function revokeRoleAction(
       reason: text(form, "reason"),
     });
     revalidatePath("/admin/people");
+    revalidatePath("/admin", "layout");
     return {
       message: result.changed
         ? `${roleLabel(result.role)} revoked.`
@@ -102,6 +105,7 @@ export async function setAccountStatusAction(
       reason: text(form, "reason"),
     });
     revalidatePath("/admin/people");
+    revalidatePath("/admin", "layout");
     return {
       message: !result.changed
         ? "No change: the account already had that status."

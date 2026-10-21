@@ -1,4 +1,8 @@
-import { requireAnyRole } from "@/server/identity";
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import {
   listCommercialV1Campaigns,
   listCommercialV1OfferActivations,
@@ -24,7 +28,17 @@ export default async function Page({
 }: {
   searchParams: Promise<CommerceSearchParams>;
 }) {
-  const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="sales"
+        title="Commerce operations"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
+  const actor = access.actor;
   const [activations, campaigns] = await Promise.all([
     listCommercialV1OfferActivations(),
     listCommercialV1Campaigns(),

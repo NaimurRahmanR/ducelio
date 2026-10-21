@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: mocks.actor,
+  requireActor: mocks.actor,
   requireAnyRole: mocks.requireAnyRole,
 }));
 vi.mock("@/server/supabase", () => ({
@@ -697,23 +698,26 @@ describe("Commercial V1 admin navigation", () => {
     ]);
   });
 
-  it("renders the control-plane menu with the current page marked", async () => {
+  it("renders inside the five-destination control centre, under Courses", async () => {
     mocks.rpc.mockResolvedValue(rpcOk({ cohorts: [], versions: [] }));
     const html = renderToStaticMarkup(
       await CohortsPage({ searchParams: Promise.resolve({}) }),
     );
     for (const href of [
-      "/admin/people",
-      "/admin/cohorts",
-      "/admin/course-engineering",
-      "/admin/activation",
-      "/admin/commerce",
-      "/admin?section=registry",
+      "/admin",
+      "/admin/courses",
+      "/admin/operations-engineer",
+      "/admin/sales",
+      "/admin/academy",
     ])
       expect(html).toContain(`href="${href}"`);
+    // Cohorts belongs to Courses, which is marked as the current destination.
     expect(html).toMatch(
-      /<a class="selected" aria-current="page" href="\/admin\/cohorts">Cohorts<\/a>/,
+      /<a class="ac-nav-link active" aria-current="page" href="\/admin\/courses">.*?Courses<\/a>/,
     );
+    // The technical route keeps its own page and governed forms.
+    expect(html).toContain("<h1>Cohorts</h1>");
+    expect(html).not.toContain("Control plane");
     expect(html).not.toContain("section=cohorts");
     expect(html).not.toContain("Announcements");
     // No version to create against: an honest prerequisite, not a dead form.

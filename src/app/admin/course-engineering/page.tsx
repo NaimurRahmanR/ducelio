@@ -1,6 +1,10 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import Link from "next/link";
 import { z } from "zod";
-import { requireAnyRole } from "@/server/identity";
 import {
   listCoursePackages,
   getCoursePackagePreview,
@@ -41,7 +45,17 @@ export default async function Page({
 }: {
   searchParams: Promise<{ importId?: string }>;
 }) {
-  const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="courses"
+        title="Course engineering"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
+  const actor = access.actor;
   const params = await searchParams;
   const id = z.uuid().safeParse(params.importId);
   const { packages, listingFailed } = await listCoursePackages().then(

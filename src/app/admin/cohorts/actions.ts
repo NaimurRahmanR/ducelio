@@ -37,7 +37,8 @@ function fields(form: FormData) {
 
 function refresh() {
   revalidatePath("/admin/cohorts");
-  revalidatePath("/admin");
+  revalidatePath("/admin", "layout");
+  revalidatePath("/admin", "layout");
 }
 
 export async function createCohortAction(
@@ -81,6 +82,7 @@ export async function changeCohortStatusAction(
     });
     refresh();
     revalidatePath("/admin/commerce");
+    revalidatePath("/admin", "layout");
     revalidatePath("/courses");
     if (!result.changed)
       return { message: "No change: the cohort already had that status." };

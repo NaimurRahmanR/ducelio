@@ -1,5 +1,9 @@
+import { AdminForbidden } from "@/components/admin-shell";
+import {
+  adminWorkspaceAccess,
+  COURSE_ADMIN_ROLES,
+} from "@/server/admin-access";
 import Link from "next/link";
-import { requireAnyRole } from "@/server/identity";
 import { listRecoverableExaminerTargets } from "@/server/commercial-v1-examiner-recovery/operations";
 import { StaffShell, adminSectionsForRoles } from "@/components/staff-shell";
 import { Card, Badge } from "@/components/ui";
@@ -19,8 +23,21 @@ const STATUS_LABEL: Record<string, string> = {
 // reachable -- no manual SQL, no copying internal IDs out of an audit log.
 // Deliberately minimal: this is a bounded operational worklist, not final
 // visual polish.
+// Rendered per request: the role guard must see the signed-in session.
+export const dynamic = "force-dynamic";
+
 export default async function Page() {
-  const actor = await requireAnyRole(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
+  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  if (!access.allowed)
+    return (
+      <AdminForbidden
+        actor={access.actor}
+        active="academy"
+        title="Examiner grade recovery"
+        requires={COURSE_ADMIN_ROLES}
+      />
+    );
+  const actor = access.actor;
   const targets = await listRecoverableExaminerTargets().catch(() => null);
   return (
     <StaffShell
