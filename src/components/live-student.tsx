@@ -18,6 +18,7 @@ import { listMyProfessorClassroomSessionIds } from "@/server/professor-classroom
 import { previewClassroomEligibility } from "@/domain/professor-classroom";
 import { SupportForms } from "./support-forms";
 import { SarahIdentity, SARAH_IS_AI_NOTICE } from "./sarah-identity";
+import { AiLearningTeamCard } from "./ai-learning-team";
 import { randomUUID } from "node:crypto";
 import { listMySessionFeedbackOpportunities } from "@/server/session-feedback";
 import { SarahSessionFeedback } from "./sarah-session-feedback";
@@ -125,7 +126,14 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
       <div className="section-content">
         {(section === "" || section === "programme") && (
           <Card>
-            <h2>Programme enrolments</h2>
+            <div className="section-heading">
+              <h2>Programme enrolments</h2>
+              {/* The public catalogue: offer detail, checkout and enrolment
+                  keep their own rules; browsing needs no cohort assignment. */}
+              <ButtonLink href="/courses" secondary>
+                Explore more courses
+              </ButtonLink>
+            </div>
             {enrolments.length ? (
               enrolments.map((e) => (
                 <div className="support-record" key={e.id}>
@@ -149,8 +157,9 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
               ))
             ) : (
               <EmptyState title="Your next chapter starts here">
-                No programme enrolment is recorded yet. Your academy registrar
-                will add your programme and curriculum version.
+                No programme enrolment is recorded yet. Explore the published
+                courses to enrol, or your academy registrar can add your
+                programme.
               </EmptyState>
             )}
           </Card>
@@ -551,6 +560,7 @@ export async function LiveStudent({ section = "" }: { section?: string }) {
             </Card>
           </div>
         )}
+        {section === "" && <AiLearningTeamCard />}
         {(section === "" || section === "support") && (
           <Card className="counsellor-card">
             <SarahIdentity as="h2" />

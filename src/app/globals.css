@@ -2098,45 +2098,14 @@ label {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1.25rem;
 }
-.course-card {
-  display: block;
-  color: inherit;
-}
-.course-card .card {
-  height: 100%;
-}
-.course-card:hover .card {
-  border-color: var(--gold);
-}
 .course-price {
   font-size: 1.5rem;
   font-weight: 650;
   color: var(--navy);
 }
-.course-detail {
-  display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 2rem;
-  align-items: start;
-}
-.course-buy-card {
-  position: sticky;
-  top: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
 .checkout-result {
   max-width: 560px;
   margin: 3rem auto;
-}
-@media (max-width: 800px) {
-  .course-detail {
-    grid-template-columns: 1fr;
-  }
-  .course-buy-card {
-    position: static;
-  }
 }
 .engineering-table {
   overflow-x: auto;
@@ -2204,11 +2173,28 @@ label {
 
 /* Public homepage (LR-BASELINE-01). Scoped to .launch-* so no admin or
    learner surface changes; built from the existing tokens and components. */
+/* Approved homepage visual treatment: royal purple, white type and a
+   champagne-gold accent. Values are local to the hero and the opening scene;
+   the global tokens that student, staff, admin and assessment surfaces use
+   are unchanged. */
+.launch-home {
+  --launch-purple: #312680;
+  --launch-purple-deep: #1f1757;
+  --launch-purple-ink: #241c63;
+  --launch-champagne: #f4d19b;
+}
 .launch-hero {
   margin: 1.5rem 0 3.5rem;
   padding: clamp(2.5rem, 6vw, 5rem);
   border-radius: 20px;
-  background: linear-gradient(130deg, var(--navy), #214f72);
+  background:
+    radial-gradient(120% 140% at 88% -10%, #4a3ead 0%, transparent 55%),
+    linear-gradient(
+      150deg,
+      var(--launch-purple) 0%,
+      #2a2072 58%,
+      var(--launch-purple-deep) 100%
+    );
   color: white;
 }
 .launch-hero h1 {
@@ -2220,12 +2206,13 @@ label {
 }
 .launch-hero p {
   max-width: 640px;
-  color: #e1ecf3;
+  color: #e7e3fa;
   font-size: 1.125rem;
 }
 .launch-hero .badge.gold {
-  background: #f5e3af;
-  color: #5c4108;
+  background: var(--launch-champagne);
+  color: var(--launch-purple-ink);
+  letter-spacing: 0.08em;
 }
 .launch-actions {
   display: flex;
@@ -2234,22 +2221,22 @@ label {
   margin-top: 1.75rem;
 }
 .launch-hero .button {
-  background: var(--gold);
-  color: var(--navy);
+  background: var(--launch-champagne);
+  color: var(--launch-purple-ink);
 }
 .launch-hero .button:hover {
-  background: #e6cb8c;
+  background: #f8dfb8;
 }
 .launch-hero .button.secondary {
   background: transparent;
   color: white;
-  border-color: #c8d9e5;
+  border-color: #ffffff8c;
 }
 .launch-hero .button.secondary:hover {
-  background: #ffffff1f;
+  background: #ffffff1a;
 }
 .launch-hero :focus-visible {
-  outline-color: #f5e3af;
+  outline-color: var(--launch-champagne);
 }
 .launch-section {
   margin-bottom: 3.5rem;
@@ -2294,16 +2281,120 @@ label {
   margin-bottom: 0.35rem;
   color: var(--navy);
 }
-.launch-more {
-  margin-top: 1.5rem;
+/* Public homepage footer (src/components/site-footer.tsx): royal purple,
+   white type and champagne accents, spanning the full page width. */
+.site-footer {
+  --footer-champagne: #f4d19b;
+  background: linear-gradient(160deg, #312680 0%, #261d6c 55%, #1f1757 100%);
+  box-shadow: inset 0 1px 0 #f4d19b4d;
+  color: white;
 }
-.launch-footer {
-  border-top: 1px solid var(--line);
-  padding: 1.5rem 0 1rem;
+.site-footer-inner {
+  max-width: 1180px;
+  margin: auto;
+  padding: 3.5rem 3rem 1.75rem;
 }
-.launch-footer .courses-nav a {
+.site-footer-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.5fr 1fr;
+  gap: 2.5rem;
+}
+.site-footer h2 {
+  margin-bottom: 1rem;
+  color: var(--footer-champagne);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.site-footer p,
+.site-footer dd {
+  color: #ddd8f5;
+}
+/* The last homepage section already ends with its own margin. */
+.launch-home > .foundation {
+  padding-bottom: 0.5rem;
+}
+.site-footer section > p {
+  font-size: 0.9375rem;
+}
+.site-footer-tagline {
+  margin: 1.1rem 0 0;
+  font-size: 1rem;
+}
+.site-footer-gold {
+  color: var(--footer-champagne);
+  font-family: Georgia, serif;
+  font-style: italic;
+}
+.site-footer ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.site-footer ul a {
+  display: inline-block;
+  padding: 0.2rem 0;
+  font-size: 0.9375rem;
+  text-underline-offset: 3px;
+}
+.site-footer ul a:hover {
+  text-decoration: underline;
+}
+.site-footer dl {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+}
+.site-footer dt {
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+.site-footer dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.875rem;
+}
+/* Links inside sentences stay underlined so they never rely on colour. */
+.site-footer dd a {
+  color: white;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.site-footer :focus-visible {
+  outline-color: var(--footer-champagne);
+}
+.site-footer-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem 2rem;
+  margin-top: 2.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #ffffff24;
+  font-size: 0.8125rem;
+}
+.site-footer-bottom p {
+  margin: 0;
+  color: #cbc5ec;
+}
+.site-footer-bottom p:last-child {
+  max-width: 70ch;
+}
+@media (max-width: 900px) {
+  .site-footer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .site-footer-inner {
+    padding: 2.5rem 1.5rem 1.5rem;
+  }
+  .site-footer-grid {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
 }
 @media (max-width: 640px) {
   .launch-hero {
@@ -2313,6 +2404,742 @@ label {
   }
   .launch-actions .button {
     width: 100%;
+  }
+}
+/* Homepage opening scene (src/components/opening-intro.tsx). Hidden unless
+   the pre-paint decision sets data-intro="play", so it never shows without
+   JavaScript, with reduced motion or after the first visit in a tab. The
+   timeline only animates opacity and transform, and ends at
+   visibility:hidden on its own even if React never hydrates. */
+.opening {
+  display: none;
+}
+.opening[data-intro="play"],
+.opening[data-intro="leaving"] {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 1.5rem 16px;
+  background: radial-gradient(
+    ellipse 85% 75% at 50% 42%,
+    #3d31a0 0%,
+    var(--launch-purple) 50%,
+    var(--launch-purple-deep) 100%
+  );
+  color: white;
+  text-align: center;
+}
+.opening[data-intro="play"] {
+  animation: opening-dissolve 500ms cubic-bezier(0.4, 0, 0.2, 1) 2750ms forwards;
+}
+.opening[data-intro="leaving"] {
+  pointer-events: none;
+  animation: opening-leave 280ms ease-out forwards;
+}
+/* The scene opens from near-black into the rich purple. */
+.opening::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #120c33;
+  animation: opening-veil 650ms ease-out both;
+}
+.opening-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: opening-stage-out 500ms cubic-bezier(0.4, 0, 0.2, 1) 2750ms
+    forwards;
+}
+.opening-light {
+  position: absolute;
+  top: 2.6rem;
+  left: 50%;
+  width: min(70vmax, 900px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    #ffffff2e 0%,
+    #f4d19b14 32%,
+    transparent 62%
+  );
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: opening-light 1000ms cubic-bezier(0.2, 0.7, 0.2, 1) 100ms both;
+}
+/* The established brand mark, enlarged: same shape and glyph as .brand-mark. */
+.opening-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 76px;
+  height: 84px;
+  padding-right: 0.25rem;
+  overflow: hidden;
+  border-radius: 22px 4px 22px 4px;
+  background: var(--launch-champagne);
+  color: var(--launch-purple-ink);
+  font:
+    italic 3.75rem Georgia,
+    serif;
+  line-height: 1;
+  box-shadow: 0 22px 50px -22px #f4d19b8c;
+  animation: opening-mark-in 650ms cubic-bezier(0.2, 0.7, 0.2, 1) 250ms both;
+}
+.opening-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    #ffffffa6 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  animation: opening-sheen 750ms ease-in-out 500ms both;
+}
+.opening-wordmark {
+  margin-top: 1.6rem;
+  /* Trailing letter-spacing is balanced so the word sits optically centred. */
+  padding-left: 0.34em;
+  font-size: clamp(2.1rem, 8.5vw, 4.25rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.34em;
+  animation: opening-rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) 600ms both;
+}
+.opening-tagline {
+  max-width: 30ch;
+  margin-top: 1rem;
+  font-size: clamp(1.0625rem, 3.4vw, 1.375rem);
+  font-weight: 300;
+  line-height: 1.4;
+  letter-spacing: 0.015em;
+  text-wrap: balance;
+  animation: opening-rise 650ms cubic-bezier(0.2, 0.7, 0.2, 1) 950ms both;
+}
+.opening-gold {
+  color: var(--launch-champagne);
+  font-family: Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+}
+.opening-accent {
+  width: min(220px, 50vw);
+  height: 1px;
+  margin-top: 1.4rem;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--launch-champagne),
+    transparent
+  );
+  box-shadow: 0 0 12px #f4d19b99;
+  animation: opening-accent 800ms ease-out 1150ms both;
+}
+.opening-skip {
+  position: absolute;
+  right: max(1.25rem, env(safe-area-inset-right));
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  min-height: 44px;
+  padding: 0.6rem 1.15rem;
+  border: 1px solid #f4d19b99;
+  border-radius: 999px;
+  background: #120c3359;
+  color: white;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  animation: opening-fade 300ms ease-out 150ms both;
+}
+.opening-skip:hover {
+  background: #f4d19b29;
+}
+.opening-skip:focus-visible {
+  outline: 2px solid var(--launch-champagne);
+  outline-offset: 3px;
+}
+@keyframes opening-veil {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes opening-light {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) translateX(-22%) scale(0.85);
+  }
+  55% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.6;
+    transform: translate(-50%, -50%);
+  }
+}
+@keyframes opening-mark-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.94);
+  }
+}
+@keyframes opening-sheen {
+  to {
+    transform: translateX(120%);
+  }
+}
+@keyframes opening-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes opening-accent {
+  from {
+    opacity: 0;
+    transform: scaleX(0);
+  }
+  45% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  to {
+    opacity: 0.4;
+    transform: scaleX(1);
+  }
+}
+@keyframes opening-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes opening-stage-out {
+  to {
+    transform: scale(1.035);
+  }
+}
+@keyframes opening-dissolve {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+@keyframes opening-leave {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+/* The global reduced-motion rule removes animations, which would also remove
+   the self-dissolve, so the scene is never shown at all. */
+@media (prefers-reduced-motion: reduce) {
+  .opening[data-intro] {
+    display: none;
+  }
+}
+@media print {
+  .opening[data-intro] {
+    display: none;
+  }
+}
+/* Meet your AI learning team (src/components/ai-learning-team.tsx): the
+   homepage section and the compact dashboard card. Monogram portraits in the
+   brand-mark shape, no photography; scoped to .ai-* only. */
+.ai-team,
+.ai-team-card {
+  --ai-purple: #312680;
+  --ai-purple-deep: #241c63;
+  --ai-violet: #4a3ead;
+  --ai-champagne: #f4d19b;
+  --ai-line: #e4e0f3;
+}
+.ai-team {
+  margin-bottom: 3.5rem;
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px solid var(--ai-line);
+  border-radius: 20px;
+  background: linear-gradient(180deg, #f5f3fc 0%, #ffffff 70%);
+}
+.ai-team-intro {
+  max-width: 640px;
+  margin-bottom: 1.75rem;
+}
+.ai-team-eyebrow {
+  margin-bottom: 0.5rem;
+  color: var(--ai-violet);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+}
+.ai-team h2 {
+  margin-bottom: 0.75rem;
+  color: var(--ai-purple-deep);
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+}
+.ai-team-intro p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+.ai-team-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-member {
+  padding: 1.5rem;
+  border: 1px solid var(--ai-line);
+  border-radius: 16px;
+  background: white;
+}
+.ai-member h3 {
+  margin: 1rem 0 0.2rem;
+  color: var(--ai-purple-deep);
+  font-size: 1.125rem;
+}
+.ai-member-role {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+  color: var(--ai-violet);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ai-member p:last-child {
+  margin-bottom: 0;
+}
+/* The established D mark's shape, carrying each character's initials. */
+.ai-portrait {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 60px;
+  height: 66px;
+  border-radius: 18px 4px 18px 4px;
+  background: linear-gradient(150deg, #3d31a0 0%, var(--ai-purple-deep) 100%);
+  box-shadow: inset 0 0 0 1px #f4d19b8c;
+  color: white;
+  font:
+    italic 1.5rem Georgia,
+    serif;
+  letter-spacing: 0.02em;
+}
+.ai-tag {
+  display: inline-block;
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: #ece9fb;
+  color: var(--ai-purple);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  line-height: 1.5;
+  text-transform: none;
+  vertical-align: middle;
+}
+.ai-tag-staff {
+  background: #eef1f4;
+  color: #526374;
+}
+.ai-team-note {
+  margin: 1rem 0 1.5rem;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+.ai-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem 1.5rem;
+  margin: 0;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ai-line);
+}
+.ai-roles dt {
+  color: var(--ai-purple-deep);
+  font-weight: 650;
+}
+.ai-roles dd {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.ai-team-card h2 {
+  margin-bottom: 1.1rem;
+}
+.ai-team-card ul {
+  display: grid;
+  gap: 1.1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ai-team-card li {
+  display: flex;
+  gap: 0.9rem;
+  align-items: flex-start;
+}
+.ai-team-card .ai-portrait {
+  width: 40px;
+  height: 44px;
+  border-radius: 12px 2px 12px 2px;
+  font-size: 1rem;
+}
+.ai-team-card h3 {
+  margin: 0 0 0.15rem;
+  font-size: 0.9375rem;
+}
+.ai-team-card p {
+  margin-bottom: 0.3rem;
+  font-size: 0.875rem;
+}
+.ai-team-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 24px;
+  color: var(--ai-purple);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.ai-team-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .ai-team {
+    margin-bottom: 2.5rem;
+    padding: 1.5rem 1.25rem;
+    border-radius: 14px;
+  }
+}
+/* Course catalogue (/courses) and course pages (/courses/[slug]). Both sit
+   inside .launch-home, so they share the homepage's purple, white and
+   champagne tokens; nothing here touches the homepage itself. */
+.catalogue-hero,
+.course-hero {
+  margin: 1.5rem 0 2.5rem;
+  padding: clamp(2rem, 5vw, 3.5rem);
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 140% at 88% -10%, #4a3ead 0%, transparent 55%),
+    linear-gradient(
+      150deg,
+      var(--launch-purple) 0%,
+      #2a2072 58%,
+      var(--launch-purple-deep) 100%
+    );
+  color: white;
+}
+.catalogue-hero h1,
+.course-hero h1 {
+  margin: 0.6rem 0 0.75rem;
+  font-size: clamp(2rem, 4.5vw, 3.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.catalogue-hero p:last-child,
+.course-hero-intro {
+  max-width: 660px;
+  margin-bottom: 0;
+  color: #e7e3fa;
+  font-size: 1.0625rem;
+}
+.catalogue-eyebrow,
+.course-hero-provider {
+  margin: 0;
+  color: var(--launch-champagne);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.catalogue {
+  margin-bottom: 3.5rem;
+}
+.catalogue-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  margin-bottom: 1.25rem;
+}
+.catalogue-heading h2 {
+  margin: 0;
+  color: var(--launch-purple-deep);
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+}
+.catalogue-heading p {
+  margin: 0;
+}
+.offer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 1.25rem;
+}
+.offer-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  border: 1px solid #e4e0f3;
+  border-radius: 16px;
+  background: white;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.offer-card:hover,
+.offer-card:focus-within {
+  border-color: #b9b0e6;
+  box-shadow: 0 14px 32px -22px #31268080;
+}
+.offer-card-provider {
+  margin: 0 0 0.4rem;
+  color: #4a3ead;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.offer-card h3 {
+  margin: 0 0 0.6rem;
+  color: var(--launch-purple-deep);
+  font-size: 1.1875rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+/* The full summary is on the course page; the card keeps three lines. */
+.offer-card-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+}
+.offer-card-facts {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0 0 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ece9f6;
+}
+.offer-card-facts div {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+}
+.offer-card-facts dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.offer-card-facts dd {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 550;
+}
+.offer-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-top: auto;
+}
+.offer-card-price {
+  margin: 0;
+  color: var(--launch-purple-deep);
+  font-size: 1.5rem;
+  font-weight: 650;
+}
+.offer-card-price span {
+  margin-left: 0.4rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.offer-card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  background: var(--launch-purple);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+/* Stretched over the card: the whole card is this one link. */
+.offer-card-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+}
+.offer-card:hover .offer-card-link {
+  background: #2a2072;
+}
+.offer-card-link:focus-visible {
+  outline: 3px solid #4a3ead;
+  outline-offset: 3px;
+}
+.course-hero-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.course-hero-facts li {
+  padding: 0.35rem 0.85rem;
+  border: 1px solid #ffffff42;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+}
+.course-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-areas: "content enrol";
+  gap: 2.5rem;
+  align-items: start;
+  margin-bottom: 3.5rem;
+}
+.course-enrol {
+  position: sticky;
+  top: 1.5rem;
+  grid-area: enrol;
+}
+.course-content {
+  display: grid;
+  gap: 2.25rem;
+  grid-area: content;
+}
+.course-content h2 {
+  margin-bottom: 0.6rem;
+  color: var(--launch-purple-deep);
+  font-size: 1.375rem;
+}
+.course-content p {
+  margin-bottom: 0;
+}
+.course-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding-left: 1.2rem;
+  list-style: disc;
+}
+.course-list li::marker {
+  color: #4a3ead;
+}
+.course-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+.course-facts div {
+  padding: 1rem;
+  border: 1px solid #e4e0f3;
+  border-radius: 12px;
+  background: white;
+}
+.course-facts dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+.course-facts dd {
+  margin: 0.2rem 0 0;
+  color: var(--launch-purple-deep);
+  font-weight: 600;
+}
+.course-fee-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  border-color: #e4e0f3;
+  border-top: 3px solid var(--launch-champagne);
+  box-shadow: 0 18px 40px -28px #31268066;
+}
+.course-fee-card p {
+  margin: 0;
+}
+.course-fee-label {
+  margin: 0;
+  color: #4a3ead;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.course-fee-price {
+  color: var(--launch-purple-deep);
+  font-size: 2.25rem;
+  font-weight: 650;
+  line-height: 1.1;
+}
+.course-fee-card .button {
+  background: var(--launch-purple);
+}
+.course-fee-card .button:hover {
+  background: #2a2072;
+}
+.course-fee-card .button.secondary {
+  background: white;
+  color: var(--launch-purple);
+  border-color: #d9d4f2;
+}
+.course-fee-card .button.secondary:hover {
+  background: #f5f3fc;
+}
+.course-fee-card .field {
+  margin-bottom: 0.85rem;
+}
+@media (max-width: 900px) {
+  /* The fee and enrolment card follows the course introduction. */
+  .course-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "enrol"
+      "content";
+    gap: 2rem;
+  }
+  .course-enrol {
+    position: static;
+  }
+}
+@media (max-width: 640px) {
+  .catalogue-hero,
+  .course-hero {
+    margin: 0.5rem 0 2rem;
+    padding: 2rem 1.25rem;
+    border-radius: 14px;
+  }
+  .offer-card-facts div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
   }
 }
 /* CP2 interactive examination workspace */

@@ -1,51 +1,61 @@
-import Link from "next/link";
-import { Brand, Badge } from "@/components/ui";
 import {
   loadPublishedOffers,
   OfferCard,
   OfferListStatus,
 } from "@/components/offer-card";
+import { PublicHeader, visitorWorkspace } from "@/components/public-header";
+import { SiteFooter } from "@/components/site-footer";
 import { listCommercialV1Offers } from "@/server/commercial-v1-commerce";
 
 export const dynamic = "force-dynamic";
 
+// The public course catalogue: every offer the database reports as
+// PUBLISHED, from any publisher on the platform, exactly as published.
 export default async function Page() {
-  const catalogue = await loadPublishedOffers(listCommercialV1Offers);
+  const [catalogue, workspace] = await Promise.all([
+    loadPublishedOffers(listCommercialV1Offers),
+    visitorWorkspace(),
+  ]);
+  const count = catalogue.offers.length;
   return (
-    <div className="foundation">
-      <header className="courses-header">
-        <Brand />
-        <nav aria-label="Account" className="courses-nav">
-          <Link href="/login" className="button secondary">
-            Sign in
-          </Link>
-          <Link href="/signup" className="button">
-            Create account
-          </Link>
-        </nav>
-      </header>
-      <main id="main" tabIndex={-1}>
-        <div className="foundation-copy">
-          <Badge tone="gold">DUCELIO ACADEMY</Badge>
-          <h1>Real courses. Real progress.</h1>
-          <p>
-            Structured, examination-focused programmes with a governed
-            Professor, Tutor and Examiner guiding every step, plus a counsellor
-            by your side.
-          </p>
-        </div>
-        <section aria-labelledby="courses-heading" className="section-content">
-          <h2 id="courses-heading">Available courses</h2>
-          <OfferListStatus ok={catalogue.ok} count={catalogue.offers.length} />
-          {catalogue.offers.length > 0 && (
-            <div className="course-grid">
-              {catalogue.offers.map((offer) => (
-                <OfferCard key={offer.slug} offer={offer} />
-              ))}
+    <div className="launch-home">
+      <div className="foundation">
+        <PublicHeader workspace={workspace} />
+        <main id="main" tabIndex={-1}>
+          <section
+            className="catalogue-hero"
+            aria-labelledby="catalogue-heading"
+          >
+            <p className="catalogue-eyebrow">COURSE CATALOGUE</p>
+            <h1 id="catalogue-heading">Find your next course</h1>
+            <p>
+              Each course shows its published price, delivery plan and cohort
+              start date. Open a course to see its full details and how to
+              enrol.
+            </p>
+          </section>
+          <section aria-labelledby="courses-heading" className="catalogue">
+            <div className="catalogue-heading">
+              <h2 id="courses-heading">Available courses</h2>
+              {catalogue.ok && count > 0 && (
+                <p className="muted">
+                  {count} {count === 1 ? "course" : "courses"} open for
+                  enrolment
+                </p>
+              )}
             </div>
-          )}
-        </section>
-      </main>
+            <OfferListStatus ok={catalogue.ok} count={count} />
+            {count > 0 && (
+              <div className="offer-grid">
+                {catalogue.offers.map((offer) => (
+                  <OfferCard key={offer.slug} offer={offer} />
+                ))}
+              </div>
+            )}
+          </section>
+        </main>
+      </div>
+      <SiteFooter workspace={workspace} />
     </div>
   );
 }

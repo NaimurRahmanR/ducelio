@@ -117,6 +117,8 @@ describe("page: /courses", () => {
         currency: "GBP",
         summary: "A hands-on introduction.",
         cohortStartsOn: "2026-09-01",
+        // The published projection always carries a plan (schema default).
+        deliveryPlan: "STANDARD_6_WEEK",
       },
     ]);
     const el = await CoursesPage();
