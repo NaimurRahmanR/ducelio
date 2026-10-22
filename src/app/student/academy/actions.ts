@@ -7,6 +7,7 @@ import {
   confirmMyAcademySchedule,
   previewMyAcademyRevision,
   previewMyAcademySchedule,
+  recordMyAcademyLessonStudied,
   recordMyAcademyResponse,
   reviseMyAcademySchedule,
   startMyAcademyAssessment,
@@ -234,4 +235,30 @@ export async function submitLabAction(
   }
   revalidatePath("/student/academy");
   return { message: "Practical submitted." };
+}
+
+export async function studiedAction(
+  _s: AssessmentActionState,
+  form: FormData,
+): Promise<AssessmentActionState> {
+  try {
+    const result = await recordMyAcademyLessonStudied(
+      form.get("enrolmentId"),
+      form.get("lessonRef"),
+    );
+    if (!result.ok)
+      return {
+        error:
+          result.code === "ACTIVITY_BLOCKED"
+            ? "Lessons are closed during a controlled assessment."
+            : "This lesson cannot be recorded yet.",
+      };
+  } catch {
+    return { error: "Your progress could not be saved. Try again." };
+  }
+  revalidatePath("/student/academy");
+  return {
+    message:
+      "Recorded as studied. This is your own progress note; mastery comes only from marked work.",
+  };
 }

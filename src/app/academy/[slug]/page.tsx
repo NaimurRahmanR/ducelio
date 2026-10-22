@@ -5,24 +5,30 @@ import { PublicHeader, visitorWorkspace } from "@/components/public-header";
 import { SiteFooter } from "@/components/site-footer";
 import { AcademyFormatTable } from "@/components/academy-offer-card";
 import { listAcademyCatalogue } from "@/server/academy-delivery";
+import { getAuthenticatedActor } from "@/server/identity";
+import { commerceConfig } from "@/lib/env";
+import { AcademyBuyForm } from "@/components/academy-buy-form";
 
 export const dynamic = "force-dynamic";
 
 // Public page of one Ducelio Academy offer. Every statement and price comes
-// from the published offer. Online checkout for Academy formats is not yet
-// connected, so no purchase control is shown.
+// from the published offer; only PUBLIC_SALE offers are listed. Purchase uses
+// the existing Stripe checkout through src/server/academy-commerce.ts.
 export default async function Page({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [catalogue, workspace] = await Promise.all([
+  const [catalogue, workspace, actor] = await Promise.all([
     listAcademyCatalogue().catch(() => null),
     visitorWorkspace(),
+    getAuthenticatedActor().catch(() => null),
   ]);
   const offer = catalogue?.find((o) => o.slug === slug);
   if (!offer) notFound();
+  const checkoutAvailable = commerceConfig().configured;
+  const next = `/academy/${offer.slug}`;
   return (
     <div className="launch-home">
       <div className="foundation">
@@ -61,11 +67,38 @@ export default async function Page({
             </Card>
             <Card>
               <h2>How to join</h2>
-              <p>
-                Online checkout for Academy courses is not yet open. Learners
-                with approved access will find this course under{" "}
-                <Link href="/student/academy">My Academy courses</Link>.
-              </p>
+              {!checkoutAvailable ? (
+                <p role="status">
+                  Card checkout is currently unavailable. Please try again
+                  later.
+                </p>
+              ) : !actor ? (
+                <>
+                  <p className="muted">
+                    Sign in or create a free account to buy this course.
+                  </p>
+                  <Link
+                    href={`/login?next=${encodeURIComponent(next)}`}
+                    className="button full"
+                  >
+                    Sign in to continue <span aria-hidden="true">→</span>
+                  </Link>
+                  <Link
+                    href={`/signup?next=${encodeURIComponent(next)}`}
+                    className="button secondary full"
+                  >
+                    Create an account
+                  </Link>
+                </>
+              ) : !actor.roles.includes("STUDENT") ? (
+                <p role="status">Purchases are made from a learner account.</p>
+              ) : (
+                <AcademyBuyForm
+                  slug={offer.slug}
+                  currency={offer.currency}
+                  formats={offer.formats}
+                />
+              )}
             </Card>
           </div>
         </main>

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { validateAcademyCoursePackage } from "@/domain/academy-course-package";
@@ -13,10 +14,38 @@ export type Query = (
 ) => Promise<{ rows: Record<string, unknown>[] }>;
 
 export const ACADEMY_PACKAGE_PATH = resolve(
-  "content/courses/security-plus-sy0-701/academy-b2c-rev1.json",
+  "content/courses/security-plus-sy0-701/academy-b2c-rev2.json",
 );
 export const academyPackage = () =>
   JSON.parse(readFileSync(ACADEMY_PACKAGE_PATH, "utf8"));
+
+// TEST-ONLY variant of the real artefact in which every pending decision is
+// treated as resolved and each graded lab carries a synthetic one-criterion
+// rubric. It exists solely to exercise sale, marking and completion paths;
+// it is never course content and never leaves the test database.
+export function approvedTestPackage(
+  key = "security-plus-academy-approved-test",
+) {
+  const pkg = academyPackage();
+  pkg.packageKey = key;
+  pkg.packageRevision = 1;
+  pkg.curriculum.packageKey = key;
+  pkg.curriculum.packageRevision = 1;
+  pkg.curriculum.curriculumVersion.label = `TEST-ONLY approved variant (${key})`;
+  pkg.pendingDecisions = [];
+  for (const lab of pkg.labs)
+    if (lab.graded) {
+      lab.rubric = [
+        {
+          key: "test-criterion",
+          description: "TEST-ONLY synthetic criterion",
+          maxMarks: 10,
+        },
+      ];
+      lab.markingGuidance = "TEST-ONLY synthetic marking guidance.";
+    }
+  return pkg;
+}
 
 export const people = {
   admin: {
@@ -56,7 +85,7 @@ export const people = {
     role: "REGISTRAR",
   },
 } as const;
-export type Person = (typeof people)[keyof typeof people];
+export type Person = { id: string; auth: string; email: string; role: string };
 
 export async function seedPeople(q: Query) {
   await q("alter table auth.users disable trigger academy_identity");
@@ -294,4 +323,57 @@ export async function openSittingNow(
   await q(
     "alter table public.academy_schedule_items enable trigger guard_history",
   );
+}
+
+// Bring scheduled items of one kind (optionally one ref) into the past so
+// time-released content and practicals open (superuser only).
+export async function releaseNow(
+  q: Query,
+  enrolmentId: string,
+  kind: "LESSON" | "LAB",
+  ref?: string,
+) {
+  await q(
+    "alter table public.academy_schedule_items disable trigger guard_history",
+  );
+  await q(
+    `update public.academy_schedule_items set starts_at = now() - interval '3 hours', ends_at = now() - interval '2 hours'
+     where enrolment_id = $1 and kind = $2 and ($3::text is null or ref = $3)
+       and schedule_id = (select id from public.academy_schedules where enrolment_id = $1 and superseded_at is null)`,
+    [enrolmentId, kind, ref ?? null],
+  );
+  await q(
+    "alter table public.academy_schedule_items enable trigger guard_history",
+  );
+}
+
+// Submit every graded practical and record its (test-only) rubric mark.
+export async function completeLabs(
+  q: Query,
+  learner: Person,
+  enrolmentId: string,
+  marks: number,
+) {
+  await releaseNow(q, enrolmentId, "LAB");
+  for (const lab of approvedTestPackage().labs.filter(
+    (l: { graded: boolean }) => l.graded,
+  )) {
+    const submitted = await rpc<{ ok: boolean; submissionId: string }>(
+      q,
+      learner,
+      "submit_my_academy_lab",
+      [
+        enrolmentId,
+        lab.activityRef,
+        `Learner findings for ${lab.activityRef}`,
+        randomUUID(),
+      ],
+    );
+    if (!submitted.ok) throw new Error(JSON.stringify(submitted));
+    await rpc(q, people.admin, "mark_academy_lab_submission", [
+      submitted.submissionId,
+      JSON.stringify({ "test-criterion": marks }),
+      "Evaluated against the test rubric",
+    ]);
+  }
 }

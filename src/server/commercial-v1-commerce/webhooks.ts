@@ -8,6 +8,7 @@ import { attestCommerceOperation } from "./operations-authority";
 import { attestCommerceFulfillment } from "./authority";
 import { paymentEvidenceProblem } from "./operations";
 import type { CommerceProvider, VerifiedWebhookEvent } from "./provider";
+import { processAcademyPayment } from "../academy-commerce";
 
 export async function processCommerceWebhook(
   event: VerifiedWebhookEvent,
@@ -82,6 +83,20 @@ export async function processCommerceWebhook(
   if (problem) return finish("UNRESOLVED", problem);
   if (isRefund && payment.chargeId !== event.subjectId)
     return finish("UNRESOLVED", "REFUND_MISMATCH");
+  // Academy (B2C) orders: same verified evidence, Academy authority.
+  if (payment.metadataOrderKind === "ACADEMY") {
+    try {
+      const academy = await processAcademyPayment(payment, {
+        orderId,
+        sessionId,
+        eventId: event.eventId,
+        isRefund,
+      });
+      return finish(academy.state, academy.reason);
+    } catch {
+      return finish("UNRESOLVED", "FULFILMENT_UNAVAILABLE");
+    }
+  }
   try {
     if (payment.refundedMinor! > 0) {
       if (payment.refundedMinor !== payment.amountMinor)

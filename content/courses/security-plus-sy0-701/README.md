@@ -195,9 +195,9 @@ This checkpoint does not claim CompTIA endorsement, access to live exam
 questions, live-provider quality, hosted Supabase acceptance or production
 readiness. The course remains exam preparation for an external qualification.
 
-## ACADEMY-B2C-1 Academy (direct-to-learner) conversion
+## ACADEMY-B2C Academy (direct-to-learner) conversion
 
-`academy-b2c-rev1.json` is an `ACADEMY_COURSE_PACKAGE_V1` package for the new
+`academy-b2c-rev2.json` (revision 2; revision 1 was never published) is an `ACADEMY_COURSE_PACKAGE_V1` package for the new
 Academy Course Engineering workflow (`/admin/academy-course-engineering`). It
 is generated, reproducibly, by `scripts/academy/build-security-plus-academy.mjs`
 from the committed revision 6 file and `sources.json`; CI-style tests check it
@@ -207,15 +207,23 @@ is up to date (`--check`).
   programme, modules, lessons, objectives, resources, practical activities,
   assignments, assessments, questions, answer keys and agent configuration.
   Only its identity changes: package key `security-plus-sy0-701-academy`,
-  revision 1, a distinct curriculum label and reason. Materialising it creates
+  revision 2, a distinct curriculum label and reason. Materialising it creates
   a separate programme and never touches the hosted `security-plus-sy0-701`
   programme, activation, offer, prices, policies, enrolments or history. No
   public offer slug is chosen by the package; publication needs an explicit
   admin decision.
 - **Grading.** Component identities and weights are the existing code-owned
-  Commercial V1 `NO_LABS` distribution (Quiz 1–4 5% each, Midterm 20%,
-  Final 60%). Labs are scheduled but **ungraded**, because revision 6 has no
-  lab rubric or marking guidance and none is invented.
+  Commercial V1 `WITH_LABS` distribution that governs the published course
+  (Quiz 1–4 5% each, Midterm 20%, Labs 20%, Final 40%). The ten
+  `PRACTICAL_LAB`s are graded; the four `EXERCISE`s are scheduled and ungraded.
+  Revision 6 has no lab rubric or marking guidance and none is invented: the
+  rubrics are a declared pending decision, so these labs cannot be marked and
+  the course cannot be sold or officially completed until approved rubrics
+  arrive in a later revision.
+- **Pending decisions** (`pendingDecisions`, enforced by the database):
+  `LAB_RUBRICS`, `LAB_CONTRIBUTION_SPLIT`, `COURSE_PASS_MARK`,
+  `LESSON_WORKLOAD`, `PREPARATION_AND_SITTING_WINDOWS`, `DELIVERY_FORMATS`,
+  `MISSED_SITTING_POLICY`. While any remains, the offer is review-only.
 - **Placement.** Each assessment is placed after the last lesson its own
   questions assess. The Academy validator found that revision 6 anchors Quiz 4
   at lesson 4-8 while its questions assess lessons up to 5-6; the conversion

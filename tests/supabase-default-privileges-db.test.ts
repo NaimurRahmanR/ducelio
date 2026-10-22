@@ -20,7 +20,9 @@ let at057: PGlite;
 // Reviewed public RPCs the migrations themselves grant to anon (catalogue
 // reads and the HMAC-attested commerce controller surface).
 const INTENDED_ANON_FUNCTIONS = [
+  "apply_academy_commerce_operation",
   "apply_commercial_v1_commerce_operation",
+  "fulfill_academy_order",
   "fulfill_commercial_v1_order",
   "get_commercial_v1_offer",
   "list_academy_catalogue",

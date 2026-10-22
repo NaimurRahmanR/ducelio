@@ -11,6 +11,7 @@ import {
 } from "@/components/admin-ui";
 import {
   AcademyUploadForm,
+  EnableSaleForm,
   ArchiveForm,
   GrantForm,
   MarkLabForm,
@@ -96,6 +97,21 @@ function Review({ review }: { review: AcademyReview }) {
           {review.qualificationPreparation.examinationBody}).{" "}
           {review.qualificationPreparation.disclaimer}
         </p>
+      )}
+      {(review.pendingDecisions ?? []).length > 0 && (
+        <div className="acad-outcome warn" role="note">
+          <p>
+            Pending academic decisions (not approved; this course stays
+            review-only and cannot record official completions):
+          </p>
+          <ul className="acad-issues">
+            {review.pendingDecisions.map((d) => (
+              <li key={d.key}>
+                <strong>{d.key}</strong> — {d.summary}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {review.warnings.length > 0 && (
         <div className="acad-outcome warn" role="note">
@@ -376,10 +392,22 @@ export default async function Page({
               {selected.course.offerState?.toLowerCase() ?? ""}
             </Pill>
           </p>
+          <h3 className="acad-h3">Public sale</h3>
+          {selected.course.saleMode === "PUBLIC_SALE" ? (
+            <p>
+              <Pill tone="good">public sale</Pill> In the catalogue; learners
+              buy a format through Stripe checkout.
+            </p>
+          ) : selected.course.offerState === "PUBLISHED" ? (
+            <EnableSaleForm
+              offerId={selected.course.offerId}
+              pending={selected.pendingDecisions}
+            />
+          ) : null}
           <h3 className="acad-h3">Authorised access</h3>
           <p className="ac-muted">
-            Complimentary or reviewer access creates an individual enrolment.
-            Online checkout for Academy formats is not yet connected.
+            Complimentary or reviewer access creates an individual enrolment,
+            including for review-only courses.
           </p>
           <GrantForm
             offerId={selected.course.offerId}
@@ -412,7 +440,16 @@ export default async function Page({
                     Marking guidance: {l.markingGuidance}
                   </p>
                 )}
-                <MarkLabForm submissionId={l.submissionId} rubric={l.rubric} />
+                {l.rubric.length && l.markingGuidance ? (
+                  <MarkLabForm
+                    submissionId={l.submissionId}
+                    rubric={l.rubric}
+                  />
+                ) : (
+                  <p className="ac-muted">
+                    No approved rubric yet: this practical cannot be marked.
+                  </p>
+                )}
               </li>
             ))}
           </ul>

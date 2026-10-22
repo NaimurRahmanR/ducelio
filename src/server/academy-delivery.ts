@@ -9,6 +9,7 @@ import {
   attemptSchema,
   labWriteSchema,
   myAcademyEnrolmentsSchema,
+  progressSchema,
   responseWriteSchema,
   resultsSchema,
   revisionInputSchema,
@@ -206,4 +207,27 @@ export const getMyAcademyResults = (enrolmentId: unknown) =>
     "get_my_academy_results",
     { p_enrolment_id: id(enrolmentId) },
     resultsSchema,
+  );
+
+export const recordMyAcademyLessonStudied = (
+  enrolmentId: unknown,
+  lessonRef: unknown,
+) =>
+  learnerRpc(
+    "record_my_academy_lesson_studied",
+    {
+      p_enrolment_id: id(enrolmentId),
+      p_lesson_ref: z.string().min(1).max(80).parse(lessonRef),
+    },
+    z.union([
+      z.object({ ok: z.literal(true), replayed: z.boolean() }),
+      z.object({ ok: z.literal(false), code: z.string() }),
+    ]),
+  );
+
+export const getMyAcademyProgress = (enrolmentId: unknown) =>
+  learnerRpc(
+    "get_my_academy_progress",
+    { p_enrolment_id: id(enrolmentId) },
+    progressSchema,
   );

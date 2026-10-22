@@ -30,6 +30,10 @@ export const ACADEMY_ERROR_CODES = [
   "ENTITLEMENT_EXISTS",
   "ALREADY_MARKED",
   "PLAN_REQUIRED",
+  "ACCESS_REVOKED",
+  "NOT_RELEASED",
+  "ACTIVITY_BLOCKED",
+  "RUBRIC_PENDING",
 ] as const;
 export type AcademyErrorCode =
   (typeof ACADEMY_ERROR_CODES)[number] | "SERVICE_UNAVAILABLE";
@@ -69,6 +73,13 @@ export const ACADEMY_ERROR_TEXT: Record<AcademyErrorCode, string> = {
     "That learner already has access to this course with different terms.",
   ALREADY_MARKED: "This submission has already been marked.",
   PLAN_REQUIRED: "Confirm a timetable first.",
+  ACCESS_REVOKED:
+    "Access to this course has ended. Your history and results remain available.",
+  NOT_RELEASED: "This lesson opens at its scheduled session.",
+  ACTIVITY_BLOCKED:
+    "Learning materials are closed while a controlled assessment is in progress.",
+  RUBRIC_PENDING:
+    "This practical has no approved rubric yet, so it cannot be marked.",
   SERVICE_UNAVAILABLE:
     "The Academy service is unavailable. Nothing was changed.",
 };
@@ -85,6 +96,7 @@ export const academyPackageListSchema = z.array(
     publishedAt: stamp.nullable(),
     rejectedReason: z.string().nullable(),
     title: z.string().nullable(),
+    pendingDecisions: z.array(z.string()),
     curriculumImport: z
       .object({
         id: z.uuid(),
@@ -104,6 +116,7 @@ export const academyPackageListSchema = z.array(
         offerId: z.uuid().nullable(),
         slug: z.string().nullable(),
         offerState: z.enum(["PUBLISHED", "ARCHIVED"]).nullable(),
+        saleMode: z.enum(["REVIEW_ONLY", "PUBLIC_SALE"]).nullable(),
       })
       .nullable(),
   }),
@@ -241,6 +254,8 @@ export const timetableSchema = z.strictObject({
   title: z.string(),
   status: z.enum(["ACTIVE", "COMPLETED"]).optional(),
   serverTime: stamp.optional(),
+  accessRevoked: z.boolean(),
+  examActive: z.boolean().optional(),
   schedule: z
     .strictObject({
       revision: z.number().int(),
@@ -260,6 +275,7 @@ export const timetableSchema = z.strictObject({
       carried: z.boolean(),
       attempts: z.number().int().nullable(),
       labSubmitted: z.boolean().nullable(),
+      studied: z.boolean().nullable(),
     }),
   ),
 });
@@ -269,6 +285,7 @@ export const academyLessonSchema = z.strictObject({
   lessonRef: z.string(),
   sequence: z.number().int(),
   title: z.string(),
+  studied: z.boolean(),
   objectives: z.array(
     z.strictObject({ id: z.uuid(), description: z.string() }),
   ),
@@ -390,11 +407,35 @@ export const resultsSchema = z.strictObject({
   courseScoreBp: z.number().int().nullable(),
   passMarkBp: z.number().int(),
   outcome: z.enum(["IN_PROGRESS", "PASSED", "NOT_PASSED"]),
+  pendingDecisions: z.array(z.string()),
   completion: z
     .strictObject({ completedAt: stamp, courseScoreBp: z.number().int() })
     .nullable(),
 });
 export type AcademyResults = z.infer<typeof resultsSchema>;
+
+export const progressSchema = z.strictObject({
+  enrolmentId: z.uuid(),
+  lessons: z.number().int(),
+  released: z.number().int(),
+  studied: z.number().int(),
+  policyVersion: z.literal("MASTERY_V1"),
+  objectives: z.array(
+    z.strictObject({
+      objectiveId: z.uuid(),
+      lessonRef: z.string(),
+      description: z.string(),
+      state: z.enum([
+        "NOT_STARTED",
+        "DEVELOPING",
+        "DEMONSTRATED",
+        "NEEDS_REINFORCEMENT",
+      ]),
+      evidence: z.number().int(),
+    }),
+  ),
+});
+export type AcademyProgress = z.infer<typeof progressSchema>;
 
 export const labReviewListSchema = z.array(
   z.strictObject({

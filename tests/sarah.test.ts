@@ -1075,8 +1075,8 @@ describe("Sarah static boundaries", () => {
     const migrations = readdirSync(resolve("supabase/migrations")).sort();
     // AC-6 (055), AC-7 (056), the LR-BASELINE-01 privilege hardening
     // (057), the LR-03 checkout replacement (058) and the CP2 interactive
-    // examination engine (059) and the Academy B2C workflow (060) -- none
-    // of 057-060 touches a Sarah object -- are the only later migrations.
+    // examination engine (059) and the Academy B2C workflow (060-061) --
+    // none of 057-061 touches a Sarah object -- are the only later migrations.
     expect(
       migrations.slice(
         migrations.indexOf("202610060054_sarah_learner_guide.sql"),
@@ -1089,6 +1089,7 @@ describe("Sarah static boundaries", () => {
       "202610130058_commercial_v1_expired_checkout_replacement.sql",
       "202610160059_interactive_examination_engine.sql",
       "202610220060_academy_course_engineering.sql",
+      "202610230061_academy_controls_commerce_evidence.sql",
     ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");

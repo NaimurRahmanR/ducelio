@@ -20,6 +20,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
     string,
     {
       orderId: string;
+      orderKind: "ACADEMY" | null;
       amountMinor: number;
       currency: string;
       status: PaymentStatus;
@@ -124,6 +125,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
     const sessionId = `cs_test_fake_${randomUUID()}`;
     this.#sessions.set(sessionId, {
       orderId: input.orderId,
+      orderKind: input.orderKind ?? null,
       amountMinor: input.amountMinor,
       currency: input.currency,
       status: "UNPAID",
@@ -153,6 +155,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
       amountMinor: session.amountMinor,
       currency: session.currency,
       metadataOrderId: session.orderId,
+      metadataOrderKind: session.orderKind,
       url: session.open ? `https://checkout.fake.test/${sessionId}` : null,
       status: session.open ? "OPEN" : session.expired ? "EXPIRED" : "COMPLETE",
     };

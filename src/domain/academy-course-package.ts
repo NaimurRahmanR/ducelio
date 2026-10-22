@@ -156,6 +156,17 @@ export const academyCoursePackageSchema = z.strictObject({
     requireEveryComponentPassMark: z.boolean(),
   }),
   deliveryFormats: z.array(deliveryFormatSchema).min(1).max(5),
+  // Academic settings the owner has NOT yet approved. While any remains,
+  // the database keeps the offer review-only (no public sale, no checkout,
+  // no official completion record). Never used to invent a missing value.
+  pendingDecisions: z
+    .array(
+      z.strictObject({
+        key: componentKeySchema,
+        summary: z.string().trim().min(10).max(500),
+      }),
+    )
+    .max(30),
   reason: z.string().trim().min(5).max(300),
 });
 export type AcademyCoursePackage = z.infer<typeof academyCoursePackageSchema>;
@@ -242,6 +253,7 @@ export type AcademyReview = {
   grading: { componentKey: string; source: string; weightBp: number }[];
   completion: AcademyCoursePackage["completion"];
   formats: AcademyFormatEstimate[];
+  pendingDecisions: AcademyCoursePackage["pendingDecisions"];
   warnings: AcademyValidationWarning[];
 };
 
@@ -540,7 +552,12 @@ export function validateAcademyCoursePackage(
           ),
         );
     }
-    if (lab.graded && lab.rubric.length === 0)
+    // A graded lab may lack its rubric and guidance only while that is a
+    // declared pending decision; it then cannot be marked or sold.
+    const rubricPending = pkg.pendingDecisions.some(
+      (d) => d.key === "LAB_RUBRICS",
+    );
+    if (lab.graded && lab.rubric.length === 0 && !rubricPending)
       errors.push(
         issue(
           `${path}.rubric`,
@@ -556,7 +573,7 @@ export function validateAcademyCoursePackage(
           "An ungraded activity cannot declare rubric marks.",
         ),
       );
-    if (lab.graded && !lab.markingGuidance)
+    if (lab.graded && !lab.markingGuidance && !rubricPending)
       errors.push(
         issue(
           `${path}.markingGuidance`,
@@ -731,6 +748,18 @@ export function validateAcademyCoursePackage(
         ),
       );
   }
+
+  if (
+    new Set(pkg.pendingDecisions.map((d) => d.key)).size !==
+    pkg.pendingDecisions.length
+  )
+    errors.push(
+      issue(
+        "pendingDecisions",
+        "DUPLICATE_KEY",
+        "Each pending decision key may appear once.",
+      ),
+    );
 
   // Grading distribution.
   const components = pkg.grading.components;
@@ -966,6 +995,7 @@ export function validateAcademyCoursePackage(
       weightBp,
     })),
     completion: pkg.completion,
+    pendingDecisions: pkg.pendingDecisions,
     formats,
     warnings,
   };

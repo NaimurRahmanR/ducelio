@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireActor, requireStudentPrincipal } from "@/server/identity";
 import {
+  getMyAcademyProgress,
   getMyAcademyResults,
   getMyAcademyTimetable,
   listMyAcademyEnrolments,
@@ -81,7 +82,11 @@ function Timetable({
                   </Badge>
                   <div>
                     <p className="acad-item-title">
-                      {i.kind === "LESSON" ? (
+                      {i.kind === "LESSON" &&
+                      i.part === 1 &&
+                      Date.parse(i.startsAt) <= now &&
+                      !timetable.examActive &&
+                      !timetable.accessRevoked ? (
                         <Link
                           href={`/student/academy/lesson?enrolmentId=${enrolmentId}&lesson=${encodeURIComponent(i.ref)}`}
                         >
@@ -168,12 +173,13 @@ export default async function Page({
   const selected =
     enrolments?.find((e) => e.enrolmentId === params.enrolmentId) ??
     enrolments?.[0];
-  const [timetable, results] = selected?.schedule
+  const [timetable, results, progress] = selected?.schedule
     ? await Promise.all([
         getMyAcademyTimetable(selected.enrolmentId).catch(() => null),
         getMyAcademyResults(selected.enrolmentId).catch(() => null),
+        getMyAcademyProgress(selected.enrolmentId).catch(() => null),
       ])
-    : [null, null];
+    : [null, null, null];
   const format = selected?.formats.find(
     (f) => f.formatId === selected.formatId,
   );
@@ -245,15 +251,72 @@ export default async function Page({
                 />
               )}
             </Card>
+            {timetable?.accessRevoked && (
+              <Card>
+                <p role="status">
+                  Access to this course has ended (for example after a refund).
+                  Your timetable history and results remain available below.
+                </p>
+              </Card>
+            )}
+            {timetable?.examActive && (
+              <Card>
+                <p role="status">
+                  A controlled assessment is in progress. Lessons, practicals
+                  and AI explanations are closed until it ends.
+                </p>
+              </Card>
+            )}
+            {progress && (
+              <Card>
+                <h2>Progress</h2>
+                <p>
+                  {progress.released} of {progress.lessons} lessons released ·{" "}
+                  {progress.studied} confirmed as studied by you.
+                </p>
+                <p className="muted">
+                  Objective mastery ({progress.policyVersion}) comes only from
+                  marked assessments and practicals:{" "}
+                  {
+                    progress.objectives.filter(
+                      (o) => o.state === "DEMONSTRATED",
+                    ).length
+                  }{" "}
+                  demonstrated,{" "}
+                  {
+                    progress.objectives.filter((o) => o.state === "DEVELOPING")
+                      .length
+                  }{" "}
+                  developing,{" "}
+                  {
+                    progress.objectives.filter(
+                      (o) => o.state === "NEEDS_REINFORCEMENT",
+                    ).length
+                  }{" "}
+                  need reinforcement, of {progress.objectives.length}.
+                </p>
+              </Card>
+            )}
             {results && (
               <Card>
                 <h2>Results</h2>
+                {results.pendingDecisions.length > 0 && (
+                  <p className="notice" role="status">
+                    Provisional: this course&apos;s academic policy is still
+                    pending approval ({results.pendingDecisions.join(", ")}).
+                    Scores are shown, but no official completion can be recorded
+                    yet.
+                  </p>
+                )}
                 <p>
-                  {results.outcome === "PASSED"
-                    ? `Course completed with ${percent(results.courseScoreBp)} (pass mark ${percent(results.passMarkBp)}).`
-                    : results.outcome === "NOT_PASSED"
-                      ? `Every component is marked: ${percent(results.courseScoreBp)}, below the ${percent(results.passMarkBp)} pass mark.`
-                      : `In progress. The course pass mark is ${percent(results.passMarkBp)}.`}
+                  {results.outcome === "PASSED" &&
+                  results.pendingDecisions.length > 0
+                    ? `Provisional score ${percent(results.courseScoreBp)} against a proposed ${percent(results.passMarkBp)} pass mark.`
+                    : results.outcome === "PASSED"
+                      ? `Course completed with ${percent(results.courseScoreBp)} (pass mark ${percent(results.passMarkBp)}).`
+                      : results.outcome === "NOT_PASSED"
+                        ? `Every component is marked: ${percent(results.courseScoreBp)}, below the ${percent(results.passMarkBp)} pass mark.`
+                        : `In progress. The course pass mark is ${percent(results.passMarkBp)}.`}
                 </p>
                 <ul className="acad-results">
                   {results.components.map((c) => (

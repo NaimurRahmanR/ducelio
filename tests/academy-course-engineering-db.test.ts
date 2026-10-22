@@ -10,6 +10,9 @@ import {
   publishAcademyCourse,
   responseBody,
   rpc,
+  approvedTestPackage,
+  completeLabs,
+  releaseNow,
   seedPeople,
   type Query,
 } from "./academy-fixture";
@@ -30,6 +33,7 @@ import {
 let db: PGlite;
 let q: Query;
 let published: Awaited<ReturnType<typeof publishAcademyCourse>>;
+let security: Awaited<ReturnType<typeof publishAcademyCourse>>;
 const { admin, learnerA, learnerB, learnerC, instructor, registrar } = people;
 let enrolA: string;
 let enrolB: string;
@@ -81,7 +85,18 @@ beforeAll(async () => {
   q = (sql, params) =>
     db.query(sql, params) as Promise<{ rows: Record<string, unknown>[] }>;
   await seedPeople(q);
-  published = await publishAcademyCourse(q);
+  // Learner journeys run on the TEST-ONLY approved variant; the real
+  // Security+ artefact (pending decisions) is published separately below.
+  published = await publishAcademyCourse(
+    q,
+    "security-plus-academy-test",
+    approvedTestPackage(),
+  );
+  security = await publishAcademyCourse(
+    q,
+    "security-plus-review",
+    academyPackage(),
+  );
   today = (
     await q("select (now() at time zone 'Europe/London')::date::text as d")
   ).rows[0].d as string;
@@ -120,7 +135,7 @@ describe("Academy Course Engineering: upload, validation and publication", () =>
         JSON.stringify(pkg),
         "Re-upload identical",
       ]),
-    ).toBe(published.packageId);
+    ).toBe(security.packageId);
     pkg.course.description = "Changed description for the same revision.";
     await expect(
       rpc(q, admin, "upload_academy_course_package", [
@@ -132,8 +147,8 @@ describe("Academy Course Engineering: upload, validation and publication", () =>
 
   it("re-checks package invariants in the database before accepting validation", async () => {
     const pkg = academyPackage();
-    pkg.packageRevision = 2;
-    pkg.curriculum.packageRevision = 2;
+    pkg.packageRevision = 12;
+    pkg.curriculum.packageRevision = 12;
     pkg.grading.components[0].weightBp = 400; // 99%
     const id = await rpc<string>(q, admin, "upload_academy_course_package", [
       JSON.stringify(pkg),
@@ -156,8 +171,8 @@ describe("Academy Course Engineering: upload, validation and publication", () =>
 
   it("refuses publication until the embedded curriculum is published, and never on validation alone", async () => {
     const pkg = academyPackage();
-    pkg.packageRevision = 3;
-    pkg.curriculum.packageRevision = 3;
+    pkg.packageRevision = 13;
+    pkg.curriculum.packageRevision = 13;
     const v = validateAcademyCoursePackage(pkg);
     expect(v.valid).toBe(true);
     const id = await rpc<string>(q, admin, "upload_academy_course_package", [
@@ -270,6 +285,77 @@ describe("Academy Course Engineering: upload, validation and publication", () =>
         "Slug clash",
       ]),
     ).rejects.toThrow(/SLUG_CONFLICT/);
+  });
+
+  it("keeps a course with pending academic decisions review-only: no catalogue, no sale, no checkout", async () => {
+    expect(await rpc(q, null, "list_academy_catalogue")).toEqual([]);
+    const refused = await rpc<{ ok: boolean; code: string; pending: string[] }>(
+      q,
+      admin,
+      "enable_academy_public_sale",
+      [security.offerId, true, "Attempt to sell with pending decisions"],
+    );
+    expect(refused).toMatchObject({ ok: false, code: "POLICY_PENDING" });
+    expect(refused.pending).toEqual(
+      expect.arrayContaining([
+        "LAB_RUBRICS",
+        "COURSE_PASS_MARK",
+        "MISSED_SITTING_POLICY",
+      ]),
+    );
+    expect(
+      await rpc(q, learnerA, "create_academy_order", [
+        "security-plus-review",
+        "STANDARD_6W",
+      ]),
+    ).toMatchObject({ ok: false, code: "SALE_NOT_OPEN" });
+    await expect(
+      rpc(q, learnerA, "enable_academy_public_sale", [
+        security.offerId,
+        true,
+        "Learner attempt",
+      ]),
+    ).rejects.toThrow(/FORBIDDEN/);
+    // The real artefact keeps the published 20% lab contribution.
+    const units = (
+      await q(
+        "select p.raw_package->'grading' g from public.academy_courses c join public.academy_course_packages p on p.id=c.package_id where c.id=$1",
+        [security.courseId],
+      )
+    ).rows[0].g as { components: { componentKey: string; weightBp: number }[] };
+    expect(
+      units.components.find((c) => c.componentKey === "LABS")?.weightBp,
+    ).toBe(2000);
+  });
+
+  it("opens public sale only with zero pending decisions and an explicit owner-approval confirmation", async () => {
+    expect(
+      await rpc(q, admin, "enable_academy_public_sale", [
+        published.offerId,
+        false,
+        "Not confirmed",
+      ]),
+    ).toMatchObject({ ok: false, code: "APPROVAL_REQUIRED" });
+    expect(
+      await rpc(q, admin, "enable_academy_public_sale", [
+        published.offerId,
+        true,
+        "Owner approved test policy",
+      ]),
+    ).toMatchObject({ ok: true, replayed: false });
+    expect(
+      await rpc(q, admin, "enable_academy_public_sale", [
+        published.offerId,
+        true,
+        "Owner approved test policy",
+      ]),
+    ).toMatchObject({ ok: true, replayed: true });
+    await expect(
+      q(
+        "update public.academy_offers set sale_mode='REVIEW_ONLY', sale_approved_by=null, sale_approved_at=null, sale_approval_reason=null where id=$1",
+        [published.offerId],
+      ),
+    ).rejects.toThrow(/IMMUTABLE_HISTORY/);
   });
 
   it("exposes only published offers with approved prices in the anonymous catalogue", async () => {
@@ -762,6 +848,16 @@ describe("individual entitlement and learner-controlled scheduling", () => {
   });
 
   it("serves lesson content from the materialised curriculum", async () => {
+    await expect(
+      rpc(q, learnerA, "get_my_academy_lesson", [enrolA, "lesson-1-4"]),
+    ).rejects.toThrow(/NOT_RELEASED/);
+    expect(
+      await rpc(q, learnerA, "record_my_academy_lesson_studied", [
+        enrolA,
+        "lesson-1-4",
+      ]),
+    ).toMatchObject({ ok: false, code: "NOT_RELEASED" });
+    await releaseNow(q, enrolA, "LESSON", "lesson-1-4");
     const lesson = await rpc<{
       title: string;
       objectives: unknown[];
@@ -770,6 +866,27 @@ describe("individual entitlement and learner-controlled scheduling", () => {
     expect(lesson.title).toBe("Cryptographic Solutions Overview");
     expect(lesson.objectives).toHaveLength(1);
     expect(lesson.resources.length).toBeGreaterThan(0);
+    // Confirming study is explicit, idempotent and never mastery.
+    expect(
+      await rpc(q, learnerA, "record_my_academy_lesson_studied", [
+        enrolA,
+        "lesson-1-4",
+      ]),
+    ).toMatchObject({ ok: true, replayed: false });
+    expect(
+      await rpc(q, learnerA, "record_my_academy_lesson_studied", [
+        enrolA,
+        "lesson-1-4",
+      ]),
+    ).toMatchObject({ ok: true, replayed: true });
+    const progress = await rpc<{
+      studied: number;
+      objectives: { state: string }[];
+    }>(q, learnerA, "get_my_academy_progress", [enrolA]);
+    expect(progress.studied).toBe(1);
+    expect(progress.objectives.every((o) => o.state === "NOT_STARTED")).toBe(
+      true,
+    );
   });
 });
 
@@ -1089,6 +1206,10 @@ describe("server-owned assessment sittings, results and completion", () => {
       await rpc(q, learnerA, "submit_my_academy_attempt", [attemptId]);
     }
     results = await rpc(q, learnerA, "get_my_academy_results", [enrolA]);
+    // Labs carry 20%: no completion while they are unmarked.
+    expect(results.outcome).toBe("IN_PROGRESS");
+    await completeLabs(q, learnerA, enrolA, 10);
+    results = await rpc(q, learnerA, "get_my_academy_results", [enrolA]);
     // quiz-2 was auto-submitted with one answer: 5% weight, so the course score is ~95%.
     expect(results.outcome).toBe("PASSED");
     const completion = (
@@ -1143,6 +1264,7 @@ describe("server-owned assessment sittings, results and completion", () => {
       ]);
       await rpc(q, learnerB, "submit_my_academy_attempt", [attemptId]);
     }
+    await completeLabs(q, learnerB, enrolB, 0);
     const results = await rpc<{ outcome: string; courseScoreBp: number }>(
       q,
       learnerB,

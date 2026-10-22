@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import {
   archiveAction,
+  enableSaleAction,
   grantAction,
   markLabAction,
   prepareCurriculumAction,
@@ -317,6 +318,47 @@ export function MarkLabForm({
       />
       <button className="ac-button secondary" disabled={pending}>
         Record marks
+      </button>
+      <Outcome state={state} />
+    </form>
+  );
+}
+
+export function EnableSaleForm({
+  offerId,
+  pending,
+}: {
+  offerId: string;
+  pending: string[];
+}) {
+  const [state, action, isPending] = useActionState(enableSaleAction, {});
+  if (pending.length)
+    return (
+      <div className="acad-outcome warn" role="note">
+        <p>
+          Review only. Public sale stays closed until a revision resolves these
+          pending academic decisions:
+        </p>
+        <ul className="acad-issues">
+          {pending.map((k) => (
+            <li key={k}>{k}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  return (
+    <form action={action} className="acad-form">
+      <input type="hidden" name="offerId" value={offerId} />
+      <label className="acad-check">
+        <input type="checkbox" name="ownerApproved" required />
+        <span>
+          The owner has approved this course&apos;s academic policy, workload,
+          formats and prices for public sale.
+        </span>
+      </label>
+      <Reason id="sale-reason" placeholder="Owner approval reference" />
+      <button className="ac-button" disabled={isPending}>
+        {isPending ? "Opening…" : "Open public sale"}
       </button>
       <Outcome state={state} />
     </form>

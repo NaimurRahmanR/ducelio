@@ -19,14 +19,14 @@ import { format } from "prettier";
 
 const dir = resolve("content/courses/security-plus-sy0-701");
 const sourceFile = resolve(dir, "ducelio-upload-rev6-six-assessments.json");
-const outFile = resolve(dir, "academy-b2c-rev1.json");
+const outFile = resolve(dir, "academy-b2c-rev2.json");
 const rev6 = JSON.parse(readFileSync(sourceFile, "utf8"));
 const sources = JSON.parse(readFileSync(resolve(dir, "sources.json"), "utf8"));
 
 const KEY = "security-plus-sy0-701-academy";
-const REVISION = 1;
+const REVISION = 2;
 const PROPOSAL_NOTE =
-  "Academy B2C conversion of SEC701 revision 6. Content unchanged. Workload, placement, pass mark and formats are Ducelio proposals pending owner academic approval.";
+  "Academy B2C conversion of SEC701 revision 6. Content unchanged. Lab rubrics, pass mark, workload and formats are pending owner approval.";
 
 const lessons = rev6.modules
   .toSorted((a, b) => a.position - b.position)
@@ -44,17 +44,59 @@ const lastCovered = (template) =>
   lessonKeys[Math.max(...coverage(template).map((k) => lessonKeys.indexOf(k)))];
 
 // Component identities and weights are the existing code-owned Commercial V1
-// NO_LABS distribution (src/domain/commercial-v1-assessment-policy.ts). Labs
-// stay ungraded because revision 6 contains no lab rubric or marking
-// guidance, and none is invented here.
+// WITH_LABS distribution (src/domain/commercial-v1-assessment-policy.ts),
+// which governs the published Security+ course because it has practical
+// labs: labs keep their 20%. Revision 6 contains no lab rubric or marking
+// guidance and none is invented here, so the ten PRACTICAL_LABs are graded
+// with their rubric declared PENDING (see PENDING_DECISIONS): they cannot
+// be marked, and the course cannot be sold or officially completed, until
+// the owner supplies approved rubrics in a later revision.
 const COMPONENTS = {
   "quiz-1": ["QUIZ_1", "QUIZ", 500],
   "quiz-2": ["QUIZ_2", "QUIZ", 500],
   midterm: ["MIDTERM", "MIDTERM", 2000],
   "quiz-3": ["QUIZ_3", "QUIZ", 500],
   "quiz-4": ["QUIZ_4", "QUIZ", 500],
-  final: ["FINAL", "FINAL", 6000],
+  final: ["FINAL", "FINAL", 4000],
 };
+const LABS_WEIGHT_BP = 2000;
+const PENDING_DECISIONS = [
+  {
+    key: "LAB_RUBRICS",
+    summary:
+      "Rubrics and marking guidance for the ten graded practical labs. Revision 6 has none; labs cannot be marked until approved rubrics exist.",
+  },
+  {
+    key: "LAB_CONTRIBUTION_SPLIT",
+    summary:
+      "How the 20% LABS weight is divided between labs. This package pools rubric marks across labs; the hosted per-lab contributions must be confirmed.",
+  },
+  {
+    key: "COURSE_PASS_MARK",
+    summary:
+      "The 70% course pass mark is a Ducelio proposal, not an approved policy.",
+  },
+  {
+    key: "LESSON_WORKLOAD",
+    summary:
+      "Teaching minutes per lesson (90), lab (60) and exercise (30) durations are proposals.",
+  },
+  {
+    key: "PREPARATION_AND_SITTING_WINDOWS",
+    summary:
+      "Revision minutes, gaps after teaching and 48/72-hour sitting windows are proposals.",
+  },
+  {
+    key: "DELIVERY_FORMATS",
+    summary:
+      "The five formats' class lengths and study-day ranges are proposals.",
+  },
+  {
+    key: "MISSED_SITTING_POLICY",
+    summary:
+      "No penalty or automatic resit exists for a missed sitting window; the owner must decide.",
+  },
+];
 const PREPARATION = {
   QUIZ: { revisionMinutes: 30, minimumDaysAfterTeaching: 0, window: 48 },
   MIDTERM: { revisionMinutes: 90, minimumDaysAfterTeaching: 1, window: 72 },
@@ -116,7 +158,7 @@ const academy = {
       .map((a) => ({
         activityRef: a.key,
         durationMinutes: a.kind === "PRACTICAL_LAB" ? 60 : 30,
-        graded: false,
+        graded: a.kind === "PRACTICAL_LAB",
         rubric: [],
         markingGuidance: null,
       })),
@@ -144,11 +186,15 @@ const academy = {
     };
   }),
   grading: {
-    components: rev6.assessmentTemplates.map((t) => ({
-      componentKey: COMPONENTS[t.key][0],
-      source: "ASSESSMENT",
-      weightBp: COMPONENTS[t.key][2],
-    })),
+    components: rev6.assessmentTemplates
+      .map((t) => ({
+        componentKey: COMPONENTS[t.key][0],
+        source: "ASSESSMENT",
+        weightBp: COMPONENTS[t.key][2],
+      }))
+      .concat([
+        { componentKey: "LABS", source: "LABS", weightBp: LABS_WEIGHT_BP },
+      ]),
   },
   completion: { coursePassMarkBp: 7000, requireEveryComponentPassMark: false },
   deliveryFormats: [
@@ -183,13 +229,14 @@ const academy = {
       maxStudyDaysPerWeek: 5,
     },
   ],
+  pendingDecisions: PENDING_DECISIONS,
   reason: PROPOSAL_NOTE,
 };
 
 const output = await format(JSON.stringify(academy), { parser: "json" });
 if (process.argv.includes("--check")) {
   if (readFileSync(outFile, "utf8") !== output) {
-    console.error("academy-b2c-rev1.json is out of date; rebuild it.");
+    console.error("academy-b2c-rev2.json is out of date; rebuild it.");
     process.exit(1);
   }
 } else {

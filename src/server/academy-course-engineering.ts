@@ -236,3 +236,33 @@ export const markAcademyLabSubmission = (
       maxMarks: z.number().int(),
     }),
   );
+
+export const enableAcademyPublicSale = (
+  offerId: string,
+  confirmed: boolean,
+  reason: string,
+) =>
+  adminRpc(
+    "enable_academy_public_sale",
+    {
+      p_offer_id: z.uuid().parse(offerId),
+      p_owner_approval_confirmed: confirmed,
+      p_reason: reason,
+    },
+    z.object({
+      ok: z.boolean(),
+      code: z.string().optional(),
+      pending: z.array(z.string()).optional(),
+      replayed: z.boolean().optional(),
+    }),
+  );
+
+export const revokeAcademyEntitlement = (
+  entitlementId: string,
+  reason: string,
+) =>
+  adminRpc(
+    "admin_revoke_academy_entitlement",
+    { p_entitlement_id: z.uuid().parse(entitlementId), p_reason: reason },
+    z.object({ ok: z.boolean(), code: z.string() }),
+  );

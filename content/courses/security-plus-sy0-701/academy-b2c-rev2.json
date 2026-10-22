@@ -1,7 +1,7 @@
 {
   "schemaVersion": "ACADEMY_COURSE_PACKAGE_V1",
   "packageKey": "security-plus-sy0-701-academy",
-  "packageRevision": 1,
+  "packageRevision": 2,
   "course": {
     "description": "Self-paced Ducelio Academy preparation for the CompTIA Security+ SY0-701 examination: five modules, 28 lessons, practical activities and six assessments, delivered on the learner's own timetable.",
     "qualificationPreparation": {
@@ -31,14 +31,14 @@
   "curriculum": {
     "schemaVersion": "COURSE_PACKAGE_V1",
     "packageKey": "security-plus-sy0-701-academy",
-    "packageRevision": 1,
+    "packageRevision": 2,
     "programme": {
       "title": "CompTIA Security+ SY0-701 Preparation",
       "examinationBody": "CompTIA",
       "qualificationName": "Ducelio Security+ SY0-701 Exam Preparation Course (preparation only -- not a CompTIA-issued certification)"
     },
     "curriculumVersion": {
-      "label": "SY0-701 objective v5.0 baseline / six assessment working draft / Academy B2C rev 1"
+      "label": "SY0-701 objective v5.0 baseline / six assessment working draft / Academy B2C rev 2"
     },
     "modules": [
       {
@@ -6592,7 +6592,7 @@
         "escalationPolicy": "NONE"
       }
     },
-    "reason": "Academy B2C conversion of SEC701 revision 6. Content unchanged. Workload, placement, pass mark and formats are Ducelio proposals pending owner academic approval."
+    "reason": "Academy B2C conversion of SEC701 revision 6. Content unchanged. Lab rubrics, pass mark, workload and formats are pending owner approval."
   },
   "workload": {
     "lessons": [
@@ -6749,7 +6749,7 @@
     {
       "activityRef": "lab-1-4-tls-inspection",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
@@ -6770,63 +6770,63 @@
     {
       "activityRef": "lab-3-1-shared-responsibility",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-3-2-segmentation-design",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-3-4-backup-recovery",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-4-1-endpoint-hardening",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-4-3-vuln-prioritisation",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-4-4-siem-investigation",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-4-5-firewall-rule-analysis",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-4-6-access-review",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
     {
       "activityRef": "lab-4-8-incident-evidence",
       "durationMinutes": 60,
-      "graded": false,
+      "graded": true,
       "rubric": [],
       "markingGuidance": null
     },
@@ -6988,7 +6988,8 @@
       { "componentKey": "MIDTERM", "source": "ASSESSMENT", "weightBp": 2000 },
       { "componentKey": "QUIZ_3", "source": "ASSESSMENT", "weightBp": 500 },
       { "componentKey": "QUIZ_4", "source": "ASSESSMENT", "weightBp": 500 },
-      { "componentKey": "FINAL", "source": "ASSESSMENT", "weightBp": 6000 }
+      { "componentKey": "FINAL", "source": "ASSESSMENT", "weightBp": 4000 },
+      { "componentKey": "LABS", "source": "LABS", "weightBp": 2000 }
     ]
   },
   "completion": {
@@ -7027,5 +7028,35 @@
       "maxStudyDaysPerWeek": 5
     }
   ],
-  "reason": "Academy B2C conversion of SEC701 revision 6. Content unchanged. Workload, placement, pass mark and formats are Ducelio proposals pending owner academic approval."
+  "pendingDecisions": [
+    {
+      "key": "LAB_RUBRICS",
+      "summary": "Rubrics and marking guidance for the ten graded practical labs. Revision 6 has none; labs cannot be marked until approved rubrics exist."
+    },
+    {
+      "key": "LAB_CONTRIBUTION_SPLIT",
+      "summary": "How the 20% LABS weight is divided between labs. This package pools rubric marks across labs; the hosted per-lab contributions must be confirmed."
+    },
+    {
+      "key": "COURSE_PASS_MARK",
+      "summary": "The 70% course pass mark is a Ducelio proposal, not an approved policy."
+    },
+    {
+      "key": "LESSON_WORKLOAD",
+      "summary": "Teaching minutes per lesson (90), lab (60) and exercise (30) durations are proposals."
+    },
+    {
+      "key": "PREPARATION_AND_SITTING_WINDOWS",
+      "summary": "Revision minutes, gaps after teaching and 48/72-hour sitting windows are proposals."
+    },
+    {
+      "key": "DELIVERY_FORMATS",
+      "summary": "The five formats' class lengths and study-day ranges are proposals."
+    },
+    {
+      "key": "MISSED_SITTING_POLICY",
+      "summary": "No penalty or automatic resit exists for a missed sitting window; the owner must decide."
+    }
+  ],
+  "reason": "Academy B2C conversion of SEC701 revision 6. Content unchanged. Lab rubrics, pass mark, workload and formats are pending owner approval."
 }

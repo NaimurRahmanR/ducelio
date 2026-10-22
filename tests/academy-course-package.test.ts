@@ -49,6 +49,27 @@ describe("ACADEMY_COURSE_PACKAGE_V1 Security+ conversion artefact", () => {
       ["FINAL", 90, 90],
     ]);
     expect(r.review.grading.reduce((n, g) => n + g.weightBp, 0)).toBe(10000);
+    // The published Security+ course's 20% lab contribution is preserved,
+    // with the missing rubrics declared pending rather than invented.
+    expect(r.review.grading.find((g) => g.source === "LABS")?.weightBp).toBe(
+      2000,
+    );
+    expect(r.review.labs.filter((l) => l.graded)).toHaveLength(10);
+    expect(
+      r.package.labs.every(
+        (l) => l.rubric.length === 0 && l.markingGuidance === null,
+      ),
+    ).toBe(true);
+    expect(r.review.pendingDecisions.map((d) => d.key)).toEqual(
+      expect.arrayContaining([
+        "LAB_RUBRICS",
+        "COURSE_PASS_MARK",
+        "LESSON_WORKLOAD",
+        "PREPARATION_AND_SITTING_WINDOWS",
+        "DELIVERY_FORMATS",
+        "MISSED_SITTING_POLICY",
+      ]),
+    );
     expect(r.review.formats.map((f) => f.formatId)).toEqual([
       ...ACADEMY_FORMAT_IDS,
     ]);
@@ -140,7 +161,7 @@ describe("validation produces actionable errors and never fills gaps", () => {
 
   it("validates the grading distribution", () => {
     const pkg = academyPackage();
-    pkg.grading.components[5].weightBp = 5000;
+    pkg.grading.components[5].weightBp = 3000;
     expect(errors(pkg)).toContainEqual(
       expect.objectContaining({
         code: "WEIGHTS_NOT_100",
@@ -153,8 +174,16 @@ describe("validation produces actionable errors and never fills gaps", () => {
     );
     unweighted.grading.components[0].weightBp += 500;
     expect(codes(unweighted)).toContain("UNWEIGHTED_COMPONENT");
+    // Graded labs without a rubric are valid only while LAB_RUBRICS is a
+    // declared pending decision; nothing is filled in.
     const labs = academyPackage();
-    labs.labs[1].graded = true;
+    labs.pendingDecisions = labs.pendingDecisions.filter(
+      (d: { key: string }) => d.key !== "LAB_RUBRICS",
+    );
+    labs.grading.components = labs.grading.components.filter(
+      (c: { source: string }) => c.source !== "LABS",
+    );
+    labs.grading.components[5].weightBp += 2000;
     expect(codes(labs)).toEqual(
       expect.arrayContaining([
         "MISSING_RUBRIC",
@@ -162,6 +191,9 @@ describe("validation produces actionable errors and never fills gaps", () => {
         "UNWEIGHTED_COMPONENT",
       ]),
     );
+    const duplicate = academyPackage();
+    duplicate.pendingDecisions.push(duplicate.pendingDecisions[0]);
+    expect(codes(duplicate)).toContain("DUPLICATE_KEY");
   });
 
   it("refuses free-text questions Academy delivery cannot grade deterministically", () => {

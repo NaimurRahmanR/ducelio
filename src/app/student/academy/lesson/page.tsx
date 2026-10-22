@@ -4,6 +4,12 @@ import { requireActor, requireStudentPrincipal } from "@/server/identity";
 import { getMyAcademyLesson } from "@/server/academy-delivery";
 import { AcademyShell } from "@/components/academy-shell";
 import { Card } from "@/components/ui";
+import { StudiedForm } from "@/components/academy-learner-forms";
+import {
+  ACADEMY_ERROR_TEXT,
+  AcademyError,
+  type AcademyErrorCode,
+} from "@/domain/academy-delivery";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +23,41 @@ export default async function Page({
   await requireActor("student");
   const actor = await requireStudentPrincipal();
   const params = await searchParams;
-  const lesson = await getMyAcademyLesson(
+  const { lesson, refusal } = await getMyAcademyLesson(
     params.enrolmentId,
     params.lesson,
-  ).catch(() => null);
-  if (!lesson) notFound();
+  ).then(
+    (lesson) => ({ lesson, refusal: null as AcademyErrorCode | null }),
+    (e: unknown) => ({
+      lesson: null,
+      refusal: (e instanceof AcademyError
+        ? e.code
+        : "SERVICE_UNAVAILABLE") as AcademyErrorCode | null,
+    }),
+  );
+  if (
+    !lesson &&
+    (refusal === "NOT_FOUND_OR_FORBIDDEN" || refusal === "FORBIDDEN")
+  )
+    notFound();
+  if (!lesson)
+    return (
+      <AcademyShell name={actor.displayName} roles={actor.roles}>
+        <div className="section-content">
+          <Card>
+            <p role="status">
+              {ACADEMY_ERROR_TEXT[refusal ?? "SERVICE_UNAVAILABLE"]}
+            </p>
+            <Link
+              className="text-link"
+              href={`/student/academy?enrolmentId=${params.enrolmentId ?? ""}`}
+            >
+              ← Back to my timetable
+            </Link>
+          </Card>
+        </div>
+      </AcademyShell>
+    );
   return (
     <AcademyShell name={actor.displayName} roles={actor.roles}>
       <div className="page-heading">
@@ -35,6 +71,13 @@ export default async function Page({
         </Link>
       </div>
       <div className="section-content acad-learner">
+        <Card>
+          <StudiedForm
+            enrolmentId={params.enrolmentId ?? ""}
+            lessonRef={lesson.lessonRef}
+            studied={lesson.studied}
+          />
+        </Card>
         <Card>
           <h2>Learning objectives</h2>
           <ul>

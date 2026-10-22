@@ -191,3 +191,83 @@ suites: `academy-course-package` 15, `academy-course-engineering-db` 29
 - No authenticated browser journey: Supabase Auth/PostgREST are not available
   locally. Hosted acceptance, accessibility/device audit and independent
   review are outstanding. Migration 060 is not applied anywhere hosted.
+
+## 9. Checkpoint ACADEMY-B2C-2 (migration 061)
+
+Migration `202610230061_academy_controls_commerce_evidence.sql` (001–060
+unchanged). Local only; not reviewed, merged or deployed.
+
+**Academic controls (corrections).**
+
+- One controlled assessment at a time across both exam systems, through the
+  existing student-level authority rather than a new one: Academy starts now
+  take the learner profile row lock first (the lock `start_assessment_attempt`,
+  every AI content release and Tutor note write already take), then the
+  enrolment; refuse while an AI content-release lease is open; finalise stale
+  attempts in both systems; and refuse while any controlled attempt is active
+  (`ANOTHER_ASSESSMENT_ACTIVE`). A trigger on `assessment_attempts` refuses an
+  institutional attempt while an Academy attempt is active, and a unique index
+  allows one active Academy attempt per learner.
+- `current_academic_activity_state()` and
+  `academic_content_release_explain_allowed()` (same signatures and ACLs) now
+  include active Academy attempts, so the Professor, Tutor, Lab Instructor,
+  handoff and Tutor-note firewalls all close during an Academy sitting.
+- Lesson release: lesson content opens from the start of the learner's own
+  first scheduled session for that lesson; it, study confirmation and practical
+  submission are refused during any active controlled assessment
+  (`ACTIVITY_BLOCKED`) and after access is revoked (`ACCESS_REVOKED`). The
+  timetable and results stay readable.
+
+**Academic policy gate.** `pendingDecisions` in the package (validated; a
+graded lab may lack a rubric only while `LAB_RUBRICS` is pending). While any
+remains: the offer is `REVIEW_ONLY` (absent from the catalogue, no checkout),
+labs without rubrics cannot be marked (`RUBRIC_PENDING`) and no official
+completion receipt is written (results are labelled provisional).
+`enable_academy_public_sale` requires zero pending decisions, every graded lab
+rubric present, and an explicit, audited owner-approval confirmation. The
+Security+ artefact is now revision 2 with the published 20% lab weight
+(`WITH_LABS`) and seven pending decisions; no rubric, pass mark, resit rule or
+missed-sitting penalty is invented.
+
+**Checkout and paid access.** Reuses the existing Stripe adapter, webhook
+route and receipt queue, controller keys, evidence checks and expired-session
+recovery. `create_academy_order` snapshots the approved per-format price;
+`fulfill_academy_order` and `apply_academy_commerce_operation` verify
+purpose-separated HMAC claims (a cohort claim can never fulfil an Academy
+order); fulfilment is idempotent per order and per provider event; the
+entitlement records the purchased format, which scheduling cannot change; a
+verified full refund revokes only that payment's access (complimentary access
+is untouched), partial refunds go to review, and refunded orders cannot be
+re-fulfilled or re-bought without support. Stripe sessions carry
+`metadata.orderKind = ACADEMY`; the existing webhook processor routes them to
+the Academy authority. Admin revocation: `admin_revoke_academy_entitlement`
+(RPC and server function; no admin list UI yet).
+
+**Evidence, mastery, progress.** Each database-scored sitting writes one
+`RETRIEVAL_CHECK` observation per assessed objective, and each recorded lab
+mark one `PRACTICAL_TASK` observation per objective the practical addresses
+(CORRECT = full marks, PARTIAL = some, INCORRECT = none), evaluated by
+MASTERY_V1's exact transition rule (two correct sessions of two kinds for
+DEMONSTRATED). Learner-confirmed study (`record_my_academy_lesson_studied`)
+is recorded separately, only for released lessons, and never counts toward
+mastery or completion. Page reads create nothing.
+
+**AI teaching and grading — not connected (blocker).** Professor classroom
+sessions, Tutor/Lab Instructor content releases and executions, DELIVERY_V1
+occurrences and handoffs, Examiner executions and agent-behaviour provenance
+all hold NOT NULL foreign keys to the cohort `enrolments` table (and the
+Professor to instructor `class_sessions`). Connecting Academy enrolments
+safely needs a reviewed enrolment abstraction across those authorities and
+their HMAC-attested execution governance; it is not attempted here, and the
+learner UI says AI-led classes are not connected. The AI firewall itself does
+cover Academy sittings. Examiner lab grading is likewise not connected; labs
+are marked by an academic administrator against an approved package rubric.
+Objective questions are scored only by the migration 059 database scorer.
+
+**Evidence (local, Node 22, PostgreSQL 16.15).** New suites:
+`academy-controls-db` 10 (PGlite, a real institutional Commercial V1 exam and
+an Academy enrolment for the same learner), `academy-commerce-db` 7,
+`academy-commerce-server` 4 (real checkout, webhook and reconciliation code,
+fake Stripe adapter), `academy-controls-pg-concurrency` 4 (real PostgreSQL:
+institutional-vs-Academy start, two Academy sittings, Academy start-vs-AI
+release, webhook-vs-success-page fulfilment — each admits exactly one).

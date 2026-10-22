@@ -3,6 +3,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import {
   archiveAcademyOffer,
+  enableAcademyPublicSale,
   grantAcademyEntitlement,
   markAcademyLabSubmission,
   prepareAcademyCurriculum,
@@ -221,6 +222,38 @@ export async function markLabAction(
     );
     revalidatePath(ROUTE);
     return { message: `Marked ${result.marks}/${result.maxMarks}.` };
+  } catch (e) {
+    return failure(e);
+  }
+}
+
+export async function enableSaleAction(
+  _s: AcademyAdminState,
+  data: FormData,
+): Promise<AcademyAdminState> {
+  try {
+    const result = await enableAcademyPublicSale(
+      z.uuid().parse(data.get("offerId")),
+      data.get("ownerApproved") === "on",
+      reasonOf(data),
+    );
+    revalidatePath(ROUTE);
+    revalidatePath("/courses");
+    if (result.ok)
+      return {
+        message:
+          "Public sale is open. The course is in the catalogue and can be bought.",
+      };
+    if (result.code === "POLICY_PENDING")
+      return {
+        error: `Academic decisions are still pending: ${(result.pending ?? []).join(", ")}. Publish a revision that resolves them first.`,
+      };
+    if (result.code === "RUBRIC_PENDING")
+      return { error: "A graded practical has no approved rubric yet." };
+    return {
+      error:
+        "Confirm that the owner approved this course's academic policy and prices.",
+    };
   } catch (e) {
     return failure(e);
   }

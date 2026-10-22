@@ -2,6 +2,7 @@
 import { useActionState, useState } from "react";
 import {
   startAssessmentAction,
+  studiedAction,
   submitLabAction,
 } from "@/app/student/academy/actions";
 import type { AssessmentActionState } from "@/app/student/actions";
@@ -69,5 +70,36 @@ export function LabSubmissionForm({
         {state.error && <p role="alert">{state.error}</p>}
       </form>
     </details>
+  );
+}
+
+export function StudiedForm({
+  enrolmentId,
+  lessonRef,
+  studied,
+}: {
+  enrolmentId: string;
+  lessonRef: string;
+  studied: boolean;
+}) {
+  const [state, action, pending] = useActionState<
+    AssessmentActionState,
+    FormData
+  >(studiedAction, {});
+  if (studied || state.message)
+    return (
+      <p role="status">
+        {state.message ?? "You have recorded this lesson as studied."}
+      </p>
+    );
+  return (
+    <form action={action} className="acad-inline-form">
+      <input type="hidden" name="enrolmentId" value={enrolmentId} />
+      <input type="hidden" name="lessonRef" value={lessonRef} />
+      <button className="button secondary" disabled={pending}>
+        {pending ? "Saving…" : "I have studied this lesson"}
+      </button>
+      {state.error && <p role="alert">{state.error}</p>}
+    </form>
   );
 }
