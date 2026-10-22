@@ -1,6 +1,7 @@
 "use client";
 import { useActionState } from "react";
 import Link from "next/link";
+import { ArrowRight, LoaderCircle } from "lucide-react";
 import {
   login,
   signup,
@@ -41,18 +42,21 @@ export function AuthForm({
   const password =
     mode === "login" || mode === "signup" || mode === "reset-password";
   return (
-    <form action={action}>
+    <form action={action} className="auth-form" aria-busy={pending}>
       {next && <input type="hidden" name="next" value={next} />}
-      {state.error && (
-        <div className="notice error" role="alert">
-          {state.error}
-        </div>
-      )}
-      {state.message && (
-        <div className="notice" role="status">
-          {state.message}
-        </div>
-      )}
+      {/* Always present, so the result of a submission is announced. */}
+      <div className="auth-feedback" aria-live="polite">
+        {state.error && (
+          <div className="auth-notice error" role="alert">
+            {state.error}
+          </div>
+        )}
+        {state.message && (
+          <div className="auth-notice success" role="status">
+            {state.message}
+          </div>
+        )}
+      </div>
       {mode === "signup" && (
         <div className="field">
           <label htmlFor="displayName">Your name</label>
@@ -102,9 +106,12 @@ export function AuthForm({
             maxLength={128}
             required
             disabled={!configured}
+            aria-describedby={mode !== "login" ? "password-hint" : undefined}
           />
           {mode !== "login" && (
-            <small className="muted">Use at least 12 characters.</small>
+            <small id="password-hint" className="auth-hint">
+              Use at least 12 characters.
+            </small>
           )}
         </div>
       )}
@@ -124,12 +131,21 @@ export function AuthForm({
         </div>
       )}
       <button
-        className="button full"
+        className="auth-submit"
         type="submit"
         disabled={!configured || pending}
       >
-        {pending ? "Please wait…" : labels[mode]}{" "}
-        <span aria-hidden="true">→</span>
+        {pending ? (
+          <>
+            <LoaderCircle size={18} className="auth-spin" aria-hidden="true" />
+            Please wait…
+          </>
+        ) : (
+          <>
+            {labels[mode]}
+            <ArrowRight size={18} aria-hidden="true" />
+          </>
+        )}
       </button>
     </form>
   );
