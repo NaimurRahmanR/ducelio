@@ -55,6 +55,17 @@ export function academyErrorCode(message: string): AcademyErrorCode {
     : "SERVICE_UNAVAILABLE";
 }
 
+// Academy packages embed a full curriculum, so the upload limit is larger
+// than the institutional package limit. Shared by the upload form (checked
+// before sending) and the server action; next.config.ts sets the Server
+// Action body limit above this value plus multipart overhead, so an
+// oversized file always receives this message instead of failing silently.
+export const MAX_ACADEMY_UPLOAD_BYTES = 1024 * 1024;
+export const ACADEMY_UPLOAD_TOO_LARGE =
+  "Academy course packages must be no larger than 1 MiB.";
+export const academyUploadSizeError = (bytes: number) =>
+  bytes > MAX_ACADEMY_UPLOAD_BYTES ? ACADEMY_UPLOAD_TOO_LARGE : null;
+
 // PostgREST "function/table not in the schema cache" and PostgreSQL
 // undefined function, table and schema.
 const MISSING_DEPENDENCY_CODES = new Set([

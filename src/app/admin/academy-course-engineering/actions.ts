@@ -12,7 +12,11 @@ import {
   uploadAcademyPackage,
   validateAcademyPackage,
 } from "@/server/academy-course-engineering";
-import { ACADEMY_ERROR_TEXT, AcademyError } from "@/domain/academy-delivery";
+import {
+  ACADEMY_ERROR_TEXT,
+  AcademyError,
+  academyUploadSizeError,
+} from "@/domain/academy-delivery";
 import { ACADEMY_FORMAT_IDS } from "@/domain/academy-scheduler";
 
 export type AcademyAdminState = {
@@ -22,9 +26,6 @@ export type AcademyAdminState = {
   packageId?: string;
 };
 
-// Academy packages embed a full curriculum, so the upload limit is larger
-// than the institutional package limit; the database caps stored size too.
-const MAX_ACADEMY_UPLOAD_BYTES = 1024 * 1024;
 const reasonSchema = z.string().trim().min(5).max(300);
 const ROUTE = "/admin/academy-course-engineering";
 
@@ -49,8 +50,8 @@ export async function uploadAndValidateAction(
       file.size === 0
     )
       return { error: "Choose a non-empty .json Academy course package." };
-    if (file.size > MAX_ACADEMY_UPLOAD_BYTES)
-      return { error: "Academy course packages must be no larger than 1 MiB." };
+    const tooLarge = academyUploadSizeError(file.size);
+    if (tooLarge) return { error: tooLarge };
     let parsed: unknown;
     try {
       parsed = JSON.parse(

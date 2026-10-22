@@ -275,3 +275,46 @@ describe("administrator Academy RPC failures", () => {
     );
   });
 });
+
+describe("Academy upload size limit", () => {
+  it("accepts exactly 1 MiB and refuses one byte more", async () => {
+    const { academyUploadSizeError, MAX_ACADEMY_UPLOAD_BYTES } =
+      await import("@/domain/academy-delivery");
+    expect(MAX_ACADEMY_UPLOAD_BYTES).toBe(1024 * 1024);
+    expect(academyUploadSizeError(MAX_ACADEMY_UPLOAD_BYTES)).toBeNull();
+    expect(academyUploadSizeError(MAX_ACADEMY_UPLOAD_BYTES + 1)).toMatch(
+      /no larger than 1 MiB/,
+    );
+  });
+
+  // Hosted staging (22 Oct 2026): with the default 1 MB Server Action limit,
+  // a 1,048,200-byte package was dropped by the framework with no message.
+  // The body limit must exceed the application limit plus multipart overhead.
+  it("keeps the Server Action body limit above the application limit plus multipart headroom", async () => {
+    const { MAX_ACADEMY_UPLOAD_BYTES } =
+      await import("@/domain/academy-delivery");
+    const source = readFileSync("next.config.ts", "utf8");
+    const match = source.match(/bodySizeLimit:\s*"(\d+)kb"/);
+    expect(match).not.toBeNull();
+    const limitBytes = Number(match![1]) * 1024;
+    expect(limitBytes).toBeGreaterThanOrEqual(
+      MAX_ACADEMY_UPLOAD_BYTES + 20 * 1024,
+    );
+    expect(limitBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+  });
+
+  it("checks the size in the upload form before sending and in the server action", () => {
+    const form = readFileSync(
+      "src/components/academy-course-engineering-forms.tsx",
+      "utf8",
+    );
+    expect(form).toMatch(/academyUploadSizeError\(file\.size\)/);
+    expect(form).toMatch(/event\.preventDefault\(\)/);
+    const action = readFileSync(
+      "src/app/admin/academy-course-engineering/actions.ts",
+      "utf8",
+    );
+    expect(action).toMatch(/academyUploadSizeError\(file\.size\)/);
+    expect(action).not.toMatch(/const MAX_ACADEMY_UPLOAD_BYTES/);
+  });
+});

@@ -23,7 +23,8 @@ CURRENT CHECKPOINT (PARTIAL): ACADEMY-RECOVERY-1, Academy course activation reco
   - Continuation 2026-10-22 18:00Z: File A is still absent everywhere searched. The V2 pilot (File B) was reviewed and is not schema-compatible; see docs/58 §6.
 - MIGRATIONS: none new. 060–065 are now applied to `ducelio-acceptance`; production is not touched. CONFIGURATION: none new.
 - KNOWN FAILURES: none in the local gates. A pre-existing baseline item: `current_academic_activity_state` remains executable by `service_role` (the phase 1–2 grant left for review by migration 057); the readiness contract records it as a baseline.
-- NEXT EXACT ACTION: obtain the genuine AWS package path and owner prices, then run steps 4–5 on staging through the real UI. Owner review and merge of the recovery PR.
+- Continuation 2026-10-22 23:15Z (see docs/58 §7): the V2 course package was built outside the repository and validated (TypeScript validator; local real-migration pipeline to REVIEW_ONLY). Hosted synthetic upload test passed (upload, validation diagnostics, review, rejection, access refusal). One defect was found and fixed in this branch: uploads near or above 1 MiB failed silently because of the framework body limit; fixed with a client-side check and `serverActions.bodySizeLimit` 1200kb. The fix is not yet deployed.
+- NEXT EXACT ACTION: owner review and merge of PR #83; the owner uploads `Ducelio_AWS_SAA_C03_Academy_Commercial_V2.json` through `/admin/academy-course-engineering`; owner prices and the 8 pending decisions remain owner actions.
 
 PREVIOUS CHECKPOINT RECORD (RELIABILITY-1, merged through PR #82):
 

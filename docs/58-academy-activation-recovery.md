@@ -85,3 +85,26 @@ See the checkpoint record in `implementation-progress.md` for the state of steps
     - no item names the V1 question it replaces (only a `lessonRef`).
   - **Recommendation.** Treat the pilot as a revision reference only. A future package revision would need a mechanical conversion (lowercase ids, `correctOptionId`, rationale into marking guidance) and an explicit V1-item replacement map, followed by SME review. Nothing was inserted into V1.
 - **AI runtime on staging.** The Operations Engineer page on `ducelio-staging` reports "AI interpretation not configured", so the Anthropic-backed profiles (Operations Engineer, Lab Instructor) have no provider there. The OpenAI-backed Professor and Tutor have no non-secret indicator, so they cannot be confirmed until a real classroom run.
+
+## 7. Continuation (2026-10-22, 23:15Z): upload readiness and the V2 course
+
+The owner asked for two independent results: a genuinely improved V2 package, and a staging interface the owner can use to upload and activate it. The AWS course itself was **not** uploaded, published or sold.
+
+- **Hosted readiness test on `ducelio-staging` (`6704f08`), as the acceptance administrator in headless Chrome.** The test used disposable synthetic packages with the `acceptance-` key prefix (recognised as test records):
+  - the uploader is reachable;
+  - a non-JSON file is refused ("not valid UTF-8 JSON. Nothing was uploaded.");
+  - an invalid package is rejected with both path-addressed issues;
+  - a valid package is validated with 0 warnings, and its review renders modules, formats, assessments, grading and pending decisions;
+  - the valid synthetic package was then **rejected** through the real reject action, so it can never be published;
+  - learner and unrelated-staff accounts are redirected with `error=forbidden`;
+  - hosted records left: two `acceptance-academy-upload-check-20261022a*` package revisions, both REJECTED. No curriculum, offer or catalogue entry was created.
+- **Defect found and fixed in this branch.** A file of 1,048,200 bytes (under the application's 1 MiB limit) and a 1.2 MB file both failed silently: no message, and React error #441 in the console.
+  - Probing with non-JSON files, which create no database rows, showed that the framework's default 1 MB Server Action limit counts multipart overhead. A 1,040,000-byte file reaches the application; 1,048,200 bytes does not.
+  - Fix: the shared `MAX_ACADEMY_UPLOAD_BYTES` and `academyUploadSizeError` live in `src/domain/academy-delivery.ts`; the upload form refuses an oversized file before sending, with the same message; `next.config.ts` sets `serverActions.bodySizeLimit` to `1200kb` (1 MiB plus multipart headroom, following the Next.js 16 documentation).
+  - The product limit is unchanged at 1 MiB. Regression tests cover the boundary, the config headroom (mutation-checked) and the shared check.
+  - The fix is **not deployed**; it reaches staging when this PR is merged.
+- **V2 package.** Built and verified outside the repository; it contains protected answer keys and is not committed. The repository records only these facts:
+  - `Ducelio_AWS_SAA_C03_Academy_Commercial_V2.json`: 918,263 bytes, SHA-256 `a3efaacd…b670d8`, package revision 2.
+  - It passes the real TypeScript validator (all four formats feasible).
+  - On a local PGlite database with all 65 migrations, it passed the full admin pipeline to REVIEW_ONLY, with public sale refused (`POLICY_PENDING`, 8 decisions), no answer keys in the learner attempt payload, and correct database scoring.
+  - Its size is below the framework's existing limit, so the owner can upload it today, before this fix is deployed.
