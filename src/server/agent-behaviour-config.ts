@@ -70,6 +70,16 @@ export async function getAgentBehaviourForEnrolment(
     { p_enrolment_id: z.uuid().parse(enrolmentId), p_role: role },
   );
   if (error) throw new AgentBehaviourUnavailable();
+  return verifiedLearnerBehaviourBinding(data, role);
+}
+
+// The single validation of a learner-scoped behaviour binding read, shared
+// by the cohort read above and the Academy enrolment read
+// (src/server/academic-runtime/academy-professor.ts).
+export function verifiedLearnerBehaviourBinding(
+  data: unknown,
+  role: BehaviourRole,
+): EffectiveAgentBehaviour {
   const parsed = learnerReadSchema.safeParse(data);
   if (!parsed.success || !parsed.data.ok) throw new AgentBehaviourUnavailable();
   const binding = parsed.data;

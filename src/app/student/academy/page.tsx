@@ -23,6 +23,8 @@ import {
   type AcademyTimetable,
 } from "@/domain/academy-delivery";
 import { ACADEMY_FORMATS } from "@/domain/academy-scheduler";
+import { enterAcademyClassAction } from "./classroom/actions";
+import { academyClassDenialText } from "@/server/academy-professor-classroom";
 
 export const dynamic = "force-dynamic";
 
@@ -108,9 +110,44 @@ function Timetable({
                         minute: "2-digit",
                       })}{" "}
                       · {i.minutes} min
+                      {i.kind === "LESSON" &&
+                        i.classOpened &&
+                        " · class opened"}
+                      {i.kind === "LESSON" &&
+                        (i.teachingTurns ?? 0) > 0 &&
+                        ` · ${i.teachingTurns} Professor exchange${i.teachingTurns === 1 ? "" : "s"}`}
                       {i.kind === "ASSESSMENT" &&
                         ` · sitting window until ${fmt(i.closesAt!, s.timezone, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
                     </p>
+                    {i.kind === "LESSON" &&
+                      timetable.status === "ACTIVE" &&
+                      !timetable.examActive &&
+                      !timetable.accessRevoked &&
+                      (Date.parse(i.startsAt) <= now ? (
+                        <form action={enterAcademyClassAction}>
+                          <input
+                            type="hidden"
+                            name="enrolmentId"
+                            value={enrolmentId}
+                          />
+                          <input
+                            type="hidden"
+                            name="scheduleItemId"
+                            value={i.id}
+                          />
+                          <button className="button secondary" type="submit">
+                            {i.classOpened
+                              ? "Resume AI class"
+                              : Date.parse(i.endsAt) < now
+                                ? "Catch up with Professor"
+                                : "Enter AI class"}
+                          </button>
+                        </form>
+                      ) : (
+                        <p className="muted">
+                          AI class opens at its scheduled time.
+                        </p>
+                      ))}
                     {i.kind === "ASSESSMENT" &&
                       (i.attempts ? (
                         <p className="muted">
@@ -164,7 +201,7 @@ function Timetable({
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ enrolmentId?: string }>;
+  searchParams: Promise<{ enrolmentId?: string; classNotice?: string }>;
 }) {
   await requireActor("student");
   const actor = await requireStudentPrincipal();
@@ -251,6 +288,13 @@ export default async function Page({
                 />
               )}
             </Card>
+            {params.classNotice && (
+              <Card>
+                <p role="status">
+                  {academyClassDenialText(params.classNotice)}
+                </p>
+              </Card>
+            )}
             {timetable?.accessRevoked && (
               <Card>
                 <p role="status">
@@ -272,7 +316,14 @@ export default async function Page({
                 <h2>Progress</h2>
                 <p>
                   {progress.released} of {progress.lessons} lessons released ·{" "}
+                  {progress.classesOpened} AI classes opened ·{" "}
+                  {progress.teachingInteractions} Professor exchanges ·{" "}
                   {progress.studied} confirmed as studied by you.
+                </p>
+                <p className="muted">
+                  Opening a class, talking with the Professor and confirming
+                  study are records of your learning activity. None of them is
+                  attendance, a mark or mastery.
                 </p>
                 <p className="muted">
                   Objective mastery ({progress.policyVersion}) comes only from
@@ -351,8 +402,8 @@ export default async function Page({
                   {dayHeading(timetable.schedule.startOn)} to{" "}
                   {dayHeading(timetable.schedule.endOn)} · revision{" "}
                   {timetable.schedule.revision}. Lesson materials open from your
-                  timetable; AI-led live classes for Academy courses are not yet
-                  connected.
+                  timetable. Each scheduled lesson has an AI class with the
+                  Professor, open from its start time.
                 </p>
                 <Timetable
                   timetable={timetable}

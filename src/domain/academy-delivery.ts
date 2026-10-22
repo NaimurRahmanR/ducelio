@@ -276,6 +276,10 @@ export const timetableSchema = z.strictObject({
       attempts: z.number().int().nullable(),
       labSubmitted: z.boolean().nullable(),
       studied: z.boolean().nullable(),
+      // Distinct from studied/mastery: the learner opened this scheduled AI
+      // class, and how many Professor exchanges were recorded in it.
+      classOpened: z.boolean().nullable(),
+      teachingTurns: z.number().int().nullable(),
     }),
   ),
 });
@@ -418,6 +422,8 @@ export const progressSchema = z.strictObject({
   enrolmentId: z.uuid(),
   lessons: z.number().int(),
   released: z.number().int(),
+  classesOpened: z.number().int(),
+  teachingInteractions: z.number().int(),
   studied: z.number().int(),
   policyVersion: z.literal("MASTERY_V1"),
   objectives: z.array(

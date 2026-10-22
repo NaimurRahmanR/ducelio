@@ -271,3 +271,107 @@ an Academy enrolment for the same learner), `academy-commerce-db` 7,
 fake Stripe adapter), `academy-controls-pg-concurrency` 4 (real PostgreSQL:
 institutional-vs-Academy start, two Academy sittings, Academy start-vs-AI
 release, webhook-vs-success-page fulfilment — each admits exactly one).
+
+## 10. Checkpoint ACADEMY-B2C-3 (migration 062): AI Professor classes
+
+Migration `202610240062_academy_ai_teaching.sql` (001–061 unchanged except
+`get_my_academy_timetable` and `get_my_academy_progress`, replaced with the
+same signatures and ACLs to add fields). Local only; not reviewed, merged or
+deployed. This supersedes the "not connected" note in §9 for the Professor
+only.
+
+**Execution pathway.** A learner enters a scheduled lesson's AI class from
+their own timetable ("Enter AI class" / "Resume AI class" / "Catch up with
+Professor"). `open_my_academy_professor_classroom(enrolment, schedule item)`
+takes the shared lock order (learner profile, then enrolment) and refuses
+unless the enrolment is the learner's own, ACTIVE and unrevoked; the item is
+a LESSON of the current timetable whose own start time has passed; and no
+controlled assessment is active in either exam system. A classroom is keyed
+by the root scheduled session (a revision carries started sessions
+unchanged), so retries and re-entry resume the same classroom. The governed
+request then runs `executeAcademyProfessorClassroom`
+(`src/server/academic-runtime/academy-professor.ts`), composed from the same
+reviewed parts as the cohort classroom with no second provider engine:
+
+1. the database classroom state (ownership, release under the CURRENT
+   timetable, revocation, firewall), shaped like the cohort classroom state so
+   `buildProfessorTeachingContext` is reused unchanged;
+2. the programme version's stored Professor configuration (enabled,
+   capabilities, model profile; an ACADEMIC_REVIEW escalation policy does not
+   teach, because an Academy course has no reviewer) and the behaviour
+   binding frozen at publication, validated by the same
+   `verifiedLearnerBehaviourBinding` as the cohort read;
+3. the role-bound runtime profile;
+4. the reviewed PROFESSOR_READ_V2 reads (lesson, the complete published
+   objectives, and resources and persisted Academy mastery when the
+   configuration authorises them), each under its own existing content
+   release, nested so the provider runs while every release is ACTIVE.
+   `read_my_academy_professor_context` returns the reviewed capability output
+   shapes and consumes the release; it reads only the published curriculum,
+   never questions, answer keys, rubrics or marking guidance;
+5. migration 025's AUTHORIZE (rate limits, hard budget ceiling, expiry),
+   attested Academy provenance that re-proves admission and binds the
+   context manifest to consumed releases of this classroom, START,
+   `runGovernedProviderExecution`, then FINALIZE with the real usage after
+   every release is closed;
+6. the learner-visible turn, attested and bound to the execution.
+
+Provenance and memory use the existing controller key and verifier with new
+protocol tags (`DUCELIO_ACADEMY_PROFESSOR_PROVENANCE_HMAC_SHA256_V1`,
+`DUCELIO_ACADEMY_CLASSROOM_TURN_HMAC_SHA256_V1`), so no cohort attestation can
+authorise an Academy write. Learner actions reserve an idempotency key before
+any provider call. The cohort runtime, classroom tables and behaviour are
+unchanged; the cohort classroom panel takes an optional `actions` prop
+defaulting to the existing cohort actions.
+
+**Distinct states.** Class scheduled (schedule item), class opened
+(`academy_professor_classrooms`), teaching interaction completed
+(`academy_professor_classroom_turns`), study confirmed by the learner
+(`academy_lesson_progress`), assessment graded, objective mastery
+(MASTERY_V1 from evidence only) and course completed remain separate records.
+Opening a class or talking with the Professor writes no evidence, mastery,
+progress, grade, attendance or completion. The timetable shows "class opened"
+and the number of Professor exchanges per lesson; progress shows classes
+opened, Professor exchanges and confirmed study separately.
+
+**Not connected in this checkpoint.**
+
+- Tutor and Lab Instructor: their runtime (`src/server/tutor-lab-execution`)
+  is admitted by DELIVERY_V1 handoffs with NOT NULL foreign keys to the
+  cohort `enrolments` and `delivery_handoffs` tables in its own content
+  release and execution tables. An Academy path needs its own reviewed
+  handoff/release authority; it was not attempted, so no Tutor/Lab support
+  exists for Academy courses and the classroom page says so.
+- Examiner practical grading: Academy labs have no approved rubric
+  (`LAB_RUBRICS` pending), so automated grading stays disabled and labs
+  cannot be marked at all until rubrics are approved. Objective questions
+  remain scored only by the deterministic database scorer.
+
+**Evidence (local, Node 22, PostgreSQL 16.15, stub provider, no paid AI
+call).** `academy-ai-teaching` 13 (PGlite, real runtime and database
+authority): entry before the scheduled time refused; own class opened and
+resumed; another learner's class, forged enrolment/session ids, a scheduled
+assessment and an unreleased lesson refused (with zero provider calls);
+end-to-end governed teaching with the lesson's published objectives in the
+provider context and no protected assessment fields, SUCCEEDED execution and
+usage, the four-release manifest and every release COMPLETED; continuation
+from stored memory; distinct progress states with no evidence, mastery,
+study, attempt or completion written; provider refusal recorded as FAILED
+with its usage and no memory; duplicate learner action refused; forged
+release reuse, cross-capability reads, another learner's read, an invalid
+or cross-protocol attestation and direct table access refused; an active
+Academy sitting closing class state, memory, reservation and Professor
+teaching (zero executions); revocation blocking entry, state, agent read and
+teaching while the classroom history stays; a timetable revision resuming
+the same classroom from the carried session and refusing the superseded
+entry, with immutable classroom history; cohort enrolment, class-session,
+classroom, turn and provenance tables untouched.
+`academy-ai-teaching-pg-concurrency` 3 (real PostgreSQL): six parallel entries
+create one classroom; parallel identical submissions reserve once; two
+overlapping Professor requests through the real runtime run exactly one
+governed execution (the other is BLOCKED by migration 025's one-active-
+execution rule), with one provider call, one turn and no release left open.
+Full gates: `npm run check` (lint, typecheck, 4,835 tests in 213 files with
+the real-PostgreSQL suites enabled), `npm run format:check` and
+`npm run build` pass. Not exercised: a real AI provider, hosted Supabase
+JWT/PostgREST, and an authenticated browser journey.
