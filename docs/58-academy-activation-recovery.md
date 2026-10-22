@@ -66,3 +66,22 @@ The exact backend error, captured through PostgREST as the acceptance administra
 ## 5. Course import and learner activation
 
 See the checkpoint record in `implementation-progress.md` for the state of steps 4–5 (AWS SAA-C03 upload, validation, REVIEW_ONLY publication and learner activation).
+
+## 6. Continuation (2026-10-22, 18:00Z): AWS package and V2 pilot
+
+- **File A** (`Downloads\Ducelio_AWS_SAA_C03_Academy_Commercial_Draft_v1.json`) is **not present**. Searches covered:
+  - the exact path, and the whole `C:` drive for `*Commercial_Draft*`;
+  - every JSON and zip of 100 KB–2 MB modified in the last 30 days under the user profile, by content (`ACADEMY_COURSE_PACKAGE_V1` / `SAA-C03`);
+  - Google Drive, by title and by content.
+    The only Academy package found is the repository's Security+ package, which is a different course and was not used. Nothing was uploaded.
+- **File B** (`Ducelio_AWS_SAA_C03_V2_Question_Pilot.json`): 15,206 bytes, SHA-256 `802520286a8dc5eab73149d2d5f09c91139c9068fb15716fc294b66b0240ba2c`. It contains 8 `SINGLE_SELECT` items, two per official SAA-C03 domain, mapped to task statements 1.2, 1.3, 2.1, 2.2, 3.1, 3.3, 4.1 and 4.2. The file declares "Not an uploadable Academy package".
+  - **Technical correctness.** Each keyed answer is correct. The cited AWS documentation was fetched and confirms the decisive claims of SEC-01 (KMS cross-account access needs both the key policy and IAM), SEC-02 (gateway endpoint routes exist only in associated route tables), RES-01 (a Multi-AZ DB instance standby is not readable, unlike a Multi-AZ DB cluster reader) and COST-02 (objects under 128 KB are not monitored or auto-tiered). RES-02, PERF-01, PERF-02 and COST-01 were reviewed against established AWS behaviour, not re-fetched.
+  - **Remaining quality issues.** Several distractors still use the absolutes the audit criticised (RES-02 A, COST-01 C, COST-02 B and D). All eight are single-select, so none exercises the official "two or more correct" multiple-response format.
+  - **Schema compatibility.** It is not drop-in compatible:
+    - options are a letter-keyed object, not `[{id, label}]`;
+    - ids are uppercase and fail `^[a-z0-9][a-z0-9_-]{0,39}$`;
+    - the key is `correct: ["B"]`, not `{correctOptionId}`;
+    - `reasoning`, `distractorExplanations`, `officialSources`, `domain`, `task` and `difficultyTarget` are not strict-schema fields;
+    - no item names the V1 question it replaces (only a `lessonRef`).
+  - **Recommendation.** Treat the pilot as a revision reference only. A future package revision would need a mechanical conversion (lowercase ids, `correctOptionId`, rationale into marking guidance) and an explicit V1-item replacement map, followed by SME review. Nothing was inserted into V1.
+- **AI runtime on staging.** The Operations Engineer page on `ducelio-staging` reports "AI interpretation not configured", so the Anthropic-backed profiles (Operations Engineer, Lab Instructor) have no provider there. The OpenAI-backed Professor and Tutor have no non-secret indicator, so they cannot be confirmed until a real classroom run.
