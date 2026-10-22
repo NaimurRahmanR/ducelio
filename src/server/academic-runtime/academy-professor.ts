@@ -116,6 +116,7 @@ const classroomViewSchema = z.strictObject({
   part: z.number().int().positive(),
   parts: z.number().int().positive(),
   openedAt: z.string().min(1).max(64),
+  timezone: z.string().min(1).max(100),
 });
 const stateResultSchema = z.union([
   z.strictObject({

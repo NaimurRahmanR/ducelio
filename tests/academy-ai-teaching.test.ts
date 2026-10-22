@@ -284,6 +284,9 @@ describe("entering a scheduled Academy class", () => {
       enrolmentId: enrolments[learnerA.id],
       mode: "CATCH_UP",
     });
+    expect(
+      (state as unknown as { view: { timezone: string } }).view.timezone,
+    ).toBe("Europe/London");
   });
 
   it("refuses another learner's class and forged enrolment or session ids", async () => {
@@ -748,7 +751,7 @@ describe("firewalls and refusals", () => {
         addDays(today(), 4),
         [2, 4, 6, 7],
         "08:00",
-        "Europe/London",
+        "America/New_York",
         randomUUID(),
       ],
     );
@@ -773,6 +776,14 @@ describe("firewalls and refusals", () => {
       ok: false,
       code: "SCHEDULE_SUPERSEDED",
     });
+    // The class renders in the learner's CURRENT timetable timezone, which
+    // the revision changed; the scheduled instants themselves are unchanged.
+    const view = await rpc<{
+      ok: boolean;
+      state: { scheduledStart: string };
+      view: { timezone: string };
+    }>(q, learnerA, "get_my_academy_professor_classroom_state", [classroomA]);
+    expect(view.view.timezone).toBe("America/New_York");
     const timetable = await rpc<{ items: Record<string, unknown>[] }>(
       q,
       learnerA,

@@ -266,8 +266,11 @@ begin
       'moduleTitle', m.title, 'scheduledStart', c.scheduled_start, 'scheduledEnd', c.scheduled_end,
       'serverNow', stamp,
       'mode', case when stamp <= c.scheduled_end then 'LIVE' else 'CATCH_UP' end),
+    -- The learner's authoritative timezone: the one their CURRENT timetable
+    -- is planned in (classes always render in it, never the server's).
     'view', jsonb_build_object('courseTitle', course.title, 'lessonRef', c.lesson_ref,
-      'part', c.part, 'parts', c.parts, 'openedAt', c.opened_at));
+      'part', c.part, 'parts', c.parts, 'openedAt', c.opened_at,
+      'timezone', (academy_private.current_schedule(c.enrolment_id)).timezone));
 end $$;
 
 -- Reserved before any provider call: a replayed submission of the same

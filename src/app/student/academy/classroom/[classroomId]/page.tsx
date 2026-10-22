@@ -6,6 +6,7 @@ import { AcademyShell } from "@/components/academy-shell";
 import { Badge, Card } from "@/components/ui";
 import { ProfessorClassroomPanel } from "@/components/professor-classroom-panel";
 import { getMyAcademyLesson } from "@/server/academy-delivery";
+import { formatAcademySessionTime } from "@/domain/academy-delivery";
 import {
   AcademyClassDenied,
   academyClassDenialText,
@@ -62,6 +63,11 @@ export default async function Page({
     getMyAcademyClassTranscript(state.classroomId),
   ]);
   const live = state.mode === "LIVE";
+  const schedule = formatAcademySessionTime(
+    state.scheduledStart,
+    state.scheduledEnd,
+    view.timezone,
+  );
   const back = `/student/academy?enrolmentId=${state.enrolmentId}`;
 
   return (
@@ -84,10 +90,8 @@ export default async function Page({
       <div className="section-content">
         <Card>
           <h2>Scheduled class</h2>
-          <p>
-            {new Date(state.scheduledStart).toLocaleString("en-GB")} –{" "}
-            {new Date(state.scheduledEnd).toLocaleString("en-GB")}
-          </p>
+          <p>{schedule.text}</p>
+          <p className="muted">Times are shown in {schedule.timeZone}.</p>
           <p className="muted">
             {live
               ? "Your scheduled class time is running. The Professor teaches this lesson from its approved content and objectives."

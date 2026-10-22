@@ -531,3 +531,42 @@ export function formatMoney(amountMinor: number, currency: string) {
 }
 export const percent = (bp: number | null) =>
   bp === null ? "—" : `${(bp / 100).toFixed(bp % 100 ? 2 : 0)}%`;
+
+// A scheduled Academy session, rendered in the learner's authoritative
+// timetable timezone (never the server's). Each instant is converted on its
+// own, so a session that spans a daylight-saving change shows the correct
+// offset at each end (for example "00:30 GMT – 03:30 BST"). An unknown zone
+// falls back to an explicitly labelled UTC rather than the host timezone.
+export function formatAcademySessionTime(
+  startsAt: string,
+  endsAt: string,
+  timeZone: string,
+) {
+  let zone = timeZone;
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: zone });
+  } catch {
+    zone = "UTC";
+  }
+  const day = (iso: string) =>
+    new Intl.DateTimeFormat("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: zone,
+    }).format(new Date(iso));
+  const time = (iso: string) =>
+    new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZoneName: "short",
+      timeZone: zone,
+    }).format(new Date(iso));
+  const text =
+    day(startsAt) === day(endsAt)
+      ? `${day(startsAt)}, ${time(startsAt)} – ${time(endsAt)}`
+      : `${day(startsAt)}, ${time(startsAt)} – ${day(endsAt)}, ${time(endsAt)}`;
+  return { timeZone: zone, text };
+}
