@@ -13,6 +13,10 @@ import { getAuthenticatedActor } from "../identity";
 import { AuthenticationRequired, AccessDenied } from "@/domain/policy";
 import { createSupabase } from "../supabase";
 import type { TutorLabContentRelease } from "./release";
+import {
+  abandonUnstartedProviderExecution,
+  recordLateProviderUsage,
+} from "../provider-execution-reliability";
 
 type Command =
   | { operation: "AUTHORIZE"; budget: TutorLabBudgetProposal }
@@ -145,6 +149,18 @@ export async function attestTutorLabExecutionCommand(
         "CONTENT_RELEASE_UNAVAILABLE",
         "EXECUTION_TIMEOUT",
       ].includes(result.data.code);
+    // Late FINALIZE after expiry: record the real usage once (migration
+    // 064); the execution stays TIMEOUT.
+    if (
+      command.operation === "FINALIZE" &&
+      result.data.code === "EXECUTION_TIMEOUT"
+    )
+      await recordLateProviderUsage(
+        role,
+        id,
+        release.releaseId,
+        command.usage,
+      ).catch(() => "UNAVAILABLE");
     throw new TutorLabExecutionDenied(result.data.code, databaseTerminal);
   }
   const snapshot = result.data.execution;
@@ -170,4 +186,40 @@ export async function attestTutorLabExecutionCommand(
   if (!result.data.transitioned)
     throw new TutorLabExecutionDenied("REPLAY_REJECTED");
   return snapshot;
+}
+
+// Pre-START cleanup (migration 064), as for the Professor: abandon an
+// AUTHORIZED execution that could not START; if START did commit, FINALIZE
+// it FAILED with zero usage (no provider call was made by this controller).
+export async function closeUnstartedTutorLabExecution(
+  role: TutorLabRole,
+  executionId: string,
+  release: TutorLabContentRelease,
+  reason: "INTERNAL_ERROR" | "POLICY_BLOCKED" | "ACTIVITY_BLOCKED",
+): Promise<void> {
+  try {
+    const outcome = await abandonUnstartedProviderExecution(
+      role,
+      executionId,
+      release.releaseId,
+      reason,
+    );
+    if (outcome === "RUNNING")
+      await attestTutorLabExecutionCommand(role, executionId, release, {
+        operation: "FINALIZE",
+        state: "FAILED",
+        reason,
+        budgetStage: null,
+        usage: {
+          providerCalls: 0,
+          attempts: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCostMicrousd: 0,
+          elapsedMs: 0,
+        },
+      });
+  } catch {
+    // Lazy DB-owned expiry remains the backstop.
+  }
 }

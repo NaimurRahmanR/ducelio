@@ -51,15 +51,23 @@ export type ClassroomPanelTurn = {
   learnerMessage: string | null;
   professorMessage: string;
 };
+type ClassroomAction = (
+  previous: ClassroomActionState,
+  form: FormData,
+) => Promise<ClassroomActionState>;
 export function ProfessorClassroomPanel({
   classSessionId,
   disabled,
   initialTurns = [],
   memoryDegraded = false,
   memoryFull = false,
+  actions = { begin: beginLessonAction, ask: askProfessorAction },
 }: {
   classSessionId: string;
   disabled: boolean;
+  // The governed server actions for this classroom: the cohort classroom by
+  // default, or the Academy classroom's own (same learner contract).
+  actions?: { begin: ClassroomAction; ask: ClassroomAction };
   initialTurns?: readonly ClassroomPanelTurn[];
   // Database-derived: shown-but-unrecorded exchanges exist.
   memoryDegraded?: boolean;
@@ -81,11 +89,11 @@ export function ProfessorClassroomPanel({
   const [beginState, beginFormAction, beginPending] = useActionState<
     ClassroomActionState,
     FormData
-  >(beginLessonAction, {});
+  >(actions.begin, {});
   const [askState, askFormAction, askPending] = useActionState<
     ClassroomActionState,
     FormData
-  >(askProfessorAction, {});
+  >(actions.ask, {});
   // "Adjusting state when a prop/value changes" during render, the pattern
   // React itself recommends in place of an effect for deriving state from
   // another piece of state that just changed

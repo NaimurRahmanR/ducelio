@@ -152,6 +152,14 @@ describe("final curriculum and migration audit", () => {
       // Migration 045: purpose-separated signed webhook receipt/refund envelope.
       // No anonymous operator authority; all claims require the controller MAC.
       "public.apply_commercial_v1_commerce_operation(uuid,text,bigint,bigint,text)",
+      // Migration 060: the read-only Ducelio Academy catalogue of PUBLISHED
+      // offers and approved per-format prices (never package content).
+      "public.list_academy_catalogue()",
+      // Migration 061: Academy fulfilment and the Academy signed operations
+      // envelope (verified full refund, expired-session replacement). Like
+      // the cohort pair above, every claim requires the controller MAC.
+      "public.fulfill_academy_order(uuid,uuid,text,text,text,integer,text,text,bigint,bigint,text)",
+      "public.apply_academy_commerce_operation(uuid,text,bigint,bigint,text)",
     ]);
     expect(new Set(rows.rows.map((r) => r.sig))).toEqual(allowed);
   });

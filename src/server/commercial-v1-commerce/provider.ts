@@ -20,6 +20,10 @@ export type CreateCheckoutInput = {
   // for the SAME order must make the provider return the SAME payable
   // session, never a second independent one.
   idempotencyKey: string;
+  // Academy (B2C) orders live in their own ledger; the marker routes the
+  // verified payment to the Academy fulfilment authority. Absent for cohort
+  // orders, whose behaviour is unchanged.
+  orderKind?: "ACADEMY";
 };
 export type CreateCheckoutResult = { sessionId: string; url: string };
 
@@ -29,6 +33,7 @@ export type RetrievedCheckout = {
   amountMinor: number | null;
   currency: string | null;
   metadataOrderId: string | null;
+  metadataOrderKind?: "ACADEMY" | null;
   // Null once the session is no longer open/payable (expired, completed
   // and closed, etc.) -- never fabricated.
   url: string | null;

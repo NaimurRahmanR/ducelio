@@ -12,6 +12,10 @@ import { getAuthenticatedActor } from "../identity";
 import { AuthenticationRequired, AccessDenied } from "@/domain/policy";
 import { createSupabase } from "../supabase";
 import type { AcademicContentRelease } from "../academic-content-release";
+import {
+  abandonUnstartedProviderExecution,
+  recordLateProviderUsage,
+} from "../provider-execution-reliability";
 
 export class ProviderExecutionDenied extends Error {
   constructor(
@@ -153,6 +157,20 @@ export async function attestProviderExecutionCommand(
         "CONTENT_RELEASE_UNAVAILABLE",
         "EXECUTION_TIMEOUT",
       ].includes(result.data.code);
+    // A FINALIZE that reached the database after the execution expired is
+    // refused, and the governance writes no usage for it. Its real usage is
+    // recorded once through the late-usage command (migration 064); the
+    // execution stays TIMEOUT and nothing here becomes a success.
+    if (
+      command.operation === "FINALIZE" &&
+      result.data.code === "EXECUTION_TIMEOUT"
+    )
+      await recordLateProviderUsage(
+        "PROFESSOR",
+        id,
+        release.release_id,
+        command.usage,
+      ).catch(() => "UNAVAILABLE");
     throw new ProviderExecutionDenied(result.data.code, databaseTerminal);
   }
   const snapshot = result.data.execution;
@@ -177,4 +195,43 @@ export async function attestProviderExecutionCommand(
   if (!result.data.transitioned)
     throw new ProviderExecutionDenied("REPLAY_REJECTED");
   return snapshot;
+}
+
+// Pre-START cleanup (migration 064). FINALIZE is accepted only from
+// RUNNING, so an execution that was AUTHORIZED but could not START is
+// abandoned instead, at once, rather than holding the learner's single
+// active execution until expiry. If START did in fact commit (its response
+// was lost), the execution is RUNNING and no provider call was made by this
+// controller, so it is FINALIZEd FAILED with zero usage. Best effort: the
+// database-owned expiry remains the backstop.
+export async function closeUnstartedProviderExecution(
+  executionId: string,
+  release: AcademicContentRelease,
+  reason: "INTERNAL_ERROR" | "POLICY_BLOCKED" | "ACTIVITY_BLOCKED",
+): Promise<void> {
+  try {
+    const outcome = await abandonUnstartedProviderExecution(
+      "PROFESSOR",
+      executionId,
+      release.release_id,
+      reason,
+    );
+    if (outcome === "RUNNING")
+      await attestProviderExecutionCommand(executionId, release, {
+        operation: "FINALIZE",
+        state: "FAILED",
+        reason,
+        budgetStage: null,
+        usage: {
+          providerCalls: 0,
+          attempts: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCostMicrousd: 0,
+          elapsedMs: 0,
+        },
+      });
+  } catch {
+    // Lazy DB-owned expiry remains the backstop.
+  }
 }

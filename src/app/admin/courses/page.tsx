@@ -80,6 +80,12 @@ export default async function Page({
       actions={
         <>
           <Link
+            href="/admin/academy-course-engineering"
+            className="ac-button secondary"
+          >
+            <Upload size={16} aria-hidden="true" /> Academy course (B2C)
+          </Link>
+          <Link
             href="/admin/course-engineering"
             className="ac-button secondary"
           >

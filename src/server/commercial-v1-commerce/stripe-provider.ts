@@ -72,7 +72,9 @@ export class StripeCommerceProvider implements CommerceProvider {
         // identity/amount/entitlement/course mapping. The database order row
         // (looked up by client_reference_id / metadata.orderId) remains
         // authoritative for those.
-        metadata: { orderId: input.orderId },
+        metadata: input.orderKind
+          ? { orderId: input.orderId, orderKind: input.orderKind }
+          : { orderId: input.orderId },
         line_items: [
           {
             quantity: 1,
@@ -105,6 +107,8 @@ export class StripeCommerceProvider implements CommerceProvider {
       currency: session.currency ? session.currency.toUpperCase() : null,
       metadataOrderId:
         session.metadata?.orderId ?? session.client_reference_id ?? null,
+      metadataOrderKind:
+        session.metadata?.orderKind === "ACADEMY" ? "ACADEMY" : null,
       url: session.url,
       status: mapSessionStatus(session.status),
     };
@@ -246,6 +250,8 @@ export class StripeCommerceProvider implements CommerceProvider {
       currency: session.currency?.toUpperCase() ?? null,
       metadataOrderId:
         session.metadata?.orderId ?? session.client_reference_id ?? null,
+      metadataOrderKind:
+        session.metadata?.orderKind === "ACADEMY" ? "ACADEMY" : null,
       url: session.url,
       status: mapSessionStatus(session.status),
       chargeId: verifiedCharge?.id ?? null,

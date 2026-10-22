@@ -92,7 +92,7 @@ export async function listProfessorClassroomTurns(
 // this module; callers learn only success or a bounded code.
 // ---------------------------------------------------------------------------
 
-function controller() {
+export function teachingController() {
   const keyId = z.uuid().safeParse(process.env.ACADEMIC_EXECUTION_KEY_ID);
   const keyHex = z
     .string()
@@ -111,13 +111,13 @@ function controller() {
         .digest("hex"),
   };
 }
-async function studentId() {
+export async function teachingStudentId() {
   const actor = await getAuthenticatedActor();
   if (!actor || !actor.roles.includes("STUDENT"))
     throw new ProfessorTeachingDenied("FORBIDDEN");
   return actor.id.toLowerCase();
 }
-const rpcResultSchema = z.union([
+export const teachingRpcResultSchema = z.union([
   z.strictObject({ ok: z.literal(true) }),
   z.strictObject({ ok: z.literal(true), duplicate: z.boolean() }),
   z.strictObject({ ok: z.literal(false), code: z.string().max(64) }),
@@ -142,10 +142,10 @@ export async function recordProfessorExecutionProvenance(input: {
   behaviourVersion: string;
   behaviourConfigVersion: string;
 }): Promise<void> {
-  const actor = await studentId();
+  const actor = await teachingStudentId();
   if (actor !== input.release.student_id.toLowerCase())
     throw new ProfessorTeachingDenied("CONTEXT_CONFLICT");
-  const c = controller();
+  const c = teachingController();
   const executionId = z.uuid().parse(input.executionId).toLowerCase();
   const releaseId = z.uuid().parse(input.release.release_id).toLowerCase();
   const classSessionId = z.uuid().parse(input.classSessionId).toLowerCase();
@@ -189,7 +189,7 @@ export async function recordProfessorExecutionProvenance(input: {
     },
   );
   if (error) throw new ProfessorTeachingDenied("SERVICE_UNAVAILABLE");
-  const parsed = rpcResultSchema.safeParse(data);
+  const parsed = teachingRpcResultSchema.safeParse(data);
   if (!parsed.success) throw new ProfessorTeachingDenied("SERVICE_UNAVAILABLE");
   if (!parsed.data.ok) throw new ProfessorTeachingDenied(parsed.data.code);
 }
@@ -204,8 +204,8 @@ export async function recordProfessorClassroomTurn(input: {
   interaction: ProfessorClassroomInteraction;
   professorMessage: string;
 }): Promise<void> {
-  const actor = await studentId();
-  const c = controller();
+  const actor = await teachingStudentId();
+  const c = teachingController();
   const executionId = z.uuid().parse(input.executionId).toLowerCase();
   const classSessionId = z.uuid().parse(input.classSessionId).toLowerCase();
   const learnerMessage =
@@ -238,7 +238,7 @@ export async function recordProfessorClassroomTurn(input: {
     p_mac: c.sign(canonical),
   });
   if (error) throw new ProfessorTeachingDenied("SERVICE_UNAVAILABLE");
-  const parsed = rpcResultSchema.safeParse(data);
+  const parsed = teachingRpcResultSchema.safeParse(data);
   if (!parsed.success) throw new ProfessorTeachingDenied("SERVICE_UNAVAILABLE");
   if (!parsed.data.ok) throw new ProfessorTeachingDenied(parsed.data.code);
 }

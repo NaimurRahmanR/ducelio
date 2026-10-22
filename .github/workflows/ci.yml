@@ -88,6 +88,11 @@ jobs:
           npx vitest run
           tests/commercial-v1-checkout-session-replacement-pg-concurrency.test.ts
           tests/interactive-exam-pg-concurrency.test.ts
+          tests/academy-pg-concurrency.test.ts
+          tests/academy-controls-pg-concurrency.test.ts
+          tests/academy-ai-teaching-pg-concurrency.test.ts
+          tests/academy-tutor-lab-pg-concurrency.test.ts
+          tests/execution-reliability-pg.test.ts
           --no-file-parallelism
           --reporter=default --reporter=json
           --outputFile.json=pg-concurrency-report.json
@@ -96,6 +101,11 @@ jobs:
         if: always()
         run: >-
           node scripts/ci/assert-pg-concurrency-report.mjs
-          pg-concurrency-report.json 14
+          pg-concurrency-report.json 39
           tests/commercial-v1-checkout-session-replacement-pg-concurrency.test.ts
           tests/interactive-exam-pg-concurrency.test.ts
+          tests/academy-pg-concurrency.test.ts
+          tests/academy-controls-pg-concurrency.test.ts
+          tests/academy-ai-teaching-pg-concurrency.test.ts
+          tests/academy-tutor-lab-pg-concurrency.test.ts
+          tests/execution-reliability-pg.test.ts

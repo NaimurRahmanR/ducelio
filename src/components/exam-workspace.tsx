@@ -1,6 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useActionState,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   finishControlledAssessment,
@@ -25,6 +33,19 @@ import {
   type SingleSelectInteraction,
 } from "@/domain/assessment-question-types";
 import { Badge } from "./ui";
+
+type ExamAction = (
+  state: AssessmentActionState,
+  form: FormData,
+) => Promise<AssessmentActionState>;
+// The save/finish authorities the workspace posts to. Defaults to the
+// institutional controlled-assessment actions; the Academy (B2C) sitting
+// passes its own, so both share one exam interface.
+export type ExamActions = { save: ExamAction; finish: ExamAction };
+const ExamActionsContext = createContext<ExamActions>({
+  save: saveControlledAssessmentResponse,
+  finish: finishControlledAssessment,
+});
 
 export type ExamQuestion = {
   id: string;
@@ -450,10 +471,11 @@ function QuestionPanel({
   expired: boolean;
   onChange: (draft: Draft) => void;
 }) {
+  const { save } = useContext(ExamActionsContext);
   const [saveState, saveAction, saving] = useActionState<
     AssessmentActionState,
     FormData
-  >(saveControlledAssessmentResponse, {});
+  >(save, {});
   const body = bodyFor(question, draft);
   const canSave = !expired && body !== null && body !== savedBodyFor(question);
   const objective = isObjectiveQuestionType(question.question_type)
@@ -530,18 +552,31 @@ const STATUS_TEXT: Record<Status, string> = {
 };
 
 export function ExamWorkspace({
-  title,
-  instructions,
-  attempt,
-  questions,
-  serverNow,
-}: {
+  actions,
+  ...props
+}: ExamWorkspaceProps & { actions?: ExamActions }) {
+  if (!actions) return <ExamWorkspaceBody {...props} />;
+  return (
+    <ExamActionsContext.Provider value={actions}>
+      <ExamWorkspaceBody {...props} actions={actions} />
+    </ExamActionsContext.Provider>
+  );
+}
+type ExamWorkspaceProps = {
   title: string;
   instructions: string;
   attempt: ExamAttempt;
   questions: ExamQuestion[];
   serverNow: string;
-}) {
+};
+function ExamWorkspaceBody({
+  title,
+  instructions,
+  attempt,
+  questions,
+  serverNow,
+  actions,
+}: ExamWorkspaceProps & { actions?: ExamActions }) {
   const router = useRouter();
   const [current, setCurrent] = useState(0);
   const [drafts, setDrafts] = useState<Record<string, Draft>>(() =>
@@ -556,7 +591,7 @@ export function ExamWorkspace({
   const [finishState, finishAction, finishing] = useActionState<
     AssessmentActionState,
     FormData
-  >(finishControlledAssessment, {});
+  >(actions?.finish ?? finishControlledAssessment, {});
 
   // Countdown display only. The offset aligns this display with server
   // time; the initial render uses serverNow so server and client markup

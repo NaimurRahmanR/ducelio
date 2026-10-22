@@ -31,6 +31,7 @@ import { withValidatedProfessorContent } from "../academic-capabilities";
 import type { AcademicContentRelease } from "../academic-content-release";
 import {
   attestProviderExecutionCommand,
+  closeUnstartedProviderExecution,
   ProviderExecutionDenied,
 } from "../academic-provider-execution/authority";
 import {
@@ -468,28 +469,22 @@ async function executeRoleCapabilityCore(
             ? "ACTIVITY_BLOCKED"
             : "POLICY_BLOCKED",
       };
-      // If AUTHORIZE itself was admitted but a later step failed without
-      // the database already having closed the execution out on its own
-      // (databaseTerminal), the row would otherwise dangle AUTHORIZED
-      // until it lazily expires. Best-effort cleanup; a failure here is
-      // not itself surfaced, since the DB-owned timeout policy remains
-      // the backstop (never a fabricated terminal success).
+      // Nothing here has STARTED (only AUTHORIZE, provenance and START can
+      // raise these denials). An admitted execution -- or one whose
+      // AUTHORIZE response was lost (SERVICE_UNAVAILABLE) -- is abandoned at
+      // once (migration 064) unless the database already closed it
+      // (databaseTerminal), so it never holds the learner's single active
+      // execution until it lazily expires. A definitive AUTHORIZE refusal
+      // left nothing to close. Best effort; never a fabricated success.
       if (
-        providerExecutionAuthorized &&
+        (providerExecutionAuthorized || error.code === "SERVICE_UNAVAILABLE") &&
         !(error instanceof ProviderExecutionDenied && error.databaseTerminal)
-      ) {
-        try {
-          await attestProviderExecutionCommand(providerExecutionId, release, {
-            operation: "FINALIZE",
-            state: "FAILED",
-            reason: "INTERNAL_ERROR",
-            budgetStage: null,
-            usage: zeroUsage(),
-          });
-        } catch {
-          // Lazy DB-owned expiry remains the backstop.
-        }
-      }
+      )
+        await closeUnstartedProviderExecution(
+          providerExecutionId,
+          release,
+          "INTERNAL_ERROR",
+        );
     }
   };
 

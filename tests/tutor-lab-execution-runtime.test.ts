@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   beginTutorLabContentRelease: vi.fn(),
   closeTutorLabContentRelease: vi.fn(),
   attestTutorLabExecutionCommand: vi.fn(),
+  closeUnstartedTutorLabExecution: vi.fn(),
   buildTutorContext: vi.fn(),
   buildLabContext: vi.fn(),
   getAgentConfigForEnrolment: vi.fn(),
@@ -62,6 +63,7 @@ vi.mock("@/server/tutor-lab-execution/release", async () => {
 });
 vi.mock("@/server/tutor-lab-execution/authority", () => ({
   attestTutorLabExecutionCommand: mocks.attestTutorLabExecutionCommand,
+  closeUnstartedTutorLabExecution: mocks.closeUnstartedTutorLabExecution,
 }));
 vi.mock("@/server/tutor-lab-execution/context", () => ({
   buildTutorContext: mocks.buildTutorContext,
