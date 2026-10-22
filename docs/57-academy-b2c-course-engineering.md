@@ -375,3 +375,48 @@ Full gates: `npm run check` (lint, typecheck, 4,835 tests in 213 files with
 the real-PostgreSQL suites enabled), `npm run format:check` and
 `npm run build` pass. Not exercised: a real AI provider, hosted Supabase
 JWT/PostgREST, and an authenticated browser journey.
+
+### 10.1 Audit corrections (ACADEMY-B2C-3a)
+
+An independent audit of migration 062 and the Academy Professor path found
+no cross-learner read or write path and no critical or high issue. Every
+public RPC binds to `current_app_user()`. Each release is read once, for its
+own capability and classroom. The attestation strings match field for field
+between TypeScript and SQL, and the protocol tags are distinct. Corrections,
+each with a regression test:
+
+- **Timezone.** The classroom page used the host timezone. It now renders
+  in the learner's current timetable timezone (`view.timezone` from the
+  database) through `formatAcademySessionTime`. Each instant gets its own
+  offset across daylight-saving changes, and an unknown zone falls back to
+  labelled UTC.
+- **Refused after AUTHORIZE.** Migration 025's FINALIZE is accepted only from
+  RUNNING, so an execution refused by the provenance admission re-check
+  stayed AUTHORIZED. That held the learner's one active execution for up to
+  20 seconds. `record_my_academy_professor_provenance` now terminalises it
+  FAILED in the same transaction; no provider call happened, so there is no
+  usage.
+- **Admission after the provider call.** Classroom admission (revocation,
+  enrolment status, release under the current timetable, exam firewall) is
+  re-proven after the provider returns, while every release is still ACTIVE.
+  A refund during a reply discards the reply, records no turn and still
+  FINALIZEs the real usage.
+- **Release lifecycle.** An inner failure now aborts every enclosing release,
+  so a release is COMPLETED only when the whole governed use succeeded.
+- **Two-way provenance exclusion.** Insert triggers on the cohort provenance
+  tables refuse an Academy-bound execution or release. The Academy function
+  already refused cohort-bound executions. Legitimate cohort writes are
+  unaffected.
+- **Reservation bounds.** At most 20 new reservations per classroom per
+  minute and 1,000 in total; replays still return `duplicate`.
+- **Firewall on the agent read.** `get_my_academy_professor_agent` refuses
+  during a controlled assessment.
+- **Persisted mastery.** Persisted mastery records are read in the reviewed
+  capability shape, now tested with a real record.
+
+**Known limitation, not changed (shared migration 025 governance).** If
+FINALIZE reaches the database after an execution's 20-second expiry, the
+database records TIMEOUT and no usage row, so real provider usage of such a
+late execution is missing from the durable ledger. The cohort classroom
+behaves the same way. A fix belongs in a reviewed change to the shared
+governance, not in this Academy checkpoint.

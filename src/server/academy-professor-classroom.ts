@@ -25,6 +25,9 @@ export const ACADEMY_CLASS_DENIAL_TEXT: Record<string, string> = {
   SCHEDULE_SUPERSEDED:
     "Your timetable has changed. Enter the class from your current timetable.",
   NOT_A_CLASS: "Only scheduled lessons have an AI class.",
+  RATE_LIMITED:
+    "Too many requests in this class just now. Wait a minute and try again.",
+  CAPACITY_REACHED: "This class has reached its limit of Professor requests.",
 };
 export const academyClassDenialText = (code: string) =>
   ACADEMY_CLASS_DENIAL_TEXT[code] ?? "This class is not available.";

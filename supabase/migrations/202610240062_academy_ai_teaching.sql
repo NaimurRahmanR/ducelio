@@ -79,6 +79,8 @@ create table public.academy_professor_interaction_reservations (
   reserved_at timestamptz not null default clock_timestamp(),
   primary key (classroom_id, idempotency_key)
 );
+create index academy_professor_interaction_reservations_recent
+  on public.academy_professor_interaction_reservations(classroom_id, reserved_at);
 
 -- One Academy read per content release: the release is consumed by exactly
 -- one classroom read of exactly its own capability, and the provenance
@@ -285,6 +287,20 @@ begin
   select * into r from academy_private.teaching_classroom(p_classroom_id);
   if r.code is not null then return jsonb_build_object('ok', false, 'code', r.code); end if;
   c := r.c;
+  if exists (select 1 from public.academy_professor_interaction_reservations
+      where classroom_id = c.id and idempotency_key = p_idempotency_key) then
+    return jsonb_build_object('ok', true, 'duplicate', true);
+  end if;
+  -- Bounded per classroom: a learner cannot flood the reservation table.
+  -- Ceilings sit well above the provider rate limits (migration 025), so a
+  -- genuine learner is never refused here first.
+  if (select count(*) from public.academy_professor_interaction_reservations
+      where classroom_id = c.id and reserved_at > clock_timestamp() - interval '60 seconds') >= 20 then
+    return jsonb_build_object('ok', false, 'code', 'RATE_LIMITED');
+  end if;
+  if (select count(*) from public.academy_professor_interaction_reservations where classroom_id = c.id) >= 1000 then
+    return jsonb_build_object('ok', false, 'code', 'CAPACITY_REACHED');
+  end if;
   insert into public.academy_professor_interaction_reservations(classroom_id, idempotency_key)
   values (c.id, p_idempotency_key) on conflict do nothing;
   get diagnostics n = row_count;
@@ -373,6 +389,7 @@ begin
   if p_enrolment_id is null then return jsonb_build_object('ok', false, 'code', 'INVALID_INPUT'); end if;
   select * into r from academy_private.teaching_enrolment(p_enrolment_id, false);
   if r.code is not null then return jsonb_build_object('ok', false, 'code', r.code); end if;
+  if academy_private.exam_active() then return jsonb_build_object('ok', false, 'code', 'ACTIVITY_BLOCKED'); end if;
   e := r.e;
   select * into cfg from public.academic_agent_configs c where c.programme_version_id = e.programme_version_id and c.role = 'PROFESSOR';
   eff := agent_behaviour_private.effective_behaviour(e.programme_version_id, 'PROFESSOR');
@@ -391,6 +408,24 @@ end $$;
 -- verifier as migration 051, with Academy-only protocol tags, so no cohort
 -- attestation can authorize an Academy write and vice versa.
 -- ==========================================================================
+-- Migration 025's FINALIZE is accepted only from RUNNING, so an execution
+-- this function refuses (still AUTHORIZED, before START) could otherwise
+-- not be closed by the controller and would hold the learner's one active
+-- execution until its 20-second expiry. Every refusal after the execution
+-- is locked therefore terminalises it FAILED (no provider call happened, so
+-- there is no usage to record) in the same transaction.
+create function academy_private.refuse_authorized_execution(p_execution_id uuid, p_code text) returns jsonb
+language plpgsql security definer set search_path='' as $$
+begin
+  update public.academic_provider_executions
+  set state = 'FAILED',
+      reason_code = case when p_code = 'ACTIVITY_BLOCKED' then 'ACTIVITY_BLOCKED'
+        when p_code like 'CONTEXT_%' then 'CONTENT_RELEASE_UNAVAILABLE' else 'POLICY_BLOCKED' end,
+      terminal_at = greatest(clock_timestamp(), created_at)
+  where id = p_execution_id and state = 'AUTHORIZED';
+  return jsonb_build_object('ok', false, 'code', p_code);
+end $$;
+
 create function public.record_my_academy_professor_provenance(
   p_key_id uuid, p_execution_id uuid, p_release_id uuid, p_classroom_id uuid,
   p_context_capabilities text[], p_context_release_ids uuid[],
@@ -437,21 +472,21 @@ begin
   -- Admission is re-proven here, immediately before START: own classroom,
   -- ACTIVE unrevoked enrolment, lesson released, no controlled assessment.
   select * into r from academy_private.teaching_classroom(p_classroom_id);
-  if r.code is not null then return jsonb_build_object('ok', false, 'code', r.code); end if;
+  if r.code is not null then return academy_private.refuse_authorized_execution(x.id, r.code); end if;
   c := r.c;
   select * into cfg from public.academic_agent_configs where programme_version_id = c.programme_version_id and role = 'PROFESSOR';
   if not found or not cfg.enabled or cfg.escalation_policy <> 'NONE' then
-    return jsonb_build_object('ok', false, 'code', 'POLICY_BLOCKED');
+    return academy_private.refuse_authorized_execution(x.id, 'POLICY_BLOCKED');
   end if;
   db_ref := agent_behaviour_private.runtime_profile_ref(c.programme_version_id, 'PROFESSOR');
   select * into eff from agent_behaviour_private.effective_config(c.programme_version_id, 'PROFESSOR');
   fingerprint := agent_behaviour_private.behaviour_fingerprint(c.programme_version_id);
-  if not eff.ok or fingerprint is null then return jsonb_build_object('ok', false, 'code', 'BEHAVIOUR_BINDING_INVALID'); end if;
+  if not eff.ok or fingerprint is null then return academy_private.refuse_authorized_execution(x.id, 'BEHAVIOUR_BINDING_INVALID'); end if;
   if db_ref is distinct from p_runtime_profile_ref
     or p_institutional_baseline_version is distinct from agent_behaviour_private.institutional_baseline_version()
     or p_behaviour_version is distinct from eff.behaviour_version
     or p_behaviour_config_version is distinct from eff.config_version then
-    return jsonb_build_object('ok', false, 'code', 'PROVENANCE_MISMATCH');
+    return academy_private.refuse_authorized_execution(x.id, 'PROVENANCE_MISMATCH');
   end if;
   expected := array['get_lesson_context','get_lesson_objectives'];
   if 'get_learning_resources' = any(cfg.capabilities) then expected := expected || 'get_learning_resources'::text; end if;
@@ -459,7 +494,7 @@ begin
   if not ('get_lesson_context' = any(cfg.capabilities) and 'get_lesson_objectives' = any(cfg.capabilities))
     or p_context_capabilities is distinct from expected or p_context_release_ids[1] <> p_release_id
     or (select count(distinct v) from unnest(p_context_release_ids) v) <> cardinality(p_context_release_ids) then
-    return jsonb_build_object('ok', false, 'code', 'CONTEXT_MANIFEST_MISMATCH');
+    return academy_private.refuse_authorized_execution(x.id, 'CONTEXT_MANIFEST_MISMATCH');
   end if;
   select * into outer_release from public.academic_content_releases where id = p_release_id;
   for n in 1..cardinality(p_context_release_ids) loop
@@ -472,7 +507,7 @@ begin
           and rr.started_at >= outer_release.started_at
           and cr.classroom_id = c.id and cr.capability_name = p_context_capabilities[n])
       or exists (select 1 from public.academy_professor_execution_context_releases m where m.release_id = p_context_release_ids[n]) then
-      return jsonb_build_object('ok', false, 'code', 'CONTEXT_RELEASE_INVALID');
+      return academy_private.refuse_authorized_execution(x.id, 'CONTEXT_RELEASE_INVALID');
     end if;
   end loop;
   insert into public.academy_professor_execution_provenance(execution_id, classroom_id, learner_id, enrolment_id,
@@ -568,6 +603,28 @@ begin
       from (select * from public.academy_professor_classroom_turns where classroom_id = c.id
             order by turn_number desc limit p_limit) t), '[]'::jsonb));
 end $$;
+
+-- An execution or content release bound to an Academy classroom can never
+-- also be cited by the cohort provenance protocol (and the Academy function
+-- already refuses an execution with cohort provenance). Legitimate cohort
+-- writes never carry an Academy id, so their behaviour is unchanged.
+create function academy_private.refuse_academy_bound_cohort_provenance() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if tg_table_name = 'academic_agent_execution_provenance' then
+    if new.professor_execution_id is not null and exists (select 1 from public.academy_professor_execution_provenance
+        where execution_id = new.professor_execution_id) then
+      raise exception 'ACADEMY_EXECUTION_BOUND' using errcode = '55000';
+    end if;
+  elsif exists (select 1 from public.academy_professor_context_reads where release_id = new.release_id) then
+    raise exception 'ACADEMY_RELEASE_BOUND' using errcode = '55000';
+  end if;
+  return new;
+end $$;
+create trigger refuse_academy_bound_execution before insert on public.academic_agent_execution_provenance
+for each row execute function academy_private.refuse_academy_bound_cohort_provenance();
+create trigger refuse_academy_bound_release before insert on public.academic_agent_execution_context_releases
+for each row execute function academy_private.refuse_academy_bound_cohort_provenance();
 
 -- ==========================================================================
 -- Section 6: learner projections with the distinct teaching states. Same

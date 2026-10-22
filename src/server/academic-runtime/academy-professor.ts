@@ -430,6 +430,12 @@ async function withAcademyTeachingReleases(
       if (index === 0) outerRelease = release;
       if (index < steps.length - 1) {
         inner = await level(index + 1);
+        // A release is COMPLETED only when the whole governed use under it
+        // succeeded: an inner failure aborts every enclosing release too.
+        if (!inner.ok)
+          throw new ProfessorTeachingDenied(
+            inner.activityBlocked ? "ACTIVITY_BLOCKED" : "INNER_RELEASE_FAILED",
+          );
         return;
       }
       await consume({
@@ -698,6 +704,13 @@ async function executeAcademyProfessorCore(
         return;
       }
       await governedProviderCall(release, built.context, manifest);
+      // Admission is re-proven after the provider call, while every release
+      // is still ACTIVE: a revocation (for example a refund), a closed
+      // enrolment, a timetable change that withdrew the lesson, or a
+      // controlled assessment that began during the call discards the
+      // output. Throwing here aborts the releases, and the real usage is
+      // still finalized below.
+      await getAcademyClassroomState(classroomId);
     },
   );
 

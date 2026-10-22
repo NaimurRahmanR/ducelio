@@ -29,6 +29,8 @@ process.env.ACADEMIC_EXECUTION_HMAC_KEY_HEX = key.toString("hex");
 const m = vi.hoisted(() => ({
   person: null as null | { id: string; auth: string },
   db: null as unknown,
+  // Test hook: runs (as the database owner) just before the named RPC.
+  hook: null as null | ((name: string) => Promise<void>),
 }));
 const actor = () =>
   m.person
@@ -55,6 +57,7 @@ vi.mock("@/server/supabase", () => ({
     async rpc(name: string, args: Record<string, unknown> = {}) {
       const db = m.db as PGlite;
       try {
+        if (m.hook) await m.hook(name);
         const sig = await db.query<{ names: string[]; types: string[] }>(
           `select p.proargnames names, array(select format_type(t,null) from unnest(p.proargtypes) t) types
            from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=$1`,
@@ -100,6 +103,7 @@ import {
 } from "@/domain/academic-runtime";
 import type { RuntimeProfile } from "@/domain/academic-runtime-profile";
 import { ProviderFailure } from "@/domain/academic-runtime";
+import { capabilitySchemas } from "@/domain/academic-capabilities";
 
 let db: PGlite;
 let q: Query;
@@ -666,6 +670,7 @@ describe("firewalls and refusals", () => {
       ["get_my_academy_professor_classroom_state", [opened.classroomId]],
       ["list_my_academy_professor_turns", [opened.classroomId, 10]],
       ["reserve_my_academy_professor_interaction", [opened.classroomId, "k1"]],
+      ["get_my_academy_professor_agent", [enrolment]],
     ] as const)
       expect(await rpc(q, learnerC, fn, [...args])).toEqual({
         ok: false,
@@ -817,5 +822,238 @@ describe("firewalls and refusals", () => {
         await count(`select count(*)::int n from public.${table}`),
         table,
       ).toBe(cohortBaseline[table]);
+  });
+});
+
+describe("audit regressions", () => {
+  const classroomOf = async (person: Person) =>
+    (
+      await q(
+        "select id from public.academy_professor_classrooms where learner_id = $1",
+        [person.id],
+      )
+    ).rows[0].id as string;
+  const lessonStartsAt = async (enrolmentId: string, offset: string) => {
+    await q(
+      "alter table public.academy_schedule_items disable trigger guard_history",
+    );
+    await q(
+      `update public.academy_schedule_items set starts_at = now() + $3::interval, ends_at = now() + $3::interval + interval '1 hour'
+       where enrolment_id = $1 and kind = 'LESSON' and ref = $2
+         and schedule_id = (select id from public.academy_schedules where enrolment_id = $1 and superseded_at is null)`,
+      [enrolmentId, lessonRef, offset],
+    );
+    await q(
+      "alter table public.academy_schedule_items enable trigger guard_history",
+    );
+  };
+
+  it("reads persisted Academy mastery in the reviewed capability shape", async () => {
+    const enrolment = enrolments[learnerA.id];
+    const objective = (
+      await q(
+        `select o.id from public.lesson_objectives o join public.academy_professor_classrooms c
+         on c.lesson_id = o.lesson_id where c.id = $1 order by o.position limit 1`,
+        [classroomA],
+      )
+    ).rows[0].id as string;
+    const evidence = (
+      await q(
+        `insert into public.academy_objective_evidence(enrolment_id, objective_id, source_kind, source_id,
+           evidence_kind, result, marks, max_marks)
+         values ($1, $2, 'ASSESSMENT_ATTEMPT', gen_random_uuid(), 'RETRIEVAL_CHECK', 'CORRECT', 1, 1) returning id`,
+        [enrolment, objective],
+      )
+    ).rows[0].id as string;
+    await q(
+      `insert into public.academy_objective_mastery(enrolment_id, objective_id, state, evidence_count,
+         correct_evidence_count, correct_session_count, correct_kind_count, last_evidence_id, policy_version)
+       values ($1, $2, 'DEVELOPING', 1, 1, 1, 1, $3, 'MASTERY_V1')`,
+      [enrolment, objective, evidence],
+    );
+    const release = await rpc<{ release_id: string }>(
+      q,
+      learnerA,
+      "begin_academic_content_release",
+      [randomUUID(), "get_current_mastery_state", "PROFESSOR_READ_V2"],
+    );
+    const read = await rpc<{ ok: boolean; data: unknown }>(
+      q,
+      learnerA,
+      "read_my_academy_professor_context",
+      [release.release_id, classroomA, "get_current_mastery_state"],
+    );
+    expect(read.ok).toBe(true);
+    const parsed = capabilitySchemas.get_current_mastery_state.output.parse(
+      read.data,
+    );
+    expect(parsed.records).toEqual([
+      expect.objectContaining({
+        objectiveId: objective,
+        state: "DEVELOPING",
+        policyVersion: "MASTERY_V1",
+        evidenceCount: 1,
+      }),
+    ]);
+    await rpc(q, learnerA, "close_academic_content_release", [
+      release.release_id,
+      false,
+    ]);
+  });
+
+  it("terminalises an execution refused after AUTHORIZE, so it never blocks the next request", async () => {
+    const classroom = await classroomOf(learnerC);
+    const enrolment = enrolments[learnerC.id];
+    // The timetable withdraws the lesson between AUTHORIZE and provenance.
+    m.hook = async (name) => {
+      if (name !== "record_my_academy_professor_provenance") return;
+      m.hook = null;
+      await lessonStartsAt(enrolment, "1 day");
+    };
+    const refused = stub();
+    expect(await run(learnerC, classroom, refused)).toMatchObject({
+      outcome: "ABSTAINED",
+      reason: "POLICY_BLOCKED",
+    });
+    m.hook = null;
+    expect(refused.requests).toHaveLength(0);
+    expect(
+      (
+        await q(
+          `select x.state, x.reason_code, exists (select 1 from public.academic_provider_execution_usage u
+             where u.execution_id = x.id) has_usage
+           from public.academic_provider_executions x where x.student_id = $1`,
+          [learnerC.id],
+        )
+      ).rows,
+    ).toEqual([
+      { state: "FAILED", reason_code: "POLICY_BLOCKED", has_usage: false },
+    ]);
+    // Immediately afterwards (well inside the 20-second expiry) the next
+    // request is admitted: nothing is left AUTHORIZED.
+    await lessonStartsAt(enrolment, "-3 hours");
+    expect(await run(learnerC, classroom, stub())).toMatchObject({
+      outcome: "SUCCEEDED",
+    });
+    expect(
+      await count(
+        `select count(*)::int n from public.academic_provider_executions
+         where student_id = $1 and state in ('AUTHORIZED','RUNNING')`,
+        [learnerC.id],
+      ),
+    ).toBe(0);
+  });
+
+  it("bounds reservations per classroom without breaking replay", async () => {
+    const classroom = await classroomOf(learnerC);
+    const results = [];
+    for (let i = 0; i < 21; i++)
+      results.push(
+        await rpc<{ ok: boolean; code?: string }>(
+          q,
+          learnerC,
+          "reserve_my_academy_professor_interaction",
+          [classroom, `burst-${i}`],
+        ),
+      );
+    expect(results.slice(0, 20).every((r) => r.ok)).toBe(true);
+    expect(results[20]).toEqual({ ok: false, code: "RATE_LIMITED" });
+    expect(
+      await rpc(q, learnerC, "reserve_my_academy_professor_interaction", [
+        classroom,
+        "burst-0",
+      ]),
+    ).toEqual({ ok: true, duplicate: true });
+  });
+
+  it("never lets the cohort protocol cite an Academy execution or release", async () => {
+    const execution = (
+      await q(
+        "select execution_id from public.academy_professor_execution_provenance limit 1",
+      )
+    ).rows[0].execution_id as string;
+    await expect(
+      q(
+        "insert into public.academic_agent_execution_provenance(execution_kind, professor_execution_id) values ('PROFESSOR_PROVIDER_V2', $1)",
+        [execution],
+      ),
+    ).rejects.toThrow(/ACADEMY_EXECUTION_BOUND/);
+    const release = (
+      await q(
+        "select release_id from public.academy_professor_context_reads limit 1",
+      )
+    ).rows[0].release_id as string;
+    await expect(
+      q(
+        "insert into public.academic_agent_execution_context_releases(professor_execution_id, release_id, capability_name, position) values ($1, $2, 'get_lesson_context', 1)",
+        [execution, release],
+      ),
+    ).rejects.toThrow(/ACADEMY_RELEASE_BOUND/);
+  });
+
+  it("discards a reply when access is revoked during the provider call, keeping its real usage", async () => {
+    const enrolment = enrolments[learnerA.id];
+    const entitlement = (
+      await q(
+        "select entitlement_id from public.academy_enrolments where id = $1",
+        [enrolment],
+      )
+    ).rows[0].entitlement_id as string;
+    const turnsBefore = await count(
+      "select count(*)::int n from public.academy_professor_classroom_turns where classroom_id = $1",
+      [classroomA],
+    );
+    const adapter: ProviderAdapter = {
+      name: "revoking-stub",
+      async generate() {
+        // A refund lands while the Professor is answering.
+        await rpc(q, people.admin, "admin_revoke_academy_entitlement", [
+          entitlement,
+          "Refund during an AI class (acceptance test)",
+        ]);
+        return {
+          outputText: "This reply must not reach a revoked learner.",
+          usage: {
+            inputTokens: 80,
+            outputTokens: 30,
+            estimatedCostMicrousd: 70,
+          },
+        };
+      },
+    };
+    const startedAt = (await q("select clock_timestamp() t")).rows[0].t;
+    const result = await run(learnerA, classroomA, adapter);
+    expect(result).toMatchObject({
+      outcome: "ABSTAINED",
+      reason: "POLICY_BLOCKED",
+    });
+    expect(result.usage.providerCalls).toBe(1);
+    const last = (
+      await q(
+        `select x.state, x.reason_code, u.provider_calls, u.output_tokens
+         from public.academic_provider_executions x join public.academic_provider_execution_usage u on u.execution_id = x.id
+         where x.student_id = $1 order by x.created_at desc limit 1`,
+        [learnerA.id],
+      )
+    ).rows[0];
+    expect(last).toEqual({
+      state: "FAILED",
+      reason_code: "POLICY_BLOCKED",
+      provider_calls: 1,
+      output_tokens: 30,
+    });
+    expect(
+      await count(
+        "select count(*)::int n from public.academy_professor_classroom_turns where classroom_id = $1",
+        [classroomA],
+      ),
+    ).toBe(turnsBefore);
+    expect(
+      await count(
+        `select count(*)::int n from public.academic_content_releases
+         where student_id = $1 and started_at >= $2 and state <> 'ABORTED'`,
+        [learnerA.id, startedAt],
+      ),
+    ).toBe(0);
   });
 });
