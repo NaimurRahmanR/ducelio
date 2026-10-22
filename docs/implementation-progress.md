@@ -19,7 +19,8 @@ CURRENT CHECKPOINT (PARTIAL): ACADEMY-RECOVERY-1, Academy course activation reco
   - Steps 4–5 are **BLOCKED**: AWS SAA-C03 upload, validation, curriculum pre-publication test, REVIEW_ONLY publication and learner activation. The genuine `Ducelio_AWS_SAA_C03_Academy_Commercial_Draft_v1.json` is not on this machine or in the owner's Google Drive. The pilot JSON in `Downloads` declares itself "Not an uploadable Academy package" and was not substituted.
   - REVIEW_ONLY publication also needs owner-approved per-format prices; the publish form requires that attestation.
   - Timed assessments open only at their scheduled sitting (Quiz 1 sits after Lesson 6), so a same-day hosted sitting is not reachable without altering server-owned schedule state.
-  - Whether the AI Professor, Tutor and Lab can execute on staging depends on Vercel server variables (`ACADEMIC_EXECUTION_*` and a provider key), which could not be inspected from here.
+  - AI runtime on staging: the Operations Engineer page reports "AI interpretation not configured", so the Anthropic-backed Lab Instructor has no provider there. The OpenAI-backed Professor and Tutor (and `ACADEMIC_EXECUTION_*`) cannot be confirmed without a real classroom run.
+  - Continuation 2026-10-22 18:00Z: File A is still absent everywhere searched. The V2 pilot (File B) was reviewed and is not schema-compatible; see docs/58 §6.
 - MIGRATIONS: none new. 060–065 are now applied to `ducelio-acceptance`; production is not touched. CONFIGURATION: none new.
 - KNOWN FAILURES: none in the local gates. A pre-existing baseline item: `current_academic_activity_state` remains executable by `service_role` (the phase 1–2 grant left for review by migration 057); the readiness contract records it as a baseline.
 - NEXT EXACT ACTION: obtain the genuine AWS package path and owner prices, then run steps 4–5 on staging through the real UI. Owner review and merge of the recovery PR.
