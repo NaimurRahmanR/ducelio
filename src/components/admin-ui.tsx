@@ -81,11 +81,18 @@ export function StatCard({
 }
 
 // Shown wherever a governed read failed: the value is unknown, never zero.
-export function Unavailable({ what }: { what: string }) {
+export function Unavailable({
+  what,
+  message,
+}: {
+  what: string;
+  message?: string;
+}) {
   return (
     <p className="ac-unavailable" role="status">
-      <AlertTriangle size={15} aria-hidden="true" /> {what} could not be loaded
-      from the governed service. No value is shown rather than a guess.
+      <AlertTriangle size={15} aria-hidden="true" />{" "}
+      {message ??
+        `${what} could not be loaded from the governed service. No value is shown rather than a guess.`}
     </p>
   );
 }

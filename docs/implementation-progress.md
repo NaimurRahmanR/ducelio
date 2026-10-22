@@ -2,6 +2,30 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
+CURRENT CHECKPOINT (PARTIAL): ACADEMY-RECOVERY-1, Academy course activation recovery on staging, branch `fix/academy-activation-recovery` from `main` `6704f08`. See [docs/58](58-academy-activation-recovery.md).
+
+- LAST COMPLETED CHECKPOINT: RELIABILITY-1 (merged through PR #82, `6704f08`).
+- COMPLETED ITEMS:
+  - **Root cause.** `ducelio-staging` (Production deployment of `6704f08`) was proven to use `ducelio-acceptance` (`blqaomssojfxaxskcyxd`): a staging sign-in created that project's `auth.sessions` row. Migrations 060–065 had never been applied there, so every Academy RPC returned PostgREST `PGRST202`, which the application mapped to the generic `SERVICE_UNAVAILABLE`.
+  - **Migration review.** 060–065 were reviewed and rehearsed in a rolled-back transaction on the hosted data.
+  - **Migration deployment.** 060–065 were applied to `ducelio-acceptance` **only** (pinned CLI 2.120.0 through the linked wrapper, 2026-10-22 17:27Z, exit 0). The hosted ledger now matches all 65 repository versions, and no production project was touched.
+  - **Hosted checks.**
+    - `acceptance:academy-readiness`: 11/11 PASS.
+    - `acceptance:hosted`: `MIGRATIONS`, `RLS_ACL` and `HOSTED_DATABASE` PASS, 0 FAIL.
+    - PostgREST role probes: anon, learner and unrelated staff are refused on admin RPCs.
+    - The staging admin page loads its Academy register and evaluation queue.
+  - **Code.** The administrator-only `NOT_INSTALLED` message for missing database dependencies; learner paths are unchanged. Plus the read-only readiness guard `npm run acceptance:academy-readiness`, with contract tests and a mutation check.
+- INCOMPLETE ITEMS:
+  - Steps 4–5 are **BLOCKED**: AWS SAA-C03 upload, validation, curriculum pre-publication test, REVIEW_ONLY publication and learner activation. The genuine `Ducelio_AWS_SAA_C03_Academy_Commercial_Draft_v1.json` is not on this machine or in the owner's Google Drive. The pilot JSON in `Downloads` declares itself "Not an uploadable Academy package" and was not substituted.
+  - REVIEW_ONLY publication also needs owner-approved per-format prices; the publish form requires that attestation.
+  - Timed assessments open only at their scheduled sitting (Quiz 1 sits after Lesson 6), so a same-day hosted sitting is not reachable without altering server-owned schedule state.
+  - Whether the AI Professor, Tutor and Lab can execute on staging depends on Vercel server variables (`ACADEMIC_EXECUTION_*` and a provider key), which could not be inspected from here.
+- MIGRATIONS: none new. 060–065 are now applied to `ducelio-acceptance`; production is not touched. CONFIGURATION: none new.
+- KNOWN FAILURES: none in the local gates. A pre-existing baseline item: `current_academic_activity_state` remains executable by `service_role` (the phase 1–2 grant left for review by migration 057); the readiness contract records it as a baseline.
+- NEXT EXACT ACTION: obtain the genuine AWS package path and owner prices, then run steps 4–5 on staging through the real UI. Owner review and merge of the recovery PR.
+
+PREVIOUS CHECKPOINT RECORD (RELIABILITY-1, merged through PR #82):
+
 CURRENT CHECKPOINT (implemented locally on `claude/sleepy-brahmagupta-pt0g9d`; NOT reviewed, merged or deployed): RELIABILITY-1, shared AI execution reliability and the independent review of migration 063. See [docs/57 §12](57-academy-b2c-course-engineering.md#12-checkpoint-reliability-1-migrations-064-and-065-shared-ai-execution-reliability-and-independent-review).
 
 - COMPLETED ITEMS: migration `202610260064_shared_execution_reliability.sql` (attested late-usage recording for executions whose FINALIZE arrives after expiry, exactly once and without reviving them; attested abandonment of AUTHORIZED executions that cannot START), used by the cohort and Academy Professor and Tutor/Lab runtimes through both controller transports; migration `202610260065_academy_ai_hardening.sql` (graded practicals refused for AI Lab help; deadlock-free reply-record lock order; profile lock on context reads; admission re-proven on reply records; reservation ceilings under a row lock; release-to-request schema binding).

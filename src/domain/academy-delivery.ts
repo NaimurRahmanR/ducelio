@@ -35,8 +35,13 @@ export const ACADEMY_ERROR_CODES = [
   "ACTIVITY_BLOCKED",
   "RUBRIC_PENDING",
 ] as const;
+// NOT_INSTALLED is raised only by the administrator RPC path: the database
+// lacks an Academy function, table or schema (a migration was not applied,
+// or the API schema cache is stale). Learner paths keep SERVICE_UNAVAILABLE.
 export type AcademyErrorCode =
-  (typeof ACADEMY_ERROR_CODES)[number] | "SERVICE_UNAVAILABLE";
+  | (typeof ACADEMY_ERROR_CODES)[number]
+  | "SERVICE_UNAVAILABLE"
+  | "NOT_INSTALLED";
 export class AcademyError extends Error {
   constructor(readonly code: AcademyErrorCode) {
     super(code);
@@ -48,6 +53,21 @@ export function academyErrorCode(message: string): AcademyErrorCode {
   return (ACADEMY_ERROR_CODES as readonly string[]).includes(message)
     ? (message as AcademyErrorCode)
     : "SERVICE_UNAVAILABLE";
+}
+
+// PostgREST "function/table not in the schema cache" and PostgreSQL
+// undefined function, table and schema.
+const MISSING_DEPENDENCY_CODES = new Set([
+  "PGRST202",
+  "PGRST205",
+  "42883",
+  "42P01",
+  "3F000",
+]);
+export function isMissingDatabaseDependency(error: { code?: unknown }) {
+  return (
+    typeof error.code === "string" && MISSING_DEPENDENCY_CODES.has(error.code)
+  );
 }
 
 export const ACADEMY_ERROR_TEXT: Record<AcademyErrorCode, string> = {
@@ -82,6 +102,8 @@ export const ACADEMY_ERROR_TEXT: Record<AcademyErrorCode, string> = {
     "This practical has no approved rubric yet, so it cannot be marked.",
   SERVICE_UNAVAILABLE:
     "The Academy service is unavailable. Nothing was changed.",
+  NOT_INSTALLED:
+    "The Academy database components are not installed in this environment, so nothing was changed. A platform operator must apply the pending Academy database migrations before this workspace can be used.",
 };
 
 export const academyPackageListSchema = z.array(

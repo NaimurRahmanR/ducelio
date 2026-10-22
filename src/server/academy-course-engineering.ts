@@ -9,6 +9,7 @@ import {
   academyErrorCode,
   academyPackageListSchema,
   grantInputSchema,
+  isMissingDatabaseDependency,
   labReviewListSchema,
   publishInputSchema,
 } from "@/domain/academy-delivery";
@@ -42,6 +43,15 @@ async function adminRpc<T>(
   )
     throw new AcademyError("FORBIDDEN");
   const { data, error } = await (await createSupabase()).rpc(name, args);
+  if (error && isMissingDatabaseDependency(error)) {
+    // Server log only: the RPC name and bounded error code, never the
+    // message, arguments or connection details.
+    console.warn(
+      "[ducelio:academy-readiness]",
+      JSON.stringify({ rpc: name, errorCode: error.code }),
+    );
+    throw new AcademyError("NOT_INSTALLED");
+  }
   if (error) throw new AcademyError(academyErrorCode(error.message));
   const parsed = schema.safeParse(data);
   if (!parsed.success) throw new AcademyError("SERVICE_UNAVAILABLE");

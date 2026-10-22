@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "acceptance:preflight": "node --env-file-if-exists=.env.local scripts/acceptance/preflight.mjs",
+    "acceptance:academy-readiness": "node --env-file-if-exists=.env.local scripts/acceptance/academy-readiness.mjs",
     "acceptance:hosted": "node --env-file-if-exists=.env.local scripts/acceptance/hosted.mjs",
     "acceptance:concurrency": "node --env-file-if-exists=.env.local scripts/acceptance/concurrency.mjs",
     "acceptance:examiner-app": "node --env-file-if-exists=.env.local scripts/acceptance/examiner-app.mjs",
