@@ -194,3 +194,46 @@ governed Practicals for Tutor/Lab Instructor support.
 This checkpoint does not claim CompTIA endorsement, access to live exam
 questions, live-provider quality, hosted Supabase acceptance or production
 readiness. The course remains exam preparation for an external qualification.
+
+## ACADEMY-B2C-1 Academy (direct-to-learner) conversion
+
+`academy-b2c-rev1.json` is an `ACADEMY_COURSE_PACKAGE_V1` package for the new
+Academy Course Engineering workflow (`/admin/academy-course-engineering`). It
+is generated, reproducibly, by `scripts/academy/build-security-plus-academy.mjs`
+from the committed revision 6 file and `sources.json`; CI-style tests check it
+is up to date (`--check`).
+
+- **Content.** The embedded `curriculum` is revision 6 byte-for-byte in its
+  programme, modules, lessons, objectives, resources, practical activities,
+  assignments, assessments, questions, answer keys and agent configuration.
+  Only its identity changes: package key `security-plus-sy0-701-academy`,
+  revision 1, a distinct curriculum label and reason. Materialising it creates
+  a separate programme and never touches the hosted `security-plus-sy0-701`
+  programme, activation, offer, prices, policies, enrolments or history. No
+  public offer slug is chosen by the package; publication needs an explicit
+  admin decision.
+- **Grading.** Component identities and weights are the existing code-owned
+  Commercial V1 `NO_LABS` distribution (Quiz 1–4 5% each, Midterm 20%,
+  Final 60%). Labs are scheduled but **ungraded**, because revision 6 has no
+  lab rubric or marking guidance and none is invented.
+- **Placement.** Each assessment is placed after the last lesson its own
+  questions assess. The Academy validator found that revision 6 anchors Quiz 4
+  at lesson 4-8 while its questions assess lessons up to 5-6; the conversion
+  therefore places Quiz 4 after lesson 5-6 (just before the Final). Content is
+  unchanged.
+- **DUCELIO PROPOSALS PENDING OWNER ACADEMIC APPROVAL** (delivery parameters,
+  not CompTIA content): 90 teaching minutes per lesson; 60-minute labs and
+  30-minute exercises; revision of 30 minutes before quizzes, 90 before the
+  Midterm and 120 before the Final; a one-day gap after teaching before the
+  Midterm and Final; sitting windows of 48 hours (quizzes) and 72 hours
+  (Midterm, Final); a 70% course pass mark; and these formats:
+
+  | Format      | Weeks | Class length | Study days a week | Classes needed |
+  | ----------- | ----- | ------------ | ----------------- | -------------- |
+  | Accelerated | 2     | 360 min      | 6–7               | 12             |
+  | Intensive   | 4     | 240 min      | 5–7               | 17             |
+  | Standard    | 6     | 180 min      | 4–6               | 22             |
+  | Extended    | 8     | 150 min      | 4–6               | 26             |
+  | Flexible    | 12    | 120 min      | 3–5               | 33             |
+
+  "Classes needed" is the planner's own output at the minimum study days.

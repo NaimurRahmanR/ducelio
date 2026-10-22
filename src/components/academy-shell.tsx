@@ -30,6 +30,7 @@ import type { Role } from "@/domain/academy";
 const links = [
   ["Home", "", Home],
   ["Programme", "programme", BookOpen],
+  ["Academy courses", "academy", GraduationCap],
   ["Calendar", "calendar", CalendarDays],
   ["Classes", "classes", Video],
   ["Assignments", "assignments", ClipboardList],
@@ -89,6 +90,7 @@ export function AcademyShell({
           ([, slug]) =>
             !demo ||
             (slug !== "practicals" &&
+              slug !== "academy" &&
               slug !== "leaderboard" &&
               slug !== "progress" &&
               // The credential-free demo never reaches the governed Sarah

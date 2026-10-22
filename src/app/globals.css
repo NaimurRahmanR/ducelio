@@ -5150,3 +5150,379 @@ dl.ac-mini-stats {
     width: 100%;
   }
 }
+
+/* Ducelio Academy (B2C) Course Engineering and learner timetable. */
+:root {
+  --acad-purple: #312680;
+  --acad-purple-deep: #1f1757;
+  --acad-champagne: #f4d19b;
+  --acad-champagne-soft: #fbf1df;
+  --acad-line: #e6e3f2;
+  --acad-surface: #f6f5fb;
+  --acad-muted: #5c5a78;
+  --acad-bad: #9b1c31;
+}
+.acad-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.acad-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--acad-line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--acad-muted);
+  font-weight: 600;
+}
+.acad-steps li span {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--acad-surface);
+}
+.acad-steps li.done span,
+.acad-steps li.current span {
+  background: var(--acad-purple);
+  color: #fff;
+}
+.acad-steps li.current {
+  border-color: var(--acad-purple);
+  color: var(--acad-purple);
+}
+.acad-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.acad-form label,
+.acad-planner label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+}
+.acad-form input,
+.acad-form select,
+.acad-form textarea,
+.acad-planner input,
+.acad-planner select {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--acad-line);
+  border-radius: 8px;
+  font: inherit;
+}
+.acad-grid-2,
+.acad-grid-3 {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+.acad-outcome {
+  border-left: 4px solid var(--acad-purple);
+  background: var(--acad-surface);
+  padding: 10px 14px;
+  border-radius: 8px;
+}
+.acad-outcome.error {
+  border-color: var(--acad-bad);
+  background: #fdf1f3;
+}
+.acad-outcome.warn {
+  border-color: var(--acad-champagne);
+  background: var(--acad-champagne-soft);
+}
+.acad-issues {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.acad-banner {
+  background: var(--acad-champagne-soft);
+  border: 1px solid var(--acad-champagne);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
+.acad-h3 {
+  margin: 20px 0 8px;
+  color: var(--acad-purple-deep);
+}
+.acad-modules,
+.acad-modules ol {
+  padding-left: 22px;
+}
+.acad-modules > li {
+  margin-bottom: 8px;
+}
+.acad-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.acad-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--acad-line);
+  border-radius: 10px;
+}
+.acad-list li.selected {
+  border-color: var(--acad-purple);
+  box-shadow: inset 4px 0 0 var(--acad-purple);
+}
+.acad-prices {
+  border: 1px solid var(--acad-line);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+.acad-price-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.acad-check {
+  display: flex !important;
+  gap: 10px;
+  align-items: flex-start;
+  font-weight: 500 !important;
+}
+.acad-check input {
+  min-height: 20px;
+  width: 20px;
+  margin-top: 2px;
+}
+.acad-check small {
+  display: block;
+  color: var(--acad-muted);
+}
+.acad-price input {
+  max-width: 140px;
+}
+.acad-submission {
+  width: 100%;
+  white-space: pre-wrap;
+  background: var(--acad-surface);
+  padding: 10px;
+  border-radius: 8px;
+}
+.acad-learner {
+  display: grid;
+  gap: 16px;
+}
+.acad-course-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.acad-planner {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+.acad-formats {
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.acad-formats legend,
+.acad-days legend {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.acad-format {
+  position: relative;
+  border: 1px solid var(--acad-line);
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  background: #fff;
+}
+.acad-format input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  cursor: pointer;
+}
+.acad-format:focus-within {
+  outline: 3px solid var(--acad-champagne);
+  outline-offset: 2px;
+}
+.acad-format.on {
+  border-color: var(--acad-purple);
+  background: var(--acad-surface);
+  box-shadow: inset 0 0 0 1px var(--acad-purple);
+}
+.acad-format strong {
+  color: var(--acad-purple);
+}
+.acad-format small {
+  color: var(--acad-muted);
+  font-weight: 400;
+}
+.acad-days {
+  border: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.acad-days label {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--acad-line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.acad-days label.on {
+  background: var(--acad-purple);
+  border-color: var(--acad-purple);
+  color: #fff;
+}
+.acad-days input {
+  min-height: auto !important;
+  accent-color: var(--acad-champagne);
+}
+.acad-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.acad-preview {
+  border: 1px solid var(--acad-line);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+.acad-facts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.acad-facts dt {
+  color: var(--acad-muted);
+  font-size: 0.85rem;
+}
+.acad-facts dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--acad-purple-deep);
+}
+.acad-weeks {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.acad-weeks li {
+  display: grid;
+  grid-template-columns: 70px 1fr 56px;
+  gap: 8px;
+  align-items: center;
+}
+.acad-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--acad-surface);
+  overflow: hidden;
+}
+.acad-bar span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--acad-purple), #4a3ead);
+}
+.acad-sittings,
+.acad-sequence {
+  padding-left: 20px;
+}
+.acad-timetable {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 14px;
+}
+.acad-timetable > li.past {
+  opacity: 0.7;
+}
+.acad-timetable h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: var(--acad-purple-deep);
+}
+.acad-timetable ul {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.acad-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px;
+  border: 1px solid var(--acad-line);
+  border-radius: 10px;
+}
+.acad-item.assessment {
+  border-color: var(--acad-champagne);
+  background: var(--acad-champagne-soft);
+}
+.acad-item-title {
+  margin: 0;
+  font-weight: 600;
+}
+.acad-inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin-top: 6px;
+}
+.acad-lab form {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+.acad-results,
+.acad-format-prices {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.acad-results li,
+.acad-format-prices li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--acad-line);
+  border-radius: 10px;
+}
+.acad-prose {
+  white-space: pre-wrap;
+}

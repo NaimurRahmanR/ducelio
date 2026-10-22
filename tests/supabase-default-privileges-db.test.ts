@@ -23,6 +23,7 @@ const INTENDED_ANON_FUNCTIONS = [
   "apply_commercial_v1_commerce_operation",
   "fulfill_commercial_v1_order",
   "get_commercial_v1_offer",
+  "list_academy_catalogue",
   "list_commercial_v1_offers",
 ];
 const MASTERY_POLICY =
