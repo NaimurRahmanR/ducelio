@@ -25,6 +25,8 @@ import {
 import { ACADEMY_FORMATS } from "@/domain/academy-scheduler";
 import { enterAcademyClassAction } from "./classroom/actions";
 import { academyClassDenialText } from "@/server/academy-professor-classroom";
+import { openLabSupportAction } from "./support/actions";
+import { academySupportDenialText } from "@/server/academy-support";
 
 export const dynamic = "force-dynamic";
 
@@ -187,6 +189,27 @@ function Timetable({
                           title={i.title ?? i.ref}
                         />
                       ) : null)}
+                    {i.kind === "LAB" &&
+                      timetable.status === "ACTIVE" &&
+                      !timetable.examActive &&
+                      !timetable.accessRevoked &&
+                      Date.parse(i.startsAt) <= now && (
+                        <form action={openLabSupportAction}>
+                          <input
+                            type="hidden"
+                            name="enrolmentId"
+                            value={enrolmentId}
+                          />
+                          <input
+                            type="hidden"
+                            name="scheduleItemId"
+                            value={i.id}
+                          />
+                          <button className="button secondary" type="submit">
+                            Get help from the AI Lab Instructor
+                          </button>
+                        </form>
+                      )}
                   </div>
                 </li>
               ))}
@@ -201,7 +224,11 @@ function Timetable({
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ enrolmentId?: string; classNotice?: string }>;
+  searchParams: Promise<{
+    enrolmentId?: string;
+    classNotice?: string;
+    supportNotice?: string;
+  }>;
 }) {
   await requireActor("student");
   const actor = await requireStudentPrincipal();
@@ -292,6 +319,13 @@ export default async function Page({
               <Card>
                 <p role="status">
                   {academyClassDenialText(params.classNotice)}
+                </p>
+              </Card>
+            )}
+            {params.supportNotice && (
+              <Card>
+                <p role="status">
+                  {academySupportDenialText(params.supportNotice)}
                 </p>
               </Card>
             )}

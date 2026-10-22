@@ -2,6 +2,16 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
+CURRENT CHECKPOINT (implemented locally on `claude/sleepy-brahmagupta-pt0g9d`; NOT reviewed, merged or deployed): ACADEMY-B2C-4, AI Tutor and AI Lab Instructor for individual Academy enrolments. See [docs/57 §11](57-academy-b2c-course-engineering.md#11-checkpoint-academy-b2c-4-migration-063-ai-tutor-and-lab-instructor).
+
+- COMPLETED ITEMS: migration `202610250063_academy_tutor_lab.sql`; `academy_support_requests` as the cohort-free admission source (Tutor per released objective, Lab per started practical session); `tutor_lab_content_releases` generalised to one source per row, so migration 028's governance, execution table, usage ledger and audit are reused unchanged; Academy provenance from the frozen behaviour binding; single-use context reads in the cohort Tutor/Lab context shapes; idempotent reservations; attested reply records; lesson-page Tutor and timetable Lab entry points and the support page.
+- INCOMPLETE ITEMS: Examiner-assisted lab grading (disabled: `LAB_RUBRICS` pending; no rubric invented); Tutor class notes for Academy requests; the seven Security+ pending decisions; hosted acceptance with a real provider; authenticated browser journey; independent review.
+- MIGRATIONS: 060–063. Not applied to any hosted project. CONFIGURATION: none new.
+- KNOWN FAILURES: none in the local gates (see the final report). PRODUCTION BLOCKER (shared, unchanged): a FINALIZE after the 20-second execution expiry records TIMEOUT without usage in migration 025 (Professor) and migration 028 (Tutor/Lab) governance alike.
+- NEXT EXACT ACTION: owner review of the branch; then, only if approved, a PR with CI.
+
+PREVIOUS CHECKPOINT RECORD (ACADEMY-B2C-3/3a, superseded by the above):
+
 CURRENT CHECKPOINT (implemented locally on `claude/sleepy-brahmagupta-pt0g9d`; NOT reviewed, merged or deployed): ACADEMY-B2C-3, AI Professor classes for individual Academy enrolments. See [docs/57 §10](57-academy-b2c-course-engineering.md#10-checkpoint-academy-b2c-3-migration-062-ai-professor-classes).
 
 - COMPLETED ITEMS: migration `202610240062_academy_ai_teaching.sql` (001–061 unchanged except two learner projections replaced with the same signatures); "Enter AI class" from the learner's own timetable, admitted by the database only for the learner's own ACTIVE unrevoked enrolment, a current-timetable LESSON whose start has passed and no active controlled assessment; the governed Academy Professor execution reusing migration 021 content releases, migration 025 provider governance and usage ledger, the stored agent configuration and frozen behaviour binding, the teaching-context builder and the provider runtime, with Academy-tagged attested provenance and memory; idempotent learner actions; resume across timetable revisions; class opened and Professor exchanges shown separately from study, grades and mastery; the Academy classroom page reusing the cohort classroom panel.

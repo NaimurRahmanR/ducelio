@@ -1091,6 +1091,7 @@ describe("Sarah static boundaries", () => {
       "202610220060_academy_course_engineering.sql",
       "202610230061_academy_controls_commerce_evidence.sql",
       "202610240062_academy_ai_teaching.sql",
+      "202610250063_academy_tutor_lab.sql",
     ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");

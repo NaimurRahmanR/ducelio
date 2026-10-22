@@ -5526,3 +5526,21 @@ dl.ac-mini-stats {
 .acad-prose {
   white-space: pre-wrap;
 }
+
+/* Academy lesson objectives with an AI Tutor entry per objective. */
+.acad-objectives {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.acad-objectives li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.acad-objectives li span {
+  flex: 1 1 16rem;
+}

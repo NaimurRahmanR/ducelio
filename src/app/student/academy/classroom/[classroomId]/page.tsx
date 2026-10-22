@@ -141,11 +141,19 @@ export default async function Page({
         <Card>
           <h2>Practice and labs</h2>
           <p className="muted">
-            Academy labs and practice are submitted from your timetable. AI
-            Tutor and Lab Instructor support and automated lab marking are not
-            yet available for Academy courses; lab marking stays closed until
-            approved rubrics exist.
+            For more help with one objective, ask the AI Tutor from the lesson
+            page. Practical sessions in your timetable have an AI Lab Instructor
+            from their start time. Automated lab marking is not available; lab
+            marking stays closed until approved rubrics exist.
           </p>
+          {lesson && (
+            <Link
+              className="text-link"
+              href={`/student/academy/lesson?enrolmentId=${state.enrolmentId}&lesson=${encodeURIComponent(view.lessonRef)}`}
+            >
+              Ask the AI Tutor about an objective →
+            </Link>
+          )}
         </Card>
       </div>
       <Link className="button secondary" href={back}>

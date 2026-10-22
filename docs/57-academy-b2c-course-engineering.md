@@ -420,3 +420,148 @@ database records TIMEOUT and no usage row, so real provider usage of such a
 late execution is missing from the durable ledger. The cohort classroom
 behaves the same way. A fix belongs in a reviewed change to the shared
 governance, not in this Academy checkpoint.
+
+## 11. Checkpoint ACADEMY-B2C-4 (migration 063): AI Tutor and Lab Instructor
+
+Migration `202610250063_academy_tutor_lab.sql` is local only; it has not
+been reviewed, merged or deployed. Migrations 001–062 are unchanged except
+as listed under "Changes to shared Tutor/Lab objects".
+
+**Admission source.** In the cohort model, a Tutor/Lab release is admitted
+by a DELIVERY_V1 handoff of a cohort enrolment. An Academy learner has
+neither, so `academy_support_requests` takes the handoff's place. A request
+is the learner's own:
+
+- **Tutor thread** for one objective of a released lesson, opened from
+  "Ask the AI Tutor" beside each objective on the lesson page.
+  `OBJECTIVE_REINFORCEMENT`, the existing reason vocabulary, is used; "missed
+  lesson" would mislabel a self-paced learner.
+- **Lab Instructor thread** for one scheduled practical session that has
+  started, opened from "Get help from the AI Lab Instructor" in the
+  timetable (`PRACTICAL_HELP`).
+
+Each open is idempotent (one thread per objective or per root practical
+session) and survives timetable revisions. Every step re-proves admission:
+open, reserve, release, context read, agent read, release close and
+listing. Admission requires:
+
+- the learner's own request;
+- an ACTIVE, unrevoked Academy enrolment;
+- the lesson released by the current timetable;
+- for Lab, the practical session started;
+- no controlled assessment active in either exam system.
+
+**Reused unchanged.** Migration 028's `govern_tutor_lab_provider_execution`,
+`tutor_lab_provider_executions`, the usage ledger and both audit triggers.
+That covers:
+
+- one active Tutor/Lab execution per learner, across both roles;
+- 5 per minute and 30 per hour;
+- exactly one provider call;
+- the 2,000-token / 100,000 µUSD ceiling;
+- the 20-second expiry.
+
+Also reused: the Tutor/Lab attestation transport, role-bound runtime
+profiles, the stored agent configuration and the behaviour binding frozen
+at publication (validated by the same `verifiedLearnerBehaviourBinding`),
+the provider runtime and `buildTutorLabProviderContext`. The Academy context
+read returns exactly the cohort `TutorContext`/`LabContext` shapes.
+
+**Changes to shared Tutor/Lab objects** (cohort behaviour identical):
+
+- `tutor_lab_content_releases`: `enrolment_id` and `handoff_id` become
+  nullable and `academy_request_id` is added. A new
+  `tutor_lab_content_releases_source` check admits exactly one source. A
+  cohort row still needs its enrolment and handoff, plus a practical for Lab
+  (the previous constraint, folded in); an Academy row has none of the three.
+- The release guard now includes the new column in the immutable identity.
+- The release audit adds `academy_request_id` only for Academy rows; the
+  cohort payload is unchanged.
+- The migration 051 provenance trigger gains an Academy branch that writes
+  `academy_support_execution_provenance` and fails closed without a verified
+  behaviour binding. The cohort branch is the previous body.
+- Cohort paths fail closed on an Academy release:
+  - `close_tutor_lab_content_release` can only ABORT it (tested);
+  - class notes refuse it, because the release has no handoff;
+  - the Professor-handoff read finds no handoff for it.
+
+**What the agents receive.**
+
+- The lesson's title and position.
+- Its published objectives: for Tutor, a first-page overview plus the
+  requested objective; for Lab, every objective the practical addresses,
+  all of which must resolve.
+- Approved resource titles, only when the configuration authorises them
+  (Tutor).
+- The practical's learner-facing kind, title and instructions (Lab).
+- The learner's message.
+- An explicit statement that no Professor teaching record exists.
+
+They never receive assessment questions, answer keys, lab rubrics or
+marking guidance (a graded lab with a test rubric is asserted absent).
+Context is read once per release.
+
+**Recording.**
+
+- Every execution and its real usage are in the existing ledger, including
+  failures.
+- The reply is recorded in `academy_support_turns` only after the release
+  closed COMPLETED and FINALIZE confirmed SUCCEEDED, attested with
+  `DUCELIO_ACADEMY_SUPPORT_TURN_HMAC_SHA256_V1`. A reply that cannot be
+  recorded is still shown and is labelled as unrecorded.
+- A release that cannot close COMPLETED discards the reply and FINALIZEs
+  the real usage as `CONTENT_RELEASE_UNAVAILABLE`. That happens when access
+  is revoked, the enrolment is closed, the lesson or practical is withdrawn,
+  or an exam starts during the call.
+
+Tutor/Lab conversations write no evidence, mastery, study progress,
+submission, mark or completion (asserted).
+
+**Not connected.**
+
+- Examiner-assisted lab grading stays disabled: Academy labs have no
+  approved rubrics (`LAB_RUBRICS` pending), and the support page says so for
+  graded practicals.
+- Tutor class notes are not offered for Academy requests.
+- The Tutor/Lab provider context carries no conversation memory. This
+  matches the cohort Tutor/Lab design; the stored record is shown to the
+  learner only.
+
+**Known production blocker (unchanged, shared).** Migration 025's late
+FINALIZE records TIMEOUT without usage (§10.1). Migration 028's Tutor/Lab
+governance has the same shape: a FINALIZE that reaches the database after
+the 20-second execution expiry records TIMEOUT with no usage row. This
+applies to cohort and Academy Tutor/Lab alike, and it is not changed here.
+
+**Evidence (local, Node 22, PostgreSQL 16.15, stub provider, no paid AI
+call).**
+
+- `academy-tutor-lab` (10 tests, PGlite, real runtime and authority):
+  - opens only for a released, own-course objective, or a started own
+    practical;
+  - governed Tutor and Lab executions with usage, Academy provenance,
+    COMPLETED releases with no cohort enrolment or handoff, audit and a
+    recorded exchange;
+  - a graded lab's rubric and marking guidance absent from the provider;
+  - duplicate and changed-replay refusals with no provider call;
+  - a provider refusal recorded with its usage;
+  - no grades or mastery written;
+  - another learner refused;
+  - single-use context reads;
+  - the cohort close cannot complete an Academy release;
+  - one-source constraint;
+  - the exam firewall at every step;
+  - revocation during the provider call discarding the reply with real
+    usage.
+- `academy-tutor-lab-pg-concurrency` (3 tests, real PostgreSQL):
+  - parallel opens create one thread;
+  - parallel identical submissions reserve once;
+  - overlapping Tutor and Lab requests run exactly one governed execution
+    (the other is BLOCKED `RATE_LIMITED`), with one provider call and one
+    recorded exchange.
+- `academy-support-ui` (8 tests): plain-text rendering, graded-lab
+  wording, refusals, entry points (none during a sitting) and action
+  validation.
+- B2B regression: the Tutor/Lab, class-note, practicals, delivery,
+  Professor, behaviour, academic-runtime and privilege suites (1,328 tests)
+  pass.

@@ -5,6 +5,7 @@ import { getMyAcademyLesson } from "@/server/academy-delivery";
 import { AcademyShell } from "@/components/academy-shell";
 import { Card } from "@/components/ui";
 import { StudiedForm } from "@/components/academy-learner-forms";
+import { openTutorSupportAction } from "../support/actions";
 import {
   ACADEMY_ERROR_TEXT,
   AcademyError,
@@ -80,9 +81,27 @@ export default async function Page({
         </Card>
         <Card>
           <h2>Learning objectives</h2>
-          <ul>
+          <ul className="acad-objectives">
             {lesson.objectives.map((o) => (
-              <li key={o.id}>{o.description}</li>
+              <li key={o.id}>
+                <span>{o.description}</span>
+                <form action={openTutorSupportAction}>
+                  <input
+                    type="hidden"
+                    name="enrolmentId"
+                    value={params.enrolmentId ?? ""}
+                  />
+                  <input
+                    type="hidden"
+                    name="lessonRef"
+                    value={lesson.lessonRef}
+                  />
+                  <input type="hidden" name="objectiveId" value={o.id} />
+                  <button className="button secondary" type="submit">
+                    Ask the AI Tutor
+                  </button>
+                </form>
+              </li>
             ))}
           </ul>
         </Card>
