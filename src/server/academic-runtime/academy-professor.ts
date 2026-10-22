@@ -49,6 +49,7 @@ import {
 } from "../academic-content-release";
 import {
   attestProviderExecutionCommand,
+  closeUnstartedProviderExecution,
   ProviderExecutionDenied,
 } from "../academic-provider-execution/authority";
 import { verifiedLearnerBehaviourBinding } from "../agent-behaviour-config";
@@ -622,22 +623,18 @@ async function executeAcademyProfessorCore(
             ? "ACTIVITY_BLOCKED"
             : "POLICY_BLOCKED",
       };
+      // Nothing has STARTED: an admitted execution, or one whose AUTHORIZE
+      // response was lost, is abandoned at once (migration 064) unless the
+      // database already closed it.
       if (
-        authorized &&
+        (authorized || error.code === "SERVICE_UNAVAILABLE") &&
         !(error instanceof ProviderExecutionDenied && error.databaseTerminal)
-      ) {
-        try {
-          await attestProviderExecutionCommand(executionId, release, {
-            operation: "FINALIZE",
-            state: "FAILED",
-            reason: "INTERNAL_ERROR",
-            budgetStage: null,
-            usage: zeroUsage(),
-          });
-        } catch {
-          // Lazy DB-owned expiry remains the backstop.
-        }
-      }
+      )
+        await closeUnstartedProviderExecution(
+          executionId,
+          release,
+          "INTERNAL_ERROR",
+        );
     }
   };
 

@@ -23,7 +23,10 @@ import { buildTutorLabProviderContext } from "@/domain/tutor-lab-provider-contex
 import { roleBaselineFor } from "@/domain/agent-behaviour";
 import { requireStudentPrincipal } from "../identity";
 import { createSupabase } from "../supabase";
-import { attestTutorLabExecutionCommand } from "./authority";
+import {
+  attestTutorLabExecutionCommand,
+  closeUnstartedTutorLabExecution,
+} from "./authority";
 import type { TutorLabContentRelease } from "./release";
 import {
   resolveAdapterForProfile,
@@ -459,26 +462,20 @@ async function executeAcademySupportCore(
               ? "ACTIVITY_BLOCKED"
               : "POLICY_BLOCKED",
           );
-          // As the cohort path: a START denial is terminalised by the
-          // database itself; otherwise close out an admitted execution.
-          if (authorized && !error.databaseTerminal) {
-            try {
-              await attestTutorLabExecutionCommand(
-                release.role,
-                executionId,
-                release,
-                {
-                  operation: "FINALIZE",
-                  state: "FAILED",
-                  reason: "INTERNAL_ERROR",
-                  budgetStage: null,
-                  usage: zeroUsage(),
-                },
-              );
-            } catch {
-              // Lazy DB-owned expiry remains the backstop.
-            }
-          }
+          // As the cohort path: nothing has STARTED, so an admitted
+          // execution, or one whose AUTHORIZE response was lost, is
+          // abandoned at once (migration 064) unless the database already
+          // closed it.
+          if (
+            (authorized || error.code === "SERVICE_UNAVAILABLE") &&
+            !error.databaseTerminal
+          )
+            await closeUnstartedTutorLabExecution(
+              release.role,
+              executionId,
+              release,
+              "INTERNAL_ERROR",
+            );
         }
       }
     }

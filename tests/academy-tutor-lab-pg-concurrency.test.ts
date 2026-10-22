@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { testDatabaseStatements } from "./db-helper";
@@ -425,5 +425,174 @@ describe.skipIf(!ADMIN_URL)(
         ),
       ).toEqual([{ n: 0 }]);
     }, 60000);
+
+    // A SUCCEEDED, provenance-bound Tutor execution whose reply was not
+    // recorded (it exceeded the record bound), for the writers below.
+    async function unrecordedTutorExecution(db: string) {
+      m.database = db;
+      const request = await asLearner<{ requestId: string }>(
+        db,
+        "select public.open_my_academy_tutor_support($1,$2,$3) v",
+        [enrolment, lessonRef, objectiveId],
+      );
+      const result = await executeAcademySupportWithTestOverrides(
+        {
+          requestId: request.requestId,
+          message: "Explain it please.",
+          idempotencyKey: randomUUID(),
+        },
+        {
+          resolveProfile: (ref) => ({
+            ref,
+            adapterKind: "TEST_DETERMINISTIC",
+            budgetPolicy: {
+              ...DEFAULT_RUNTIME_BUDGET_POLICY,
+              maxProviderCalls: 1,
+              maxAttempts: 1,
+              maxInputContextBytes: 64_000,
+            },
+          }),
+          resolveAdapter: () => ({
+            name: "long-reply-stub",
+            generate: async () => ({
+              outputText: "x".repeat(12_001),
+              usage: {
+                inputTokens: 10,
+                outputTokens: 10,
+                estimatedCostMicrousd: 10,
+              },
+            }),
+          }),
+        },
+      );
+      expect(result).toMatchObject({
+        status: "SUCCEEDED",
+        record: "NOT_RECORDED",
+      });
+      const [x] = await rows(
+        db,
+        "select id from public.tutor_lab_provider_executions where state = 'SUCCEEDED'",
+      );
+      return { requestId: request.requestId, executionId: x.id as string };
+    }
+    function signedTurn(executionId: string, requestId: string, reply: string) {
+      const iat = Math.floor(Date.now() / 1000);
+      const sha = (t: string) =>
+        createHash("sha256").update(t, "utf8").digest("hex");
+      const canonical = [
+        "DUCELIO_ACADEMY_SUPPORT_TURN_HMAC_SHA256_V1",
+        keyId,
+        learner.id,
+        executionId,
+        requestId,
+        sha("Explain it please."),
+        sha(reply),
+        iat,
+        iat + 10,
+      ].join("\n");
+      return [
+        keyId,
+        executionId,
+        requestId,
+        "Explain it please.",
+        reply,
+        iat,
+        iat + 10,
+        createHmac("sha256", key).update(canonical).digest("hex"),
+      ];
+    }
+
+    it("a reply record and a concurrent release insert on the same thread cannot deadlock (migration 065)", async () => {
+      const db = await scenario();
+      const { requestId, executionId } = await unrecordedTutorExecution(db);
+      const [request] = await rows(
+        db,
+        "select learner_id, lesson_id, objective_id from public.academy_support_requests where id = $1",
+        [requestId],
+      );
+      // The release/execution admission order: the learner-profile lock,
+      // then an insert holding a foreign-key share lock on the thread.
+      const holder = await connect(db);
+      await holder.query("begin");
+      await holder.query(
+        "select 1 from public.student_profiles where user_id = $1 for update",
+        [learner.id],
+      );
+      const turn = asLearner<{ ok: boolean; duplicate?: boolean }>(
+        db,
+        "select public.record_my_academy_support_turn($1,$2,$3,$4,$5,$6,$7,$8) v",
+        signedTurn(executionId, requestId, "A short recorded reply."),
+      ).then(
+        (v) => v,
+        (e: Error) => ({ ok: false as const, error: e.message }),
+      );
+      await waitForBlocked(db, 1);
+      await holder.query(
+        `insert into public.tutor_lab_content_releases(student_id, invocation_id, agent_profile, academy_request_id,
+           lesson_id, objective_id, state, started_at, expires_at)
+         values ($1, gen_random_uuid(), 'TUTOR', $2, $3, $4, 'ACTIVE', clock_timestamp(), clock_timestamp() + interval '30 seconds')`,
+        [
+          request.learner_id,
+          requestId,
+          request.lesson_id,
+          request.objective_id,
+        ],
+      );
+      await holder.query("commit");
+      await holder.end();
+      expect(await turn).toEqual({ ok: true, duplicate: false });
+      expect(
+        await rows(
+          db,
+          "select count(*)::int n from public.academy_support_turns",
+        ),
+      ).toEqual([{ n: 1 }]);
+    }, 60000);
+
+    it("concurrent reservations cannot exceed the per-thread ceiling (migration 065)", async () => {
+      const db = await scenario();
+      const opened = await asLearner<{ requestId: string }>(
+        db,
+        "select public.open_my_academy_tutor_support($1,$2,$3) v",
+        [enrolment, lessonRef, objectiveId],
+      );
+      const results = await race(
+        db,
+        "select 1 from public.academy_support_requests where id = $1 for update",
+        [opened.requestId],
+        Array.from(
+          { length: 25 },
+          (_, i) => () =>
+            asLearner<{ ok: boolean; code?: string }>(
+              db,
+              "select public.reserve_my_academy_support_interaction($1,$2,$3) v",
+              [opened.requestId, randomUUID(), String(i % 10).repeat(64)],
+            ),
+        ),
+      );
+      expect(results.filter((r) => r.ok)).toHaveLength(20);
+      expect(
+        results.filter((r) => !r.ok && r.code === "RATE_LIMITED"),
+      ).toHaveLength(5);
+    }, 60000);
+
+    it("a release row that disagrees with its request is refused by the schema (migration 065)", async () => {
+      const db = await scenario();
+      const opened = await asLearner<{ requestId: string }>(
+        db,
+        "select public.open_my_academy_tutor_support($1,$2,$3) v",
+        [enrolment, lessonRef, objectiveId],
+      );
+      await expect(
+        rows(
+          db,
+          `insert into public.tutor_lab_content_releases(student_id, invocation_id, agent_profile, academy_request_id,
+             lesson_id, objective_id, state, started_at, expires_at)
+           select learner_id, gen_random_uuid(), 'LAB_INSTRUCTOR', id, lesson_id, null, 'ACTIVE', clock_timestamp(),
+             clock_timestamp() + interval '30 seconds' from public.academy_support_requests where id = $1`,
+          [opened.requestId],
+        ),
+      ).rejects.toThrow(/ACADEMY_RELEASE_REQUEST_MISMATCH/);
+    });
   },
 );

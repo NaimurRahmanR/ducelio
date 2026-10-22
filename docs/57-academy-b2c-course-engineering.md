@@ -565,3 +565,149 @@ call).**
 - B2B regression: the Tutor/Lab, class-note, practicals, delivery,
   Professor, behaviour, academic-runtime and privilege suites (1,328 tests)
   pass.
+
+## 12. Checkpoint RELIABILITY-1 (migrations 064 and 065): shared AI execution reliability and independent review
+
+Two additive migrations; no earlier migration file changes. Local only; not
+reviewed, merged or deployed. Migration 064 applies to the cohort (B2B) and
+Academy Professor, Tutor and Lab Instructor alike, because they share the
+migration 025 and 028 governance.
+
+### 12.1 Late usage (migration 064)
+
+**Gap.** An execution expires 20 seconds after AUTHORIZE. If the provider
+call is still running then, the FINALIZE that reports it arrives late. The
+unchanged governance correctly refuses it (`EXECUTION_TIMEOUT`, state
+TIMEOUT), but writes no usage row, so real provider spend was missing from
+the ledger. This was the known production blocker in §10.1 and §11.
+
+**Fix.** A new attested command, `record_late_provider_execution_usage`,
+with tag `DUCELIO_LATE_PROVIDER_USAGE_HMAC_SHA256_V1`. Both controller
+transports (`attestProviderExecutionCommand` and
+`attestTutorLabExecutionCommand`) call it automatically when FINALIZE is
+refused as `EXECUTION_TIMEOUT`, then re-throw the denial, so no late output
+ever becomes a success. It records the reported usage into the existing
+ledger table, marks the row in `provider_execution_late_usage` and writes a
+content-free audit event. It accepts the report only when:
+
+- the execution is the authenticated learner's own, for that exact release
+  and governance kind;
+- the execution is TIMEOUT / `EXECUTION_TIMEOUT` and has STARTED;
+- no usage row exists yet (exactly once; any second report returns
+  `ALREADY_RECORDED`);
+- it is within 5 minutes of expiry;
+- the provider calls are no more than were admitted.
+
+It never changes the execution's state, which stays TIMEOUT. It admits
+nothing, so no budget ceiling or rate limit moves. It takes the shared
+learner-profile lock, then the execution row.
+
+### 12.2 Pre-START cleanup (migration 064)
+
+**Gap.** FINALIZE is accepted only from RUNNING. The cleanup every runtime
+attempted for an execution that was AUTHORIZED but could not START (a
+provenance refusal, a transport failure) could therefore never succeed. The
+execution held the learner's single active slot until it expired, and their
+next request was refused as `RATE_LIMITED`. This applied to the cohort and
+Academy Professor and Tutor/Lab.
+
+**Fix.** `abandon_unstarted_provider_execution`, with tag
+`DUCELIO_ABANDON_PROVIDER_EXECUTION_HMAC_SHA256_V1`, terminalises an
+AUTHORIZED execution at once: FAILED with a bounded reason, or TIMEOUT if
+it has already expired. It refuses a RUNNING execution, which only FINALIZE
+(with its real usage) may close, and is a no-op on a terminal one.
+
+All four runtimes call it through `closeUnstartedProviderExecution` /
+`closeUnstartedTutorLabExecution`. The trigger is an admitted execution, or
+one whose AUTHORIZE response was lost (`SERVICE_UNAVAILABLE`). A definitive
+AUTHORIZE refusal leaves nothing to close. If START did commit but its
+response was lost, the execution is FINALIZEd FAILED with zero usage; this
+controller made no provider call, so zero is the true figure.
+
+### 12.3 Independent review of migration 063, and fixes (migration 065)
+
+No blocker. The shared release-table change is equivalent for cohort rows,
+and every cohort consumer fails closed for an Academy row:
+
+- the cohort close can only abort it;
+- class notes and the Professor-handoff read find no handoff;
+- the provenance branch follows the immutable `academy_request_id`.
+
+Privileges, isolation and protected-content exclusion were found sound.
+Every finding was verified against the code; each fix has a regression test.
+The two concurrency fixes were also mutation-checked: the old functions
+produce PostgreSQL `deadlock detected`, the new ones complete.
+
+- **Medium: AI help on graded labs was limited only by the prompt.**
+  `academy_private.lab_graded` now refuses Lab Instructor help on any
+  practical the package marks graded, at open, release, read, close,
+  reservation and reply record. The timetable labels such practicals and
+  offers no button. Whether AI help may be allowed on assessed work (and
+  when) is an owner decision.
+- **Medium-low: deadlock between reply recording and a release or execution
+  insert on the same thread.** It existed in both the Tutor/Lab and the
+  Professor writers. Both writers now take the learner-profile lock first
+  and lock the request or classroom row `FOR NO KEY UPDATE`, which still
+  serialises turn numbering.
+- **Low: context reads checked the firewall without the learner-profile
+  lock.** Both Academy reads now take it first, as migration 021's
+  contract requires.
+- **Low: reply records did not re-prove admission when written.** They now
+  do, like cohort Tutor class notes.
+- **Low: reservation ceilings could be exceeded concurrently.** They are
+  now counted under a row lock; 25 concurrent reservations give exactly 20
+  admitted.
+- **Low: an Academy release row was not schema-bound to its request.** A
+  `bind_academy_support_release` insert trigger now requires the learner,
+  role, lesson and objective to agree with the request.
+- **Info, unchanged:** cohort RPCs given an Academy release id answer by
+  failing closed (abort, or "not available").
+
+### 12.4 Evidence (local, Node 22, PostgreSQL 16.15, stub providers, no paid call)
+
+- `execution-reliability-pg` (8 tests, real PostgreSQL, real transports and
+  runtimes):
+  - a late Professor reply and a late Tutor reply, through the real Academy
+    runtimes, record their exact real usage once, stay TIMEOUT, are never
+    shown or recorded as a reply, and are audited;
+  - a provider call cut off by the 20-second runtime deadline (wall clock)
+    records its usage;
+  - six concurrent late reports admit exactly one; a later FINALIZE is
+    still refused and adds nothing;
+  - another learner, a report signed for a different learner, the wrong
+    governance kind, more calls than admitted, the 5-minute window, an
+    execution that never started, and an execution already finalised are
+    all refused;
+  - the late-usage table is unreadable to learners;
+  - abandonment works at once and only once; another learner cannot do it;
+    START is refused afterwards and the next execution is admitted
+    immediately; a RUNNING execution is never abandoned;
+  - a racing START and abandonment admit exactly one winner;
+  - the same rules hold for Tutor/Lab executions.
+- `execution-reliability-db` (4 tests, PGlite, real cohort fixtures, B2B
+  regression), for cohort Professor executions from a real cohort release
+  and cohort Tutor and Lab Instructor executions from real DELIVERY_V1
+  handoffs, through the unchanged governance:
+  - a late FINALIZE is refused, then its usage is recorded once; another
+    learner is refused;
+  - a dangling AUTHORIZED execution reproduces the old `RATE_LIMITED`
+    effect, and abandonment clears it at once;
+  - cohort provenance is unchanged.
+- Migration 065 regressions:
+  - `academy-tutor-lab`: graded practical refused at every step;
+  - `academy-tutor-lab-pg-concurrency`: deadlock, ceiling and release
+    binding;
+  - `academy-ai-teaching-pg-concurrency`: Professor deadlock;
+  - `academy-support-ui`: graded practical label.
+- The mocked B2B runtime suites now assert abandonment instead of the dead
+  FINALIZE, and that a definitive AUTHORIZE refusal abandons nothing.
+
+### 12.5 Remaining limitations
+
+- Usage of a provider call whose controller process dies before any
+  FINALIZE cannot be recorded: no attested report ever arrives. The
+  execution still times out, and its admission ceilings still bound the
+  call.
+- A late report after the 5-minute window is refused by design.
+- The graded-practical AI-assistance policy is an owner decision; until it
+  is made, AI help on assessed practicals stays closed.

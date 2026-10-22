@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   getDeliveryAgentAccess: vi.fn(),
   withValidatedProfessorContent: vi.fn(),
   attestProviderExecutionCommand: vi.fn(),
+  closeUnstartedProviderExecution: vi.fn(),
 }));
 // AC-2: the learner-scoped Level-3 behaviour read resolves to the
 // code-owned default here; its own authority is tested in
@@ -40,6 +41,7 @@ vi.mock("@/server/academic-provider-execution/authority", async () => {
   return {
     ProviderExecutionDenied: actual.ProviderExecutionDenied,
     attestProviderExecutionCommand: mocks.attestProviderExecutionCommand,
+    closeUnstartedProviderExecution: mocks.closeUnstartedProviderExecution,
   };
 });
 
@@ -242,6 +244,9 @@ describe("V2 provider-backed execution composition (executeRoleCapabilityWithTes
     });
 
     expect(generateSpy).not.toHaveBeenCalled();
+    // A definitive AUTHORIZE refusal admitted nothing, so nothing is
+    // abandoned (migration 064).
+    expect(mocks.closeUnstartedProviderExecution).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       outcome: "ABSTAINED",
       reason: "POLICY_BLOCKED",

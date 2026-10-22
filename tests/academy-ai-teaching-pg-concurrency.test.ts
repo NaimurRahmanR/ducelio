@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { testDatabaseStatements } from "./db-helper";
@@ -385,6 +385,107 @@ describe.skipIf(!ADMIN_URL)(
           "select count(*)::int n from public.academic_content_releases where state = 'ACTIVE'",
         ),
       ).toEqual([{ n: 0 }]);
+    }, 60000);
+
+    it("a Professor reply record and a concurrent reservation cannot deadlock (migration 065)", async () => {
+      const db = await scenario();
+      m.database = db;
+      const opened = await asLearner<{ classroomId: string }>(
+        db,
+        "select public.open_my_academy_professor_classroom($1,$2) v",
+        [enrolment, lessonItem],
+      );
+      // A SUCCEEDED, provenance-bound execution whose reply was too long to
+      // record, so the writer below has something to record.
+      const result = await executeAcademyProfessorClassroomWithTestOverrides(
+        {
+          classroomId: opened.classroomId,
+          interaction: { kind: "BEGIN_LESSON" },
+        },
+        {
+          resolveProfile: (ref) =>
+            ref === "PROFESSOR_COMMERCIAL_V1"
+              ? {
+                  ref,
+                  adapterKind: "TEST_DETERMINISTIC",
+                  budgetPolicy: {
+                    ...DEFAULT_RUNTIME_BUDGET_POLICY,
+                    maxInputContextBytes: 64_000,
+                  },
+                }
+              : null,
+          resolveAdapter: () => ({
+            name: "long-reply-stub",
+            generate: async () => ({
+              outputText: "x".repeat(12_001),
+              usage: {
+                inputTokens: 10,
+                outputTokens: 10,
+                estimatedCostMicrousd: 10,
+              },
+            }),
+          }),
+        },
+      );
+      expect(result).toMatchObject({
+        outcome: "SUCCEEDED",
+        classroomMemory: "NOT_RECORDED",
+      });
+      const [x] = await rows(
+        db,
+        "select id from public.academic_provider_executions where state = 'SUCCEEDED'",
+      );
+      const iat = Math.floor(Date.now() / 1000);
+      const reply = "A short recorded reply.";
+      const sha = (t: string) =>
+        createHash("sha256").update(t, "utf8").digest("hex");
+      const canonical = [
+        "DUCELIO_ACADEMY_CLASSROOM_TURN_HMAC_SHA256_V1",
+        "PROFESSOR",
+        keyId,
+        learner.id,
+        x.id,
+        opened.classroomId,
+        "BEGIN_LESSON",
+        sha(""),
+        sha(reply),
+        iat,
+        iat + 10,
+      ].join("\n");
+      const holder = await connect(db);
+      await holder.query("begin");
+      await holder.query(
+        "select 1 from public.student_profiles where user_id = $1 for update",
+        [learner.id],
+      );
+      const turn = asLearner<{ ok: boolean; duplicate?: boolean }>(
+        db,
+        "select public.record_my_academy_professor_turn($1,$2,$3,$4,$5,$6,$7,$8,$9) v",
+        [
+          keyId,
+          x.id,
+          opened.classroomId,
+          "BEGIN_LESSON",
+          null,
+          reply,
+          iat,
+          iat + 10,
+          createHmac("sha256", key).update(canonical).digest("hex"),
+        ],
+      ).then(
+        (v) => v,
+        (e: Error) => ({ ok: false as const, error: e.message }),
+      );
+      await waitForBlocked(db, 1);
+      // An insert holding a foreign-key share lock on the classroom while the
+      // learner-profile lock is held.
+      await holder.query(
+        "insert into public.academy_professor_interaction_reservations(classroom_id, idempotency_key) values ($1, 'held')",
+        [opened.classroomId],
+      );
+      await holder.query("commit");
+      await holder.end();
+      expect(await turn).toEqual({ ok: true, duplicate: false });
     }, 60000);
   },
 );

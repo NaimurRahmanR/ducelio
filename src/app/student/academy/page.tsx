@@ -193,7 +193,13 @@ function Timetable({
                       timetable.status === "ACTIVE" &&
                       !timetable.examActive &&
                       !timetable.accessRevoked &&
-                      Date.parse(i.startsAt) <= now && (
+                      Date.parse(i.startsAt) <= now &&
+                      (i.labGraded ? (
+                        <p className="muted">
+                          This practical is assessed, so AI Lab Instructor help
+                          is not available for it.
+                        </p>
+                      ) : (
                         <form action={openLabSupportAction}>
                           <input
                             type="hidden"
@@ -209,7 +215,7 @@ function Timetable({
                             Get help from the AI Lab Instructor
                           </button>
                         </form>
-                      )}
+                      ))}
                   </div>
                 </li>
               ))}

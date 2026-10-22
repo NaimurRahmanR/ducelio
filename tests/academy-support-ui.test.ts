@@ -233,6 +233,7 @@ describe("entry points", () => {
       title: "Firewall rule review",
       attempts: null,
       labSubmitted: false,
+      labGraded: false,
       studied: null,
       classOpened: null,
       teachingTurns: null,
@@ -254,7 +255,12 @@ describe("entry points", () => {
         timezone: "Europe/London",
         sessionMinutes: 180,
       },
-      items: [item(labItem, -30), { ...item(objectiveId, 600), sequence: 2 }],
+      items: [
+        item(labItem, -30),
+        { ...item(objectiveId, 600), sequence: 2 },
+        // A started but assessed practical: no AI help is offered.
+        { ...item(requestId, -20), sequence: 3, labGraded: true },
+      ],
     });
     const enrolments = [
       {
@@ -287,6 +293,10 @@ describe("entry points", () => {
       AcademyPage({ searchParams: Promise.resolve({ enrolmentId }) }),
     );
     expect(html.match(/Get help from the AI Lab Instructor/g)).toHaveLength(1);
+    expect(html).toContain(
+      "This practical is assessed, so AI Lab Instructor help is not available for it.",
+    );
+    expect(html).not.toContain(`name="scheduleItemId" value="${requestId}"`);
     expect(html).toContain(`name="scheduleItemId" value="${labItem}"`);
     m.rpc.mockImplementation(
       byName({

@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   getDeliveryAgentAccess: vi.fn(),
   withValidatedProfessorContent: vi.fn(),
   attestProviderExecutionCommand: vi.fn(),
+  closeUnstartedProviderExecution: vi.fn(),
   getAgentBehaviourForEnrolment: vi.fn(),
   getProfessorClassroomState: vi.fn(),
   listProfessorClassroomTurns: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock("@/server/academic-provider-execution/authority", async () => {
   return {
     ProviderExecutionDenied: actual.ProviderExecutionDenied,
     attestProviderExecutionCommand: mocks.attestProviderExecutionCommand,
+    closeUnstartedProviderExecution: mocks.closeUnstartedProviderExecution,
   };
 });
 vi.mock("@/server/academic-runtime/professor-teaching", async () => {
@@ -597,11 +599,17 @@ describe("fails closed", () => {
     });
     expect(provider.requests).toHaveLength(0);
     expect(order).not.toContain("START");
+    // Migration 064: the AUTHORIZED, never-started execution is abandoned at
+    // once. FINALIZE (accepted only from RUNNING) is never attempted for it.
     expect(
-      mocks.attestProviderExecutionCommand.mock.calls.find(
+      mocks.attestProviderExecutionCommand.mock.calls.some(
         ([, , command]) => command.operation === "FINALIZE",
-      )?.[2],
-    ).toMatchObject({ state: "FAILED", reason: "INTERNAL_ERROR" });
+      ),
+    ).toBe(false);
+    expect(mocks.closeUnstartedProviderExecution).toHaveBeenCalledTimes(1);
+    expect(mocks.closeUnstartedProviderExecution.mock.calls[0][2]).toBe(
+      "INTERNAL_ERROR",
+    );
     expect(mocks.recordProfessorClassroomTurn).not.toHaveBeenCalled();
   });
 

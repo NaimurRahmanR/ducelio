@@ -103,6 +103,8 @@ let objectiveId = "";
 let futureObjective = { lessonRef: "", objectiveId: "" };
 let labItem = "";
 let labLessonRef = "";
+let gradedLabItem = "";
+let gradedLab = "";
 let tutorRequestA = "";
 let labRequestA = "";
 
@@ -241,22 +243,29 @@ beforeAll(async () => {
     lessonRef: lessons.at(-1)!.lesson_ref,
     objectiveId: lessons.at(-1)!.objective,
   };
-  // A GRADED practical, so the test proves its rubric and marking
-  // guidance never reach the Lab Instructor.
-  const graded = (pkg.labs as { activityRef: string; graded: boolean }[]).find(
-    (l) => l.graded,
-  )!;
-  labLessonRef = (
-    pkg.curriculum.modules.flatMap(
-      (mm: { lessons: unknown[] }) => mm.lessons,
-    ) as { key: string; practicalActivities?: { key: string }[] }[]
-  ).find((l) =>
-    l.practicalActivities?.some((a) => a.key === graded.activityRef),
-  )!.key;
-  labItem = await itemFor(enrolments[learnerA.id], "LAB", graded.activityRef);
+  // An ungraded practical for AI help, and a graded one (with a TEST-ONLY
+  // rubric) that the Lab Instructor must refuse (migration 065).
+  const labs = pkg.labs as { activityRef: string; graded: boolean }[];
+  const ungraded = labs.find((l) => !l.graded)!;
+  const graded = labs.find((l) => l.graded)!;
+  const lessonOf = (key: string) =>
+    (
+      pkg.curriculum.modules.flatMap(
+        (mm: { lessons: unknown[] }) => mm.lessons,
+      ) as { key: string; practicalActivities?: { key: string }[] }[]
+    ).find((l) => l.practicalActivities?.some((a) => a.key === key))!.key;
+  labLessonRef = lessonOf(ungraded.activityRef);
+  gradedLab = graded.activityRef;
+  labItem = await itemFor(enrolments[learnerA.id], "LAB", ungraded.activityRef);
+  gradedLabItem = await itemFor(
+    enrolments[learnerA.id],
+    "LAB",
+    graded.activityRef,
+  );
   for (const p of [learnerA, learnerB, learnerC]) {
     await releaseNow(q, enrolments[p.id], "LESSON", lessonRef);
     await releaseNow(q, enrolments[p.id], "LESSON", labLessonRef);
+    await releaseNow(q, enrolments[p.id], "LESSON", lessonOf(gradedLab));
   }
 }, 240000);
 afterAll(async () => {
@@ -454,10 +463,58 @@ describe("Academy AI Lab Instructor", () => {
       request: { practical: { instructions: string }; graded: boolean };
     }>(q, learnerA, "get_my_academy_support_request", [labRequestA]);
     expect(view.ok).toBe(true);
-    expect(view.request.graded).toBe(true);
+    expect(view.request.graded).toBe(false);
     expect(sent).toContain(
       JSON.stringify(view.request.practical.instructions).slice(1, 40),
     );
+  });
+
+  it("refuses AI help on an assessed practical at every step (migration 065)", async () => {
+    const own = enrolments[learnerA.id];
+    expect(await openLab(learnerA, own, gradedLabItem)).toEqual({
+      ok: false,
+      code: "GRADED_PRACTICAL",
+    });
+    const timetable = await rpc<{ items: Record<string, unknown>[] }>(
+      q,
+      learnerA,
+      "get_my_academy_timetable",
+      [own],
+    );
+    expect(timetable.items.find((i) => i.id === gradedLabItem)).toMatchObject({
+      labGraded: true,
+    });
+    expect(timetable.items.find((i) => i.id === labItem)).toMatchObject({
+      labGraded: false,
+    });
+    // Even a request row that existed for it (written here directly by the
+    // owner) is refused at release, so no provider context is ever built.
+    const lessonId = (
+      await q(
+        "select lesson_id from public.academy_support_requests where id = $1",
+        [labRequestA],
+      )
+    ).rows[0].lesson_id;
+    const forged = (
+      await q(
+        `insert into public.academy_support_requests(learner_id, enrolment_id, role, reason_code, programme_version_id,
+           lesson_ref, lesson_id, practical_key, schedule_item_id)
+         select learner_id, enrolment_id, 'LAB_INSTRUCTOR', 'PRACTICAL_HELP', programme_version_id, lesson_ref, $2, $3, $4
+         from public.academy_support_requests where id = $1 returning id`,
+        [labRequestA, lessonId, gradedLab, gradedLabItem],
+      )
+    ).rows[0].id as string;
+    const adapter = stub();
+    expect(await ask(learnerA, forged, adapter)).toEqual({
+      status: "UNAVAILABLE",
+    });
+    expect(adapter.requests).toHaveLength(0);
+    expect(
+      await rpc(q, learnerA, "begin_my_academy_support_release", [
+        randomUUID(),
+        forged,
+      ]),
+    ).toEqual({ ok: false, code: "GRADED_PRACTICAL" });
   });
 
   it("writes no grade, mastery, progress, submission or completion", async () => {
@@ -651,6 +708,8 @@ describe("refusals and isolation", () => {
         "select count(*)::int n from public.academy_support_requests where learner_id = $1",
         [learnerA.id],
       ),
-    ).toBe(2);
+      // Tutor, Lab, and the graded-practical request inserted by the
+      // migration 065 refusal test.
+    ).toBe(3);
   });
 });

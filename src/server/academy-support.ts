@@ -21,6 +21,8 @@ export const ACADEMY_SUPPORT_DENIAL_TEXT: Record<string, string> = {
   SCHEDULE_SUPERSEDED:
     "Your timetable has changed. Open the practical from your current timetable.",
   NOT_A_PRACTICAL: "Lab Instructor help is available for practical sessions.",
+  GRADED_PRACTICAL:
+    "This practical is assessed, so AI Lab Instructor help is not available for it.",
   RATE_LIMITED:
     "Too many requests in this conversation just now. Wait a minute and try again.",
   CAPACITY_REACHED: "This conversation has reached its request limit.",

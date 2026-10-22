@@ -275,6 +275,8 @@ export const timetableSchema = z.strictObject({
       carried: z.boolean(),
       attempts: z.number().int().nullable(),
       labSubmitted: z.boolean().nullable(),
+      // An assessed practical: no AI Lab Instructor help (migration 065).
+      labGraded: z.boolean().nullable(),
       studied: z.boolean().nullable(),
       // Distinct from studied/mastery: the learner opened this scheduled AI
       // class, and how many Professor exchanges were recorded in it.

@@ -2,6 +2,16 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
+CURRENT CHECKPOINT (implemented locally on `claude/sleepy-brahmagupta-pt0g9d`; NOT reviewed, merged or deployed): RELIABILITY-1, shared AI execution reliability and the independent review of migration 063. See [docs/57 §12](57-academy-b2c-course-engineering.md#12-checkpoint-reliability-1-migrations-064-and-065-shared-ai-execution-reliability-and-independent-review).
+
+- COMPLETED ITEMS: migration `202610260064_shared_execution_reliability.sql` (attested late-usage recording for executions whose FINALIZE arrives after expiry, exactly once and without reviving them; attested abandonment of AUTHORIZED executions that cannot START), used by the cohort and Academy Professor and Tutor/Lab runtimes through both controller transports; migration `202610260065_academy_ai_hardening.sql` (graded practicals refused for AI Lab help; deadlock-free reply-record lock order; profile lock on context reads; admission re-proven on reply records; reservation ceilings under a row lock; release-to-request schema binding).
+- INCOMPLETE ITEMS: owner decision on AI assistance for graded practicals; Examiner-assisted lab grading (`LAB_RUBRICS` pending); the seven Security+ pending decisions; hosted acceptance with a real provider; authenticated browser journey; independent review of migrations 064–065.
+- MIGRATIONS: 060–065. Not applied to any hosted project. CONFIGURATION: none new.
+- KNOWN FAILURES: none in the local gates (see the final report). The previous late-usage production blocker is resolved by migration 064; remaining limitation: usage of a call whose controller dies before any FINALIZE cannot be recorded.
+- NEXT EXACT ACTION: owner review of the branch; then, only if approved, a PR with CI.
+
+PREVIOUS CHECKPOINT RECORD (ACADEMY-B2C-4, superseded by the above):
+
 CURRENT CHECKPOINT (implemented locally on `claude/sleepy-brahmagupta-pt0g9d`; NOT reviewed, merged or deployed): ACADEMY-B2C-4, AI Tutor and AI Lab Instructor for individual Academy enrolments. See [docs/57 §11](57-academy-b2c-course-engineering.md#11-checkpoint-academy-b2c-4-migration-063-ai-tutor-and-lab-instructor).
 
 - COMPLETED ITEMS: migration `202610250063_academy_tutor_lab.sql`; `academy_support_requests` as the cohort-free admission source (Tutor per released objective, Lab per started practical session); `tutor_lab_content_releases` generalised to one source per row, so migration 028's governance, execution table, usage ledger and audit are reused unchanged; Academy provenance from the frozen behaviour binding; single-use context reads in the cohort Tutor/Lab context shapes; idempotent reservations; attested reply records; lesson-page Tutor and timetable Lab entry points and the support page.
