@@ -64,7 +64,13 @@ export async function uploadAndValidateAction(
         error: "The file is not valid UTF-8 JSON. Nothing was uploaded.",
       };
     }
-    const packageId = await uploadAcademyPackage(parsed, reason);
+    const packageId = await uploadAcademyPackage(
+      parsed,
+      reason,
+      data.get("organisationId")
+        ? z.uuid().parse(data.get("organisationId"))
+        : undefined,
+    );
     const result = await validateAcademyPackage(packageId, reason);
     revalidatePath(ROUTE);
     if (!result.valid)

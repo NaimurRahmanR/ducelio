@@ -1,11 +1,9 @@
+import { courseEngineeringAccess } from "@/server/course-organisations";
 import Link from "next/link";
 import { z } from "zod";
 import { AdminForbidden, AdminShell } from "@/components/admin-shell";
 import { DataTable, Panel, Unavailable } from "@/components/admin-ui";
-import {
-  adminWorkspaceAccess,
-  COURSE_ADMIN_ROLES,
-} from "@/server/admin-access";
+import { COURSE_ADMIN_ROLES } from "@/server/admin-access";
 import {
   listCourseCoupons,
   getCourseCouponRedemptions,
@@ -21,7 +19,7 @@ export default async function Page({
 }: {
   searchParams: Promise<{ couponId?: string }>;
 }) {
-  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  const access = await courseEngineeringAccess();
   if (!access.allowed)
     return (
       <AdminForbidden
@@ -62,6 +60,7 @@ export default async function Page({
         </p>
         {packages ? (
           <CreateCourseCouponForm
+            organisations={access.organisations}
             courses={packages.flatMap((p) =>
               p.course
                 ? [{ id: p.course.id, title: p.title ?? p.packageKey }]

@@ -119,6 +119,8 @@ export const ACADEMY_ERROR_TEXT: Record<AcademyErrorCode, string> = {
 
 export const academyPackageListSchema = z.array(
   z.object({
+    organisationId: z.uuid().optional(),
+    organisationName: z.string().optional(),
     id: z.uuid(),
     packageKey: z.string(),
     packageRevision: z.number().int(),

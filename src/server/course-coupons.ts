@@ -2,6 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { requireActor } from "./identity";
 import { createSupabase } from "./supabase";
+import { DUCELIO_ORGANISATION } from "./course-organisations";
 import { AccessDenied } from "@/domain/policy";
 
 export const couponInputSchema = z.strictObject({
@@ -42,11 +43,8 @@ async function couponRpc<T>(
   args: Record<string, unknown>,
   schema: z.ZodType<T>,
 ): Promise<T> {
-  const actor = await requireActor("admin");
-  if (
-    !actor.roles.some((r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN")
-  )
-    throw new AccessDenied();
+  const actor = await requireActor();
+  if (!actor) throw new AccessDenied();
   const { data, error } = await (await createSupabase()).rpc(name, args);
   if (error)
     throw new Error(
@@ -56,11 +54,15 @@ async function couponRpc<T>(
     );
   return schema.parse(data);
 }
-export async function createCourseCoupon(input: unknown) {
+export async function createCourseCoupon(
+  input: unknown,
+  organisationId = DUCELIO_ORGANISATION,
+) {
   const p = couponInputSchema.parse(input);
   return couponRpc(
-    "create_course_coupon",
+    "create_organisation_course_coupon",
     {
+      p_organisation_id: z.uuid().parse(organisationId),
       p_code: p.code,
       p_percent_off: p.percentOff,
       p_expires_at: p.expiresAt,

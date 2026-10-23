@@ -14,14 +14,19 @@ export async function createCouponAction(
     const expiry = String(form.get("expiresAt") ?? "");
     if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(expiry))
       return { error: "Enter the expiry in UTC." };
-    await createCourseCoupon({
-      code: form.get("code"),
-      percentOff: Number(form.get("percentOff")),
-      expiresAt: expiry + ":00Z",
-      redemptionLimit: Number(form.get("redemptionLimit")),
-      courseId: form.get("courseId") || null,
-      reason: form.get("reason"),
-    });
+    await createCourseCoupon(
+      {
+        code: form.get("code"),
+        percentOff: Number(form.get("percentOff")),
+        expiresAt: expiry + ":00Z",
+        redemptionLimit: Number(form.get("redemptionLimit")),
+        courseId: form.get("courseId") || null,
+        reason: form.get("reason"),
+      },
+      form.get("organisationId")
+        ? String(form.get("organisationId"))
+        : undefined,
+    );
     revalidatePath(route);
     return {
       message:

@@ -58,11 +58,12 @@ describe("course coupon server and UI boundaries", () => {
     ).toContain("Deactivate coupon");
   });
   it.each(["STUDENT", "INSTRUCTOR", "REGISTRAR"])(
-    "denies %s coupon administration before database access",
+    "denies %s without organisation authority through the database",
     async (role) => {
       m.actor.mockResolvedValue({ roles: [role] });
+      m.rpc.mockResolvedValue({ error: { message: "FORBIDDEN" } });
       await expect(listCourseCoupons()).rejects.toThrow();
-      expect(m.rpc).not.toHaveBeenCalled();
+      expect(m.rpc).toHaveBeenCalledExactlyOnceWith("list_course_coupons", {});
     },
   );
   it("sends reviewed coupon fields only, with a normalized code", async () => {
@@ -74,14 +75,18 @@ describe("course coupon server and UI boundaries", () => {
       courseId: id,
       reason: "Synthetic coupon approval",
     });
-    expect(m.rpc).toHaveBeenCalledExactlyOnceWith("create_course_coupon", {
-      p_code: "SUMMER-100",
-      p_percent_off: 100,
-      p_expires_at: "2030-01-01T00:00:00Z",
-      p_redemption_limit: 5,
-      p_course_id: id,
-      p_reason: "Synthetic coupon approval",
-    });
+    expect(m.rpc).toHaveBeenCalledExactlyOnceWith(
+      "create_organisation_course_coupon",
+      {
+        p_organisation_id: "00000000-0000-4000-8000-000000000001",
+        p_code: "SUMMER-100",
+        p_percent_off: 100,
+        p_expires_at: "2030-01-01T00:00:00Z",
+        p_redemption_limit: 5,
+        p_course_id: id,
+        p_reason: "Synthetic coupon approval",
+      },
+    );
   });
   it("records an unambiguous UTC expiry from the admin form", async () => {
     const f = new FormData();

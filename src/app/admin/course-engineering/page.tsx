@@ -1,3 +1,8 @@
+import {
+  CourseOrganisationForm,
+  CreateCourseOrganisationForm,
+} from "@/components/course-organisation-form";
+import { courseEngineeringAccess } from "@/server/course-organisations";
 import Link from "next/link";
 import { listCourseRecoveries } from "@/server/unified-course-activation";
 import { ReviewRecoveryForm } from "@/components/course-recovery-forms";
@@ -15,14 +20,10 @@ import {
   AcademyUploadForm,
   EnableSaleForm,
   ArchiveForm,
-  GrantForm,
   MarkLabForm,
   RejectForm,
 } from "@/components/academy-course-engineering-forms";
-import {
-  adminWorkspaceAccess,
-  COURSE_ADMIN_ROLES,
-} from "@/server/admin-access";
+import { COURSE_ADMIN_ROLES } from "@/server/admin-access";
 import {
   getAcademyPackageReview,
   listAcademyLabSubmissions,
@@ -245,7 +246,7 @@ export default async function Page({
 }: {
   searchParams: Promise<{ packageId?: string; importId?: string }>;
 }) {
-  const access = await adminWorkspaceAccess(COURSE_ADMIN_ROLES);
+  const access = await courseEngineeringAccess();
   if (!access.allowed)
     return (
       <AdminForbidden
@@ -285,6 +286,13 @@ export default async function Page({
     selected?.status === "VALIDATED"
       ? await getUnifiedCourseAgents(selected.id).catch(() => null)
       : null;
+  const canManageSelected = selected?.organisationId
+    ? access.organisations.some(
+        (o) => o.id === selected.organisationId && o.canManage,
+      )
+    : actor.roles.some(
+        (r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN",
+      ) || access.organisations.some((o) => o.canManage);
   const curriculumPublished =
     selected?.curriculumImport?.status === "PUBLISHED";
   const step = !selected
@@ -314,6 +322,10 @@ export default async function Page({
       }
     >
       <Stepper step={step} />
+      {actor.roles.includes("PLATFORM_ADMIN") && (
+        <CreateCourseOrganisationForm />
+      )}
+      <CourseOrganisationForm organisations={access.organisations} />
       <Panel title="Missed-activity recovery reviews (oldest 100)">
         {recoveryQueue === null ? (
           <Unavailable what="The recovery review queue" />
@@ -346,7 +358,7 @@ export default async function Page({
         title="Upload and validate"
         description="One versioned ACADEMY_COURSE_PACKAGE_V1 file: curriculum, labs, assessments, grading and delivery formats."
       >
-        <AcademyUploadForm />
+        <AcademyUploadForm organisations={access.organisations} />
       </Panel>
 
       <Panel id="packages" title="Academy packages">
@@ -366,6 +378,7 @@ export default async function Page({
                   {p.title ?? p.packageKey}
                 </Link>
                 <span className="ac-muted">
+                  {p.organisationName ? `${p.organisationName} · ` : ""}
                   {p.packageKey} · revision {p.packageRevision}
                 </span>
                 <Pill
@@ -403,7 +416,7 @@ export default async function Page({
         </Panel>
       )}
 
-      {selected?.status === "VALIDATED" && review && (
+      {selected?.status === "VALIDATED" && review && canManageSelected && (
         <Panel
           id="publish"
           title="Approve and publish"
@@ -448,22 +461,18 @@ export default async function Page({
               buy access through secure checkout and activate their own
               timetable.
             </p>
-          ) : selected.course.offerState === "PUBLISHED" ? (
+          ) : canManageSelected &&
+            selected.course.offerState === "PUBLISHED" ? (
             <EnableSaleForm
               offerId={selected.course.offerId}
               pending={selected.pendingDecisions}
             />
           ) : null}
-          <h3 className="acad-h3">Authorised access</h3>
           <p className="ac-muted">
-            Complimentary or reviewer access creates an individual enrolment,
-            including for review-only courses.
+            Use a 100% course coupon for authorised complimentary access. The
+            learner activates their own timetable.
           </p>
-          <GrantForm
-            offerId={selected.course.offerId}
-            formats={(review?.formats ?? []).map((f) => f.formatId)}
-          />
-          {selected.course.offerState === "PUBLISHED" && (
+          {canManageSelected && selected.course.offerState === "PUBLISHED" && (
             <ArchiveForm offerId={selected.course.offerId} />
           )}
         </Panel>

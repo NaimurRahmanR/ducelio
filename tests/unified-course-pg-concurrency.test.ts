@@ -295,5 +295,127 @@ describe.skipIf(!endpoint)(
         )[0].n,
       ).toBe(1);
     });
+    it("confirms one timetable across concurrent activation retries", async () => {
+      const db = await clone();
+      const purchase = await call(
+        db,
+        people.learnerA.auth,
+        "select public.create_unified_course_order('unified-race-test','RACE-FREE') r",
+        [],
+      );
+      const key = randomUUID();
+      const args = [
+        purchase.enrolmentId,
+        "STANDARD_6W",
+        new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        [1, 2, 3, 4, 5, 6],
+        "09:00",
+        "Europe/London",
+        key,
+      ];
+      const sql =
+        "select public.confirm_my_academy_schedule($1,$2,$3,$4,$5,$6,$7) r";
+      const result = await race(
+        db,
+        "select user_id from public.student_profiles where user_id=$1 for update",
+        [people.learnerA.id],
+        [
+          () => call(db, people.learnerA.auth, sql, args),
+          () => call(db, people.learnerA.auth, sql, args),
+        ],
+      );
+      expect(result.every((r) => r.ok)).toBe(true);
+      expect(result.map((r) => r.replayed).sort()).toEqual([false, true]);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.academy_schedules where enrolment_id=$1",
+            [purchase.enrolmentId],
+          )
+        )[0].n,
+      ).toBe(1);
+    });
+    it("serialises conflicting activation requests without duplicate timetables", async () => {
+      const db = await clone();
+      const purchase = await call(
+        db,
+        people.learnerA.auth,
+        "select public.create_unified_course_order('unified-race-test','RACE-FREE') r",
+        [],
+      );
+      const args = [
+        purchase.enrolmentId,
+        "STANDARD_6W",
+        new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+        [1, 2, 3, 4, 5, 6],
+        "09:00",
+        "Europe/London",
+      ];
+      const sql =
+        "select public.confirm_my_academy_schedule($1,$2,$3,$4,$5,$6,$7) r";
+      const result = await race(
+        db,
+        "select user_id from public.student_profiles where user_id=$1 for update",
+        [people.learnerA.id],
+        [
+          () => call(db, people.learnerA.auth, sql, [...args, randomUUID()]),
+          () => call(db, people.learnerA.auth, sql, [...args, randomUUID()]),
+        ],
+      );
+      expect(result.filter((r) => r.ok)).toHaveLength(1);
+      expect(result.filter((r) => r.code === "PLAN_EXISTS")).toHaveLength(1);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.academy_schedules where enrolment_id=$1",
+            [purchase.enrolmentId],
+          )
+        )[0].n,
+      ).toBe(1);
+    });
+    it("retains an owner when two owners concurrently revoke themselves", async () => {
+      const db = await clone(),
+        org = randomUUID();
+      await query(
+        db,
+        "insert into public.course_engine_organisations(id,slug,name) values($1,'owner-race','TEST ONLY owner race')",
+        [org],
+      );
+      await query(
+        db,
+        "insert into public.course_engine_memberships(organisation_id,user_id,role) values($1,$2,'OWNER'),($1,$3,'OWNER')",
+        [org, people.learnerA.id, people.learnerB.id],
+      );
+      const revoke = (
+        person: typeof people.learnerA | typeof people.learnerB,
+      ) =>
+        call(
+          db,
+          person.auth,
+          "select public.set_course_organisation_member($1,$2,$3,$4,$5) r",
+          [org, person.id, "OWNER", false, reason],
+        ).then(
+          () => ({ ok: true }),
+          () => ({ ok: false }),
+        );
+      const result = await race(
+        db,
+        "select id from public.course_engine_organisations where id=$1 for update",
+        [org],
+        [() => revoke(people.learnerA), () => revoke(people.learnerB)],
+      );
+      expect(result.filter((r) => r.ok)).toHaveLength(1);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.course_engine_memberships where organisation_id=$1 and active and role='OWNER'",
+            [org],
+          )
+        )[0].n,
+      ).toBe(1);
+    });
   },
 );

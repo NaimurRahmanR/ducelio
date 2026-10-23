@@ -7,6 +7,7 @@ import { agentConfigurationSchema } from "@/domain/course-package";
 
 const m = vi.hoisted(() => ({
   actor: vi.fn(),
+  organisations: vi.fn(),
   list: vi.fn(),
   review: vi.fn(),
   agents: vi.fn(),
@@ -29,6 +30,19 @@ vi.mock("@/app/auth/actions", () => ({ logout: vi.fn() }));
 vi.mock("@/server/identity", () => ({
   getAuthenticatedActor: m.actor,
   requireActor: m.actor,
+}));
+vi.mock("@/server/course-organisations", () => ({
+  courseEngineeringAccess: async () => {
+    const actor = await m.actor();
+    return {
+      actor,
+      organisations: await m.organisations(),
+      allowed:
+        actor.roles.includes("ACADEMIC_ADMIN") ||
+        actor.roles.includes("PLATFORM_ADMIN") ||
+        (await m.organisations()).length > 0,
+    };
+  },
 }));
 vi.mock("@/server/unified-course-engine", () => ({
   listUnifiedCoursePackages: m.list,
@@ -82,6 +96,7 @@ function form() {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  m.organisations.mockResolvedValue([]);
   m.actor.mockResolvedValue({
     id,
     displayName: "Admin",
@@ -100,6 +115,30 @@ beforeEach(() => {
   m.publish.mockResolvedValue({ courseId: id, offerId: id, replayed: false });
 });
 describe("single course engineering flow", () => {
+  it("admits an external owner without granting global administrator roles", async () => {
+    m.actor.mockResolvedValue({
+      id,
+      displayName: "External owner",
+      roles: ["STUDENT"],
+    });
+    m.organisations.mockResolvedValue([
+      {
+        id,
+        name: "External Organisation",
+        slug: "external-org",
+        canManage: true,
+        canReview: true,
+        canOwn: true,
+      },
+    ]);
+    const html = await render();
+    expect(html).toContain("External Organisation");
+    expect(html).toContain('name="organisationId"');
+    expect(html).toContain("Organisation permissions");
+    expect(html).not.toContain("Host an organisation");
+    expect(html).toContain("Publish");
+  });
+
   it("denies registrars before reading any package", async () => {
     m.actor.mockResolvedValue({
       id,

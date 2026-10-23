@@ -77,11 +77,15 @@ describe("one-price input and server authority", () => {
     { roles: ["STUDENT"] },
     { roles: ["REGISTRAR"] },
     { roles: ["INSTRUCTOR"] },
-  ])("denies unauthorised actors before DB access", async (actor) => {
-    m.actor.mockResolvedValue(actor);
-    await expect(publishUnifiedCourse(input)).rejects.toThrow("FORBIDDEN");
-    expect(m.rpc).not.toHaveBeenCalled();
-  });
+  ])(
+    "uses authenticated DB authority for tenant permissions",
+    async (actor) => {
+      m.actor.mockResolvedValue(actor);
+      m.rpc.mockResolvedValue({ error: { message: "FORBIDDEN" } });
+      await expect(publishUnifiedCourse(input)).rejects.toThrow("FORBIDDEN");
+      expect(m.rpc).toHaveBeenCalledTimes(actor ? 1 : 0);
+    },
+  );
   it("calls one publication RPC with terms only", async () => {
     const data = { courseId: id, offerId: id, replayed: false };
     m.rpc.mockResolvedValue({ data, error: null });
@@ -122,6 +126,10 @@ describe("one-price input and server authority", () => {
     agents.PROFESSOR.instructionalNotes = "Synthetic revised recorded notes";
     m.rpc
       .mockResolvedValueOnce({ data: pkg, error: null })
+      .mockResolvedValueOnce({
+        data: "00000000-0000-4000-8000-000000000001",
+        error: null,
+      })
       .mockResolvedValueOnce({ data: id, error: null })
       .mockResolvedValueOnce({ data: { status: "UPLOADED" }, error: null });
     m.validate.mockResolvedValue({ valid: true });
@@ -129,7 +137,7 @@ describe("one-price input and server authority", () => {
       id,
     );
     const revised = m.rpc.mock.calls.find(
-      (c) => c[0] === "upload_unified_course_package",
+      (c) => c[0] === "upload_organisation_course_package",
     )![1].p_raw_package;
     expect(revised.packageRevision).toBe(pkg.packageRevision + 1);
     expect(revised.curriculum.packageRevision).toBe(revised.packageRevision);
@@ -143,6 +151,10 @@ describe("one-price input and server authority", () => {
     agents.PROFESSOR.instructionalNotes = "Synthetic revised recorded notes";
     m.rpc
       .mockResolvedValueOnce({ data: pkg, error: null })
+      .mockResolvedValueOnce({
+        data: "00000000-0000-4000-8000-000000000001",
+        error: null,
+      })
       .mockResolvedValueOnce({ data: id, error: null })
       .mockResolvedValueOnce({ data: { status: "PUBLISHED" }, error: null });
     expect(await configureUnifiedCourseAgents(id, agents, input.reason)).toBe(

@@ -6,14 +6,30 @@ import {
 } from "@/app/admin/course-engineering/coupons/actions";
 export function CreateCourseCouponForm({
   courses,
+  organisations = [],
 }: {
   courses: { id: string; title: string }[];
+  organisations?: { id: string; name: string; canManage: boolean }[];
 }) {
   const [state, action, pending] = useActionState(createCouponAction, {});
   return (
     <form action={action} className="acad-form">
       <fieldset disabled={pending}>
         <legend>Create course coupon</legend>
+        {organisations.length > 0 && (
+          <label>
+            Organisation
+            <select name="organisationId" required>
+              {organisations
+                .filter((o) => o.canManage)
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <label>
           Code
           <input

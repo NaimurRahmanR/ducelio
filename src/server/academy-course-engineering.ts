@@ -41,8 +41,22 @@ async function adminRpc<T>(
   schema: z.ZodType<T>,
 ): Promise<T> {
   const actor = await getAuthenticatedActor();
+  const scoped = [
+    "get_academy_course_package_content",
+    "get_academy_course_package_review",
+    "mark_academy_course_package_validated",
+    "reject_academy_course_package",
+    "list_academy_lab_submissions_for_review",
+    "mark_academy_lab_submission",
+    "archive_academy_offer",
+    "enable_academy_public_sale",
+  ].includes(name);
   if (
-    !actor?.roles.some((r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN")
+    !actor ||
+    (!scoped &&
+      !actor.roles.some(
+        (r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN",
+      ))
   )
     throw new AcademyError("FORBIDDEN");
   const { data, error } = await (await createSupabase()).rpc(name, args);

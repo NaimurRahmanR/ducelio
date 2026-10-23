@@ -15,14 +15,12 @@ import {
 import { validateAcademyPackage } from "./academy-course-engineering";
 import { validateAcademyCoursePackage } from "@/domain/academy-course-package";
 import { academyCatalogueSchema } from "@/domain/academy-delivery";
+import { DUCELIO_ORGANISATION } from "./course-organisations";
 import { config } from "@/lib/env";
 
 async function clientForAdmin() {
   const actor = await getAuthenticatedActor();
-  if (
-    !actor?.roles.some((r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN")
-  )
-    throw new AcademyError("FORBIDDEN");
+  if (!actor) throw new AcademyError("FORBIDDEN");
   return createSupabase();
 }
 
@@ -54,14 +52,22 @@ export async function publishUnifiedCourse(input: unknown) {
   return unifiedPublicationResultSchema.parse(data);
 }
 
-export async function uploadUnifiedCoursePackage(raw: unknown, reason: string) {
+export async function uploadUnifiedCoursePackage(
+  raw: unknown,
+  reason: string,
+  organisationId = DUCELIO_ORGANISATION,
+) {
   const client = await clientForAdmin();
   if (typeof raw !== "object" || raw === null || Array.isArray(raw))
     throw new AcademyError("MALFORMED_PACKAGE");
-  const { data, error } = await client.rpc("upload_unified_course_package", {
-    p_raw_package: raw,
-    p_reason: z.string().trim().min(5).max(300).parse(reason),
-  });
+  const { data, error } = await client.rpc(
+    "upload_organisation_course_package",
+    {
+      p_organisation_id: z.uuid().parse(organisationId),
+      p_raw_package: raw,
+      p_reason: z.string().trim().min(5).max(300).parse(reason),
+    },
+  );
   if (error) throw new AcademyError(academyErrorCode(error.message));
   return z.uuid().parse(data);
 }
@@ -109,7 +115,15 @@ export async function configureUnifiedCourseAgents(
   raw.curriculum.curriculumVersion.label = `${source.review.title.slice(0, 140)} · revision ${raw.packageRevision}`;
   const checked = validateAcademyCoursePackage(raw);
   if (!checked.valid) throw new AcademyError("MALFORMED_PACKAGE");
-  const nextId = await uploadUnifiedCoursePackage(raw, reason);
+  const ownership = await client.rpc("get_unified_package_organisation", {
+    p_package_id: id,
+  });
+  if (ownership.error) throw new AcademyError("FORBIDDEN");
+  const nextId = await uploadUnifiedCoursePackage(
+    raw,
+    reason,
+    z.uuid().parse(ownership.data),
+  );
   const next = await client.rpc("get_academy_course_package_review", {
     p_package_id: nextId,
   });

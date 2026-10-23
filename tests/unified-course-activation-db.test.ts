@@ -1,3 +1,4 @@
+import { localPostgresDatabase } from "./local-postgres-database";
 import { randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -13,7 +14,7 @@ import {
 import { publishUnifiedTestCourse } from "./unified-course-fixture";
 import { canonicalStudyDays } from "@/domain/academy-scheduler";
 import { academyPlanSchema, timetableSchema } from "@/domain/academy-delivery";
-let db: PGlite,
+let db: PGlite | Awaited<ReturnType<typeof localPostgresDatabase>>,
   q: Query,
   enrolment: string,
   otherEnrolment: string,
@@ -54,7 +55,9 @@ async function timeFixture(delta: string) {
   ).rows;
 }
 beforeAll(async () => {
-  db = await testDatabase({ supabaseDefaultPrivileges: true });
+  db = process.env.DUCELIO_TEST_POSTGRES_URL
+    ? await localPostgresDatabase()
+    : await testDatabase({ supabaseDefaultPrivileges: true });
   q = (sql, args) => db.query(sql, args) as ReturnType<Query>;
   await seedPeople(q);
   const c = await publishUnifiedTestCourse(q, "unified-activation-test");

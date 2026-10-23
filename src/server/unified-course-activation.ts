@@ -24,12 +24,8 @@ async function call<T>(
   args: Record<string, unknown>,
   schema: z.ZodType<T>,
 ) {
-  const actor = await requireActor(role);
-  if (
-    role === "admin" &&
-    !actor.roles.some((r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN")
-  )
-    throw new AccessDenied();
+  const actor = await requireActor(role === "student" ? "student" : undefined);
+  if (!actor) throw new AccessDenied();
   const { data, error } = await (await createSupabase()).rpc(name, args);
   if (error)
     throw new Error(
