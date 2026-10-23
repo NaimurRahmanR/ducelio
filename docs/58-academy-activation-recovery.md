@@ -132,7 +132,7 @@ The owner uploaded and published the AWS SAA-C03 V2 package for individual learn
   - The server sends the register in batches of 500, so 1,200 courses take 3 queries, not one per course. Any failed batch fails the whole read, so partial evidence is never presented as complete. Each call accepts at most 1,000 ids; that bounds request size without omitting any course.
   - **Deployment order.** On a database without 066, the server falls back to `list_academy_course_packages`. Its links are positive evidence, but it counts as complete only when it returns fewer than 100 rows. A course absent from a full window is _unconfirmed_, never "not individual".
   - 066 was confirmed unapplied before it was edited: the acceptance ledger ends at `202610260065` and the live function had no `formats`. It was then rewritten and renamed from `…_academy_admin_offer_terms.sql`; the earlier draft's change to `list_academy_course_packages` was dropped.
-  - Status: **not applied to any hosted project.**
+  - Status: **applied to `ducelio-acceptance` only, on 2026-10-23 at 15:47:21Z, with owner approval.** Not applied to production. See "Migration 066 acceptance" below.
 - **Surfaces.**
   - `/admin/courses` shows delivery-model labels, Individual learning / Cohort delivery / No delivery model yet filters and counts, "review only", the Academy Course Engineering link and the count of unattached packages.
   - `/admin/courses/[packageKey]` shows the individual-learning lifecycle, delivery model and ownership, the individual-learning delivery panel, a delivery-model choice for undecided courses, and the offer with formats, prices, sale mode and decisions. Cohort panels and the B2B sales link appear only for cohort delivery.
@@ -163,7 +163,26 @@ The owner uploaded and published the AWS SAA-C03 V2 package for individual learn
     - the review-only slug is absent from the public catalogue and `/academy/<slug>` is not found;
     - the learner is refused at `/admin/courses`;
     - the favicon is served with correct content types on public, academy, learner and admin pages, and earlier screen captures show it in real Chrome tabs.
-- **Not done (boundaries).** No AWS re-upload, cohort, price change, entitlement, sale enablement or decision change; no production change; migration 066 not applied anywhere.
+- **Migration 066 acceptance (2026-10-23, owner-approved, `ducelio-acceptance` only).**
+  - **Before applying:**
+    - the linked project is `blqaomssojfxaxskcyxd`, and the database and API URLs match it;
+    - 066 was absent from the ledger (maximum `202610260065`) and the function did not exist;
+    - the file is identical to commit `f3ea1c8` (SHA-256 `18d7bc46…f6e9c`) and contains only one `create function` (stable, SECURITY DEFINER, `search_path=''`, read-only body), one `revoke` and one `grant`;
+    - the dry run listed only this migration.
+  - **Applied** with the pinned CLI 2.120.0 through `scripts/acceptance/supabase-linked-cli.mjs` (`db push --linked --skip-vault --yes`): exit 0, "Applying migration 202610270066_admin_course_delivery_evidence.sql… Finished".
+  - **After applying:**
+    - the ledger holds `202610270066` exactly once;
+    - EXECUTE is granted to `authenticated` only (not `anon` or `service_role`);
+    - the readiness guard passes 11/11 (57 RPCs).
+  - **RPC through the hosted API.** As the acceptance administrator, it returned the AWS link: package `ef6b8a49…` PUBLISHED, curriculum PUBLISHED, offer `aws-solutions-architect-associate` PUBLISHED and REVIEW_ONLY, GBP INTENSIVE_4W 3000 / STANDARD_6W 2500 / EXTENDED_8W 2000 / FLEXIBLE_12W 2000, and all 8 pending decisions. The two Security+ imports returned no individual-learning link. Learner, foreign learner and unrelated staff were refused with `42501 FORBIDDEN`, and anonymous with `permission denied`.
+  - **Records unchanged.** A read-only snapshot of the AWS package (content hash, raw-package digest), course, offer (state, sale mode, currency), the four format rows, entitlements (0), cohorts on its programme version (0), all cohorts (47) and public-sale offers (0) is identical before, after and after browsing.
+  - **Local branch app against acceptance, now on the new path (no fallback warnings):**
+    - 29 of 29 browser checks pass;
+    - the AWS detail page shows the four priced formats (GBP 30.00 / 25.00 / 20.00 / 20.00) and asks for no cohort;
+    - Security+ is still cohort delivery and live;
+    - all 48 courses are classified, none given cohort advice without a recorded cohort model.
+  - **Regression:** 12 test files, 377 tests passed.
+- **Not done (boundaries).** No AWS re-upload, cohort, price change, entitlement, sale enablement or decision change; no production change.
 
 ## 9. Organisation ownership: capability assessment (2026-10-23)
 

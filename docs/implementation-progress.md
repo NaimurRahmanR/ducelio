@@ -34,12 +34,13 @@ CURRENT CHECKPOINT (PARTIAL): ACADEMY-RECOVERY-1, Academy course activation reco
 - ORGANISATION OWNERSHIP (docs/58 §9): **MISSING**.
   - There is no organisation or tenant entity, owner column or organisation-scoped role; all ingestion, delivery and entitlement authority belongs to global Ducelio course administrators.
   - This is a core product gap that needs its own implementation checkpoint. Multi-organisation support is not claimed.
-- MIGRATIONS (2026-10-23): `202610270066_admin_course_delivery_evidence.sql` (new admin read function only), not applied to any hosted project; the acceptance ledger ends at 065. Until it is applied, the admin page uses the register-list fallback and says the individual-learning prices could not be read.
+- MIGRATIONS (2026-10-23): `202610270066_admin_course_delivery_evidence.sql` (new admin read function only).
+  - Applied to `ducelio-acceptance` only, with owner approval, at 15:47:21Z; the ledger holds it once and the acceptance checks pass (docs/58 §8). Not applied to production.
+  - A database without it uses the safe register-list fallback.
 - KNOWN LIMITATIONS: `list_course_packages` caps the course register at 200 revisions; per-request lifecycle aggregation needs server-side paging for thousands of courses.
 - NEXT EXACT ACTION:
-  1. Owner approval to apply 066 to `ducelio-acceptance`.
-  2. Owner review and merge of PR #83, then hosted re-verification on staging.
-  3. Plan the organisation-ownership checkpoint.
+  1. Owner review and merge of PR #83 (this deploys `ducelio-staging`'s Vercel Production environment, which uses `ducelio-acceptance`), then hosted re-verification on staging.
+  2. Plan the organisation-ownership checkpoint.
   - Owner prices and the 8 pending decisions remain owner actions.
 
 PREVIOUS CHECKPOINT RECORD (RELIABILITY-1, merged through PR #82):
