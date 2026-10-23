@@ -7,7 +7,8 @@
     "202610260064",
     "202610260065",
     "202610270066",
-    "202610280067"
+    "202610280067",
+    "202610290068"
   ],
   "anonRpcs": [
     "apply_academy_commerce_operation",
@@ -26,6 +27,8 @@
     "close_my_academy_support_release",
     "confirm_my_academy_schedule",
     "create_academy_order",
+    "create_course_coupon",
+    "create_unified_course_order",
     "current_academic_activity_state",
     "enable_academy_public_sale",
     "fulfill_academy_order",
@@ -33,6 +36,7 @@
     "get_academy_course_package_curriculum",
     "get_academy_course_package_review",
     "get_academy_delivery_evidence",
+    "get_course_coupon_redemptions",
     "get_my_academy_attempt",
     "get_my_academy_lesson",
     "get_my_academy_order",
@@ -47,6 +51,7 @@
     "list_academy_catalogue",
     "list_academy_course_packages",
     "list_academy_lab_submissions_for_review",
+    "list_course_coupons",
     "list_my_academy_enrolments",
     "list_my_academy_professor_turns",
     "list_my_academy_support_turns",
@@ -73,6 +78,7 @@
     "reserve_my_academy_professor_interaction",
     "reserve_my_academy_support_interaction",
     "revise_my_academy_schedule",
+    "set_course_coupon_active",
     "start_my_academy_assessment",
     "submit_my_academy_attempt",
     "submit_my_academy_lab",

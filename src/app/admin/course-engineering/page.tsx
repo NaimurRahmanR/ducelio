@@ -301,6 +301,14 @@ export default async function Page({
       roles={actor.roles}
       title="Course Engineering"
       description="Upload JSON, set one price, configure agents and publish. Academic checks run automatically in this workspace."
+      actions={
+        <Link
+          href="/admin/course-engineering/coupons"
+          className="ac-button secondary"
+        >
+          Manage coupons
+        </Link>
+      }
     >
       <Stepper step={step} />
       {packages === null && (

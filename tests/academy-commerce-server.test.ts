@@ -11,6 +11,7 @@ import {
   type Query,
 } from "./academy-fixture";
 import { FakeCommerceProviderAdapter } from "@/server/commercial-v1-commerce/test-fake-provider";
+import { publishUnifiedTestCourse } from "./unified-course-fixture";
 
 // End-to-end over the REAL server code: createAcademyCheckout, the existing
 // processCommerceWebhook (Academy branch), reconcileAcademyOrder and the
@@ -22,11 +23,12 @@ const m = vi.hoisted(() => ({
   auth: "" as string | null,
   provider: null as unknown,
   db: null as unknown,
+  cardConfigured: true,
 }));
 vi.mock("@/lib/env", () => ({
   config: () => ({ configured: true, appUrl: "https://ducelio.test" }),
   commerceConfig: () => ({
-    configured: true,
+    configured: m.cardConfigured,
     stripeConfigured: true,
     controllerConfigured: true,
     controllerKeyId: keyId,
@@ -84,6 +86,7 @@ vi.mock("@/server/supabase", () => ({
 
 import {
   createAcademyCheckout,
+  createUnifiedCourseCheckout,
   reconcileAcademyOrder,
 } from "@/server/academy-commerce";
 import { processCommerceWebhook } from "@/server/commercial-v1-commerce/webhooks";
@@ -256,5 +259,151 @@ describe("Academy checkout through the existing Stripe integration", () => {
       (await q("select count(*)::int n from public.commercial_v1_entitlements"))
         .rows[0].n,
     ).toBe(0);
+  });
+});
+
+describe("unified checkout through real server, signed authorities and a test Stripe adapter", () => {
+  const unifiedSlug = "unified-server-paid-test";
+  let orderId = "";
+  let sessionId = "";
+  it("creates one discounted session and recovers an expired checkout without another redemption", async () => {
+    const c = await publishUnifiedTestCourse(q, unifiedSlug);
+    await rpc(q, people.admin, "create_course_coupon", [
+      "SERVER-HALF",
+      50,
+      new Date(Date.now() + 86400000).toISOString(),
+      1,
+      c.courseId,
+      "Synthetic coupon server acceptance",
+    ]);
+    m.auth = people.learnerA.auth;
+    const first = await createUnifiedCourseCheckout(unifiedSlug, "SERVER-HALF");
+    expect(first.ok).toBe(true);
+    if (!first.ok || !("orderId" in first))
+      throw new Error("Expected a payment order");
+    orderId = first.orderId;
+    sessionId = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [orderId],
+      )
+    ).rows[0].s as string;
+    expect(await provider.retrieveCheckoutSession(sessionId)).toMatchObject({
+      amountMinor: 5001,
+      metadataOrderKind: "ACADEMY",
+    });
+    provider.expireSession(sessionId);
+    expect(
+      await createUnifiedCourseCheckout(unifiedSlug, "SERVER-HALF"),
+    ).toMatchObject({ ok: true, orderId });
+    const replacement = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [orderId],
+      )
+    ).rows[0].s as string;
+    expect(replacement).not.toBe(sessionId);
+    sessionId = replacement;
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.course_engine_coupon_redemptions where order_id=$1",
+          [orderId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+  it("verifies discounted payment, preserves no chosen duration, and retains full refund evidence", async () => {
+    provider.setSessionStatus(sessionId, "PAID");
+    provider.closeSession(sessionId);
+    m.auth = null;
+    expect(
+      await processCommerceWebhook(
+        provider.fakeWebhookEventFor(sessionId),
+        provider as never,
+      ),
+    ).toEqual({ reconciled: true });
+    m.auth = people.learnerA.auth;
+    expect(await reconcileAcademyOrder({ orderId, sessionId })).toMatchObject({
+      ok: true,
+      fulfilled: true,
+    });
+    expect(
+      (
+        await q(
+          "select format_id,state from public.academy_entitlements where order_id=$1",
+          [orderId],
+        )
+      ).rows[0],
+    ).toEqual({ format_id: null, state: "ACTIVE" });
+    provider.setRefundedAmount(sessionId, 5001);
+    m.auth = null;
+    const event = {
+      ...provider.fakeWebhookEventFor(sessionId),
+      eventId: `evt_unified_refund_${randomUUID()}`,
+      eventType: "charge.refunded",
+      paymentIntentId: sessionId,
+      subjectId: "ch_fake_" + sessionId,
+    };
+    expect(await processCommerceWebhook(event, provider as never)).toEqual({
+      reconciled: true,
+    });
+    expect(
+      (
+        await q(
+          "select amount_minor from public.academy_order_refunds where order_id=$1",
+          [orderId],
+        )
+      ).rows[0].amount_minor,
+    ).toBe(5001);
+    expect(
+      (
+        await q(
+          "select state from public.academy_entitlements where order_id=$1",
+          [orderId],
+        )
+      ).rows[0].state,
+    ).toBe("REVOKED");
+  });
+  it("grants full-discount access with card commerce disabled and no provider", async () => {
+    const c = await publishUnifiedTestCourse(q, "unified-server-free-test");
+    await rpc(q, people.admin, "create_course_coupon", [
+      "SERVER-FREE",
+      100,
+      new Date(Date.now() + 86400000).toISOString(),
+      1,
+      c.courseId,
+      "Synthetic free coupon acceptance",
+    ]);
+    m.auth = people.learnerA.auth;
+    m.cardConfigured = false;
+    m.provider = null;
+    try {
+      const first = await createUnifiedCourseCheckout(
+        "unified-server-free-test",
+        "SERVER-FREE",
+      );
+      expect(first).toMatchObject({
+        ok: true,
+        url: expect.stringContaining("/student/academy?enrolmentId="),
+      });
+      expect(
+        await createUnifiedCourseCheckout(
+          "unified-server-free-test",
+          "SERVER-FREE",
+        ),
+      ).toEqual(first);
+      expect(
+        (
+          await q(
+            "select count(*)::int n from public.academy_orders where course_id=$1",
+            [c.courseId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    } finally {
+      m.cardConfigured = true;
+      m.provider = provider;
+    }
   });
 });

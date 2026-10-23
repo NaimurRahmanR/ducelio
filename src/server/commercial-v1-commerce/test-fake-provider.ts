@@ -122,7 +122,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
         };
       }
     }
-    const sessionId = `cs_test_fake_${randomUUID()}`;
+    const sessionId = `cs_test_fake_${randomUUID().replaceAll("-", "")}`;
     this.#sessions.set(sessionId, {
       orderId: input.orderId,
       orderKind: input.orderKind ?? null,

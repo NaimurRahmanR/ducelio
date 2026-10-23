@@ -1,6 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
-import { createAcademyCheckout } from "@/server/academy-commerce";
+import { createUnifiedCourseCheckout } from "@/server/academy-commerce";
 
 export type AcademyCheckoutState = { error?: string };
 
@@ -13,6 +13,12 @@ const TEXT: Record<string, string> = {
   INVALID_FORMAT: "Choose one of the learning formats offered for this course.",
   CHECKOUT_UNAVAILABLE:
     "Card checkout is currently unavailable. Please try again later.",
+  COUPON_UNAVAILABLE:
+    "This coupon is invalid, expired, inactive, fully reserved or not valid for this course.",
+  COUPON_NO_DISCOUNT:
+    "This coupon cannot reduce this course's price in the selected currency.",
+  CHECKOUT_TERMS_LOCKED:
+    "A checkout already exists for this course. Resume it using its original coupon, or contact support to review the pending order.",
 };
 
 // The price, format, ownership and eligibility are decided by the database
@@ -23,9 +29,9 @@ export async function startAcademyCheckout(
 ): Promise<AcademyCheckoutState> {
   let url: string;
   try {
-    const result = await createAcademyCheckout(
+    const result = await createUnifiedCourseCheckout(
       data.get("slug"),
-      data.get("formatId"),
+      data.get("couponCode"),
     );
     if (!result.ok)
       return {

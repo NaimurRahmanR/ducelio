@@ -68,12 +68,13 @@ export default async function Page({
             </Card>
             <Card>
               <h2>How to join</h2>
-              {!checkoutAvailable ? (
+              {!checkoutAvailable && (
                 <p role="status">
-                  Card checkout is currently unavailable. Please try again
-                  later.
+                  Card checkout is currently unavailable. A valid full-discount
+                  coupon can still grant access.
                 </p>
-              ) : !actor ? (
+              )}
+              {!actor ? (
                 <>
                   <p className="muted">
                     Sign in or create a free account to buy this course.
