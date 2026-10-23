@@ -133,11 +133,14 @@ describe("Security+ SY0-701 revision 6 (published curriculum, no activation, no 
 });
 
 describe("course lifecycle stages", () => {
+  // Complete evidence: no activation, offer, cohort or individual-learning
+  // (Academy) package recorded for these courses.
   const none = {
     activations: [],
     offerActivations: [],
     liveOfferSlugs: [],
     cohorts: [],
+    academyPackages: [],
   };
 
   it("starts with validation for a staged import", () => {
@@ -238,7 +241,10 @@ describe("course lifecycle stages", () => {
       revisions: [pkg(6, "PUBLISHED")],
       activations: [{ ...activation, packageRevision: 5 }],
     });
-    expect(stateOf(life).activate).toBe("action");
+    // The other revision's activation is not this revision's delivery, so
+    // no delivery model is recorded for revision 6 (never assumed cohort).
+    expect(stateOf(life).activate).toBe("approval");
+    expect(life.delivery).toBe("NONE");
   });
 });
 

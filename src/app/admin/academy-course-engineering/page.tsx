@@ -30,7 +30,11 @@ import {
 } from "@/server/academy-course-engineering";
 import type { AcademyReview } from "@/domain/academy-course-package";
 import { ACADEMY_FORMATS } from "@/domain/academy-scheduler";
-import { percent } from "@/domain/academy-delivery";
+import {
+  ACADEMY_ERROR_TEXT,
+  AcademyError,
+  percent,
+} from "@/domain/academy-delivery";
 import {
   QUESTION_TYPE_LABELS,
   type QuestionType,
@@ -244,7 +248,14 @@ export default async function Page({
     );
   const actor = access.actor;
   const params = await searchParams;
-  const packages = await listAcademyPackages().catch(() => null);
+  const register = await listAcademyPackages().then(
+    (list) => ({ list, failure: null }),
+    (failure: unknown) => ({ list: null, failure }),
+  );
+  const packages = register.list;
+  const notInstalled =
+    register.failure instanceof AcademyError &&
+    register.failure.code === "NOT_INSTALLED";
   const labs = await listAcademyLabSubmissions().catch(() => null);
   const selectedId = z.uuid().safeParse(params.packageId);
   const selected = selectedId.success
@@ -286,7 +297,12 @@ export default async function Page({
       }
     >
       <Stepper step={step} />
-      {packages === null && <Unavailable what="The Academy package register" />}
+      {packages === null && (
+        <Unavailable
+          what="The Academy package register"
+          message={notInstalled ? ACADEMY_ERROR_TEXT.NOT_INSTALLED : undefined}
+        />
+      )}
 
       <Panel
         id="upload"

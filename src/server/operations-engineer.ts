@@ -41,7 +41,11 @@ import {
   type ChoiceSource,
   type OperationActionId,
 } from "@/domain/operations-engineer";
-import { cohortPurpose } from "@/domain/admin-course-lifecycle";
+import {
+  academyFormatPrice,
+  cohortPurpose,
+  DELIVERY_LABELS,
+} from "@/domain/admin-course-lifecycle";
 import { formatOfferPrice } from "@/domain/commercial-v1-commerce";
 import { DELIVERY_PLAN_DEFINITIONS } from "@/domain/commercial-v1-launch";
 import type { DeliveryPlan } from "@/domain/commercial-v1-launch";
@@ -256,6 +260,51 @@ async function runRead(
           columns: ["Result"],
           rows: [["No course package with that key is visible to you."]],
         };
+      const life = course.lifecycle;
+      if (life.individual) {
+        // Individual learning: never cohort advice. Cohort-delivery stages
+        // are listed separately only when that model is also recorded.
+        const a = life.individual;
+        const cohortStages = life.cohortStages ?? [];
+        const formats =
+          a.formats === null
+            ? "Format prices could not be read."
+            : a.formats.length
+              ? `Formats: ${a.formats
+                  .map(
+                    (f) =>
+                      `${f.formatId} ${f.weeks} weeks ${academyFormatPrice(f, a.currency)}`,
+                  )
+                  .join("; ")}.`
+              : "";
+        return {
+          title: `${course.title} — revision ${life.current.packageRevision} · ${DELIVERY_LABELS[life.delivery]}`,
+          columns: ["Stage", "Status", "Detail"],
+          rows: [
+            ...life.stages.map((s) => [
+              `Individual learning: ${s.label}`,
+              STATE_WORDS[s.state],
+              s.summary,
+            ]),
+            ...cohortStages.map((s) => [
+              `Cohort delivery: ${s.label}`,
+              STATE_WORDS[s.state],
+              s.summary,
+            ]),
+          ],
+          note: [
+            life.headline,
+            a.offerId
+              ? `Individual-learning offer “${a.slug}” (${a.saleMode === "PUBLIC_SALE" ? "public sale" : "review only, not on public sale"}).`
+              : "No individual-learning offer yet.",
+            formats,
+            "Individual learning: learners confirm their own schedules; no cohort is needed for this delivery model.",
+            `Manage it in Academy Course Engineering: ${a.href}`,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        };
+      }
       return {
         title: `${course.title} — revision ${course.lifecycle.current.packageRevision}`,
         columns: ["Stage", "Status", "Detail"],

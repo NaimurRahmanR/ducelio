@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   archiveAction,
   enableSaleAction,
@@ -16,6 +16,7 @@ import {
   ACADEMY_FORMATS,
   type AcademyFormatId,
 } from "@/domain/academy-scheduler";
+import { academyUploadSizeError } from "@/domain/academy-delivery";
 
 function Outcome({ state }: { state: AcademyAdminState }) {
   if (!state.error && !state.message) return null;
@@ -61,8 +62,22 @@ function Reason({ id, placeholder }: { id: string; placeholder: string }) {
 
 export function AcademyUploadForm() {
   const [state, action, pending] = useActionState(uploadAndValidateAction, {});
+  const [sizeError, setSizeError] = useState<string | null>(null);
   return (
-    <form action={action} className="acad-form">
+    <form
+      action={action}
+      className="acad-form"
+      onSubmit={(event) => {
+        // Refuse an oversized file before sending it, so the administrator
+        // always sees the size rule instead of a failed request.
+        const input = event.currentTarget.elements.namedItem("package");
+        const file =
+          input instanceof HTMLInputElement ? input.files?.[0] : undefined;
+        const error = file ? academyUploadSizeError(file.size) : null;
+        setSizeError(error);
+        if (error) event.preventDefault();
+      }}
+    >
       <label htmlFor="academy-package">
         Course package (.json, ACADEMY_COURSE_PACKAGE_V1)
         <input
@@ -80,7 +95,7 @@ export function AcademyUploadForm() {
       <button className="ac-button" disabled={pending}>
         {pending ? "Uploading and validating…" : "Upload and validate"}
       </button>
-      <Outcome state={state} />
+      <Outcome state={sizeError ? { error: sizeError } : state} />
     </form>
   );
 }

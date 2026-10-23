@@ -126,7 +126,7 @@ export const OPERATION_ACTIONS: Readonly<
     kind: "READ",
     title: "Inspect a course's lifecycle",
     description:
-      "Shows every lifecycle stage of one course (import, validation, configuration, test, curriculum publication, delivery activation, offer, public catalogue) and what blocks the next step.",
+      "Shows every lifecycle stage of one course and what blocks the next step: individual learning (upload, validation, review, curriculum, offer, learner access, approval gates, public sale) and cohort delivery (import, validation, configuration, test, curriculum publication, delivery activation, offer, public catalogue), according to the delivery models recorded for it.",
     roles: ADMINS,
     fields: [
       {

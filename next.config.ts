@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    serverActions: {
+      // The default 1 MB limit counts multipart overhead, so an Academy
+      // package near its 1 MiB limit (src/domain/academy-delivery.ts) was
+      // dropped by the framework with no message. 1 MiB plus headroom keeps
+      // the application's own size check reachable; still well below the
+      // hosting platform's request limit.
+      bodySizeLimit: "1200kb",
+    },
+  },
   async headers() {
     return [
       {

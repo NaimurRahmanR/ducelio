@@ -35,8 +35,13 @@ export const ACADEMY_ERROR_CODES = [
   "ACTIVITY_BLOCKED",
   "RUBRIC_PENDING",
 ] as const;
+// NOT_INSTALLED is raised only by the administrator RPC path: the database
+// lacks an Academy function, table or schema (a migration was not applied,
+// or the API schema cache is stale). Learner paths keep SERVICE_UNAVAILABLE.
 export type AcademyErrorCode =
-  (typeof ACADEMY_ERROR_CODES)[number] | "SERVICE_UNAVAILABLE";
+  | (typeof ACADEMY_ERROR_CODES)[number]
+  | "SERVICE_UNAVAILABLE"
+  | "NOT_INSTALLED";
 export class AcademyError extends Error {
   constructor(readonly code: AcademyErrorCode) {
     super(code);
@@ -48,6 +53,32 @@ export function academyErrorCode(message: string): AcademyErrorCode {
   return (ACADEMY_ERROR_CODES as readonly string[]).includes(message)
     ? (message as AcademyErrorCode)
     : "SERVICE_UNAVAILABLE";
+}
+
+// Academy packages embed a full curriculum, so the upload limit is larger
+// than the institutional package limit. Shared by the upload form (checked
+// before sending) and the server action; next.config.ts sets the Server
+// Action body limit above this value plus multipart overhead, so an
+// oversized file always receives this message instead of failing silently.
+export const MAX_ACADEMY_UPLOAD_BYTES = 1024 * 1024;
+export const ACADEMY_UPLOAD_TOO_LARGE =
+  "Academy course packages must be no larger than 1 MiB.";
+export const academyUploadSizeError = (bytes: number) =>
+  bytes > MAX_ACADEMY_UPLOAD_BYTES ? ACADEMY_UPLOAD_TOO_LARGE : null;
+
+// PostgREST "function/table not in the schema cache" and PostgreSQL
+// undefined function, table and schema.
+const MISSING_DEPENDENCY_CODES = new Set([
+  "PGRST202",
+  "PGRST205",
+  "42883",
+  "42P01",
+  "3F000",
+]);
+export function isMissingDatabaseDependency(error: { code?: unknown }) {
+  return (
+    typeof error.code === "string" && MISSING_DEPENDENCY_CODES.has(error.code)
+  );
 }
 
 export const ACADEMY_ERROR_TEXT: Record<AcademyErrorCode, string> = {
@@ -82,6 +113,8 @@ export const ACADEMY_ERROR_TEXT: Record<AcademyErrorCode, string> = {
     "This practical has no approved rubric yet, so it cannot be marked.",
   SERVICE_UNAVAILABLE:
     "The Academy service is unavailable. Nothing was changed.",
+  NOT_INSTALLED:
+    "The Academy database components are not installed in this environment, so nothing was changed. A platform operator must apply the pending Academy database migrations before this workspace can be used.",
 };
 
 export const academyPackageListSchema = z.array(
@@ -124,6 +157,56 @@ export const academyPackageListSchema = z.array(
 export type AcademyPackageListItem = z.infer<
   typeof academyPackageListSchema
 >[number];
+
+// get_academy_delivery_evidence (migration 066): the individual-learning
+// (Academy) package attached to each requested curriculum import, found by
+// recorded relationships, with its offer terms; plus the number of Academy
+// packages not yet attached to any curriculum.
+export const ACADEMY_EVIDENCE_BATCH = 500;
+const offerFormatSchema = z.object({
+  formatId,
+  weeks: z.number().int(),
+  sessionMinutes: z.number().int(),
+  minStudyDays: z.number().int(),
+  maxStudyDays: z.number().int(),
+  amountMinor: z.number().int().positive(),
+});
+export const academyDeliveryEvidenceSchema = z.object({
+  links: z.array(
+    z.object({
+      curriculumImportId: z.uuid(),
+      curriculumStatus: z.enum([
+        "IMPORTED",
+        "VALIDATED",
+        "APPLIED",
+        "PUBLISHED",
+        "REJECTED",
+      ]),
+      packageId: z.uuid(),
+      packageRevision: z.number().int(),
+      status: z.enum(["UPLOADED", "VALIDATED", "PUBLISHED", "REJECTED"]),
+      pendingDecisions: z.array(z.string()),
+      course: z
+        .object({
+          id: z.uuid(),
+          offerId: z.uuid().nullable(),
+          slug: z.string().nullable(),
+          offerState: z.enum(["PUBLISHED", "ARCHIVED"]).nullable(),
+          saleMode: z.enum(["REVIEW_ONLY", "PUBLIC_SALE"]).nullable(),
+          currency: z
+            .string()
+            .regex(/^[A-Z]{3}$/)
+            .nullable(),
+          formats: z.array(offerFormatSchema),
+        })
+        .nullable(),
+    }),
+  ),
+  packagesWithoutCurriculum: z.number().int().nonnegative(),
+});
+export type AcademyDeliveryEvidence = z.infer<
+  typeof academyDeliveryEvidenceSchema
+>;
 
 export const catalogueFormatSchema = z.strictObject({
   formatId,
