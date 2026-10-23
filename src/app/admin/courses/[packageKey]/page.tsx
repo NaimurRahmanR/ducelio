@@ -26,6 +26,7 @@ import { TEST_RECORD_NOTE } from "@/domain/admin-test-records";
 import {
   academyFormatPrice,
   DELIVERY_LABELS,
+  OWNERSHIP,
 } from "@/domain/admin-course-lifecycle";
 import {
   ACADEMY_FORMATS,
@@ -92,8 +93,10 @@ export default async function Page({
   const life = row.lifecycle;
   const current = life.current;
   const engineering = `/admin/course-engineering?importId=${current.id}`;
-  const academy = life.academy;
-  const academyOnly = life.delivery === "ACADEMY";
+  const academy = life.individual;
+  // Only cohort delivery (or an undecided course) uses the cohort panels.
+  const academyOnly = life.delivery === "INDIVIDUAL";
+  const undecided = life.delivery === "NONE" || life.delivery === "UNCONFIRMED";
   const ask = (action: string, extra = "") =>
     `/admin/operations-engineer?action=${action}${extra}`;
   const p = preview.ok ? preview.data : null;
@@ -178,10 +181,8 @@ export default async function Page({
 
       <Panel
         id="overview"
-        title={
-          academy ? "Academy lifecycle (individual learners)" : "Lifecycle"
-        }
-        description={DELIVERY_LABELS[life.delivery]}
+        title={academy ? "Individual-learning lifecycle" : "Lifecycle"}
+        description={`${DELIVERY_LABELS[life.delivery]} · ${OWNERSHIP.label} (${OWNERSHIP.basis})`}
         actions={
           <>
             <StatePill state={life.stageState} />
@@ -193,17 +194,20 @@ export default async function Page({
           </>
         }
       >
+        {life.evidenceNote && (
+          <p className="ac-alert" role="note">
+            {life.evidenceNote}
+          </p>
+        )}
         <LifecycleStepper stages={life.stages} />
-        {academy && life.organisationStages && (
+        {academy && life.cohortStages && (
           <>
-            <h3 className="ac-subhead">
-              Organisation lifecycle (cohort delivery)
-            </h3>
+            <h3 className="ac-subhead">Cohort-delivery lifecycle</h3>
             <p className="ac-muted">
-              The same curriculum also has organisation delivery. The two tracks
-              are independent: neither one gates the other.
+              The same curriculum is also offered through cohort delivery. The
+              two delivery models are independent: neither one gates the other.
             </p>
-            <LifecycleStepper stages={life.organisationStages} />
+            <LifecycleStepper stages={life.cohortStages} />
           </>
         )}
       </Panel>
@@ -398,13 +402,46 @@ export default async function Page({
       >
         {academy && (
           <p>
-            <strong>Academy: individual learning.</strong> Each learner with
-            access confirms a personal schedule in one of the offered formats.
-            Academy delivery needs no cohort, instructor assignment or delivery
-            activation.
+            <strong>Individual learning.</strong> Each learner with access
+            confirms a personal schedule in one of the offered formats.
+            Individual learning needs no cohort, instructor assignment or
+            delivery activation.
           </p>
         )}
-        {academyOnly ? null : life.cohorts.length === 0 ? (
+        {undecided && (
+          <div className="ac-note" role="note">
+            <p>
+              {life.delivery === "NONE"
+                ? "No delivery model is recorded for this course yet. Choose one; the same curriculum can later be offered through both."
+                : life.evidenceNote}
+            </p>
+            <ul>
+              <li>
+                <strong>Individual learning:</strong> upload an Academy package
+                for this curriculum in{" "}
+                <Link
+                  href="/admin/academy-course-engineering"
+                  className="ac-link"
+                >
+                  Academy Course Engineering
+                </Link>
+                . No cohort is needed.
+              </li>
+              <li>
+                <strong>Cohort delivery:</strong>{" "}
+                <Link href="/admin/cohorts" className="ac-link">
+                  create a cohort
+                </Link>
+                , then{" "}
+                <Link href="/admin/activation" className="ac-link">
+                  activate delivery
+                </Link>
+                .
+              </li>
+            </ul>
+          </div>
+        )}
+        {academyOnly || undecided ? null : life.cohorts.length === 0 ? (
           <Empty title="No cohort for this curriculum version">
             A delivery cohort is needed before the course can be activated.
           </Empty>
@@ -526,7 +563,7 @@ export default async function Page({
       >
         {academy && (
           <>
-            <h3 className="ac-subhead">Academy offer (individual learners)</h3>
+            <h3 className="ac-subhead">Individual-learning offer</h3>
             {academy.offerId ? (
               <>
                 <p>
@@ -551,7 +588,7 @@ export default async function Page({
                 {academy.formats === null ? (
                   <Unavailable
                     what="The Academy offer's format prices"
-                    message="The database did not return the offer's format prices. Apply the Academy offer terms migration (066), then reload."
+                    message="The offer's format prices could not be read."
                   />
                 ) : (
                   <DataTable
@@ -602,7 +639,7 @@ export default async function Page({
             </Link>
           </>
         )}
-        {academyOnly ? null : detail.offers.length > 0 ? (
+        {academyOnly || undecided ? null : detail.offers.length > 0 ? (
           <DataTable
             caption="Published offers for this course"
             columns={["Offer", "Price", "Delivery plan", "Public page"]}

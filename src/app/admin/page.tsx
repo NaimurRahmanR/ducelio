@@ -15,17 +15,17 @@ import {
 import { getDashboardData } from "@/server/admin-control-centre";
 import { tabForSection } from "@/domain/admin-academy-tabs";
 import {
-  ACADEMY_STAGE_IDS,
+  COHORT_STAGE_IDS,
+  INDIVIDUAL_STAGE_IDS,
   isPubliclyLive,
-  ORGANISATION_STAGE_IDS,
   STAGE_LABELS,
 } from "@/domain/admin-course-lifecycle";
 import { TEST_RECORD_NOTE } from "@/domain/admin-test-records";
 
 export const dynamic = "force-dynamic";
 
-const STAGE_ORDER = [...ORGANISATION_STAGE_IDS, ...ACADEMY_STAGE_IDS];
-const ACADEMY_STAGES = new Set<string>(ACADEMY_STAGE_IDS);
+const STAGE_ORDER = [...COHORT_STAGE_IDS, ...INDIVIDUAL_STAGE_IDS];
+const ACADEMY_STAGES = new Set<string>(INDIVIDUAL_STAGE_IDS);
 
 function words(action: string) {
   const text = action
@@ -69,12 +69,12 @@ export default async function Page({
   const courses = data.catalogue.ok
     ? data.catalogue.data.courses.filter((c) => !c.testRecord)
     : [];
-  // Organisation stages are always listed; an Academy stage only when a
-  // course is waiting on it, labelled so the two tracks never merge.
+  // Cohort-delivery stages are always listed; an individual-learning stage
+  // only when a course is waiting on it, labelled so the models never merge.
   const byStage = STAGE_ORDER.map((id) => ({
     id,
     label: ACADEMY_STAGES.has(id)
-      ? `Academy: ${STAGE_LABELS[id]}`
+      ? `Individual learning: ${STAGE_LABELS[id]}`
       : STAGE_LABELS[id],
     value: courses.filter(
       (c) => c.lifecycle.stage === id && c.lifecycle.stageState !== "complete",
@@ -250,7 +250,7 @@ export default async function Page({
                     <span className="ac-muted">
                       {" "}
                       · revision {c.lifecycle.current.packageRevision} ·{" "}
-                      {c.lifecycle.academy ? "Academy: " : ""}
+                      {c.lifecycle.individual ? "Individual learning: " : ""}
                       {STAGE_LABELS[c.lifecycle.stage]}
                     </span>
                     <p>{c.lifecycle.headline}</p>

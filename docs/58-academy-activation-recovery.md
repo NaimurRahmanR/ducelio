@@ -109,49 +109,111 @@ The owner asked for two independent results: a genuinely improved V2 package, an
   - On a local PGlite database with all 65 migrations, it passed the full admin pipeline to REVIEW_ONLY, with public sale refused (`POLICY_PENDING`, 8 decisions), no answer keys in the learner attempt payload, and correct database scoring.
   - Its size is below the framework's existing limit, so the owner can upload it today, before this fix is deployed.
 
-## 8. Continuation (2026-10-23): course lifecycle correction and the browser icon
+## 8. Continuation (2026-10-23): course lifecycle by delivery model, and the browser icon
 
-The owner uploaded and published the AWS SAA-C03 V2 package as an Academy course: package `ef6b8a49-849f-4488-84e6-0ebcaa2644f8`, course `eaa1f7ba-…`, offer `aws-solutions-architect-associate` in REVIEW_ONLY, with four GBP formats and 8 pending decisions. `/admin/courses` then wrongly showed "Activate delivery — create cohort" with "Publish offer" and "Public catalogue" blocked.
+The owner uploaded and published the AWS SAA-C03 V2 package for individual learning: package `ef6b8a49-849f-4488-84e6-0ebcaa2644f8`, course `eaa1f7ba-…`, offer `aws-solutions-architect-associate` in REVIEW_ONLY, with four GBP formats and 8 pending decisions. `/admin/courses` then wrongly showed "Activate delivery — create cohort" with "Publish offer" and "Public catalogue" blocked.
 
-- **Root cause.** The admin course lifecycle (`src/domain/admin-course-lifecycle.ts`) was built only from the organisation (B2B) registry: `course_package_imports` grouped by package key, commercial activations and offers, and the cohort workspace. The Academy relationship (`academy_courses.package_id` → package → `curriculumImport`) was never read. A published curriculum with no activation therefore always produced B2B cohort advice.
-- **Fix: classification from recorded relationships only.**
-  - A course is an Academy course only when an Academy package's recorded curriculum import (`list_academy_course_packages.curriculumImport.id`) is one of that course's own revisions.
-  - It has organisation delivery only when an activation, an organisation offer or a non-demo cohort exists for it.
-  - Nothing is inferred from titles, keys or vendor names. Tests prove a key containing "aws" or "academy" without the link stays on the organisation track.
-  - The result is `ACADEMY`, `ORGANISATION` or `BOTH`. For a shared curriculum the two tracks are shown independently, and neither gates the other.
-- **Academy lifecycle.**
+- **Root cause.** The admin course lifecycle (`src/domain/admin-course-lifecycle.ts`) was built only from the cohort-delivery records: `course_package_imports` grouped by package key, commercial activations and offers, and the cohort workspace. The individual-learning relationship (Academy package → curriculum import) was never read, so a published curriculum without an activation always got cohort advice.
+- **Design: lifecycle by delivery model, never by owner.**
+  - Two independent dimensions. The delivery model is **Individual learning**, **Cohort delivery** or **Both delivery models**, plus **No delivery model yet** and **Delivery model unconfirmed**. Ownership (Ducelio-owned or organisation-owned) is a separate concept; see §9.
+  - The delivery model comes only from recorded relationships:
+    - individual learning when an Academy package is attached to one of the course's curriculum imports, by `academy_courses.curriculum_import_id` (recorded at publication) or by the same key, revision and embedded curriculum (before publication);
+    - cohort delivery when an activation, a cohort offer or a non-demo cohort exists.
+  - Nothing is inferred from titles, package keys, owners or publishers. Tests use keys such as `aws-…`, `acme-corporation-…` and `partner-org-…` to prove it.
+  - **Never a silent cohort default.** With complete evidence and neither model recorded, the course has _no delivery model yet_ and the next step is "Choose a delivery model", offering both. If any evidence read fails (individual-learning, activations, offers or cohorts), the model is _unconfirmed_, the reason is shown, and no cohort is suggested. A recorded model is kept even when the other side could not be read, with a note.
+  - A shared curriculum shows both lifecycles; neither gates the other.
+- **Individual-learning lifecycle.**
   - The eight stages are: upload, validate, review, prepare curriculum, publish course and offer, learner access (individual schedules, no cohort or instructor), approval gates (pending decisions) and public sale and catalogue.
-  - Publication and sale are separate. The sale stage is complete only for `PUBLIC_SALE` confirmed in the public Academy catalogue (`list_academy_catalogue`). REVIEW_ONLY reads "Published for review only — not on public sale".
-  - Every Academy action links to `/admin/academy-course-engineering?packageId=<recorded package id>`.
-  - If the Academy register cannot be read, the organisation "activate" step becomes "track unconfirmed" instead of cohort advice.
+  - Publication and sale are separate. The sale stage is complete only for `PUBLIC_SALE` confirmed in the public Academy catalogue. REVIEW_ONLY reads "Published for review only — not on public sale".
+  - Every action links to `/admin/academy-course-engineering?packageId=<recorded package id>`.
+- **Classification beyond 100 courses.**
+  - `list_academy_course_packages` returns only the 100 newest packages, so a course whose package fell outside that window would have lost its classification.
+  - Migration `202610270066_admin_course_delivery_evidence.sql` adds the admin-only `get_academy_delivery_evidence(p_import_ids uuid[])`. It resolves exactly the register's curriculum imports in one set-based query over the unique (key, revision) indexes and the unique `curriculum_import_id`, with no listing window. It also returns the offer currency, the priced formats and the number of Academy packages not yet attached to a curriculum.
+  - The server sends the register in batches of 500, so 1,200 courses take 3 queries, not one per course. Any failed batch fails the whole read, so partial evidence is never presented as complete. Each call accepts at most 1,000 ids; that bounds request size without omitting any course.
+  - **Deployment order.** On a database without 066, the server falls back to `list_academy_course_packages`. Its links are positive evidence, but it counts as complete only when it returns fewer than 100 rows. A course absent from a full window is _unconfirmed_, never "not individual".
+  - 066 was confirmed unapplied before it was edited: the acceptance ledger ends at `202610260065` and the live function had no `formats`. It was then rewritten and renamed from `…_academy_admin_offer_terms.sql`; the earlier draft's change to `list_academy_course_packages` was dropped.
+  - Status: **not applied to any hosted project.**
 - **Surfaces.**
-  - `/admin/courses` has delivery labels, Academy (B2C) and Organisation (B2B) filters and counts, a "review only" label, an Academy Course Engineering link and a note for Academy packages still in review.
-  - `/admin/courses/[packageKey]` shows the Academy lifecycle, the individual-learning delivery panel (no cohort advice), and the offer with its formats, prices, sale mode and pending decisions.
-  - The dashboard labels Academy stages and counts live courses only on public sale.
-  - The Operations Engineer `inspect_course` result gives the Academy track, offer terms and link, with no cohort note.
-  - The B2B lifecycle is unchanged for organisation courses (existing tests unchanged and passing).
-- **Migration `202610270066_academy_admin_offer_terms.sql` (additive, read-only).**
-  - `CREATE OR REPLACE` of the admin-only `list_academy_course_packages`, same signature and ACL. It adds `course.currency` and `course.formats` (format, weeks, session minutes, study days, price) so the admin lifecycle can show priced formats; until now only the audit log held them.
-  - No table, policy, grant or row changes.
-  - The zod schema treats both fields as optional, so the application works before the migration is applied and says the prices could not be read.
-  - Status: **not applied to any hosted project**. The acceptance ledger ends at `202610260065`. A read-only probe on acceptance with the migration's own SQL returns the AWS offer's four formats (INTENSIVE_4W 4 weeks GBP 30.00; STANDARD_6W 6 weeks GBP 25.00; EXTENDED_8W 8 weeks GBP 20.00; FLEXIBLE_12W 12 weeks GBP 20.00). It also confirms 0 activations and 0 cohorts for the AWS curriculum.
-  - Applying it to acceptance needs the owner's explicit approval (same linked-CLI wrapper as §3).
+  - `/admin/courses` shows delivery-model labels, Individual learning / Cohort delivery / No delivery model yet filters and counts, "review only", the Academy Course Engineering link and the count of unattached packages.
+  - `/admin/courses/[packageKey]` shows the individual-learning lifecycle, delivery model and ownership, the individual-learning delivery panel, a delivery-model choice for undecided courses, and the offer with formats, prices, sale mode and decisions. Cohort panels and the B2B sales link appear only for cohort delivery.
+  - The dashboard shows "Individual learning: <stage>", and live counts include only courses on public sale.
+  - The Operations Engineer `inspect_course` shows the individual-learning track, offer and link, with no cohort note.
+  - The cohort-delivery lifecycle and its guidance are unchanged when cohort delivery is recorded.
 - **Browser icon.**
-  - The purple brand leaf (the `.brand-mark` corner shape) with the champagne-gold italic Georgia "D", in the homepage colours `--launch-purple`, `--launch-purple-deep` and `--launch-champagne`.
-  - It is served through the App Router file conventions in `src/app`: `favicon.ico` (16/32/48 PNG frames), `icon.svg`, `icon1.png` (16), `icon2.png` (32), `icon3.png` (48) and `apple-icon.png` (180, opaque).
-  - The rasters are rendered by `scripts/brand/render-favicons.mjs` in headless Chrome. `tests/brand-favicon.test.ts` checks the dimensions, the ICO frames, the brand tokens, static-only SVG, and that the committed SVG matches the generator.
+  - The purple brand leaf (the `.brand-mark` shape) with the champagne-gold italic Georgia "D", using `--launch-purple`, `--launch-purple-deep` and `--launch-champagne`.
+  - It is served through the App Router file conventions in `src/app`: `favicon.ico` (16/32/48 PNG frames), `icon.svg`, `icon1-3.png` (16/32/48) and `apple-icon.png` (180, opaque), generated by `scripts/brand/render-favicons.mjs`.
 - **Verification.**
-  - Local gates: `npm run check` (lint, typecheck, 215 test files, 4,905 tests passed, 39 skipped) and `npm run format:check` pass. `npm run build` passes when run, as in CI, without the local Supabase variables. With them, the existing rule "Configured production authentication requires an HTTPS APP_URL" stops a production build whose `APP_URL` is `http://localhost`.
-  - The production server (`next start`) serves `/favicon.ico` (`image/x-icon`), `/icon.svg` (`image/svg+xml`), `/icon1-3.png` and `/apple-icon.png` (`image/png`), with six head link tags.
-  - **Local branch app (`next dev`) against the hosted acceptance Supabase. This is not hosted acceptance of the new code.** Checked as the acceptance administrator and learner in Chrome:
-    - the AWS entry is Academy (B2C) and review only, its headline is "Published for review only — not on public sale. 8 pending decisions must be resolved first.", it has no cohort or activation step and is never "Live", and it links to its record by package id;
-    - the Academy and Organisation filters and counts are correct, and the Live filter excludes AWS;
-    - the detail page has the Academy lifecycle, individual-learning delivery, the offer, all 8 decisions, and the unreadable-prices message, because 066 is not applied;
-    - the Operations Engineer inspection gives the Academy track and link, with no cohort note;
-    - Security+ is unchanged: Organisation (B2B), all eight B2B stages complete, "Live in the catalogue";
-    - the dashboard shows "1 live in the public catalogue" and "Academy: Approval gates";
-    - the review-only AWS slug is absent from the public catalogue and `/academy/<slug>` is not found;
+  - Local gates: `npm run check` (lint, typecheck, 217 test files, 4,926 tests passed, 39 skipped), `npm run format:check`, and `npm run build` run as in CI (without the local Supabase variables; with them, the existing HTTPS `APP_URL` rule stops a production build at `http://localhost`).
+  - Real PostgreSQL (PGlite, all 66 migrations):
+    - published and unpublished links;
+    - admin-only access, with learner, instructor, registrar and anonymous refused;
+    - batch bound 1,000;
+    - 150 linked packages: the old list returns 100, the evidence read returns all 150;
+    - 1,200 packages in 3 batches: all linked, 50 ms;
+    - the unattached-package count excludes rejected packages;
+    - the end-to-end review-only course is individual learning with no cohort link.
+  - **Local branch app (`next dev`) against the hosted acceptance Supabase. This is not hosted acceptance of the new code.** Because 066 is not applied, it exercised the fallback path: the server log shows `PGRST202` for `get_academy_delivery_evidence`. Checked in Chrome:
+    - 29 of 29 checks pass;
+    - the AWS course is "Individual learning", review only, with "Published for review only — not on public sale. 8 pending decisions must be resolved first.", no cohort step, never "Live", and its record link;
+    - the detail page shows the individual-learning lifecycle, "Individual learning · Ducelio-owned", all 8 decisions and "The offer's format prices could not be read." (the prices need 066);
+    - Security+ is still cohort delivery, all eight stages complete, "Live in the catalogue";
+    - counts: All 2, Individual learning 1, Cohort delivery 1, No delivery model yet 0, Live 1;
+    - across all 48 courses (2 business, 46 acceptance-test): 1 individual learning, 46 cohort delivery, 1 no delivery model yet, and 0 courses given cohort advice without a recorded cohort model;
+    - the Operations Engineer gives the individual-learning track and link, with no cohort note;
+    - the review-only slug is absent from the public catalogue and `/academy/<slug>` is not found;
     - the learner is refused at `/admin/courses`;
-    - the favicon is served on `/`, `/courses`, `/login`, `/academy/<slug>`, `/student`, `/admin` and Academy Course Engineering, and screen captures show it in real Chrome tabs for admin, public and learner pages.
-  - The staging deployment serves `main`, so the new code reaches hosted acceptance only after PR #83 is merged.
-- **Not done (boundaries).** No AWS re-upload, cohort, price change, entitlement, sale enablement or decision change; no production change.
+    - the favicon is served with correct content types on public, academy, learner and admin pages, and earlier screen captures show it in real Chrome tabs.
+- **Not done (boundaries).** No AWS re-upload, cohort, price change, entitlement, sale enablement or decision change; no production change; migration 066 not applied anywhere.
+
+## 9. Organisation ownership: capability assessment (2026-10-23)
+
+Ducelio must let external organisations upload their own courses and use its teaching, scheduling, examination, progress and delivery operations. Today's schema and authorities were inspected for this. **Result: organisation ownership does not exist. It is a core product gap that needs its own implementation checkpoint, not an optional extra.** The delivery-model correction in §8 is owner-independent and is ready for it, but no multi-organisation support is claimed.
+
+Evidence:
+
+- **No organisation or tenant entity.** Across all 66 migrations there is no organisation, tenant, partner or client table, and no `organisation_id`, `tenant_id` or `owner_id` column. The only occurrence of "organisation" is a comment in migration 060 that refers to the cohort workflow.
+- **Roles are global.**
+  - `platform_role` is `STUDENT, INSTRUCTOR, COUNSELLOR, ACADEMIC_ADMIN, REGISTRAR, PLATFORM_ADMIN` (migration 001, line 2).
+  - `role_grants(user_id, role)` has no scope (001, line 12), and `has_role()` is platform-wide (003, line 5).
+- **Courses have no owner.**
+  - `programmes` (001, line 29), `course_package_imports` (024, line 30), `academy_course_packages` (060, line 77), `academy_offers` (060, line 128) and `cohorts` (001, line 78) record no owning organisation.
+  - Package tables record only `created_by`.
+- **Ingestion and delivery authority is Ducelio-only.**
+  - `list_course_packages` and the import pipeline require `ACADEMIC_ADMIN` or `PLATFORM_ADMIN` (024, line 1372).
+  - Every Academy RPC calls `academy_private.require_course_admin()` (060, line 45).
+  - Complimentary access (`grant_academy_entitlement`, 060, line 790) is a course-admin action.
+  - Purchases go through the public Ducelio catalogue only.
+- **Isolation is learner-level, not organisation-level.**
+  - Academy tables revoke all client privileges (060, lines 354–355). Learner RPCs enforce the learner's own enrolments, and staff scoping is per class session (`class_sessions.instructor_id`, migration 009) or per assigned learner (counsellors).
+  - Any course administrator sees every course and learner.
+
+| Capability for an external organisation                                    | Status                                                                             | Evidence                                                                                                                                                        |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Own or manage a course                                                     | **MISSING**                                                                        | No ownership entity or column; only global course administrators manage courses                                                                                 |
+| Upload and update its content                                              | **MISSING** for organisations (implemented for Ducelio course administrators only) | Import and upload RPCs require the global `ACADEMIC_ADMIN`/`PLATFORM_ADMIN` roles                                                                               |
+| Choose individual learning without a cohort                                | **PARTIAL**                                                                        | The cohort-free individual-learning model exists (Academy tables, learner-chosen schedules), but only Ducelio administrators can choose it                      |
+| Configure permitted academic operations                                    | **PARTIAL**                                                                        | Per-course agent configuration, grading, formats and pending decisions exist per package; set by Ducelio administrators only, with no organisation policy layer |
+| Offer the course to its own learners                                       | **MISSING**                                                                        | No organisation learner population or organisation-restricted offer; access is through Ducelio's public catalogue or an admin grant                             |
+| Keep its course records and learner data isolated from other organisations | **MISSING**                                                                        | No tenant boundary in tables, RLS or RPCs. Learner-to-learner isolation is implemented                                                                          |
+
+**Consequences.**
+
+- Every external course must be onboarded and operated by Ducelio staff.
+- Granting an organisation's staff member `ACADEMIC_ADMIN` would expose every course and every learner's records platform-wide. That must not be done as a workaround.
+- Scenario 2 (external organisation-owned individual course) and scenario 9 (several organisations without leakage) cannot pass today and are **not claimed**.
+
+**Required checkpoint (not started).**
+
+- An organisations entity with organisation-scoped memberships and roles.
+- Owning-organisation columns on programmes, packages, offers and cohorts, with immutable history.
+- Organisation-scoped ingestion, review and publication authorities.
+- Organisation-scoped learner populations, entitlements and offers.
+- RLS and RPC scoping with cross-organisation denial tests.
+- Audit, and organisation-aware admin surfaces.
+- §8's delivery-model classification needs no change for this: it never reads the owner.
+
+**Other remaining gaps.**
+
+- `list_course_packages` (migration 024) returns at most 200 curriculum revisions, so in a very large register older courses are missing from `/admin/courses`. They are never misclassified, but they are not listed.
+- The admin pages build every listed course's lifecycle per request. That is fine for hundreds of courses; thousands need server-side paging and filtering.
+- The Academy Course Engineering register still lists the 100 newest packages.

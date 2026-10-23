@@ -30,6 +30,7 @@
     "get_academy_course_package_content",
     "get_academy_course_package_curriculum",
     "get_academy_course_package_review",
+    "get_academy_delivery_evidence",
     "get_my_academy_attempt",
     "get_my_academy_lesson",
     "get_my_academy_order",

@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
-  ACADEMY_STAGE_IDS,
   academyFormatPrice,
+  COHORT_STAGE_IDS,
   deriveCourseLifecycle,
+  DELIVERY_LABELS,
+  INDIVIDUAL_STAGE_IDS,
   isPubliclyLive,
-  ORGANISATION_STAGE_IDS,
+  OWNERSHIP,
   type LifecycleAcademyPackage,
   type LifecycleCohort,
   type LifecyclePackage,
 } from "@/domain/admin-course-lifecycle";
 
-// The Academy (B2C) track of the admin course lifecycle. The course type is
-// derived only from recorded relationships (the Academy package's recorded
-// curriculum import), never from a title, key or vendor name.
+// The admin course lifecycle follows each course's recorded DELIVERY MODEL
+// (individual learning, cohort delivery, both, none yet, or unconfirmed),
+// never its owner, title, package key or publisher.
 const VERSION = "20000000-0000-4000-8000-000000000002";
 const IMPORT = "10000000-0000-4000-8000-000000000002";
 const ACADEMY_PACKAGE = "ef000000-0000-4000-8000-000000000001";
@@ -27,14 +29,14 @@ const PENDING = [
   "ASSESSMENT_FORM_VARIATION",
 ];
 const FORMATS = [
-  ["INTENSIVE_4W", 4, 30000],
-  ["STANDARD_6W", 6, 35000],
-  ["EXTENDED_8W", 8, 40000],
-  ["FLEXIBLE_12W", 12, 45000],
+  ["INTENSIVE_4W", 4, 3000],
+  ["STANDARD_6W", 6, 2500],
+  ["EXTENDED_8W", 8, 2000],
+  ["FLEXIBLE_12W", 12, 2000],
 ].map(([formatId, weeks, amountMinor]) => ({
   formatId: formatId as string,
   weeks: weeks as number,
-  sessionMinutes: 90,
+  sessionMinutes: 180,
   minStudyDays: 3,
   maxStudyDays: 5,
   amountMinor: amountMinor as number,
@@ -110,18 +112,26 @@ const life = (
     cohorts: [],
     academyPackages: [academyPackage()],
     academyCatalogueSlugs: [],
+    cohortEvidenceComplete: true,
     ...over,
   });
-const stateOf = (l: ReturnType<typeof life>) =>
-  Object.fromEntries(l.stages.map((s) => [s.id, s.state]));
+const stateOf = (stages: { id: string; state: string }[]) =>
+  Object.fromEntries(stages.map((s) => [s.id, s.state]));
+const asksForCohort = (l: ReturnType<typeof life>) =>
+  /\/admin\/cohorts|\/admin\/activation|create a (dedicated )?delivery cohort|choose a delivery cohort/i.test(
+    JSON.stringify(l.stages),
+  );
 
-describe("Academy (B2C) course classification", () => {
-  it("manages a published review-only Academy course through the individual-learning lifecycle", () => {
+describe("1 · individual learning (published, review only) — the AWS shape", () => {
+  it("uses the individual-learning lifecycle and never asks for a cohort", () => {
     const l = life();
-    expect(l.delivery).toBe("ACADEMY");
-    expect(l.stages.map((s) => s.id)).toEqual([...ACADEMY_STAGE_IDS]);
-    expect(l.organisationStages).toBeNull();
-    expect(stateOf(l)).toEqual({
+    expect(l.delivery).toBe("INDIVIDUAL");
+    expect(DELIVERY_LABELS[l.delivery]).toBe("Individual learning");
+    expect(l.stages.map((s) => s.id)).toEqual([...INDIVIDUAL_STAGE_IDS]);
+    expect(l.cohortStages).toBeNull();
+    expect(l.evidenceNote).toBeNull();
+    expect(asksForCohort(l)).toBe(false);
+    expect(stateOf(l.stages)).toEqual({
       "academy-upload": "complete",
       "academy-validate": "complete",
       "academy-review": "complete",
@@ -131,141 +141,64 @@ describe("Academy (B2C) course classification", () => {
       "academy-gates": "approval",
       "academy-sale": "blocked",
     });
-    expect(l.stage).toBe("academy-gates");
-    expect(l.stageState).toBe("approval");
     expect(l.headline).toBe(
       "Published for review only — not on public sale. 8 pending decisions must be resolved first.",
     );
-  });
-
-  it("never gives cohort or activation advice for an Academy course", () => {
-    const text = JSON.stringify(life());
-    expect(text).not.toMatch(/\/admin\/cohorts|\/admin\/activation/);
-    expect(text).not.toMatch(/create a (delivery )?cohort/i);
-    expect(text).not.toContain("Activate delivery");
-    expect(text).not.toContain("An offer needs an activated delivery first");
-    const access = life().stages.find((s) => s.id === "academy-access");
-    expect(access?.summary).toMatch(/personal schedule/);
+    const access = l.stages.find((s) => s.id === "academy-access");
     expect(access?.summary).toMatch(
       /No cohort, instructor or delivery activation/,
     );
   });
 
-  it("shows the published offer, its four priced formats and every pending decision", () => {
-    const a = life().academy;
+  it("shows the offer, its four priced formats, every pending decision and the record link", () => {
+    const l = life();
+    const a = l.individual!;
     expect(a).toMatchObject({
       slug: "cloud-architect",
       offerState: "PUBLISHED",
       saleMode: "REVIEW_ONLY",
-      currency: "GBP",
       listed: false,
       publicSale: false,
+      href: `/admin/academy-course-engineering?packageId=${ACADEMY_PACKAGE}`,
     });
-    expect(a?.formats?.map((f) => academyFormatPrice(f, a.currency))).toEqual([
-      "GBP 300.00",
-      "GBP 350.00",
-      "GBP 400.00",
-      "GBP 450.00",
+    expect(a.formats?.map((f) => academyFormatPrice(f, a.currency))).toEqual([
+      "GBP 30.00",
+      "GBP 25.00",
+      "GBP 20.00",
+      "GBP 20.00",
     ]);
-    expect(a?.pendingDecisions).toEqual(PENDING);
-    const gates = life().stages.find((s) => s.id === "academy-gates");
+    expect(a.pendingDecisions).toEqual(PENDING);
+    const gates = l.stages.find((s) => s.id === "academy-gates");
     for (const key of PENDING) expect(gates?.summary).toContain(key);
-    const publish = life().stages.find((s) => s.id === "academy-publish");
-    expect(publish?.summary).toContain("4 priced formats");
+    expect(gates?.next?.href).toBe(a.href);
   });
 
-  it("links to the Academy Course Engineering record by its recorded package id", () => {
-    const l = life();
-    const href = `/admin/academy-course-engineering?packageId=${ACADEMY_PACKAGE}`;
-    expect(l.academy?.href).toBe(href);
-    expect(l.stages.find((s) => s.id === "academy-gates")?.next?.href).toBe(
-      href,
-    );
-  });
-
-  it("separates publication from public sale: never live while review-only", () => {
+  it("separates publication from public sale: never live while review only", () => {
     const l = life({ academyCatalogueSlugs: ["cloud-architect"] });
-    // Even a (wrongly) listed slug does not make a review-only offer live.
-    expect(l.academy?.publicSale).toBe(false);
+    expect(l.individual?.publicSale).toBe(false);
     expect(isPubliclyLive(l)).toBe(false);
     expect(JSON.stringify(l)).not.toMatch(/Live in the (public )?catalogue/);
   });
-
-  it("is live only on PUBLIC_SALE confirmed in the Academy catalogue", () => {
-    const open = (slugs: string[] | null) =>
-      life({
-        academyPackages: [
-          academyPackage({ pendingDecisions: [] }, { saleMode: "PUBLIC_SALE" }),
-        ],
-        academyCatalogueSlugs: slugs,
-      });
-    const listed = open(["cloud-architect"]);
-    expect(stateOf(listed)["academy-sale"]).toBe("complete");
-    expect(listed.headline).toBe("On public sale in the Academy catalogue");
-    expect(isPubliclyLive(listed)).toBe(true);
-    expect(listed.stages.at(-1)?.next?.href).toBe("/academy/cloud-architect");
-    expect(stateOf(open([]))["academy-sale"]).toBe("attention");
-    expect(isPubliclyLive(open([]))).toBe(false);
-    const unreadable = open(null);
-    expect(stateOf(unreadable)["academy-sale"]).toBe("attention");
-    expect(unreadable.academy?.listed).toBeNull();
-  });
-
-  it("asks the owner, not a cohort, once decisions are resolved but sale is closed", () => {
-    const l = life({
-      academyPackages: [academyPackage({ pendingDecisions: [] })],
-    });
-    expect(stateOf(l)["academy-gates"]).toBe("complete");
-    expect(stateOf(l)["academy-sale"]).toBe("approval");
-    expect(l.headline).toMatch(
-      /^Published for review only — not on public sale/,
-    );
-  });
-
-  it("says when the offer prices could not be read instead of inventing them", () => {
-    const l = life({
-      academyPackages: [
-        academyPackage({}, { formats: undefined, currency: undefined }),
-      ],
-    });
-    expect(l.academy?.formats).toBeNull();
-    expect(l.stages.find((s) => s.id === "academy-publish")?.summary).toContain(
-      "could not be read",
-    );
-  });
-
-  it("shows an Academy package before its offer is published as awaiting a pricing decision", () => {
-    const l = life({
-      academyPackages: [
-        academyPackage(
-          { status: "VALIDATED" },
-          {
-            offerId: null,
-            slug: null,
-            offerState: null,
-            saleMode: null,
-            currency: null,
-            formats: undefined,
-          },
-        ),
-      ],
-    });
-    expect(stateOf(l)["academy-publish"]).toBe("approval");
-    expect(stateOf(l)["academy-access"]).toBe("blocked");
-    expect(l.academy?.formats).toEqual([]);
-  });
-
-  it("flags an archived Academy offer", () => {
-    const l = life({
-      academyPackages: [academyPackage({}, { offerState: "ARCHIVED" })],
-    });
-    expect(stateOf(l)["academy-publish"]).toBe("attention");
-    expect(l.stageState).toBe("attention");
-  });
 });
 
-describe("classification uses recorded relationships only", () => {
-  it("does not treat a same-key Academy package linked to a different import as this course", () => {
+describe("delivery model is independent of owner, title and package key", () => {
+  it("classifies identically whatever the key or title suggests", () => {
+    for (const packageKey of [
+      "aws-saa-c03-architect-academy",
+      "acme-corporation-onboarding",
+      "partner-org-cohort-programme",
+    ]) {
+      const linked = life({ revisions: [revision({ packageKey })] });
+      expect(linked.delivery).toBe("INDIVIDUAL");
+      const unlinked = life({
+        revisions: [revision({ packageKey })],
+        academyPackages: [],
+      });
+      expect(unlinked.delivery).toBe("NONE");
+    }
+  });
+
+  it("does not attach an Academy package linked to a different curriculum import", () => {
     const l = life({
       academyPackages: [
         academyPackage({
@@ -276,23 +209,8 @@ describe("classification uses recorded relationships only", () => {
         }),
       ],
     });
-    expect(l.delivery).toBe("ORGANISATION");
-    expect(l.academy).toBeNull();
-  });
-
-  it("does not infer Academy delivery from a vendor or 'academy' in the key or title", () => {
-    const l = life({
-      revisions: [revision({ packageKey: "aws-saa-c03-architect-academy" })],
-      academyPackages: [],
-    });
-    expect(l.delivery).toBe("ORGANISATION");
-    expect(l.stages.map((s) => s.id)).toEqual([...ORGANISATION_STAGE_IDS]);
-    // The unchanged organisation lifecycle: a published curriculum without a
-    // delivery still asks for a cohort.
-    expect(stateOf(l).activate).toBe("action");
-    expect(l.stages.find((s) => s.id === "activate")?.next?.href).toBe(
-      "/admin/cohorts",
-    );
+    expect(l.delivery).toBe("NONE");
+    expect(l.individual).toBeNull();
   });
 
   it("links an Academy package attached to an earlier revision of the same course", () => {
@@ -306,43 +224,63 @@ describe("classification uses recorded relationships only", () => {
         }),
       ],
     });
-    expect(l.delivery).toBe("ACADEMY");
-    expect(l.academy?.packageId).toBe(ACADEMY_PACKAGE);
+    expect(l.delivery).toBe("INDIVIDUAL");
+    expect(l.individual?.packageId).toBe(ACADEMY_PACKAGE);
   });
 
-  it("does not turn an unreadable Academy register into cohort advice", () => {
-    const l = life({ academyPackages: null });
-    expect(l.delivery).toBe("ORGANISATION");
-    const activate = l.stages.find((s) => s.id === "activate");
-    expect(activate?.state).toBe("attention");
-    expect(activate?.summary).toMatch(/unconfirmed/);
-    expect(activate?.next?.href).not.toBe("/admin/cohorts");
+  it("states ownership separately from the delivery model", () => {
+    expect(OWNERSHIP.kind).toBe("DUCELIO");
+    expect(OWNERSHIP.basis).toMatch(
+      /does not yet record organisation ownership/,
+    );
+    expect(Object.values(DELIVERY_LABELS).join(" ")).not.toMatch(
+      /B2B|B2C|organisation|Academy/i,
+    );
   });
 });
 
-describe("shared curriculum with independent Academy and Organisation tracks", () => {
-  it("shows both tracks when an organisation activation exists for the same curriculum", () => {
-    const l = life({ activations: [activation] });
-    expect(l.delivery).toBe("BOTH");
-    expect(l.stages.map((s) => s.id)).toEqual([...ACADEMY_STAGE_IDS]);
-    expect(l.organisationStages?.map((s) => s.id)).toEqual([
-      ...ORGANISATION_STAGE_IDS,
-    ]);
-    expect(
-      Object.fromEntries(l.organisationStages!.map((s) => [s.id, s.state])),
-    ).toMatchObject({ activate: "complete", "publish-offer": "approval" });
-    // The organisation track does not gate the Academy one.
-    expect(l.stage).toBe("academy-gates");
+describe("3 · cohort delivery (existing cohort-managed courses unchanged)", () => {
+  it("keeps the cohort lifecycle for an activated delivery", () => {
+    const l = life({ activations: [activation], academyPackages: [] });
+    expect(l.delivery).toBe("COHORT");
+    expect(l.stages.map((s) => s.id)).toEqual([...COHORT_STAGE_IDS]);
+    expect(stateOf(l.stages)).toMatchObject({
+      activate: "complete",
+      "publish-offer": "approval",
+    });
+    expect(l.individual).toBeNull();
   });
 
-  it("counts a non-demo cohort as organisation delivery, but not a demo one", () => {
-    expect(life({ cohorts: [cohort()] }).delivery).toBe("BOTH");
-    expect(life({ cohorts: [cohort({ isDemo: true })] }).delivery).toBe(
-      "ACADEMY",
+  it("still guides the cohort workflow when a cohort exists but is not activated", () => {
+    const l = life({ cohorts: [cohort()], academyPackages: [] });
+    expect(l.delivery).toBe("COHORT");
+    expect(stateOf(l.stages).activate).toBe("action");
+    expect(l.stages.find((s) => s.id === "activate")?.next?.href).toBe(
+      "/admin/activation",
     );
   });
 
-  it("keeps an organisation offer's public listing on the organisation track", () => {
+  it("does not treat a demo cohort as cohort delivery", () => {
+    const l = life({
+      cohorts: [cohort({ isDemo: true })],
+      academyPackages: [],
+    });
+    expect(l.delivery).toBe("NONE");
+  });
+});
+
+describe("4 · shared curriculum with both delivery models", () => {
+  it("shows both models independently, neither gating the other", () => {
+    const l = life({ activations: [activation] });
+    expect(l.delivery).toBe("BOTH");
+    expect(DELIVERY_LABELS.BOTH).toBe("Both delivery models");
+    expect(l.stages.map((s) => s.id)).toEqual([...INDIVIDUAL_STAGE_IDS]);
+    expect(l.cohortStages?.map((s) => s.id)).toEqual([...COHORT_STAGE_IDS]);
+    expect(stateOf(l.cohortStages!)).toMatchObject({ activate: "complete" });
+    expect(l.stage).toBe("academy-gates");
+  });
+
+  it("keeps each model's public listing on its own track", () => {
     const l = life({
       activations: [activation],
       offerActivations: [
@@ -351,7 +289,182 @@ describe("shared curriculum with independent Academy and Organisation tracks", (
       liveOfferSlugs: ["b2b"],
     });
     expect(l.liveSlugs).toEqual(["b2b"]);
+    expect(l.individual?.publicSale).toBe(false);
     expect(isPubliclyLive(l)).toBe(true);
-    expect(l.academy?.publicSale).toBe(false);
+    expect(life({ cohorts: [cohort()] }).delivery).toBe("BOTH");
+  });
+});
+
+describe("5 · newly uploaded or unpublished courses", () => {
+  it("asks for a pricing decision, not a cohort, before the individual offer exists", () => {
+    const l = life({
+      academyPackages: [
+        academyPackage(
+          { status: "VALIDATED" },
+          {
+            offerId: null,
+            slug: null,
+            offerState: null,
+            saleMode: null,
+            currency: null,
+            formats: [],
+          },
+        ),
+      ],
+    });
+    expect(l.delivery).toBe("INDIVIDUAL");
+    expect(stateOf(l.stages)["academy-publish"]).toBe("approval");
+    expect(stateOf(l.stages)["academy-access"]).toBe("blocked");
+    expect(asksForCohort(l)).toBe(false);
+  });
+
+  it("asks for a delivery model, not a cohort, when no model is recorded", () => {
+    const l = life({ academyPackages: [] });
+    expect(l.delivery).toBe("NONE");
+    expect(asksForCohort(l)).toBe(false);
+    const activate = l.stages.find((s) => s.id === "activate");
+    expect(activate?.state).toBe("approval");
+    expect(activate?.summary).toMatch(/no delivery model is recorded/);
+    expect(activate?.next?.href).toBe(
+      "/admin/courses/cloud-architect-academy#delivery",
+    );
+    expect(l.stages.find((s) => s.id === "publish-offer")?.summary).toBe(
+      "An offer follows the delivery model chosen for this course.",
+    );
+  });
+
+  it("leaves an unpublished curriculum's own stages unchanged", () => {
+    const l = life({
+      revisions: [revision({ status: "VALIDATED", programmeVersionId: null })],
+      academyPackages: [],
+    });
+    expect(stateOf(l.stages)).toMatchObject({
+      configure: "action",
+      activate: "blocked",
+    });
+  });
+});
+
+describe("7 · individual learning on public sale", () => {
+  const open = (slugs: string[] | null) =>
+    life({
+      academyPackages: [
+        academyPackage({ pendingDecisions: [] }, { saleMode: "PUBLIC_SALE" }),
+      ],
+      academyCatalogueSlugs: slugs,
+    });
+  it("is live only when confirmed in the Academy catalogue", () => {
+    const listed = open(["cloud-architect"]);
+    expect(stateOf(listed.stages)["academy-sale"]).toBe("complete");
+    expect(listed.headline).toBe("On public sale in the Academy catalogue");
+    expect(isPubliclyLive(listed)).toBe(true);
+    expect(stateOf(open([]).stages)["academy-sale"]).toBe("attention");
+    expect(stateOf(open(null).stages)["academy-sale"]).toBe("attention");
+    expect(open(null).individual?.listed).toBeNull();
+  });
+
+  it("asks the owner, not a cohort, once decisions are resolved but sale is closed", () => {
+    const l = life({
+      academyPackages: [academyPackage({ pendingDecisions: [] })],
+    });
+    expect(stateOf(l.stages)["academy-gates"]).toBe("complete");
+    expect(stateOf(l.stages)["academy-sale"]).toBe("approval");
+  });
+});
+
+describe("8 · archived and rejected", () => {
+  it("flags an archived individual-learning offer", () => {
+    const l = life({
+      academyPackages: [academyPackage({}, { offerState: "ARCHIVED" })],
+    });
+    expect(l.delivery).toBe("INDIVIDUAL");
+    expect(stateOf(l.stages)["academy-publish"]).toBe("attention");
+    expect(l.stageState).toBe("attention");
+    expect(isPubliclyLive(l)).toBe(false);
+  });
+
+  it("flags a rejected Academy package without falling back to cohort delivery", () => {
+    const l = life({
+      academyPackages: [
+        academyPackage(
+          { status: "REJECTED" },
+          { offerId: null, slug: null, offerState: null, saleMode: null },
+        ),
+      ],
+    });
+    expect(l.delivery).toBe("INDIVIDUAL");
+    expect(stateOf(l.stages)["academy-validate"]).toBe("attention");
+    expect(stateOf(l.stages)["academy-publish"]).toBe("blocked");
+    expect(asksForCohort(l)).toBe(false);
+  });
+
+  it("flags a rejected curriculum revision", () => {
+    const l = life({
+      revisions: [revision({ status: "REJECTED", programmeVersionId: null })],
+      academyPackages: [],
+    });
+    expect(stateOf(l.stages).validate).toBe("attention");
+  });
+});
+
+describe("unavailable or incomplete classification evidence", () => {
+  it("never defaults to cohort delivery when individual-learning evidence is unreadable", () => {
+    for (const academyPackages of [null, undefined]) {
+      const l = life({ academyPackages });
+      expect(l.delivery).toBe("UNCONFIRMED");
+      expect(asksForCohort(l)).toBe(false);
+      expect(l.evidenceNote).toMatch(/individual-learning \(Academy\)/);
+      expect(stateOf(l.stages).activate).toBe("attention");
+    }
+  });
+
+  it("never defaults to cohort delivery when cohort evidence is unreadable", () => {
+    const l = life({ academyPackages: [], cohortEvidenceComplete: false });
+    expect(l.delivery).toBe("UNCONFIRMED");
+    expect(asksForCohort(l)).toBe(false);
+    expect(l.evidenceNote).toMatch(/cohort-delivery/);
+  });
+
+  it("keeps a recorded model but says the other could not be checked", () => {
+    const individual = life({ cohortEvidenceComplete: false });
+    expect(individual.delivery).toBe("INDIVIDUAL");
+    expect(individual.evidenceNote).toMatch(/cohort-delivery/);
+    const cohortOnly = life({
+      activations: [activation],
+      academyPackages: null,
+    });
+    expect(cohortOnly.delivery).toBe("COHORT");
+    expect(cohortOnly.evidenceNote).toMatch(/individual-learning/);
+  });
+});
+
+describe("scale: more than 100 individual-learning courses", () => {
+  it("classifies every course from one evidence set, with no listing window", () => {
+    const n = 250;
+    const id = (i: number, base: string) =>
+      `${base}${i.toString(16).padStart(12, "0")}`;
+    const evidence = Array.from({ length: n }, (_, i) =>
+      academyPackage({
+        id: id(i, "ef000000-0000-4000-8000-"),
+        curriculumImport: {
+          id: id(i, "10000000-0000-4000-8000-"),
+          status: "PUBLISHED",
+        },
+      }),
+    );
+    const deliveries = Array.from(
+      { length: n },
+      (_, i) =>
+        life({
+          revisions: [
+            revision({
+              id: id(i, "10000000-0000-4000-8000-"),
+              packageKey: `course-${i}`,
+            }),
+          ],
+          academyPackages: evidence,
+        }).delivery,
+    );
+    expect(deliveries.filter((d) => d === "INDIVIDUAL")).toHaveLength(n);
   });
 });

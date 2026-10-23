@@ -22,7 +22,11 @@ import {
 } from "./commercial-v1-commerce";
 import { listCommerceOperations } from "./commercial-v1-commerce/operations";
 import { getCohortWorkspace } from "./cohorts";
-import { listAcademyPackages } from "./academy-course-engineering";
+import {
+  getAcademyDeliveryEvidence,
+  listAcademyPackages,
+} from "./academy-course-engineering";
+import { AcademyError } from "@/domain/academy-delivery";
 import { listAcademyCatalogue } from "./academy-delivery";
 import {
   describeProductionProfiles,
@@ -77,9 +81,9 @@ export type CourseRow = {
 
 export type CourseCatalogue = {
   courses: CourseRow[];
-  // Academy packages not yet linked to a curriculum (still in upload,
-  // validation or review); managed in Academy Course Engineering. Null when
-  // the Academy register could not be read.
+  // Individual-learning (Academy) packages not yet attached to any
+  // curriculum (still in upload, validation or review); managed in Academy
+  // Course Engineering. Null when the evidence could not be read.
   academyInProgress: number | null;
   sources: {
     packages: boolean;
@@ -101,6 +105,60 @@ function humanise(key: string) {
     .join(" ");
 }
 
+// Individual-learning evidence for the listed curriculum imports. A
+// database without migration 066 (code deployed before the migration) falls
+// back to the Academy register list: its links are still positive evidence,
+// but it is complete only when shorter than its 100-row window, so a course
+// missing from a full window is unconfirmed, never "not individual".
+async function individualEvidence(importIds: string[]): Promise<{
+  links: LifecycleAcademyPackage[];
+  complete: boolean;
+  withoutCurriculum: number | null;
+}> {
+  try {
+    const e = await getAcademyDeliveryEvidence(importIds);
+    return {
+      links: e.links.map((l) => ({
+        id: l.packageId,
+        packageRevision: l.packageRevision,
+        status: l.status,
+        pendingDecisions: l.pendingDecisions,
+        curriculumImport: {
+          id: l.curriculumImportId,
+          status: l.curriculumStatus,
+        },
+        course: l.course,
+      })),
+      complete: true,
+      withoutCurriculum: e.packagesWithoutCurriculum,
+    };
+  } catch (error) {
+    if (!(error instanceof AcademyError && error.code === "NOT_INSTALLED"))
+      throw error;
+    const list = await listAcademyPackages();
+    const complete = list.length < ACADEMY_REGISTER_WINDOW;
+    return {
+      links: list
+        .filter((p) => p.curriculumImport)
+        .map((p) => ({
+          id: p.id,
+          packageRevision: p.packageRevision,
+          status: p.status,
+          pendingDecisions: p.pendingDecisions,
+          curriculumImport: p.curriculumImport,
+          course: p.course,
+        })),
+      complete,
+      withoutCurriculum: complete
+        ? list.filter((p) => p.status !== "REJECTED" && !p.curriculumImport)
+            .length
+        : null,
+    };
+  }
+}
+// list_academy_course_packages returns at most the 100 newest packages.
+const ACADEMY_REGISTER_WINDOW = 100;
+
 // All courses with their lifecycle, derived from the governed reads.
 export async function getCourseCatalogue(): Promise<CourseCatalogue> {
   await requireAnyRole(COURSE_ADMINS);
@@ -111,7 +169,6 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
     live,
     cohortWorkspace,
     overview,
-    academyPackages,
     academyCatalogue,
   ] = await Promise.all([
     sourced(() => listCoursePackages()),
@@ -120,19 +177,8 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
     sourced(() => listCommercialV1Offers()),
     sourced(() => getCohortWorkspace(null)),
     sourced(() => getAdminOverview()),
-    sourced(() => listAcademyPackages()),
     sourced(() => listAcademyCatalogue()),
   ]);
-  const academyRows: LifecycleAcademyPackage[] | null = academyPackages.ok
-    ? academyPackages.data.map((p) => ({
-        id: p.id,
-        packageRevision: p.packageRevision,
-        status: p.status,
-        pendingDecisions: p.pendingDecisions,
-        curriculumImport: p.curriculumImport,
-        course: p.course,
-      }))
-    : null;
 
   const pkgRows: LifecyclePackage[] = packages.ok
     ? packages.data.map((p) => ({
@@ -148,6 +194,17 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
         rejectedAt: p.rejected_at,
       }))
     : [];
+  // Individual-learning evidence for exactly the listed curriculum imports:
+  // batched set-based reads, so no course is left unclassified by a listing
+  // window. Unread when the register itself could not be read.
+  const evidence = packages.ok
+    ? await sourced(() => individualEvidence(pkgRows.map((p) => p.id)))
+    : ({ ok: false } as const);
+  const academyRows: LifecycleAcademyPackage[] | null = evidence.ok
+    ? evidence.data.links
+    : null;
+  const cohortEvidenceComplete =
+    activations.ok && offerActivations.ok && cohortWorkspace.ok;
   const byKey = new Map<string, LifecyclePackage[]>();
   for (const p of pkgRows)
     byKey.set(p.packageKey, [...(byKey.get(p.packageKey) ?? []), p]);
@@ -193,6 +250,8 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
         revisions.find((r) => r.status === "APPLIED")?.id ?? "",
       ),
       academyPackages: academyRows,
+      individualEvidenceComplete: evidence.ok && evidence.data.complete,
+      cohortEvidenceComplete,
       academyCatalogueSlugs: academyCatalogue.ok
         ? academyCatalogue.data.map((o) => o.slug)
         : null,
@@ -220,23 +279,16 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
   });
   courses.sort((a, b) => a.title.localeCompare(b.title));
 
-  const importIds = new Set(pkgRows.map((p) => p.id));
   return {
     courses,
-    academyInProgress: academyRows
-      ? academyRows.filter(
-          (p) =>
-            p.status !== "REJECTED" &&
-            !(p.curriculumImport && importIds.has(p.curriculumImport.id)),
-        ).length
-      : null,
+    academyInProgress: evidence.ok ? evidence.data.withoutCurriculum : null,
     sources: {
       packages: packages.ok,
       activations: activations.ok,
       offers: offerActivations.ok,
       catalogue: live.ok,
       cohorts: cohortWorkspace.ok,
-      academy: academyPackages.ok,
+      academy: evidence.ok,
       academyCatalogue: academyCatalogue.ok,
     },
   };

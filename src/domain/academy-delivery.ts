@@ -150,25 +150,6 @@ export const academyPackageListSchema = z.array(
         slug: z.string().nullable(),
         offerState: z.enum(["PUBLISHED", "ARCHIVED"]).nullable(),
         saleMode: z.enum(["REVIEW_ONLY", "PUBLIC_SALE"]).nullable(),
-        // Migration 066. Absent on a database without it, so the lifecycle
-        // can say the terms are unreadable instead of failing the list.
-        currency: z
-          .string()
-          .regex(/^[A-Z]{3}$/)
-          .nullable()
-          .optional(),
-        formats: z
-          .array(
-            z.object({
-              formatId,
-              weeks: z.number().int(),
-              sessionMinutes: z.number().int(),
-              minStudyDays: z.number().int(),
-              maxStudyDays: z.number().int(),
-              amountMinor: z.number().int().positive(),
-            }),
-          )
-          .optional(),
       })
       .nullable(),
   }),
@@ -176,6 +157,56 @@ export const academyPackageListSchema = z.array(
 export type AcademyPackageListItem = z.infer<
   typeof academyPackageListSchema
 >[number];
+
+// get_academy_delivery_evidence (migration 066): the individual-learning
+// (Academy) package attached to each requested curriculum import, found by
+// recorded relationships, with its offer terms; plus the number of Academy
+// packages not yet attached to any curriculum.
+export const ACADEMY_EVIDENCE_BATCH = 500;
+const offerFormatSchema = z.object({
+  formatId,
+  weeks: z.number().int(),
+  sessionMinutes: z.number().int(),
+  minStudyDays: z.number().int(),
+  maxStudyDays: z.number().int(),
+  amountMinor: z.number().int().positive(),
+});
+export const academyDeliveryEvidenceSchema = z.object({
+  links: z.array(
+    z.object({
+      curriculumImportId: z.uuid(),
+      curriculumStatus: z.enum([
+        "IMPORTED",
+        "VALIDATED",
+        "APPLIED",
+        "PUBLISHED",
+        "REJECTED",
+      ]),
+      packageId: z.uuid(),
+      packageRevision: z.number().int(),
+      status: z.enum(["UPLOADED", "VALIDATED", "PUBLISHED", "REJECTED"]),
+      pendingDecisions: z.array(z.string()),
+      course: z
+        .object({
+          id: z.uuid(),
+          offerId: z.uuid().nullable(),
+          slug: z.string().nullable(),
+          offerState: z.enum(["PUBLISHED", "ARCHIVED"]).nullable(),
+          saleMode: z.enum(["REVIEW_ONLY", "PUBLIC_SALE"]).nullable(),
+          currency: z
+            .string()
+            .regex(/^[A-Z]{3}$/)
+            .nullable(),
+          formats: z.array(offerFormatSchema),
+        })
+        .nullable(),
+    }),
+  ),
+  packagesWithoutCurriculum: z.number().int().nonnegative(),
+});
+export type AcademyDeliveryEvidence = z.infer<
+  typeof academyDeliveryEvidenceSchema
+>;
 
 export const catalogueFormatSchema = z.strictObject({
   formatId,

@@ -1,21 +1,30 @@
 // The admin control centre's course lifecycle. Pure: it only interprets the
 // governed admin reads (course packages, activations, offer activations, the
-// public offer projections, the cohort workspace and the Academy package
-// register). It never decides authority; every stage's real gate stays in
+// public offer projections, the cohort workspace and the individual-learning
+// evidence). It never decides authority; every stage's real gate stays in
 // its own database RPC.
 //
-// One curriculum can have two independent delivery tracks:
-//  - Organisation (B2B): Import -> Validate -> Configure -> Test -> Publish
+// The lifecycle follows the course's DELIVERY MODEL, never its owner. One
+// curriculum can be offered through either model, or both:
+//  - Cohort delivery: Import -> Validate -> Configure -> Test -> Publish
 //    curriculum -> Activate delivery (cohort) -> Publish offer -> Public
 //    catalogue.
-//  - Academy (B2C, individual learning): Upload -> Validate -> Review ->
-//    Prepare curriculum -> Publish course and offer -> Learner access ->
-//    Approval gates -> Public sale. No cohort, instructor or activation.
-// The track is never guessed from a title or key: a course is an Academy
-// course only when an Academy package's recorded curriculum import is one
-// of the course's own revisions (list_academy_course_packages
-// curriculumImport.id), and it has organisation delivery only when an
-// activation, an organisation offer or a non-demo cohort exists for it.
+//  - Individual learning (the Academy workflow): Upload -> Validate ->
+//    Review -> Prepare curriculum -> Publish course and offer -> Learner
+//    access -> Approval gates -> Public sale. No cohort, instructor or
+//    activation.
+// The model is taken only from recorded relationships, never from a title,
+// package key, owner or publisher: individual learning when an Academy
+// package is attached to one of the course's curriculum imports (recorded
+// publication link, or the same key, revision and embedded curriculum);
+// cohort delivery when an activation, a cohort offer or a non-demo cohort
+// exists for it. With neither, the course has no delivery model yet; when
+// the evidence could not be read, the model is unconfirmed. Neither case is
+// ever presented as needing a cohort.
+//
+// Ownership is a separate concept. The platform has no organisation
+// ownership record: every course is managed by Ducelio course
+// administrators (see docs/58 §9), so OWNERSHIP is stated, not derived.
 
 export const PACKAGE_STATUSES = [
   "IMPORTED",
@@ -84,7 +93,7 @@ export type StageState =
   | "blocked" // an earlier stage must finish first
   | "attention"; // something is inconsistent and needs investigation
 
-export type OrganisationStageId =
+export type CohortStageId =
   | "import"
   | "validate"
   | "configure"
@@ -94,7 +103,7 @@ export type OrganisationStageId =
   | "publish-offer"
   | "catalogue";
 
-export type AcademyStageId =
+export type IndividualStageId =
   | "academy-upload"
   | "academy-validate"
   | "academy-review"
@@ -104,7 +113,7 @@ export type AcademyStageId =
   | "academy-gates"
   | "academy-sale";
 
-export type StageId = OrganisationStageId | AcademyStageId;
+export type StageId = CohortStageId | IndividualStageId;
 
 export type LifecycleStage = {
   id: StageId;
@@ -149,7 +158,7 @@ export const STAGE_LABELS: Record<StageId, string> = {
   "academy-sale": "Public sale and catalogue",
 };
 
-export const ORGANISATION_STAGE_IDS: readonly OrganisationStageId[] = [
+export const COHORT_STAGE_IDS: readonly CohortStageId[] = [
   "import",
   "validate",
   "configure",
@@ -159,7 +168,7 @@ export const ORGANISATION_STAGE_IDS: readonly OrganisationStageId[] = [
   "publish-offer",
   "catalogue",
 ];
-export const ACADEMY_STAGE_IDS: readonly AcademyStageId[] = [
+export const INDIVIDUAL_STAGE_IDS: readonly IndividualStageId[] = [
   "academy-upload",
   "academy-validate",
   "academy-review",
@@ -170,13 +179,30 @@ export const ACADEMY_STAGE_IDS: readonly AcademyStageId[] = [
   "academy-sale",
 ];
 
-// "ACADEMY": individual learners (B2C) only. "ORGANISATION": cohort
-// delivery (B2B) only. "BOTH": one shared curriculum with both tracks.
-export type CourseDelivery = "ACADEMY" | "ORGANISATION" | "BOTH";
+// The course's recorded delivery model(s). NONE: complete evidence, but no
+// model recorded yet. UNCONFIRMED: the evidence could not be read.
+export type CourseDelivery =
+  "INDIVIDUAL" | "COHORT" | "BOTH" | "NONE" | "UNCONFIRMED";
 export const DELIVERY_LABELS: Record<CourseDelivery, string> = {
-  ACADEMY: "Academy · individual learners (B2C)",
-  ORGANISATION: "Organisation · cohort delivery (B2B)",
-  BOTH: "Academy (B2C) and Organisation (B2B)",
+  INDIVIDUAL: "Individual learning",
+  COHORT: "Cohort delivery",
+  BOTH: "Both delivery models",
+  NONE: "No delivery model yet",
+  UNCONFIRMED: "Delivery model unconfirmed",
+};
+
+// Ownership is independent of delivery model. Only Ducelio-managed courses
+// exist today: there is no organisation ownership record to derive from.
+export type CourseOwnership = "DUCELIO" | "ORGANISATION";
+export const OWNERSHIP: {
+  kind: CourseOwnership;
+  label: string;
+  basis: string;
+} = {
+  kind: "DUCELIO",
+  label: "Ducelio-owned",
+  basis:
+    "Every course is managed by Ducelio course administrators; the platform does not yet record organisation ownership.",
 };
 
 export type AcademyLifecycleFormat = {
@@ -188,9 +214,10 @@ export type AcademyLifecycleFormat = {
   amountMinor: number;
 };
 
-// One Academy package from the admin register, reduced to what the
-// lifecycle reads. formats/currency are undefined when the database does
-// not return the offer terms (migration 066 not applied).
+// One individual-learning (Academy) package attached to a curriculum
+// import, reduced to what the lifecycle reads. formats/currency are
+// undefined when the source does not carry offer terms (the register-list
+// fallback on a database without migration 066).
 export type LifecycleAcademyPackage = {
   id: string;
   packageRevision: number;
@@ -231,18 +258,21 @@ export type AcademyTrack = {
 export type CourseLifecycle = {
   packageKey: string;
   delivery: CourseDelivery;
+  // Set when a delivery-model read failed (see deriveCourseLifecycle).
+  evidenceNote: string | null;
   current: LifecyclePackage;
   revisions: LifecyclePackage[];
   activations: LifecycleActivation[];
   cohorts: (LifecycleCohort & { purpose: CohortPurpose })[];
-  // Organisation (B2B) offers, and those in the public course catalogue.
+  // Cohort-delivery offers, and those in the public course catalogue.
   offerSlugs: string[];
   liveSlugs: string[];
-  // The primary track: Academy stages for ACADEMY/BOTH, else organisation.
+  // The primary track: individual-learning stages for INDIVIDUAL/BOTH,
+  // otherwise the cohort-delivery (curriculum) stages.
   stages: LifecycleStage[];
-  // The organisation track; null for an Academy-only course.
-  organisationStages: LifecycleStage[] | null;
-  academy: AcademyTrack | null;
+  // The cohort-delivery track when cohort delivery is recorded, else null.
+  cohortStages: LifecycleStage[] | null;
+  individual: AcademyTrack | null;
   headline: string;
   stage: StageId;
   stageState: StageState;
@@ -253,7 +283,7 @@ export const academyEngineering = (packageId: string) =>
 
 // True when the course can be bought publicly on either track.
 export const isPubliclyLive = (life: CourseLifecycle) =>
-  life.liveSlugs.length > 0 || life.academy?.publicSale === true;
+  life.liveSlugs.length > 0 || life.individual?.publicSale === true;
 
 export function academyFormatPrice(
   format: AcademyLifecycleFormat,
@@ -292,8 +322,17 @@ export function deriveCourseLifecycle(input: {
   liveOfferSlugs: readonly string[] | null; // null: catalogue unreadable
   cohorts: readonly LifecycleCohort[];
   testReadiness?: TestReadiness | null;
-  // The Academy package register; null or absent when it could not be read.
+  // Individual-learning evidence: the Academy packages attached to this
+  // course's curriculum imports. null when it could not be read; absent is
+  // treated as unreadable, so a caller can never imply "no Academy package"
+  // by omission.
   academyPackages?: readonly LifecycleAcademyPackage[] | null;
+  // False when any cohort-delivery read (activations, offers, cohorts)
+  // failed, so an absent cohort is not taken as evidence.
+  cohortEvidenceComplete?: boolean;
+  // False when academyPackages is a partial read (a listing window), so a
+  // course without a link in it is unconfirmed rather than "not individual".
+  individualEvidenceComplete?: boolean;
   // Slugs in the public Academy catalogue; null when unreadable.
   academyCatalogueSlugs?: readonly string[] | null;
 }): CourseLifecycle {
@@ -530,42 +569,80 @@ export function deriveCourseLifecycle(input: {
     offerSlugs,
     liveSlugs,
   };
+  const individualEvidence = input.academyPackages ?? null;
+  const cohortEvidenceComplete = input.cohortEvidenceComplete ?? true;
   const academyPackage = linkedAcademyPackage(
     revisions,
     current,
-    input.academyPackages ?? [],
+    individualEvidence ?? [],
   );
-  const organisation =
+  const cohort =
     activations.length > 0 ||
     offerSlugs.length > 0 ||
     cohorts.some((c) => c.purpose !== "DEMO");
+  // A found link is positive evidence even from a partial read; only the
+  // absence of a link needs complete evidence to mean "not individual".
+  const individualComplete =
+    individualEvidence !== null && (input.individualEvidenceComplete ?? true);
+  const evidenceComplete = individualComplete && cohortEvidenceComplete;
+  const delivery: CourseDelivery =
+    academyPackage && cohort
+      ? "BOTH"
+      : academyPackage
+        ? "INDIVIDUAL"
+        : cohort
+          ? "COHORT"
+          : evidenceComplete
+            ? "NONE"
+            : "UNCONFIRMED";
+  const missing = [
+    academyPackage || individualComplete
+      ? null
+      : "individual-learning (Academy)",
+    cohortEvidenceComplete ? null : "cohort-delivery",
+  ].filter(Boolean);
+  const evidenceNote = missing.length
+    ? `The ${missing.join(" and ")} records could not be read, so this course's delivery models are not fully confirmed.`
+    : null;
 
   if (!academyPackage) {
-    // An unreadable Academy register must not turn an Academy course into
-    // cohort advice: without it the delivery track is unconfirmed.
+    // Without recorded cohort delivery, a published curriculum is never
+    // assumed to need a cohort: either no delivery model is recorded yet,
+    // or the evidence to decide could not be read.
     const i = stages.findIndex((x) => x.id === "activate");
-    if (
-      input.academyPackages === null &&
-      !organisation &&
-      i >= 0 &&
-      stages[i].state === "action"
-    )
-      stages[i] = stage(
-        "activate",
-        "attention",
-        "The Academy course register could not be read, so whether this curriculum is delivered to individual learners (Academy) or through cohorts is unconfirmed. Confirm the delivery track before creating a cohort.",
-        {
-          label: "Open Academy Course Engineering",
-          href: "/admin/academy-course-engineering",
-        },
-      );
+    if (!cohort && i >= 0 && stages[i].state === "action") {
+      stages[i] =
+        delivery === "NONE"
+          ? stage(
+              "activate",
+              "approval",
+              `${rev} is published, but no delivery model is recorded yet. Choose individual learning (an Academy package in Academy Course Engineering) or cohort delivery (a cohort, then activation). Do not upload the curriculum again.`,
+              {
+                label: "Choose a delivery model",
+                href: `/admin/courses/${encodeURIComponent(current.packageKey)}#delivery`,
+              },
+            )
+          : stage(
+              "activate",
+              "attention",
+              `${evidenceNote} Confirm the delivery model before creating a cohort.`,
+            );
+      const offer = stages.findIndex((x) => x.id === "publish-offer");
+      if (offer >= 0 && stages[offer].state === "blocked")
+        stages[offer] = stage(
+          "publish-offer",
+          "blocked",
+          "An offer follows the delivery model chosen for this course.",
+        );
+    }
     const focus = focusOf(stages);
     return {
       ...base,
-      delivery: "ORGANISATION",
+      delivery,
+      evidenceNote,
       stages,
-      organisationStages: stages,
-      academy: null,
+      cohortStages: cohort ? stages : null,
+      individual: null,
       headline:
         focus.state === "complete" ? "Live in the catalogue" : focus.summary,
       stage: focus.id,
@@ -573,18 +650,19 @@ export function deriveCourseLifecycle(input: {
     };
   }
 
-  const academy = academyLifecycle(
+  const individual = academyLifecycle(
     academyPackage,
     input.academyCatalogueSlugs ?? null,
   );
-  const focus = focusOf(academy.stages);
+  const focus = focusOf(individual.stages);
   return {
     ...base,
-    delivery: organisation ? "BOTH" : "ACADEMY",
-    stages: academy.stages,
-    organisationStages: organisation ? stages : null,
-    academy: academy.track,
-    headline: academyHeadline(academy.track, focus),
+    delivery,
+    evidenceNote,
+    stages: individual.stages,
+    cohortStages: cohort ? stages : null,
+    individual: individual.track,
+    headline: academyHeadline(individual.track, focus),
     stage: focus.id,
     stageState: focus.state,
   };

@@ -7,7 +7,10 @@ import {
 import {
   AcademyError,
   academyErrorCode,
+  ACADEMY_EVIDENCE_BATCH,
+  academyDeliveryEvidenceSchema,
   academyPackageListSchema,
+  type AcademyDeliveryEvidence,
   grantInputSchema,
   isMissingDatabaseDependency,
   labReviewListSchema,
@@ -60,6 +63,32 @@ async function adminRpc<T>(
 
 export const listAcademyPackages = () =>
   adminRpc("list_academy_course_packages", {}, academyPackageListSchema);
+
+// Delivery-model evidence for the given curriculum imports, in fixed-size
+// batches (one set-based query each, never one per course), so the whole
+// register is classified regardless of its size. Any failed batch fails the
+// whole read: partial evidence is never presented as complete.
+export async function getAcademyDeliveryEvidence(
+  importIds: readonly string[],
+): Promise<AcademyDeliveryEvidence> {
+  const ids = [...new Set(importIds)].map((id) => z.uuid().parse(id));
+  const batches: string[][] = [];
+  for (let i = 0; i < ids.length; i += ACADEMY_EVIDENCE_BATCH)
+    batches.push(ids.slice(i, i + ACADEMY_EVIDENCE_BATCH));
+  const results = await Promise.all(
+    (batches.length ? batches : [[]]).map((batch) =>
+      adminRpc(
+        "get_academy_delivery_evidence",
+        { p_import_ids: batch },
+        academyDeliveryEvidenceSchema,
+      ),
+    ),
+  );
+  return {
+    links: results.flatMap((r) => r.links),
+    packagesWithoutCurriculum: results[0].packagesWithoutCurriculum,
+  };
+}
 
 export const getAcademyPackageReview = (packageId: string) =>
   adminRpc(

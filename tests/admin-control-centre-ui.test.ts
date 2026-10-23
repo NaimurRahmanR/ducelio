@@ -522,7 +522,7 @@ describe("courses", () => {
   });
 });
 
-describe("Academy courses in the register", () => {
+describe("delivery models in the course register", () => {
   beforeEach(() => {
     m.catalogue.mockResolvedValue({
       courses: [securityPlus(), academyCourse()],
@@ -531,17 +531,15 @@ describe("Academy courses in the register", () => {
     });
   });
 
-  it("labels Academy and Organisation courses and manages the Academy one without a cohort", async () => {
+  it("labels each course by delivery model and manages individual learning without a cohort", async () => {
     const html = renderToStaticMarkup(
       await CoursesPage({ searchParams: Promise.resolve({}) }),
     );
     const plain = text(html);
     expect(plain).toContain(
-      "Cloud Architect Academy Academy · individual learners (B2C) Review only · not on sale",
+      "Cloud Architect Academy Individual learning Review only · not on sale",
     );
-    expect(plain).toContain(
-      "CompTIA Security+ (SY0-701) Organisation · cohort delivery (B2B)",
-    );
+    expect(plain).toContain("CompTIA Security+ (SY0-701) Cohort delivery");
     expect(plain).toContain("Approval gates Awaiting approval");
     expect(plain).toContain(
       "Published for review only — not on public sale. 2 pending decisions must be resolved first.",
@@ -550,30 +548,71 @@ describe("Academy courses in the register", () => {
       `href="/admin/academy-course-engineering?packageId=${ACADEMY_PACKAGE_ID}"`,
     );
     expect(plain).toContain(
-      "1 Academy package is still in upload, validation or review",
+      "1 individual-learning package is still in upload, validation or review",
     );
     // The Academy course's own entry has no cohort step or advice.
-    const entry = plain.slice(plain.indexOf("Cloud Architect Academy Academy"));
+    const entry = plain.slice(
+      plain.indexOf("Cloud Architect Academy Individual learning"),
+    );
     expect(entry).not.toContain("Activate delivery");
     expect(entry).not.toMatch(/cohort, then activate|delivery cohort/i);
   });
 
-  it("filters and counts by recorded delivery track", async () => {
-    const academy = text(
+  it("asks for a delivery model, never a cohort, when none is recorded or the evidence is unreadable", async () => {
+    const undecided = (evidence: [] | null) => {
+      const course = securityPlus();
+      return {
+        ...course,
+        packageKey: evidence ? "undecided-course" : "unconfirmed-course",
+        title: evidence ? "Undecided Course" : "Unconfirmed Course",
+        lifecycle: deriveCourseLifecycle({
+          revisions: course.lifecycle.revisions,
+          activations: [],
+          offerActivations: [],
+          liveOfferSlugs: [],
+          cohorts: [],
+          academyPackages: evidence,
+        }),
+      };
+    };
+    m.catalogue.mockResolvedValue({
+      courses: [undecided([]), undecided(null)],
+      academyInProgress: 0,
+      sources: { ...allSources, academy: true, academyCatalogue: true },
+    });
+    const plain = text(
       renderToStaticMarkup(
         await CoursesPage({
-          searchParams: Promise.resolve({ filter: "academy" }),
+          searchParams: Promise.resolve({ filter: "undecided" }),
         }),
       ),
     );
-    expect(academy).toContain("Academy (B2C) 1");
-    expect(academy).toContain("Organisation (B2B) 1");
+    expect(plain).toContain("No delivery model yet 2");
+    expect(plain).toContain("Undecided Course No delivery model yet");
+    expect(plain).toContain("Unconfirmed Course Delivery model unconfirmed");
+    expect(plain).toContain("no delivery model is recorded yet");
+    expect(plain).toContain("are not fully confirmed");
+    expect(plain).not.toMatch(/create a (dedicated )?delivery cohort/i);
+  });
+
+  it("filters and counts by recorded delivery model", async () => {
+    const academy = text(
+      renderToStaticMarkup(
+        await CoursesPage({
+          searchParams: Promise.resolve({ filter: "individual" }),
+        }),
+      ),
+    );
+    expect(academy).toContain("Individual learning 1");
+    expect(academy).toContain("Cohort delivery 1");
+    expect(academy).toContain("No delivery model yet 0");
+    expect(academy).not.toMatch(/B2B|B2C/);
     expect(academy).toContain("Cloud Architect Academy");
     expect(academy).not.toContain("CompTIA Security+ (SY0-701)");
     const organisation = text(
       renderToStaticMarkup(
         await CoursesPage({
-          searchParams: Promise.resolve({ filter: "organisation" }),
+          searchParams: Promise.resolve({ filter: "cohort" }),
         }),
       ),
     );
@@ -590,7 +629,7 @@ describe("Academy courses in the register", () => {
     expect(live).toContain("No course matches");
   });
 
-  it("never counts a review-only Academy course as live on the dashboard", async () => {
+  it("never counts a review-only individual-learning course as live on the dashboard", async () => {
     m.dashboard.mockResolvedValue(
       dashboard({
         catalogue: {
@@ -608,7 +647,7 @@ describe("Academy courses in the register", () => {
       ),
     );
     expect(plain).toContain("0 live in the public catalogue");
-    expect(plain).toContain("Academy: Approval gates");
+    expect(plain).toContain("Individual learning: Approval gates");
   });
 });
 

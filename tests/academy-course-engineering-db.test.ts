@@ -26,10 +26,14 @@ import {
   planSchedule,
   type PlanUnit,
 } from "@/domain/academy-scheduler";
-import { academyPackageListSchema } from "@/domain/academy-delivery";
 import {
-  ACADEMY_STAGE_IDS,
+  ACADEMY_EVIDENCE_BATCH,
+  academyDeliveryEvidenceSchema,
+  academyPackageListSchema,
+} from "@/domain/academy-delivery";
+import {
   deriveCourseLifecycle,
+  INDIVIDUAL_STAGE_IDS,
   isPubliclyLive,
 } from "@/domain/admin-course-lifecycle";
 
@@ -1400,42 +1404,139 @@ describe("compatibility with the existing institutional workflow", () => {
   });
 });
 
-describe("admin course lifecycle from the Academy records (migration 066)", () => {
-  it("lists each Academy offer's currency and priced formats to course administrators only", async () => {
-    const list = academyPackageListSchema.parse(
-      await rpc(q, admin, "list_academy_course_packages"),
+describe("admin course delivery evidence (migration 066)", () => {
+  const evidence = async (ids: string[]) =>
+    academyDeliveryEvidenceSchema.parse(
+      await rpc(q, admin, "get_academy_delivery_evidence", [ids]),
     );
-    const row = list.find((p) => p.id === security.packageId);
-    expect(row?.curriculumImport?.id).toBe(security.importId);
-    expect(row?.course).toMatchObject({
-      id: security.courseId,
-      offerId: security.offerId,
-      slug: "security-plus-review",
-      offerState: "PUBLISHED",
-      saleMode: "REVIEW_ONLY",
-      currency: "GBP",
+  const scaleImports = async (prefix: string) =>
+    (
+      await q(
+        "select id from public.course_package_imports where package_key like $1 order by package_key",
+        [`${prefix}%`],
+      )
+    ).rows.map((r) => r.id as string);
+  // Bulk, minimal but constraint-valid rows (as the database owner, as a
+  // fixture): each curriculum import with its Academy package of the same
+  // key, revision and embedded curriculum, as an upload would leave them.
+  const seedLinkedPackages = (prefix: string, n: number) =>
+    q(
+      `with s as (select g, $1 || g as key, jsonb_build_object('packageKey', $1 || g, 'n', g) as cur
+                    from generate_series(1, $2::int) g),
+       imp as (insert into public.course_package_imports(package_key, package_revision, schema_version, content_hash, raw_package, created_by)
+               select key, 1, 'COURSE_PACKAGE_V1', encode(sha256(convert_to(key, 'UTF8')), 'hex'), cur, $3 from s returning id)
+       insert into public.academy_course_packages(package_key, package_revision, schema_version, content_hash, raw_package, created_by)
+       select key, 1, 'ACADEMY_COURSE_PACKAGE_V1', encode(sha256(convert_to('academy-' || key, 'UTF8')), 'hex'),
+              jsonb_build_object('curriculum', cur), $3 from s`,
+      [prefix, n, admin.id],
+    );
+
+  it("links published and unpublished Academy packages by recorded relationships, with offer terms", async () => {
+    const e = await evidence([security.importId, published.importId]);
+    const link = e.links.find(
+      (l) => l.curriculumImportId === security.importId,
+    );
+    expect(link).toMatchObject({
+      packageId: security.packageId,
+      status: "PUBLISHED",
+      curriculumStatus: "PUBLISHED",
+      course: {
+        id: security.courseId,
+        offerId: security.offerId,
+        slug: "security-plus-review",
+        offerState: "PUBLISHED",
+        saleMode: "REVIEW_ONLY",
+        currency: "GBP",
+      },
     });
-    const formats = row?.course?.formats ?? [];
     expect(
-      Object.fromEntries(formats.map((f) => [f.formatId, f.amountMinor])),
+      Object.fromEntries(
+        link!.course!.formats.map((f) => [f.formatId, f.amountMinor]),
+      ),
     ).toEqual(
       Object.fromEntries(
         security.prices.map((p) => [p.formatId, p.amountMinor]),
       ),
     );
-    expect(formats.map((f) => f.weeks)).toEqual(
-      [...formats.map((f) => f.weeks)].sort((a, b) => a - b),
-    );
-    for (const person of [learnerA, instructor, registrar, null])
-      await expect(
-        rpc(q, person, "list_academy_course_packages"),
-      ).rejects.toThrow();
+    const weeks = link!.course!.formats.map((f) => f.weeks);
+    expect(weeks).toEqual([...weeks].sort((a, b) => a - b));
+    expect(e.links).toHaveLength(2);
+    // An unknown curriculum import has no link.
+    expect((await evidence([randomUUID()])).links).toEqual([]);
   });
 
-  it("classifies a published review-only Academy course as individual learning, never cohort delivery", async () => {
-    const list = academyPackageListSchema.parse(
+  it("is available to course administrators only, with a bounded batch", async () => {
+    for (const person of [learnerA, instructor, registrar, null])
+      await expect(
+        rpc(q, person, "get_academy_delivery_evidence", [[security.importId]]),
+      ).rejects.toThrow();
+    const ids = Array.from({ length: 1001 }, () => randomUUID());
+    await expect(
+      rpc(q, admin, "get_academy_delivery_evidence", [ids]),
+    ).rejects.toThrow(/INVALID_INPUT/);
+    expect((await evidence(ids.slice(0, 1000))).links).toEqual([]);
+  });
+
+  it("classifies more than 100 Academy courses, beyond the old 100-package listing window", async () => {
+    await seedLinkedPackages("scale-a-course-", 150);
+    const ids = await scaleImports("scale-a-course-");
+    expect(ids).toHaveLength(150);
+    // The Academy register list stops at the 100 newest packages, so it
+    // cannot be used for classification...
+    const listed = academyPackageListSchema.parse(
       await rpc(q, admin, "list_academy_course_packages"),
     );
+    expect(listed).toHaveLength(100);
+    // ...while the evidence read classifies every requested import.
+    const e = await evidence(ids);
+    expect(new Set(e.links.map((l) => l.curriculumImportId))).toEqual(
+      new Set(ids),
+    );
+    expect(
+      e.links.every((l) => l.status === "UPLOADED" && l.course === null),
+    ).toBe(true);
+  });
+
+  it("classifies 1,200 courses in server-sized batches of set-based reads", async () => {
+    await seedLinkedPackages("scale-b-course-", 1200);
+    const ids = await scaleImports("scale-b-course-");
+    expect(ids).toHaveLength(1200);
+    const started = performance.now();
+    const batches: string[][] = [];
+    for (let i = 0; i < ids.length; i += ACADEMY_EVIDENCE_BATCH)
+      batches.push(ids.slice(i, i + ACADEMY_EVIDENCE_BATCH));
+    const results = await Promise.all(batches.map((b) => evidence(b)));
+    const elapsed = performance.now() - started;
+    const linked = new Set(
+      results.flatMap((r) => r.links.map((l) => l.curriculumImportId)),
+    );
+    expect(batches).toHaveLength(3);
+    expect(linked.size).toBe(1200);
+    console.info(
+      `[delivery-evidence] 1200 imports in 3 batches: ${Math.round(elapsed)} ms (PGlite)`,
+    );
+    expect(elapsed).toBeLessThan(30000);
+  }, 120000);
+
+  it("counts Academy packages not yet attached to any curriculum, excluding rejected ones", async () => {
+    const before = (await evidence([])).packagesWithoutCurriculum;
+    await q(
+      `insert into public.academy_course_packages(package_key, package_revision, schema_version, content_hash, raw_package, created_by)
+       values ('unattached-course', 1, 'ACADEMY_COURSE_PACKAGE_V1', encode(sha256('unattached'::bytea), 'hex'),
+               '{"curriculum":{"packageKey":"unattached-course"}}', $1)`,
+      [admin.id],
+    );
+    await q(
+      `insert into public.academy_course_packages(package_key, package_revision, schema_version, content_hash, raw_package, created_by,
+         status, rejected_by, rejected_at, rejected_reason)
+       values ('rejected-course', 1, 'ACADEMY_COURSE_PACKAGE_V1', encode(sha256('rejected'::bytea), 'hex'), '{"curriculum":{}}', $1,
+         'REJECTED', $1, now(), 'Rejected fixture')`,
+      [admin.id],
+    );
+    expect((await evidence([])).packagesWithoutCurriculum).toBe(before + 1);
+  });
+
+  it("classifies the published review-only course as individual learning, never cohort delivery", async () => {
     const key = (
       await q(
         "select package_key from public.course_package_imports where id=$1",
@@ -1469,6 +1570,7 @@ describe("admin course lifecycle from the Academy records (migration 066)", () =
         )
       ).rows[0].n,
     ).toBe(0);
+    const e = await evidence(revisions.map((r) => r.id));
     const catalogue = (
       await rpc<{ slug: string }[]>(q, null, "list_academy_catalogue")
     ).map((o) => o.slug);
@@ -1478,33 +1580,37 @@ describe("admin course lifecycle from the Academy records (migration 066)", () =
       offerActivations: [],
       liveOfferSlugs: [],
       cohorts: [],
-      academyPackages: list,
+      cohortEvidenceComplete: true,
+      academyPackages: e.links.map((l) => ({
+        id: l.packageId,
+        packageRevision: l.packageRevision,
+        status: l.status,
+        pendingDecisions: l.pendingDecisions,
+        curriculumImport: {
+          id: l.curriculumImportId,
+          status: l.curriculumStatus,
+        },
+        course: l.course,
+      })),
       academyCatalogueSlugs: catalogue,
     });
-    expect(life.delivery).toBe("ACADEMY");
-    expect(life.stages.map((s) => s.id)).toEqual([...ACADEMY_STAGE_IDS]);
-    expect(life.organisationStages).toBeNull();
+    expect(life.delivery).toBe("INDIVIDUAL");
+    expect(life.stages.map((s) => s.id)).toEqual([...INDIVIDUAL_STAGE_IDS]);
+    expect(life.cohortStages).toBeNull();
     expect(JSON.stringify(life)).not.toMatch(
       /\/admin\/cohorts|\/admin\/activation/,
     );
     expect(life.headline).toMatch(
       /^Published for review only — not on public sale/,
     );
-    expect(life.academy).toMatchObject({
+    expect(life.individual).toMatchObject({
       packageId: security.packageId,
-      slug: "security-plus-review",
       saleMode: "REVIEW_ONLY",
       publicSale: false,
       listed: false,
       href: `/admin/academy-course-engineering?packageId=${security.packageId}`,
     });
-    expect(life.academy?.formats).toHaveLength(security.prices.length);
-    expect(life.academy?.pendingDecisions.length).toBeGreaterThan(0);
-    const state = Object.fromEntries(life.stages.map((s) => [s.id, s.state]));
-    expect(state["academy-publish"]).toBe("complete");
-    expect(state["academy-access"]).toBe("complete");
-    expect(state["academy-gates"]).toBe("approval");
-    expect(state["academy-sale"]).toBe("blocked");
+    expect(life.individual?.formats).toHaveLength(security.prices.length);
     expect(isPubliclyLive(life)).toBe(false);
   });
 });

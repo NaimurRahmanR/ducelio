@@ -28,8 +28,8 @@ export const dynamic = "force-dynamic";
 
 // Every filter except "test" covers real courses only; acceptance-test
 // records are listed only under their own filter. The delivery filters use
-// the recorded track (see admin-course-lifecycle.ts); a course with both
-// tracks is counted under each.
+// the recorded delivery model (see admin-course-lifecycle.ts), never the
+// owner; a course offered through both models is counted under each.
 const FILTERS: {
   id: string;
   label: string;
@@ -39,16 +39,22 @@ const FILTERS: {
 }[] = [
   { id: "all", label: "All courses", states: null },
   {
-    id: "academy",
-    label: "Academy (B2C)",
+    id: "individual",
+    label: "Individual learning",
     states: null,
-    delivery: ["ACADEMY", "BOTH"],
+    delivery: ["INDIVIDUAL", "BOTH"],
   },
   {
-    id: "organisation",
-    label: "Organisation (B2B)",
+    id: "cohort",
+    label: "Cohort delivery",
     states: null,
-    delivery: ["ORGANISATION", "BOTH"],
+    delivery: ["COHORT", "BOTH"],
+  },
+  {
+    id: "undecided",
+    label: "No delivery model yet",
+    states: null,
+    delivery: ["NONE", "UNCONFIRMED"],
   },
   { id: "action", label: "Needs action", states: ["action", "attention"] },
   { id: "approval", label: "Awaiting approval", states: ["approval"] },
@@ -97,14 +103,14 @@ export default async function Page({
       name={actor.displayName}
       roles={actor.roles}
       title="Courses"
-      description="Every course, Academy (individual learners) and Organisation (cohort delivery), with what each one needs next."
+      description="Every course with its delivery model (individual learning, cohort delivery or both) and what each one needs next."
       actions={
         <>
           <Link
             href="/admin/academy-course-engineering"
             className="ac-button secondary"
           >
-            <Upload size={16} aria-hidden="true" /> Academy course (B2C)
+            <Upload size={16} aria-hidden="true" /> Individual-learning package
           </Link>
           <Link
             href="/admin/course-engineering"
@@ -128,7 +134,7 @@ export default async function Page({
       )}
       {catalogue.academyInProgress ? (
         <p className="ac-note">
-          {catalogue.academyInProgress} Academy{" "}
+          {catalogue.academyInProgress} individual-learning{" "}
           {catalogue.academyInProgress === 1 ? "package is" : "packages are"}{" "}
           still in upload, validation or review and not yet a course.{" "}
           <Link href="/admin/academy-course-engineering" className="ac-link">
@@ -224,15 +230,17 @@ export default async function Page({
                     )}
                     <Pill
                       tone={
-                        c.lifecycle.delivery === "ORGANISATION"
-                          ? "neutral"
-                          : "brand"
+                        c.lifecycle.delivery === "UNCONFIRMED"
+                          ? "warn"
+                          : c.lifecycle.delivery === "NONE"
+                            ? "neutral"
+                            : "brand"
                       }
                     >
                       {DELIVERY_LABELS[c.lifecycle.delivery]}
                     </Pill>
-                    {c.lifecycle.academy?.saleMode === "REVIEW_ONLY" &&
-                      c.lifecycle.academy.offerState === "PUBLISHED" && (
+                    {c.lifecycle.individual?.saleMode === "REVIEW_ONLY" &&
+                      c.lifecycle.individual.offerState === "PUBLISHED" && (
                         <Pill tone="warn">Review only · not on sale</Pill>
                       )}
                     <p className="ac-muted">
@@ -260,8 +268,11 @@ export default async function Page({
                   >
                     Open course
                   </Link>
-                  {c.lifecycle.academy && (
-                    <Link href={c.lifecycle.academy.href} className="ac-link">
+                  {c.lifecycle.individual && (
+                    <Link
+                      href={c.lifecycle.individual.href}
+                      className="ac-link"
+                    >
                       Open Academy Course Engineering
                     </Link>
                   )}

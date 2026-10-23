@@ -224,7 +224,7 @@ describe("read-only inspections", () => {
     expect(m.publish).not.toHaveBeenCalled();
   });
 
-  it("inspects an Academy course as individual learning, with no cohort advice", async () => {
+  it("inspects an individual-learning course with no cohort advice", async () => {
     const importId = "10000000-0000-4000-8000-0000000000a2";
     const packageId = "ef6b8a49-0000-4000-8000-000000000001";
     m.courses = [
@@ -287,9 +287,9 @@ describe("read-only inspections", () => {
     });
     expect(result.status).toBe("READ_RESULT");
     if (result.status !== "READ_RESULT") return;
-    expect(result.table.title).toContain("Academy · individual learners (B2C)");
+    expect(result.table.title).toContain("Individual learning");
     expect(result.table.rows.map((r) => r[0])).toContain(
-      "Academy: Approval gates",
+      "Individual learning: Approval gates",
     );
     const all = JSON.stringify(result.table);
     expect(all).not.toMatch(

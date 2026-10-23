@@ -261,10 +261,11 @@ async function runRead(
           rows: [["No course package with that key is visible to you."]],
         };
       const life = course.lifecycle;
-      if (life.academy) {
-        // Academy (B2C) courses are individual learning: never cohort advice.
-        const a = life.academy;
-        const organisation = life.organisationStages ?? [];
+      if (life.individual) {
+        // Individual learning: never cohort advice. Cohort-delivery stages
+        // are listed separately only when that model is also recorded.
+        const a = life.individual;
+        const cohortStages = life.cohortStages ?? [];
         const formats =
           a.formats === null
             ? "Format prices could not be read."
@@ -281,12 +282,12 @@ async function runRead(
           columns: ["Stage", "Status", "Detail"],
           rows: [
             ...life.stages.map((s) => [
-              `Academy: ${s.label}`,
+              `Individual learning: ${s.label}`,
               STATE_WORDS[s.state],
               s.summary,
             ]),
-            ...organisation.map((s) => [
-              `Organisation: ${s.label}`,
+            ...cohortStages.map((s) => [
+              `Cohort delivery: ${s.label}`,
               STATE_WORDS[s.state],
               s.summary,
             ]),
@@ -294,10 +295,10 @@ async function runRead(
           note: [
             life.headline,
             a.offerId
-              ? `Academy offer “${a.slug}” (${a.saleMode === "PUBLIC_SALE" ? "public sale" : "review only, not on public sale"}).`
-              : "No Academy offer yet.",
+              ? `Individual-learning offer “${a.slug}” (${a.saleMode === "PUBLIC_SALE" ? "public sale" : "review only, not on public sale"}).`
+              : "No individual-learning offer yet.",
             formats,
-            "Individual learning: learners confirm their own schedules; no cohort is needed for the Academy track.",
+            "Individual learning: learners confirm their own schedules; no cohort is needed for this delivery model.",
             `Manage it in Academy Course Engineering: ${a.href}`,
           ]
             .filter(Boolean)
