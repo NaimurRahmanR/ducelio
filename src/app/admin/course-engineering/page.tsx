@@ -1,3 +1,5 @@
+import { CourseRevisionForm } from "@/components/course-revision-form";
+import { validateAcademyCoursePackage } from "@/domain/academy-course-package";
 import {
   CourseOrganisationForm,
   CreateCourseOrganisationForm,
@@ -31,6 +33,8 @@ import {
 import { UnifiedCoursePublicationForm } from "@/components/unified-course-publication-form";
 import {
   getUnifiedCourseAgents,
+  getUnifiedRevisionSource,
+  getUnifiedAcademicResolutions,
   listUnifiedCoursePackages,
 } from "@/server/unified-course-engine";
 import type { AcademyReview } from "@/domain/academy-course-package";
@@ -293,6 +297,26 @@ export default async function Page({
     : actor.roles.some(
         (r) => r === "ACADEMIC_ADMIN" || r === "PLATFORM_ADMIN",
       ) || access.organisations.some((o) => o.canManage);
+  let revisedJson: string | null = null;
+  if (
+    selected &&
+    canManageSelected &&
+    ["VALIDATED", "UPLOADED"].includes(selected.status)
+  ) {
+    const source = await getUnifiedRevisionSource(selected.id).catch(
+      () => null,
+    );
+    const checked = validateAcademyCoursePackage(source);
+    if (checked.valid) {
+      const raw = structuredClone(checked.package);
+      raw.packageRevision += 1;
+      raw.curriculum.packageRevision = raw.packageRevision;
+      revisedJson = JSON.stringify(raw, null, 2);
+    }
+  }
+  const resolutions = selected
+    ? await getUnifiedAcademicResolutions(selected.id).catch(() => [])
+    : [];
   const curriculumPublished =
     selected?.curriculumImport?.status === "PUBLISHED";
   const step = !selected
@@ -409,10 +433,36 @@ export default async function Page({
           {selected.status === "REJECTED" ? (
             <p>This revision was rejected: {selected.rejectedReason}</p>
           ) : review ? (
-            <Review review={review} />
+            <>
+              <Review review={review} />
+              {resolutions.length > 0 && (
+                <>
+                  <h3>Recorded human decisions</h3>
+                  <ul>
+                    {resolutions.map((r) => (
+                      <li key={r.key}>
+                        <strong>{r.key}</strong>: {r.rationale} Evidence:{" "}
+                        {r.evidenceReference}. Reviewer {r.reviewedBy},{" "}
+                        {r.reviewedAt}.
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
           ) : (
             <Unavailable what="The review summary" />
           )}
+        </Panel>
+      )}
+
+      {selected && revisedJson && (
+        <Panel title="Resolve academic findings">
+          <CourseRevisionForm
+            sourceId={selected.id}
+            raw={revisedJson}
+            pending={review?.pendingDecisions ?? []}
+          />
         </Panel>
       )}
 

@@ -47,6 +47,8 @@ vi.mock("@/server/course-organisations", () => ({
 vi.mock("@/server/unified-course-engine", () => ({
   listUnifiedCoursePackages: m.list,
   getUnifiedCourseAgents: m.agents,
+  getUnifiedRevisionSource: async () => null,
+  getUnifiedAcademicResolutions: async () => [],
   publishUnifiedCourse: m.publish,
   configureUnifiedCourseAgents: m.configure,
 }));

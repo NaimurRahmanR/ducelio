@@ -10,7 +10,8 @@
     "202610280067",
     "202610290068",
     "202610300069",
-    "202610310070"
+    "202610310070",
+    "202611010071"
   ],
   "anonRpcs": [
     "apply_academy_commerce_operation",
@@ -57,6 +58,7 @@
     "get_my_academy_support_request",
     "get_my_academy_timetable",
     "get_my_unified_revision",
+    "get_unified_academic_resolutions",
     "get_unified_package_organisation",
     "grant_academy_entitlement",
     "import_course_package",
@@ -100,6 +102,7 @@
     "reserve_my_academy_support_interaction",
     "review_course_recovery",
     "revise_my_academy_schedule",
+    "revise_unified_course_package",
     "run_course_package_test",
     "set_agent_config",
     "set_course_coupon_active",

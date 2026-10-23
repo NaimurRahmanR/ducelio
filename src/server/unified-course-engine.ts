@@ -146,6 +146,81 @@ export async function getUnifiedCourseAgents(packageId: string) {
   return courseAgentsSchema.parse(data?.curriculum?.agentConfiguration);
 }
 
+// Restricted source for the operator's revision editor. Never used by learner
+// projections or teaching context builders (it contains protected assessments).
+export async function getUnifiedRevisionSource(packageId: string) {
+  const client = await clientForAdmin();
+  const { data, error } = await client.rpc(
+    "get_academy_course_package_content",
+    { p_package_id: z.uuid().parse(packageId) },
+  );
+  if (error) throw new AcademyError(academyErrorCode(error.message));
+  return data as Record<string, unknown>;
+}
+export async function reviseUnifiedCoursePackage(input: unknown) {
+  const client = await clientForAdmin();
+  const p = z
+    .strictObject({
+      sourceId: z.uuid(),
+      raw: z.unknown(),
+      requestKey: z.uuid(),
+      reason: z.string().trim().min(5).max(300),
+      resolutions: z
+        .array(
+          z.strictObject({
+            key: z.string().min(1).max(80),
+            evidenceReference: z.string().trim().min(10).max(300),
+            rationale: z.string().trim().min(20).max(1000),
+          }),
+        )
+        .max(50),
+    })
+    .parse(input);
+  const checked = validateAcademyCoursePackage(p.raw);
+  if (!checked.valid)
+    return {
+      valid: false as const,
+      issues: checked.errors.slice(0, 50).map((e) => `${e.path}: ${e.message}`),
+    };
+  const { data, error } = await client.rpc("revise_unified_course_package", {
+    p_source_id: p.sourceId,
+    p_raw_package: p.raw,
+    p_resolutions: p.resolutions,
+    p_review: checked.review,
+    p_request_key: p.requestKey,
+    p_reason: p.reason,
+  });
+  if (error)
+    throw new Error(
+      [
+        "ACADEMIC_EVIDENCE_REQUIRED",
+        "REVISION_CONFLICT",
+        "REQUEST_CONFLICT",
+      ].includes(error.message)
+        ? error.message
+        : "REVISION_REFUSED",
+    );
+  return { valid: true as const, packageId: z.uuid().parse(data) };
+}
+export async function getUnifiedAcademicResolutions(packageId: string) {
+  const client = await clientForAdmin();
+  const { data, error } = await client.rpc("get_unified_academic_resolutions", {
+    p_package_id: z.uuid().parse(packageId),
+  });
+  if (error) throw new AcademyError("SERVICE_UNAVAILABLE");
+  return z
+    .array(
+      z.object({
+        key: z.string(),
+        evidenceReference: z.string(),
+        rationale: z.string(),
+        reviewedBy: z.uuid(),
+        reviewedAt: z.string(),
+      }),
+    )
+    .parse(data);
+}
+
 export async function listUnifiedCourseCatalogue() {
   if (!config().configured) throw new AcademyError("SERVICE_UNAVAILABLE");
   const { data, error } = await (
