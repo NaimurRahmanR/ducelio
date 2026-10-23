@@ -87,6 +87,8 @@ vi.mock("@/server/supabase", () => ({
 import {
   createAcademyCheckout,
   createUnifiedCourseCheckout,
+  cancelMyUnifiedCheckout,
+  resumeMyUnifiedCheckout,
   reconcileAcademyOrder,
 } from "@/server/academy-commerce";
 import { processCommerceWebhook } from "@/server/commercial-v1-commerce/webhooks";
@@ -405,5 +407,126 @@ describe("unified checkout through real server, signed authorities and a test St
       m.cardConfigured = true;
       m.provider = provider;
     }
+  });
+});
+
+describe("unified cancellation through the real controller and provider boundary", () => {
+  it("expires and verifies an unpaid session before releasing its coupon reservation", async () => {
+    const c = await publishUnifiedTestCourse(q, "unified-cancel-server");
+    await rpc(q, people.admin, "create_course_coupon", [
+      "CANCEL-SERVER",
+      50,
+      new Date(Date.now() + 86400000).toISOString(),
+      1,
+      c.courseId,
+      "TEST ONLY server cancellation",
+    ]);
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-cancel-server",
+      "CANCEL-SERVER",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId;
+    const session = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [id],
+      )
+    ).rows[0].s as string;
+    expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+      ok: true,
+      code: "CANCELLED",
+    });
+    expect(await provider.retrieveCheckoutSession(session)).toMatchObject({
+      status: "EXPIRED",
+      paymentStatus: "UNPAID",
+      url: null,
+    });
+    expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+      ok: true,
+      code: "ALREADY_CANCELLED",
+    });
+    expect(await resumeMyUnifiedCheckout(id)).toMatchObject({
+      ok: false,
+      code: "INVALID_STATE",
+    });
+    const next = await createUnifiedCourseCheckout(
+      "unified-cancel-server",
+      "CANCEL-SERVER",
+    );
+    expect(next.ok).toBe(true);
+    if (next.ok && "orderId" in next) expect(next.orderId).not.toBe(id);
+  });
+  it("refuses to cancel a session paid during checkout", async () => {
+    await publishUnifiedTestCourse(q, "unified-cancel-paid");
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-cancel-paid",
+      "",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId;
+    const session = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [id],
+      )
+    ).rows[0].s as string;
+    provider.setSessionStatus(session, "PAID");
+    expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+      ok: false,
+      code: "PAYMENT_REVIEW_REQUIRED",
+    });
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.course_engine_checkout_cancellations where order_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("retains reservations on provider identity mismatch or outage", async () => {
+    await publishUnifiedTestCourse(q, "unified-cancel-outage");
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-cancel-outage",
+      "",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId;
+    const original = provider.retrieveCheckoutSession.bind(provider);
+    const spy = vi
+      .spyOn(provider, "retrieveCheckoutSession")
+      .mockImplementation(async (session) => ({
+        ...(await original(session)),
+        metadataOrderKind: null,
+      }));
+    try {
+      expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+        ok: false,
+        code: "CANCELLATION_MISMATCH",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    const outage = vi
+      .spyOn(provider, "retrieveCheckoutSession")
+      .mockRejectedValue(new Error("TEST provider outage"));
+    try {
+      await expect(cancelMyUnifiedCheckout(id)).rejects.toThrow(
+        "TEST provider outage",
+      );
+    } finally {
+      outage.mockRestore();
+    }
+    expect(
+      (await q("select state from public.academy_orders where id=$1", [id]))
+        .rows[0].state,
+    ).toBe("PENDING");
   });
 });

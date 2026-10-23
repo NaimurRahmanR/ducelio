@@ -1,3 +1,4 @@
+import { localPostgresDatabase } from "./local-postgres-database";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -5,7 +6,7 @@ import { testDatabase } from "./db-helper";
 import { people, rpc, seedPeople, type Query } from "./academy-fixture";
 import { publishUnifiedTestCourse } from "./unified-course-fixture";
 
-let db: PGlite;
+let db: PGlite | Awaited<ReturnType<typeof localPostgresDatabase>>;
 let q: Query;
 let course: Awaited<ReturnType<typeof publishUnifiedTestCourse>>;
 const keyId = randomUUID(),
@@ -80,7 +81,9 @@ function signed(
   ];
 }
 beforeAll(async () => {
-  db = await testDatabase({ supabaseDefaultPrivileges: true });
+  db = process.env.DUCELIO_TEST_POSTGRES_URL
+    ? await localPostgresDatabase()
+    : await testDatabase({ supabaseDefaultPrivileges: true });
   q = (sql, params) => db.query(sql, params) as ReturnType<Query>;
   await seedPeople(q);
   await q(
@@ -327,5 +330,170 @@ describe("unified course commerce on the real signed payment authority", () => {
             )
           ).rows[0],
         ).toEqual({ p: false, c: false });
+  });
+});
+
+describe("verified abandoned checkout and coupon release", () => {
+  let pending: Order;
+  const slug = "unified-cancellation-test",
+    session = "cs_cancelled_synthetic";
+  function operation(overrides: Record<string, unknown> = {}) {
+    const payload = JSON.stringify({
+      kind: "CANCEL_UNIFIED_CHECKOUT",
+      learnerId: learnerA.id,
+      orderId: pending.orderId,
+      sessionId: session,
+      amountMinor: pending.amountMinor,
+      currency: "GBP",
+      sessionStatus: "EXPIRED",
+      paymentStatus: "UNPAID",
+      ...overrides,
+    });
+    const issued = Math.floor(Date.now() / 1000),
+      expires = issued + 60;
+    const mac = createHmac("sha256", secret)
+      .update(
+        [
+          "DUCELIO_ACADEMY_COMMERCE_OPERATIONS_HMAC_SHA256_V1",
+          keyId,
+          payload,
+          String(issued),
+          String(expires),
+        ].join("\n"),
+      )
+      .digest("hex");
+    return [keyId, payload, issued, expires, mac];
+  }
+  it("retains reservations on unsigned, foreign, payable or mismatched cancellation claims", async () => {
+    const c = await publishUnifiedTestCourse(q, slug);
+    await coupon("CANCEL-HALF", 50, 1, c.courseId);
+    pending = await buy(learnerA, "CANCEL-HALF", slug);
+    await rpc(q, learnerA, "attach_academy_checkout_session", [
+      pending.orderId,
+      session,
+    ]);
+    const bad = operation();
+    bad[4] = "0".repeat(64);
+    await expect(
+      rpc(q, learnerA, "apply_academy_commerce_operation", bad),
+    ).rejects.toThrow("UNTRUSTED_CLAIM");
+    expect(
+      await rpc(q, learnerB, "apply_academy_commerce_operation", operation()),
+    ).toMatchObject({ ok: false, code: "NOT_FOUND_OR_FORBIDDEN" });
+    for (const overrides of [
+      { sessionStatus: "OPEN" },
+      { paymentStatus: "PAID" },
+      { sessionId: "cs_other_synthetic" },
+      { amountMinor: 1 },
+      { currency: "USD" },
+    ])
+      expect(
+        await rpc(
+          q,
+          learnerA,
+          "apply_academy_commerce_operation",
+          operation(overrides),
+        ),
+      ).toMatchObject({ ok: false, code: "CANCELLATION_MISMATCH" });
+    expect(await buy(learnerB, "CANCEL-HALF", slug)).toMatchObject({
+      ok: false,
+      code: "COUPON_UNAVAILABLE",
+    });
+  });
+  it("cancels atomically, replays once and preserves immutable release evidence", async () => {
+    expect(
+      await rpc(q, learnerA, "apply_academy_commerce_operation", operation()),
+    ).toMatchObject({ ok: true, code: "CANCELLED" });
+    expect(
+      await rpc(q, learnerA, "apply_academy_commerce_operation", operation()),
+    ).toMatchObject({ ok: true, code: "ALREADY_CANCELLED" });
+    expect(
+      (
+        await q("select state from public.academy_orders where id=$1", [
+          pending.orderId,
+        ])
+      ).rows[0].state,
+    ).toBe("CANCELLED");
+    await expect(
+      q("delete from public.course_engine_checkout_cancellations"),
+    ).rejects.toThrow("IMMUTABLE_HISTORY");
+    await expect(
+      q("update public.academy_orders set state='PENDING' where id=$1", [
+        pending.orderId,
+      ]),
+    ).rejects.toThrow("IMMUTABLE_HISTORY");
+  });
+  it("allows a fresh reservation while retaining the released commercial record", async () => {
+    const next = await buy(learnerA, "CANCEL-HALF", slug);
+    expect(next.ok).toBe(true);
+    expect(next.orderId).not.toBe(pending.orderId);
+    expect(await buy(learnerB, "CANCEL-HALF", slug)).toMatchObject({
+      ok: false,
+      code: "COUPON_UNAVAILABLE",
+    });
+    const couponId = (
+      await q(
+        "select id from public.course_engine_coupons where code='CANCEL-HALF'",
+      )
+    ).rows[0].id;
+    const reports = await rpc<{ state: string }[]>(
+      q,
+      admin,
+      "get_course_coupon_redemptions",
+      [couponId],
+    );
+    expect(reports.map((r) => r.state).sort()).toEqual([
+      "RELEASED",
+      "RESERVED",
+    ]);
+    const orders = await rpc<{ id: string; state: string }[]>(
+      q,
+      learnerA,
+      "list_my_unified_course_orders",
+    );
+    expect(orders.find((o) => o.id === pending.orderId)?.state).toBe(
+      "CANCELLED",
+    );
+    expect(
+      (
+        await rpc<{ id: string }[]>(
+          q,
+          learnerB,
+          "list_my_unified_course_orders",
+        )
+      ).some((o) => o.id === pending.orderId),
+    ).toBe(false);
+  });
+  it("never grants access from a cancelled order, retaining late payment evidence for reconciliation", async () => {
+    expect(
+      await rpc(
+        q,
+        null,
+        "fulfill_academy_order",
+        signed(
+          pending.orderId,
+          pending.amountMinor,
+          "PAID",
+          session,
+          "evt_cancelled_payment_synthetic",
+        ),
+      ),
+    ).toMatchObject({ ok: false, code: "CANCELLED_PAYMENT_REVIEW" });
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_entitlements where order_id=$1",
+          [pending.orderId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_payment_events where order_id=$1 and status='PAID'",
+          [pending.orderId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
   });
 });

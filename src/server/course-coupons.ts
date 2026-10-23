@@ -36,7 +36,7 @@ const redemptionSchema = z.strictObject({
   listAmountMinor: z.number().int(),
   discountAmountMinor: z.number().int(),
   createdAt: z.string(),
-  state: z.enum(["RESERVED", "REDEEMED"]),
+  state: z.enum(["RESERVED", "REDEEMED", "RELEASED"]),
 });
 async function couponRpc<T>(
   name: string,

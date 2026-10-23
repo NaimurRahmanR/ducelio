@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createHmac } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDatabaseStatements } from "./db-helper";
@@ -29,6 +29,8 @@ const template = `ducelio_unified_template_${suffix}`;
 const created: string[] = [];
 let freeCoupon: string, halfCoupon: string, packageId: string;
 const reason = "Synthetic real PostgreSQL race fixture";
+const controllerKeyId = randomUUID(),
+  controllerSecret = randomBytes(32);
 async function connect(database: string) {
   const url = new URL(endpoint!);
   url.pathname = "/" + database;
@@ -134,6 +136,10 @@ describe.skipIf(!endpoint)(
           await db.query(sql);
         const q: Query = (sql, args) => db.query(sql, args);
         await seedPeople(q);
+        await db.query(
+          "select commercial_v1_commerce_private.install_controller_key($1,$2::bytea)",
+          [controllerKeyId, controllerSecret],
+        );
         const course = await publishUnifiedTestCourse(q, "unified-race-test");
         const expiry = new Date(Date.now() + 86400000).toISOString();
         freeCoupon = await rpc<string>(
@@ -413,6 +419,192 @@ describe.skipIf(!endpoint)(
             db,
             "select count(*)::int n from public.course_engine_memberships where organisation_id=$1 and active and role='OWNER'",
             [org],
+          )
+        )[0].n,
+      ).toBe(1);
+    });
+    it("cancels once across concurrent verified cancellation requests", async () => {
+      const db = await clone();
+      const purchase = await call(
+        db,
+        people.learnerA.auth,
+        "select public.create_unified_course_order('unified-race-test','RACE-HALF') r",
+        [],
+      );
+      const session = "cs_cancel_race_synthetic";
+      await call(
+        db,
+        people.learnerA.auth,
+        "select public.attach_academy_checkout_session($1,$2) r",
+        [purchase.orderId, session],
+      );
+      const issued = Math.floor(Date.now() / 1000),
+        expires = issued + 60;
+      const payload = JSON.stringify({
+        kind: "CANCEL_UNIFIED_CHECKOUT",
+        learnerId: people.learnerA.id,
+        orderId: purchase.orderId,
+        sessionId: session,
+        amountMinor: purchase.amountMinor,
+        currency: "GBP",
+        sessionStatus: "EXPIRED",
+        paymentStatus: "UNPAID",
+      });
+      const mac = createHmac("sha256", controllerSecret)
+        .update(
+          [
+            "DUCELIO_ACADEMY_COMMERCE_OPERATIONS_HMAC_SHA256_V1",
+            controllerKeyId,
+            payload,
+            String(issued),
+            String(expires),
+          ].join("\n"),
+        )
+        .digest("hex");
+      const args = [controllerKeyId, payload, issued, expires, mac],
+        sql =
+          "select public.apply_academy_commerce_operation($1,$2,$3,$4,$5) r";
+      const result = await race(
+        db,
+        "select id from public.academy_orders where id=$1 for update",
+        [purchase.orderId],
+        [
+          () => call(db, people.learnerA.auth, sql, args),
+          () => call(db, people.learnerA.auth, sql, args),
+        ],
+      );
+      expect(result.map((r) => r.code).sort()).toEqual([
+        "ALREADY_CANCELLED",
+        "CANCELLED",
+      ]);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.course_engine_checkout_cancellations",
+          )
+        )[0].n,
+      ).toBe(1);
+    });
+    it("serialises cancellation against signed payment fulfilment without duplicating or reopening access", async () => {
+      const db = await clone();
+      const purchase = await call(
+        db,
+        people.learnerA.auth,
+        "select public.create_unified_course_order('unified-race-test','RACE-HALF') r",
+        [],
+      );
+      const session = "cs_cancel_paid_race_synthetic";
+      await call(
+        db,
+        people.learnerA.auth,
+        "select public.attach_academy_checkout_session($1,$2) r",
+        [purchase.orderId, session],
+      );
+      const issued = Math.floor(Date.now() / 1000),
+        expires = issued + 60;
+      const payload = JSON.stringify({
+        kind: "CANCEL_UNIFIED_CHECKOUT",
+        learnerId: people.learnerA.id,
+        orderId: purchase.orderId,
+        sessionId: session,
+        amountMinor: purchase.amountMinor,
+        currency: "GBP",
+        sessionStatus: "EXPIRED",
+        paymentStatus: "UNPAID",
+      });
+      const cancelMac = createHmac("sha256", controllerSecret)
+        .update(
+          [
+            "DUCELIO_ACADEMY_COMMERCE_OPERATIONS_HMAC_SHA256_V1",
+            controllerKeyId,
+            payload,
+            String(issued),
+            String(expires),
+          ].join("\n"),
+        )
+        .digest("hex");
+      const paidMac = createHmac("sha256", controllerSecret)
+        .update(
+          [
+            "DUCELIO_ACADEMY_FULFILLMENT_HMAC_SHA256_V1",
+            "ACADEMY_COMMERCE_V1",
+            controllerKeyId,
+            "STRIPE",
+            purchase.orderId,
+            session,
+            "evt_cancel_paid_race",
+            String(purchase.amountMinor),
+            "GBP",
+            "PAID",
+            String(issued),
+            String(expires),
+          ].join("\n"),
+        )
+        .digest("hex");
+      await race(
+        db,
+        "select id from public.academy_orders where id=$1 for update",
+        [purchase.orderId],
+        [
+          () =>
+            call(
+              db,
+              people.learnerA.auth,
+              "select public.apply_academy_commerce_operation($1,$2,$3,$4,$5) r",
+              [controllerKeyId, payload, issued, expires, cancelMac],
+            ),
+          () =>
+            call(
+              db,
+              people.learnerA.auth,
+              "select public.fulfill_academy_order($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) r",
+              [
+                controllerKeyId,
+                purchase.orderId,
+                "STRIPE",
+                session,
+                "evt_cancel_paid_race",
+                purchase.amountMinor,
+                "GBP",
+                "PAID",
+                issued,
+                expires,
+                paidMac,
+              ],
+            ),
+        ],
+      );
+      const state = (
+        await query(db, "select state from public.academy_orders where id=$1", [
+          purchase.orderId,
+        ])
+      )[0].state;
+      expect(["CANCELLED", "FULFILLED"]).toContain(state);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.academy_entitlements where order_id=$1",
+            [purchase.orderId],
+          )
+        )[0].n,
+      ).toBe(state === "FULFILLED" ? 1 : 0);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.course_engine_checkout_cancellations where order_id=$1",
+            [purchase.orderId],
+          )
+        )[0].n,
+      ).toBe(state === "CANCELLED" ? 1 : 0);
+      expect(
+        (
+          await query(
+            db,
+            "select count(*)::int n from public.academy_payment_events where order_id=$1",
+            [purchase.orderId],
           )
         )[0].n,
       ).toBe(1);

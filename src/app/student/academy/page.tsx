@@ -1,3 +1,6 @@
+import { CourseCheckoutRecovery } from "@/components/course-checkout-recovery";
+import { listMyUnifiedCourseOrders } from "@/server/academy-commerce";
+import { listMyCourseOrganisations } from "@/server/course-organisations";
 import Link from "next/link";
 import { RequestRecoveryForm } from "@/components/course-recovery-forms";
 import { listMyRecoveries } from "@/server/unified-course-activation";
@@ -292,6 +295,8 @@ export default async function Page({
   await requireActor("student");
   const actor = await requireStudentPrincipal();
   const params = await searchParams;
+  const orders = await listMyUnifiedCourseOrders().catch(() => null);
+  const organisations = await listMyCourseOrganisations().catch(() => []);
   const enrolments = await listMyAcademyEnrolments().catch(() => null);
   const selected =
     enrolments?.find((e) => e.enrolmentId === params.enrolmentId) ??
@@ -318,6 +323,39 @@ export default async function Page({
         <p className="muted">Self-paced courses on a timetable you choose.</p>
       </div>
       <div className="section-content acad-learner">
+        {organisations.length > 0 && (
+          <p>
+            <Link className="button secondary" href="/admin/course-engineering">
+              Open organisation Course Engineering
+            </Link>
+          </p>
+        )}
+        {orders?.some((o) => o.state === "PENDING") && (
+          <Card>
+            <h2>Unfinished purchases</h2>
+            <p>
+              Resume a checkout, or cancel it after the payment session is
+              verified unpaid and expired. A purchase activates only after
+              payment is confirmed and you choose your timetable.
+            </p>
+            <ul>
+              {orders
+                .filter((o) => o.state === "PENDING")
+                .map((o) => (
+                  <li key={o.id}>
+                    <h3>{o.title}</h3>
+                    <p>
+                      {new Intl.NumberFormat("en-GB", {
+                        style: "currency",
+                        currency: o.currency,
+                      }).format(o.amountMinor / 100)}
+                    </p>
+                    <CourseCheckoutRecovery orderId={o.id} />
+                  </li>
+                ))}
+            </ul>
+          </Card>
+        )}
         {enrolments === null ? (
           <Card>
             <p role="alert">
