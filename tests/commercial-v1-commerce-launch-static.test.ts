@@ -27,9 +27,10 @@ describe("PR24 launch UX static boundaries", () => {
       "STANDARD_6_WEEK",
     ])
       expect(adminForms).toContain(plan);
-    expect(coursePage).toContain(
+    expect(coursePage).not.toContain(
       "DELIVERY_PLAN_DEFINITIONS[offer.deliveryPlan]",
     );
+    expect(coursePage).toContain("listUnifiedCourseCatalogue");
   });
 
   it("reserves free campaign creation for the explicit reviewer kind", () => {
@@ -43,9 +44,7 @@ describe("PR24 launch UX static boundaries", () => {
     expect(buyForm).toContain("required={!paymentAvailable}");
     expect(buyForm).toContain("Apply complimentary code");
     expect(buyForm).toContain("Continue to secure checkout");
-    expect(coursePage.replace(/\s+/g, " ")).toContain(
-      "Only a valid complimentary reviewer code can grant access",
-    );
+    expect(coursePage).not.toContain("commercial_v1_campaign");
   });
 
   it("never rewrites an existing order amount during campaign redemption", () => {

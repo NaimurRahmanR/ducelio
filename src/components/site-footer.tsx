@@ -58,8 +58,8 @@ export function SiteFooter({
               <div>
                 <dt>Course enquiries</dt>
                 <dd>
-                  Each course page sets out its format, price and cohort start
-                  date.
+                  Each course page sets out its price and personal timetable
+                  options.
                 </dd>
               </div>
               <div>

@@ -322,7 +322,8 @@ describe("catalogue card", () => {
         },
       }),
     );
-    expect(html).toContain("From £399.00");
+    expect(html).toContain("£399.00");
+    expect(html).not.toContain("From ");
     expect(html).toContain("2 wk · 12 wk");
     expect(html).not.toMatch(/cohort/i);
   });

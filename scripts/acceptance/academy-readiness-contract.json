@@ -6,12 +6,14 @@
     "202610250063",
     "202610260064",
     "202610260065",
-    "202610270066"
+    "202610270066",
+    "202610280067"
   ],
   "anonRpcs": [
     "apply_academy_commerce_operation",
     "fulfill_academy_order",
-    "list_academy_catalogue"
+    "list_academy_catalogue",
+    "list_unified_course_catalogue"
   ],
   "baselineRpcs": ["current_academic_activity_state"],
   "rpcs": [
@@ -48,6 +50,8 @@
     "list_my_academy_enrolments",
     "list_my_academy_professor_turns",
     "list_my_academy_support_turns",
+    "list_unified_course_catalogue",
+    "list_unified_course_packages",
     "mark_academy_course_package_validated",
     "mark_academy_lab_submission",
     "open_my_academy_lab_support",
@@ -56,6 +60,7 @@
     "preview_my_academy_schedule",
     "preview_my_academy_schedule_revision",
     "publish_academy_course",
+    "publish_unified_course",
     "read_my_academy_professor_context",
     "read_my_academy_support_context",
     "record_late_provider_execution_usage",
@@ -71,7 +76,8 @@
     "start_my_academy_assessment",
     "submit_my_academy_attempt",
     "submit_my_academy_lab",
-    "upload_academy_course_package"
+    "upload_academy_course_package",
+    "upload_unified_course_package"
   ],
   "privateSchemas": ["academy_private", "execution_reliability_private"]
 }

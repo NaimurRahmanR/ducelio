@@ -36,7 +36,7 @@ function Outcome({ state }: { state: AcademyAdminState }) {
       {state.packageId && !state.error && (
         <Link
           className="ac-link"
-          href={`/admin/academy-course-engineering?packageId=${state.packageId}`}
+          href={`/admin/course-engineering?packageId=${state.packageId}`}
         >
           Open the review →
         </Link>

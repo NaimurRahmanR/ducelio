@@ -116,11 +116,7 @@ const PAGES: [string, Access, () => Promise<{ default: unknown }>][] = [
     () => import("@/app/admin/commerce/page"),
   ],
   ["/admin/cohorts", "COURSE_ADMIN", () => import("@/app/admin/cohorts/page")],
-  [
-    "/admin/academy-course-engineering",
-    "COURSE_ADMIN",
-    () => import("@/app/admin/academy-course-engineering/page"),
-  ],
+  // The old Academy route is a parameter-validated redirect; covered in unified UI tests.
   [
     "/admin/course-engineering",
     "COURSE_ADMIN",

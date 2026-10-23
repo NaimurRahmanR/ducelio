@@ -29,6 +29,9 @@ vi.mock("@/server/commercial-v1-commerce", () => ({
 vi.mock("@/server/identity", () => ({ getCurrentActor: mocks.actor }));
 
 import Home from "@/app/page";
+vi.mock("@/server/unified-course-engine", () => ({
+  listUnifiedCourseCatalogue: mocks.offers,
+}));
 import CoursesPage from "@/app/courses/page";
 import { formatCohortStartDate } from "@/domain/commercial-v1-commerce";
 
@@ -37,7 +40,23 @@ const offer = (n: number) => ({
   title: `Course ${n}`,
   examinationBody: "Example Body",
   qualificationName: `Qualification ${n}`,
-  priceAmountMinor: 10000,
+  offerId: "10000000-0000-4000-8000-000000000101",
+  description: "Synthetic course",
+  qualificationPreparation: null,
+  demoContent: true,
+  lessons: 2,
+  labs: 1,
+  assessments: 1,
+  formats: [
+    {
+      formatId: "STANDARD_6W",
+      weeks: 6,
+      sessionMinutes: 60,
+      minStudyDays: 2,
+      maxStudyDays: 7,
+      amountMinor: 10000,
+    },
+  ],
   currency: "GBP",
   summary: null,
   cohortStartsOn: "2036-11-02",
@@ -314,7 +333,14 @@ describe("homepage course discovery", () => {
 
   it("shows any publisher's published offers, not only Ducelio courses", async () => {
     mocks.offers.mockResolvedValue([
-      { ...offer(1), examinationBody: "Partner Organisation" },
+      {
+        ...offer(1),
+        qualificationPreparation: {
+          examinationBody: "Partner Organisation",
+          qualificationName: "External qualification",
+          disclaimer: "Preparation only; no external award.",
+        },
+      },
     ]);
     const plain = text(renderToStaticMarkup(await CoursesPage()));
     expect(plain).toContain("Partner Organisation");
@@ -391,21 +417,22 @@ describe("public catalogue", () => {
     expect(hrefs(html).filter((h) => h.startsWith("/courses/"))).toHaveLength(
       4,
     );
-    expect(text(html)).toContain("Cohort start date 2 November 2036");
+    expect(text(html)).toContain("your own timetable");
+    expect(text(html)).not.toContain("Cohort start date");
   });
 
   it("says when no course is open", async () => {
     mocks.offers.mockResolvedValue([]);
     const html = renderToStaticMarkup(await CoursesPage());
     expect(html).toContain('role="status"');
-    expect(text(html)).toContain("No courses are open for enrolment right now");
+    expect(text(html)).toContain("No courses are published yet.");
   });
 
   it("reports an outage distinctly from an empty catalogue", async () => {
     mocks.offers.mockRejectedValue(new Error("Courses could not be loaded."));
     const html = renderToStaticMarkup(await CoursesPage());
     expect(html).toContain('role="alert"');
-    expect(text(html)).toContain("Courses could not be loaded right now");
+    expect(text(html)).toContain("The catalogue is temporarily unavailable.");
     expect(text(html)).not.toContain("No courses are open");
   });
 });
@@ -427,8 +454,8 @@ describe("cohort start date", () => {
     ]);
     const html = renderToStaticMarkup(await CoursesPage());
     const plain = text(html);
-    expect(plain).toContain("Cohort start date 1 January 2020");
-    expect(html).toContain('<time dateTime="2020-01-01">1 January 2020</time>');
+    expect(plain).not.toContain("Cohort start date");
+    expect(html).not.toContain('dateTime="2020-01-01"');
     expect(plain).not.toMatch(/next cohort|cohort started|starts soon/i);
   });
 });
