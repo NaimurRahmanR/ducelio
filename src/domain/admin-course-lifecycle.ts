@@ -1,9 +1,21 @@
-// The admin control centre's course lifecycle: Import -> Validate ->
-// Configure -> Test -> Publish curriculum -> Activate delivery -> Publish
-// offer -> Public catalogue. Pure: it only interprets the governed admin
-// reads (course packages, activations, offer activations, the public offer
-// projection and the cohort workspace). It never decides authority; every
-// stage's real gate stays in its own database RPC.
+// The admin control centre's course lifecycle. Pure: it only interprets the
+// governed admin reads (course packages, activations, offer activations, the
+// public offer projections, the cohort workspace and the Academy package
+// register). It never decides authority; every stage's real gate stays in
+// its own database RPC.
+//
+// One curriculum can have two independent delivery tracks:
+//  - Organisation (B2B): Import -> Validate -> Configure -> Test -> Publish
+//    curriculum -> Activate delivery (cohort) -> Publish offer -> Public
+//    catalogue.
+//  - Academy (B2C, individual learning): Upload -> Validate -> Review ->
+//    Prepare curriculum -> Publish course and offer -> Learner access ->
+//    Approval gates -> Public sale. No cohort, instructor or activation.
+// The track is never guessed from a title or key: a course is an Academy
+// course only when an Academy package's recorded curriculum import is one
+// of the course's own revisions (list_academy_course_packages
+// curriculumImport.id), and it has organisation delivery only when an
+// activation, an organisation offer or a non-demo cohort exists for it.
 
 export const PACKAGE_STATUSES = [
   "IMPORTED",
@@ -72,7 +84,7 @@ export type StageState =
   | "blocked" // an earlier stage must finish first
   | "attention"; // something is inconsistent and needs investigation
 
-export type StageId =
+export type OrganisationStageId =
   | "import"
   | "validate"
   | "configure"
@@ -81,6 +93,18 @@ export type StageId =
   | "activate"
   | "publish-offer"
   | "catalogue";
+
+export type AcademyStageId =
+  | "academy-upload"
+  | "academy-validate"
+  | "academy-review"
+  | "academy-curriculum"
+  | "academy-publish"
+  | "academy-access"
+  | "academy-gates"
+  | "academy-sale";
+
+export type StageId = OrganisationStageId | AcademyStageId;
 
 export type LifecycleStage = {
   id: StageId;
@@ -115,21 +139,130 @@ export const STAGE_LABELS: Record<StageId, string> = {
   activate: "Activate delivery",
   "publish-offer": "Publish offer",
   catalogue: "Public catalogue",
+  "academy-upload": "Upload package",
+  "academy-validate": "Validate package",
+  "academy-review": "Review content",
+  "academy-curriculum": "Prepare curriculum",
+  "academy-publish": "Publish course and offer",
+  "academy-access": "Learner access",
+  "academy-gates": "Approval gates",
+  "academy-sale": "Public sale and catalogue",
+};
+
+export const ORGANISATION_STAGE_IDS: readonly OrganisationStageId[] = [
+  "import",
+  "validate",
+  "configure",
+  "test",
+  "publish-curriculum",
+  "activate",
+  "publish-offer",
+  "catalogue",
+];
+export const ACADEMY_STAGE_IDS: readonly AcademyStageId[] = [
+  "academy-upload",
+  "academy-validate",
+  "academy-review",
+  "academy-curriculum",
+  "academy-publish",
+  "academy-access",
+  "academy-gates",
+  "academy-sale",
+];
+
+// "ACADEMY": individual learners (B2C) only. "ORGANISATION": cohort
+// delivery (B2B) only. "BOTH": one shared curriculum with both tracks.
+export type CourseDelivery = "ACADEMY" | "ORGANISATION" | "BOTH";
+export const DELIVERY_LABELS: Record<CourseDelivery, string> = {
+  ACADEMY: "Academy · individual learners (B2C)",
+  ORGANISATION: "Organisation · cohort delivery (B2B)",
+  BOTH: "Academy (B2C) and Organisation (B2B)",
+};
+
+export type AcademyLifecycleFormat = {
+  formatId: string;
+  weeks: number;
+  sessionMinutes: number;
+  minStudyDays: number;
+  maxStudyDays: number;
+  amountMinor: number;
+};
+
+// One Academy package from the admin register, reduced to what the
+// lifecycle reads. formats/currency are undefined when the database does
+// not return the offer terms (migration 066 not applied).
+export type LifecycleAcademyPackage = {
+  id: string;
+  packageRevision: number;
+  status: "UPLOADED" | "VALIDATED" | "PUBLISHED" | "REJECTED";
+  pendingDecisions: string[];
+  curriculumImport: { id: string; status: string } | null;
+  course: {
+    id: string;
+    offerId: string | null;
+    slug: string | null;
+    offerState: "PUBLISHED" | "ARCHIVED" | null;
+    saleMode: "REVIEW_ONLY" | "PUBLIC_SALE" | null;
+    currency?: string | null;
+    formats?: AcademyLifecycleFormat[];
+  } | null;
+};
+
+export type AcademyTrack = {
+  packageId: string;
+  packageRevision: number;
+  packageStatus: LifecycleAcademyPackage["status"];
+  pendingDecisions: string[];
+  courseId: string | null;
+  offerId: string | null;
+  slug: string | null;
+  offerState: "PUBLISHED" | "ARCHIVED" | null;
+  saleMode: "REVIEW_ONLY" | "PUBLIC_SALE" | null;
+  currency: string | null;
+  // null: the offer terms could not be read (see LifecycleAcademyPackage).
+  formats: AcademyLifecycleFormat[] | null;
+  // In the public Academy catalogue projection; null when unreadable.
+  listed: boolean | null;
+  // On public sale and confirmed in the Academy catalogue.
+  publicSale: boolean;
+  href: string;
 };
 
 export type CourseLifecycle = {
   packageKey: string;
+  delivery: CourseDelivery;
   current: LifecyclePackage;
   revisions: LifecyclePackage[];
   activations: LifecycleActivation[];
   cohorts: (LifecycleCohort & { purpose: CohortPurpose })[];
+  // Organisation (B2B) offers, and those in the public course catalogue.
   offerSlugs: string[];
   liveSlugs: string[];
+  // The primary track: Academy stages for ACADEMY/BOTH, else organisation.
   stages: LifecycleStage[];
+  // The organisation track; null for an Academy-only course.
+  organisationStages: LifecycleStage[] | null;
+  academy: AcademyTrack | null;
   headline: string;
   stage: StageId;
   stageState: StageState;
 };
+
+export const academyEngineering = (packageId: string) =>
+  `/admin/academy-course-engineering?packageId=${packageId}`;
+
+// True when the course can be bought publicly on either track.
+export const isPubliclyLive = (life: CourseLifecycle) =>
+  life.liveSlugs.length > 0 || life.academy?.publicSale === true;
+
+export function academyFormatPrice(
+  format: AcademyLifecycleFormat,
+  currency: string | null,
+) {
+  return currency
+    ? `${currency} ${(format.amountMinor / 100).toFixed(2)}`
+    : `${format.amountMinor} (minor units)`;
+}
 
 const engineering = (importId: string) =>
   `/admin/course-engineering?importId=${importId}`;
@@ -159,6 +292,10 @@ export function deriveCourseLifecycle(input: {
   liveOfferSlugs: readonly string[] | null; // null: catalogue unreadable
   cohorts: readonly LifecycleCohort[];
   testReadiness?: TestReadiness | null;
+  // The Academy package register; null or absent when it could not be read.
+  academyPackages?: readonly LifecycleAcademyPackage[] | null;
+  // Slugs in the public Academy catalogue; null when unreadable.
+  academyCatalogueSlugs?: readonly string[] | null;
 }): CourseLifecycle {
   const current = currentRevision(input.revisions);
   const revisions = [...input.revisions].sort(
@@ -384,14 +521,7 @@ export function deriveCourseLifecycle(input: {
     );
   }
 
-  const focus =
-    stages.find((x) => x.state === "attention") ??
-    stages.find((x) => x.state === "action") ??
-    stages.find((x) => x.state === "approval") ??
-    stages.find((x) => x.state === "blocked") ??
-    stages[stages.length - 1];
-
-  return {
+  const base = {
     packageKey: current.packageKey,
     current,
     revisions,
@@ -399,12 +529,295 @@ export function deriveCourseLifecycle(input: {
     cohorts,
     offerSlugs,
     liveSlugs,
-    stages,
-    headline:
-      focus.state === "complete" ? "Live in the catalogue" : focus.summary,
+  };
+  const academyPackage = linkedAcademyPackage(
+    revisions,
+    current,
+    input.academyPackages ?? [],
+  );
+  const organisation =
+    activations.length > 0 ||
+    offerSlugs.length > 0 ||
+    cohorts.some((c) => c.purpose !== "DEMO");
+
+  if (!academyPackage) {
+    // An unreadable Academy register must not turn an Academy course into
+    // cohort advice: without it the delivery track is unconfirmed.
+    const i = stages.findIndex((x) => x.id === "activate");
+    if (
+      input.academyPackages === null &&
+      !organisation &&
+      i >= 0 &&
+      stages[i].state === "action"
+    )
+      stages[i] = stage(
+        "activate",
+        "attention",
+        "The Academy course register could not be read, so whether this curriculum is delivered to individual learners (Academy) or through cohorts is unconfirmed. Confirm the delivery track before creating a cohort.",
+        {
+          label: "Open Academy Course Engineering",
+          href: "/admin/academy-course-engineering",
+        },
+      );
+    const focus = focusOf(stages);
+    return {
+      ...base,
+      delivery: "ORGANISATION",
+      stages,
+      organisationStages: stages,
+      academy: null,
+      headline:
+        focus.state === "complete" ? "Live in the catalogue" : focus.summary,
+      stage: focus.id,
+      stageState: focus.state,
+    };
+  }
+
+  const academy = academyLifecycle(
+    academyPackage,
+    input.academyCatalogueSlugs ?? null,
+  );
+  const focus = focusOf(academy.stages);
+  return {
+    ...base,
+    delivery: organisation ? "BOTH" : "ACADEMY",
+    stages: academy.stages,
+    organisationStages: organisation ? stages : null,
+    academy: academy.track,
+    headline: academyHeadline(academy.track, focus),
     stage: focus.id,
     stageState: focus.state,
   };
+}
+
+function focusOf(stages: readonly LifecycleStage[]) {
+  return (
+    stages.find((x) => x.state === "attention") ??
+    stages.find((x) => x.state === "action") ??
+    stages.find((x) => x.state === "approval") ??
+    stages.find((x) => x.state === "blocked") ??
+    stages[stages.length - 1]
+  );
+}
+
+// The Academy package whose recorded curriculum import is one of this
+// course's revisions: the one for the current revision, else the latest
+// linked one. Matched by import id only, never by key or title.
+function linkedAcademyPackage(
+  revisions: readonly LifecyclePackage[],
+  current: LifecyclePackage,
+  packages: readonly LifecycleAcademyPackage[],
+) {
+  const ids = new Set(revisions.map((r) => r.id));
+  const linked = packages
+    .filter((p) => p.curriculumImport && ids.has(p.curriculumImport.id))
+    .sort((a, b) => b.packageRevision - a.packageRevision);
+  return linked.find((p) => p.curriculumImport?.id === current.id) ?? linked[0];
+}
+
+const plural = (n: number, one: string, many: string) =>
+  `${n} ${n === 1 ? one : many}`;
+
+function academyHeadline(track: AcademyTrack, focus: LifecycleStage) {
+  if (focus.state === "attention" || focus.state === "action")
+    return focus.summary;
+  if (track.publicSale) return "On public sale in the Academy catalogue";
+  if (track.offerState === "PUBLISHED" && track.saleMode === "REVIEW_ONLY")
+    return track.pendingDecisions.length > 0
+      ? `Published for review only — not on public sale. ${plural(
+          track.pendingDecisions.length,
+          "pending decision",
+          "pending decisions",
+        )} must be resolved first.`
+      : "Published for review only — not on public sale. Opening sale is an owner decision.";
+  return focus.summary;
+}
+
+function academyLifecycle(
+  pkg: LifecycleAcademyPackage,
+  catalogueSlugs: readonly string[] | null,
+): { track: AcademyTrack; stages: LifecycleStage[] } {
+  const href = academyEngineering(pkg.id);
+  const open = { label: "Open Academy Course Engineering", href };
+  const rev = `Revision ${pkg.packageRevision}`;
+  const course = pkg.course;
+  const offerPublished = course?.offerState === "PUBLISHED";
+  const listed =
+    catalogueSlugs === null
+      ? null
+      : Boolean(course?.slug && catalogueSlugs.includes(course.slug));
+  const publicSale =
+    offerPublished && course?.saleMode === "PUBLIC_SALE" && listed === true;
+  const track: AcademyTrack = {
+    packageId: pkg.id,
+    packageRevision: pkg.packageRevision,
+    packageStatus: pkg.status,
+    pendingDecisions: [...pkg.pendingDecisions],
+    courseId: course?.id ?? null,
+    offerId: course?.offerId ?? null,
+    slug: course?.slug ?? null,
+    offerState: course?.offerState ?? null,
+    saleMode: course?.saleMode ?? null,
+    currency: course?.currency ?? null,
+    formats: course?.formats ?? (course?.offerId ? null : []),
+    listed,
+    publicSale,
+    href,
+  };
+
+  const stages: LifecycleStage[] = [
+    stage(
+      "academy-upload",
+      "complete",
+      `${rev} of the Academy package is uploaded.`,
+    ),
+  ];
+  stages.push(
+    pkg.status === "REJECTED"
+      ? stage(
+          "academy-validate",
+          "attention",
+          `${rev} was rejected. Upload a corrected revision to continue.`,
+          open,
+        )
+      : pkg.status === "UPLOADED"
+        ? stage("academy-validate", "action", `${rev} needs validation.`, open)
+        : stage(
+            "academy-validate",
+            "complete",
+            `${rev} passed the Academy package validator.`,
+          ),
+  );
+
+  const curriculum = pkg.curriculumImport;
+  stages.push(
+    curriculum
+      ? stage(
+          "academy-review",
+          "complete",
+          "Content reviewed and approved for curriculum preparation.",
+        )
+      : stage("academy-review", "blocked", "Waits for a valid package."),
+  );
+  const curriculumPublished = curriculum?.status === "PUBLISHED";
+  stages.push(
+    curriculumPublished
+      ? stage(
+          "academy-curriculum",
+          "complete",
+          "The curriculum passed its pre-publication test and is published.",
+        )
+      : curriculum?.status === "REJECTED"
+        ? stage(
+            "academy-curriculum",
+            "attention",
+            "The curriculum import was rejected.",
+            open,
+          )
+        : stage(
+            "academy-curriculum",
+            "action",
+            "Curriculum preparation has not finished. Re-run it from Academy Course Engineering.",
+            open,
+          ),
+  );
+
+  const formats =
+    track.formats === null
+      ? "formats whose prices could not be read"
+      : plural(track.formats.length, "priced format", "priced formats");
+  stages.push(
+    offerPublished
+      ? stage(
+          "academy-publish",
+          "complete",
+          `Course published as Academy offer “${track.slug}” with ${formats}.`,
+        )
+      : course?.offerState === "ARCHIVED"
+        ? stage(
+            "academy-publish",
+            "attention",
+            `Academy offer “${track.slug}” is archived, so no learner can be granted or buy access.`,
+            open,
+          )
+        : curriculumPublished && pkg.status !== "REJECTED"
+          ? stage(
+              "academy-publish",
+              "approval",
+              "Ready to publish. Setting the format prices is an explicit administrator decision.",
+              open,
+            )
+          : stage(
+              "academy-publish",
+              "blocked",
+              "Waits for the curriculum to be published.",
+            ),
+  );
+
+  stages.push(
+    offerPublished
+      ? stage(
+          "academy-access",
+          "complete",
+          "Individual learning: each learner confirms a personal schedule in an offered format. No cohort, instructor or delivery activation is needed.",
+        )
+      : stage(
+          "academy-access",
+          "blocked",
+          "Learners can be granted or buy access once the offer is published.",
+        ),
+  );
+
+  const pending = track.pendingDecisions;
+  stages.push(
+    pending.length > 0
+      ? stage(
+          "academy-gates",
+          "approval",
+          `${plural(pending.length, "pending decision", "pending decisions")} must be resolved by a new package revision before public sale: ${pending.join(", ")}.`,
+          open,
+        )
+      : stage(
+          "academy-gates",
+          "complete",
+          "No pending academic or commercial decisions in this revision.",
+        ),
+  );
+
+  stages.push(
+    publicSale
+      ? stage(
+          "academy-sale",
+          "complete",
+          "On public sale and listed in the Academy catalogue.",
+          { label: "View public page", href: `/academy/${track.slug}` },
+        )
+      : offerPublished && track.saleMode === "PUBLIC_SALE"
+        ? stage(
+            "academy-sale",
+            "attention",
+            listed === null
+              ? "Public sale is open, but the Academy catalogue could not be read, so its listing is unconfirmed."
+              : "Public sale is open, but the offer is not in the Academy catalogue projection.",
+            open,
+          )
+        : offerPublished && pending.length === 0
+          ? stage(
+              "academy-sale",
+              "approval",
+              "Review only: not on public sale. Opening public sale is an explicit owner decision.",
+              open,
+            )
+          : stage(
+              "academy-sale",
+              "blocked",
+              offerPublished
+                ? "Review only: not on public sale and not in the public catalogue while decisions are pending."
+                : "Public sale needs a published offer and resolved decisions.",
+            ),
+  );
+
+  return { track, stages };
 }
 
 function activationAdvice(

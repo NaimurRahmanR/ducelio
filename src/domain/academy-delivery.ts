@@ -150,6 +150,25 @@ export const academyPackageListSchema = z.array(
         slug: z.string().nullable(),
         offerState: z.enum(["PUBLISHED", "ARCHIVED"]).nullable(),
         saleMode: z.enum(["REVIEW_ONLY", "PUBLIC_SALE"]).nullable(),
+        // Migration 066. Absent on a database without it, so the lifecycle
+        // can say the terms are unreadable instead of failing the list.
+        currency: z
+          .string()
+          .regex(/^[A-Z]{3}$/)
+          .nullable()
+          .optional(),
+        formats: z
+          .array(
+            z.object({
+              formatId,
+              weeks: z.number().int(),
+              sessionMinutes: z.number().int(),
+              minStudyDays: z.number().int(),
+              maxStudyDays: z.number().int(),
+              amountMinor: z.number().int().positive(),
+            }),
+          )
+          .optional(),
       })
       .nullable(),
   }),

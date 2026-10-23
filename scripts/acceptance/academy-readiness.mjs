@@ -4,7 +4,7 @@
 //   npm run acceptance:academy-readiness
 //
 // An Academy release is not operational until the target database has every
-// Academy migration (060-065) recorded and every RPC the application calls
+// Academy migration (060-066) recorded and every RPC the application calls
 // exists with its intended grants. This verifier checks exactly that, from
 // the operator's acceptance credential (ACCEPTANCE_DATABASE_URL), inside
 // BEGIN TRANSACTION READ ONLY, rolled back. It is operator tooling only:

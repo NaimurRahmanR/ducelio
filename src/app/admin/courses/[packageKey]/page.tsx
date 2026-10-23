@@ -24,6 +24,14 @@ import type { DeliveryPlan } from "@/domain/commercial-v1-launch";
 import { describeTestFailure } from "@/domain/course-engineering-admin";
 import { TEST_RECORD_NOTE } from "@/domain/admin-test-records";
 import {
+  academyFormatPrice,
+  DELIVERY_LABELS,
+} from "@/domain/admin-course-lifecycle";
+import {
+  ACADEMY_FORMATS,
+  type AcademyFormatId,
+} from "@/domain/academy-scheduler";
+import {
   QUESTION_TYPE_LABELS,
   type QuestionType,
 } from "@/domain/assessment-question-types";
@@ -36,7 +44,7 @@ const SECTIONS = [
   ["curriculum", "Curriculum & versions"],
   ["readiness", "Validation & readiness"],
   ["agents", "Agent configuration"],
-  ["delivery", "Cohorts & delivery"],
+  ["delivery", "Delivery"],
   ["assessments", "Assessments"],
   ["pricing", "Price & publication"],
   ["history", "Operational history"],
@@ -84,6 +92,8 @@ export default async function Page({
   const life = row.lifecycle;
   const current = life.current;
   const engineering = `/admin/course-engineering?importId=${current.id}`;
+  const academy = life.academy;
+  const academyOnly = life.delivery === "ACADEMY";
   const ask = (action: string, extra = "") =>
     `/admin/operations-engineer?action=${action}${extra}`;
   const p = preview.ok ? preview.data : null;
@@ -139,7 +149,7 @@ export default async function Page({
       name={actor.displayName}
       roles={actor.roles}
       title={row.title}
-      description={`Revision ${current.packageRevision}${row.versionLabel ? ` · ${row.versionLabel}` : ""} · ${life.stageState === "complete" ? "Live in the public catalogue" : life.headline}`}
+      description={`Revision ${current.packageRevision}${row.versionLabel ? ` · ${row.versionLabel}` : ""} · ${!academy && life.stageState === "complete" ? "Live in the public catalogue" : life.headline}`}
       actions={
         <Link
           href={ask(
@@ -168,10 +178,34 @@ export default async function Page({
 
       <Panel
         id="overview"
-        title="Lifecycle"
-        actions={<StatePill state={life.stageState} />}
+        title={
+          academy ? "Academy lifecycle (individual learners)" : "Lifecycle"
+        }
+        description={DELIVERY_LABELS[life.delivery]}
+        actions={
+          <>
+            <StatePill state={life.stageState} />
+            {academy && (
+              <Link href={academy.href} className="ac-link">
+                Open Academy Course Engineering →
+              </Link>
+            )}
+          </>
+        }
       >
         <LifecycleStepper stages={life.stages} />
+        {academy && life.organisationStages && (
+          <>
+            <h3 className="ac-subhead">
+              Organisation lifecycle (cohort delivery)
+            </h3>
+            <p className="ac-muted">
+              The same curriculum also has organisation delivery. The two tracks
+              are independent: neither one gates the other.
+            </p>
+            <LifecycleStepper stages={life.organisationStages} />
+          </>
+        )}
       </Panel>
 
       <Panel
@@ -268,7 +302,7 @@ export default async function Page({
 
       <Panel id="readiness" title="Validation and readiness">
         <ul className="ac-checklist">
-          {life.stages.slice(1, 5).map((s) => (
+          {life.stages.slice(1, academy ? 4 : 5).map((s) => (
             <li key={s.id}>
               <StatePill state={s.state} /> <strong>{s.label}.</strong>{" "}
               {s.summary}
@@ -353,14 +387,24 @@ export default async function Page({
 
       <Panel
         id="delivery"
-        title="Cohorts and delivery schedule"
+        title={academyOnly ? "Delivery" : "Cohorts and delivery schedule"}
         actions={
-          <Link href="/admin/cohorts" className="ac-link">
-            Manage cohorts →
-          </Link>
+          academyOnly ? undefined : (
+            <Link href="/admin/cohorts" className="ac-link">
+              Manage cohorts →
+            </Link>
+          )
         }
       >
-        {life.cohorts.length === 0 ? (
+        {academy && (
+          <p>
+            <strong>Academy: individual learning.</strong> Each learner with
+            access confirms a personal schedule in one of the offered formats.
+            Academy delivery needs no cohort, instructor assignment or delivery
+            activation.
+          </p>
+        )}
+        {academyOnly ? null : life.cohorts.length === 0 ? (
           <Empty title="No cohort for this curriculum version">
             A delivery cohort is needed before the course can be activated.
           </Empty>
@@ -404,7 +448,7 @@ export default async function Page({
             learners.
           </p>
         )}
-        {p && (
+        {p && !academyOnly && (
           <p className="ac-muted">
             Package scheduling defaults (descriptive only):{" "}
             {p.schedulingDefaults.studyDays.map((d) => DAYS[d]).join(", ")} at{" "}
@@ -473,12 +517,92 @@ export default async function Page({
         id="pricing"
         title="Price and publication"
         actions={
-          <Link href="/admin/sales" className="ac-link">
-            Sales & Commerce →
-          </Link>
+          academyOnly ? undefined : (
+            <Link href="/admin/sales" className="ac-link">
+              Sales & Commerce →
+            </Link>
+          )
         }
       >
-        {detail.offers.length > 0 ? (
+        {academy && (
+          <>
+            <h3 className="ac-subhead">Academy offer (individual learners)</h3>
+            {academy.offerId ? (
+              <>
+                <p>
+                  Offer <strong>{academy.slug}</strong> ·{" "}
+                  {academy.offerState === "PUBLISHED" ? (
+                    <Pill tone="good">Published</Pill>
+                  ) : (
+                    <Pill tone="bad">Archived</Pill>
+                  )}{" "}
+                  {academy.saleMode === "PUBLIC_SALE" ? (
+                    <Pill tone={academy.publicSale ? "good" : "warn"}>
+                      {academy.publicSale
+                        ? "Public sale · in the Academy catalogue"
+                        : "Public sale · catalogue listing unconfirmed"}
+                    </Pill>
+                  ) : (
+                    <Pill tone="warn">
+                      Review only · not on sale, not in the public catalogue
+                    </Pill>
+                  )}
+                </p>
+                {academy.formats === null ? (
+                  <Unavailable
+                    what="The Academy offer's format prices"
+                    message="The database did not return the offer's format prices. Apply the Academy offer terms migration (066), then reload."
+                  />
+                ) : (
+                  <DataTable
+                    caption="Academy learning formats and approved prices"
+                    columns={[
+                      "Format",
+                      "Length",
+                      "Session",
+                      "Study days a week",
+                      "Price",
+                    ]}
+                    rows={academy.formats.map((f) => [
+                      ACADEMY_FORMATS[f.formatId as AcademyFormatId]?.label ??
+                        f.formatId,
+                      `${f.weeks} weeks`,
+                      `${f.sessionMinutes} min`,
+                      f.minStudyDays === f.maxStudyDays
+                        ? String(f.minStudyDays)
+                        : `${f.minStudyDays}–${f.maxStudyDays}`,
+                      academyFormatPrice(f, academy.currency),
+                    ])}
+                  />
+                )}
+              </>
+            ) : (
+              <Empty title="No Academy offer yet">
+                Publishing the course and its format prices is done in Academy
+                Course Engineering.
+              </Empty>
+            )}
+            {academy.pendingDecisions.length > 0 && (
+              <div className="ac-note" role="note">
+                <p>
+                  Public sale stays closed until a new package revision resolves
+                  these {academy.pendingDecisions.length} pending decisions:
+                </p>
+                <ul>
+                  {academy.pendingDecisions.map((k) => (
+                    <li key={k}>
+                      <code>{k}</code>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <Link href={academy.href} className="ac-link">
+              Open Academy Course Engineering →
+            </Link>
+          </>
+        )}
+        {academyOnly ? null : detail.offers.length > 0 ? (
           <DataTable
             caption="Published offers for this course"
             columns={["Offer", "Price", "Delivery plan", "Public page"]}
@@ -504,17 +628,19 @@ export default async function Page({
               : "An offer can only be published after delivery is activated."}
           </Empty>
         )}
-        {detail.activations.length > 0 && life.offerSlugs.length === 0 && (
-          <Link
-            href={ask(
-              "publish_offer",
-              `&activationId=${detail.activations[0].activationId}`,
-            )}
-            className="ac-link"
-          >
-            Prepare an offer with the Operations Engineer →
-          </Link>
-        )}
+        {!academyOnly &&
+          detail.activations.length > 0 &&
+          life.offerSlugs.length === 0 && (
+            <Link
+              href={ask(
+                "publish_offer",
+                `&activationId=${detail.activations[0].activationId}`,
+              )}
+              className="ac-link"
+            >
+              Prepare an offer with the Operations Engineer →
+            </Link>
+          )}
       </Panel>
 
       <Panel

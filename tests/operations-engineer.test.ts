@@ -91,6 +91,7 @@ import {
   type Proposal,
 } from "@/server/operations-engineer";
 import { AccessDenied } from "@/domain/policy";
+import { deriveCourseLifecycle } from "@/domain/admin-course-lifecycle";
 import {
   OPERATIONS_ENGINEER_DISABLED,
   composeOperationsEngineerInstructions,
@@ -220,6 +221,85 @@ describe("read-only inspections", () => {
         "No offer",
         "—",
       ]);
+    expect(m.publish).not.toHaveBeenCalled();
+  });
+
+  it("inspects an Academy course as individual learning, with no cohort advice", async () => {
+    const importId = "10000000-0000-4000-8000-0000000000a2";
+    const packageId = "ef6b8a49-0000-4000-8000-000000000001";
+    m.courses = [
+      {
+        packageKey: "cloud-architect-academy",
+        title: "Cloud Architect Academy",
+        testRecord: false,
+        lifecycle: deriveCourseLifecycle({
+          revisions: [
+            {
+              id: importId,
+              packageKey: "cloud-architect-academy",
+              packageRevision: 2,
+              status: "PUBLISHED",
+              programmeId: null,
+              programmeVersionId: "20000000-0000-4000-8000-0000000000a2",
+              createdAt: "2026-10-22T10:00:00Z",
+              appliedAt: "2026-10-22T11:00:00Z",
+              publishedAt: "2026-10-22T12:00:00Z",
+              rejectedAt: null,
+            },
+          ],
+          activations: [],
+          offerActivations: [],
+          liveOfferSlugs: [],
+          cohorts: [],
+          academyPackages: [
+            {
+              id: packageId,
+              packageRevision: 2,
+              status: "PUBLISHED",
+              pendingDecisions: ["COURSE_PRICE_APPROVAL"],
+              curriculumImport: { id: importId, status: "PUBLISHED" },
+              course: {
+                id: "ea000000-0000-4000-8000-000000000001",
+                offerId: "1d000000-0000-4000-8000-000000000001",
+                slug: "cloud-architect",
+                offerState: "PUBLISHED",
+                saleMode: "REVIEW_ONLY",
+                currency: "GBP",
+                formats: [
+                  {
+                    formatId: "STANDARD_6W",
+                    weeks: 6,
+                    sessionMinutes: 90,
+                    minStudyDays: 3,
+                    maxStudyDays: 5,
+                    amountMinor: 35000,
+                  },
+                ],
+              },
+            },
+          ],
+          academyCatalogueSlugs: [],
+        }),
+      },
+    ];
+    const result = await prepareOperation("inspect_course", {
+      packageKey: "cloud-architect-academy",
+    });
+    expect(result.status).toBe("READ_RESULT");
+    if (result.status !== "READ_RESULT") return;
+    expect(result.table.title).toContain("Academy · individual learners (B2C)");
+    expect(result.table.rows.map((r) => r[0])).toContain(
+      "Academy: Approval gates",
+    );
+    const all = JSON.stringify(result.table);
+    expect(all).not.toMatch(
+      /No cohort exists|Activate delivery|\/admin\/cohorts/,
+    );
+    expect(result.table.note).toContain("review only, not on public sale");
+    expect(result.table.note).toContain("STANDARD_6W 6 weeks GBP 350.00");
+    expect(result.table.note).toContain(
+      `/admin/academy-course-engineering?packageId=${packageId}`,
+    );
     expect(m.publish).not.toHaveBeenCalled();
   });
 

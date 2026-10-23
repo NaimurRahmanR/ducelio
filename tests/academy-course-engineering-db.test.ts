@@ -26,6 +26,12 @@ import {
   planSchedule,
   type PlanUnit,
 } from "@/domain/academy-scheduler";
+import { academyPackageListSchema } from "@/domain/academy-delivery";
+import {
+  ACADEMY_STAGE_IDS,
+  deriveCourseLifecycle,
+  isPubliclyLive,
+} from "@/domain/admin-course-lifecycle";
 
 // Migration 202610220060 (Ducelio Academy B2C) against real PostgreSQL
 // semantics (PGlite), using the real Security+ Academy conversion artefact
@@ -1391,5 +1397,114 @@ describe("compatibility with the existing institutional workflow", () => {
     expect(
       (await q("select count(*)::int n from public.cohorts")).rows[0].n,
     ).toBe(1);
+  });
+});
+
+describe("admin course lifecycle from the Academy records (migration 066)", () => {
+  it("lists each Academy offer's currency and priced formats to course administrators only", async () => {
+    const list = academyPackageListSchema.parse(
+      await rpc(q, admin, "list_academy_course_packages"),
+    );
+    const row = list.find((p) => p.id === security.packageId);
+    expect(row?.curriculumImport?.id).toBe(security.importId);
+    expect(row?.course).toMatchObject({
+      id: security.courseId,
+      offerId: security.offerId,
+      slug: "security-plus-review",
+      offerState: "PUBLISHED",
+      saleMode: "REVIEW_ONLY",
+      currency: "GBP",
+    });
+    const formats = row?.course?.formats ?? [];
+    expect(
+      Object.fromEntries(formats.map((f) => [f.formatId, f.amountMinor])),
+    ).toEqual(
+      Object.fromEntries(
+        security.prices.map((p) => [p.formatId, p.amountMinor]),
+      ),
+    );
+    expect(formats.map((f) => f.weeks)).toEqual(
+      [...formats.map((f) => f.weeks)].sort((a, b) => a - b),
+    );
+    for (const person of [learnerA, instructor, registrar, null])
+      await expect(
+        rpc(q, person, "list_academy_course_packages"),
+      ).rejects.toThrow();
+  });
+
+  it("classifies a published review-only Academy course as individual learning, never cohort delivery", async () => {
+    const list = academyPackageListSchema.parse(
+      await rpc(q, admin, "list_academy_course_packages"),
+    );
+    const key = (
+      await q(
+        "select package_key from public.course_package_imports where id=$1",
+        [security.importId],
+      )
+    ).rows[0].package_key as string;
+    const revisions = (
+      await q(
+        `select id, package_key, package_revision, status, programme_id, programme_version_id,
+          created_at::text, applied_at::text, published_at::text, rejected_at::text
+         from public.course_package_imports where package_key=$1`,
+        [key],
+      )
+    ).rows.map((r) => ({
+      id: r.id as string,
+      packageKey: r.package_key as string,
+      packageRevision: r.package_revision as number,
+      status: r.status as string,
+      programmeId: r.programme_id as string | null,
+      programmeVersionId: r.programme_version_id as string | null,
+      createdAt: r.created_at as string,
+      appliedAt: r.applied_at as string | null,
+      publishedAt: r.published_at as string | null,
+      rejectedAt: r.rejected_at as string | null,
+    }));
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.cohorts where programme_version_id=$1",
+          [security.versionId],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    const catalogue = (
+      await rpc<{ slug: string }[]>(q, null, "list_academy_catalogue")
+    ).map((o) => o.slug);
+    const life = deriveCourseLifecycle({
+      revisions,
+      activations: [],
+      offerActivations: [],
+      liveOfferSlugs: [],
+      cohorts: [],
+      academyPackages: list,
+      academyCatalogueSlugs: catalogue,
+    });
+    expect(life.delivery).toBe("ACADEMY");
+    expect(life.stages.map((s) => s.id)).toEqual([...ACADEMY_STAGE_IDS]);
+    expect(life.organisationStages).toBeNull();
+    expect(JSON.stringify(life)).not.toMatch(
+      /\/admin\/cohorts|\/admin\/activation/,
+    );
+    expect(life.headline).toMatch(
+      /^Published for review only — not on public sale/,
+    );
+    expect(life.academy).toMatchObject({
+      packageId: security.packageId,
+      slug: "security-plus-review",
+      saleMode: "REVIEW_ONLY",
+      publicSale: false,
+      listed: false,
+      href: `/admin/academy-course-engineering?packageId=${security.packageId}`,
+    });
+    expect(life.academy?.formats).toHaveLength(security.prices.length);
+    expect(life.academy?.pendingDecisions.length).toBeGreaterThan(0);
+    const state = Object.fromEntries(life.stages.map((s) => [s.id, s.state]));
+    expect(state["academy-publish"]).toBe("complete");
+    expect(state["academy-access"]).toBe("complete");
+    expect(state["academy-gates"]).toBe("approval");
+    expect(state["academy-sale"]).toBe("blocked");
+    expect(isPubliclyLive(life)).toBe(false);
   });
 });

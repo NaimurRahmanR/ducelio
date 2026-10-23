@@ -14,12 +14,18 @@ import {
 } from "@/components/admin-ui";
 import { getDashboardData } from "@/server/admin-control-centre";
 import { tabForSection } from "@/domain/admin-academy-tabs";
-import { STAGE_LABELS, type StageId } from "@/domain/admin-course-lifecycle";
+import {
+  ACADEMY_STAGE_IDS,
+  isPubliclyLive,
+  ORGANISATION_STAGE_IDS,
+  STAGE_LABELS,
+} from "@/domain/admin-course-lifecycle";
 import { TEST_RECORD_NOTE } from "@/domain/admin-test-records";
 
 export const dynamic = "force-dynamic";
 
-const STAGE_ORDER = Object.keys(STAGE_LABELS) as StageId[];
+const STAGE_ORDER = [...ORGANISATION_STAGE_IDS, ...ACADEMY_STAGE_IDS];
+const ACADEMY_STAGES = new Set<string>(ACADEMY_STAGE_IDS);
 
 function words(action: string) {
   const text = action
@@ -63,13 +69,20 @@ export default async function Page({
   const courses = data.catalogue.ok
     ? data.catalogue.data.courses.filter((c) => !c.testRecord)
     : [];
+  // Organisation stages are always listed; an Academy stage only when a
+  // course is waiting on it, labelled so the two tracks never merge.
   const byStage = STAGE_ORDER.map((id) => ({
-    label: STAGE_LABELS[id],
+    id,
+    label: ACADEMY_STAGES.has(id)
+      ? `Academy: ${STAGE_LABELS[id]}`
+      : STAGE_LABELS[id],
     value: courses.filter(
       (c) => c.lifecycle.stage === id && c.lifecycle.stageState !== "complete",
     ).length,
-  }));
-  const live = courses.filter((c) => c.lifecycle.liveSlugs.length > 0).length;
+  }))
+    .filter((s) => !ACADEMY_STAGES.has(s.id) || s.value > 0)
+    .map(({ label, value }) => ({ label, value }));
+  const live = courses.filter((c) => isPubliclyLive(c.lifecycle)).length;
   const needing = courses.filter((c) =>
     ["action", "attention", "approval"].includes(c.lifecycle.stageState),
   );
@@ -237,6 +250,7 @@ export default async function Page({
                     <span className="ac-muted">
                       {" "}
                       · revision {c.lifecycle.current.packageRevision} ·{" "}
+                      {c.lifecycle.academy ? "Academy: " : ""}
                       {STAGE_LABELS[c.lifecycle.stage]}
                     </span>
                     <p>{c.lifecycle.headline}</p>

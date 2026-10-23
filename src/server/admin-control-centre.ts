@@ -22,6 +22,8 @@ import {
 } from "./commercial-v1-commerce";
 import { listCommerceOperations } from "./commercial-v1-commerce/operations";
 import { getCohortWorkspace } from "./cohorts";
+import { listAcademyPackages } from "./academy-course-engineering";
+import { listAcademyCatalogue } from "./academy-delivery";
 import {
   describeProductionProfiles,
   providerCredentialReadiness,
@@ -29,6 +31,7 @@ import {
 import {
   deriveCourseLifecycle,
   type CourseLifecycle,
+  type LifecycleAcademyPackage,
   type LifecyclePackage,
   type TestReadiness,
 } from "@/domain/admin-course-lifecycle";
@@ -74,12 +77,18 @@ export type CourseRow = {
 
 export type CourseCatalogue = {
   courses: CourseRow[];
+  // Academy packages not yet linked to a curriculum (still in upload,
+  // validation or review); managed in Academy Course Engineering. Null when
+  // the Academy register could not be read.
+  academyInProgress: number | null;
   sources: {
     packages: boolean;
     activations: boolean;
     offers: boolean;
     catalogue: boolean;
     cohorts: boolean;
+    academy: boolean;
+    academyCatalogue: boolean;
   };
 };
 
@@ -102,6 +111,8 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
     live,
     cohortWorkspace,
     overview,
+    academyPackages,
+    academyCatalogue,
   ] = await Promise.all([
     sourced(() => listCoursePackages()),
     sourced(() => listCommercialV1Activations()),
@@ -109,7 +120,19 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
     sourced(() => listCommercialV1Offers()),
     sourced(() => getCohortWorkspace(null)),
     sourced(() => getAdminOverview()),
+    sourced(() => listAcademyPackages()),
+    sourced(() => listAcademyCatalogue()),
   ]);
+  const academyRows: LifecycleAcademyPackage[] | null = academyPackages.ok
+    ? academyPackages.data.map((p) => ({
+        id: p.id,
+        packageRevision: p.packageRevision,
+        status: p.status,
+        pendingDecisions: p.pendingDecisions,
+        curriculumImport: p.curriculumImport,
+        course: p.course,
+      }))
+    : null;
 
   const pkgRows: LifecyclePackage[] = packages.ok
     ? packages.data.map((p) => ({
@@ -169,6 +192,10 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
       testReadiness: readiness.get(
         revisions.find((r) => r.status === "APPLIED")?.id ?? "",
       ),
+      academyPackages: academyRows,
+      academyCatalogueSlugs: academyCatalogue.ok
+        ? academyCatalogue.data.map((o) => o.slug)
+        : null,
     });
     const version = lifecycle.current.programmeVersionId
       ? versionTitles.get(lifecycle.current.programmeVersionId)
@@ -193,14 +220,24 @@ export async function getCourseCatalogue(): Promise<CourseCatalogue> {
   });
   courses.sort((a, b) => a.title.localeCompare(b.title));
 
+  const importIds = new Set(pkgRows.map((p) => p.id));
   return {
     courses,
+    academyInProgress: academyRows
+      ? academyRows.filter(
+          (p) =>
+            p.status !== "REJECTED" &&
+            !(p.curriculumImport && importIds.has(p.curriculumImport.id)),
+        ).length
+      : null,
     sources: {
       packages: packages.ok,
       activations: activations.ok,
       offers: offerActivations.ok,
       catalogue: live.ok,
       cohorts: cohortWorkspace.ok,
+      academy: academyPackages.ok,
+      academyCatalogue: academyCatalogue.ok,
     },
   };
 }

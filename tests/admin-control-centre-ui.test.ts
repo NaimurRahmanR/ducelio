@@ -146,6 +146,57 @@ const securityPlus = () => ({
     ],
   }),
 });
+// An Academy (B2C) course: the Academy package's recorded curriculum import
+// is this course's published revision. Published offer, review only.
+const ACADEMY_PACKAGE_ID = "ef6b8a49-0000-4000-8000-000000000001";
+const academyCourse = () => ({
+  packageKey: "cloud-architect-academy",
+  title: "Cloud Architect Academy",
+  versionLabel: "Revision 2",
+  testRecord: false,
+  lifecycle: deriveCourseLifecycle({
+    revisions: [
+      {
+        id: "10000000-0000-4000-8000-0000000000a2",
+        packageKey: "cloud-architect-academy",
+        packageRevision: 2,
+        status: "PUBLISHED",
+        programmeId: null,
+        programmeVersionId: "20000000-0000-4000-8000-0000000000a2",
+        createdAt: "2026-10-22T10:00:00Z",
+        appliedAt: "2026-10-22T11:00:00Z",
+        publishedAt: "2026-10-22T12:00:00Z",
+        rejectedAt: null,
+      },
+    ],
+    activations: [],
+    offerActivations: [],
+    liveOfferSlugs: [],
+    cohorts: [],
+    academyPackages: [
+      {
+        id: ACADEMY_PACKAGE_ID,
+        packageRevision: 2,
+        status: "PUBLISHED",
+        pendingDecisions: ["COURSE_PRICE_APPROVAL", "HOSTED_ACCEPTANCE"],
+        curriculumImport: {
+          id: "10000000-0000-4000-8000-0000000000a2",
+          status: "PUBLISHED",
+        },
+        course: {
+          id: "ea000000-0000-4000-8000-000000000001",
+          offerId: "1d000000-0000-4000-8000-000000000001",
+          slug: "cloud-architect",
+          offerState: "PUBLISHED",
+          saleMode: "REVIEW_ONLY",
+          currency: "GBP",
+          formats: [],
+        },
+      },
+    ],
+    academyCatalogueSlugs: [],
+  }),
+});
 const allSources = {
   packages: true,
   activations: true,
@@ -468,6 +519,96 @@ describe("courses", () => {
     expect(tests).toContain("Acceptance Run 1791 Acceptance test");
     expect(tests).not.toContain("CompTIA Security+ (SY0-701)");
     expect(tests).toContain("The database has no test flag");
+  });
+});
+
+describe("Academy courses in the register", () => {
+  beforeEach(() => {
+    m.catalogue.mockResolvedValue({
+      courses: [securityPlus(), academyCourse()],
+      academyInProgress: 1,
+      sources: { ...allSources, academy: true, academyCatalogue: true },
+    });
+  });
+
+  it("labels Academy and Organisation courses and manages the Academy one without a cohort", async () => {
+    const html = renderToStaticMarkup(
+      await CoursesPage({ searchParams: Promise.resolve({}) }),
+    );
+    const plain = text(html);
+    expect(plain).toContain(
+      "Cloud Architect Academy Academy · individual learners (B2C) Review only · not on sale",
+    );
+    expect(plain).toContain(
+      "CompTIA Security+ (SY0-701) Organisation · cohort delivery (B2B)",
+    );
+    expect(plain).toContain("Approval gates Awaiting approval");
+    expect(plain).toContain(
+      "Published for review only — not on public sale. 2 pending decisions must be resolved first.",
+    );
+    expect(html).toContain(
+      `href="/admin/academy-course-engineering?packageId=${ACADEMY_PACKAGE_ID}"`,
+    );
+    expect(plain).toContain(
+      "1 Academy package is still in upload, validation or review",
+    );
+    // The Academy course's own entry has no cohort step or advice.
+    const entry = plain.slice(plain.indexOf("Cloud Architect Academy Academy"));
+    expect(entry).not.toContain("Activate delivery");
+    expect(entry).not.toMatch(/cohort, then activate|delivery cohort/i);
+  });
+
+  it("filters and counts by recorded delivery track", async () => {
+    const academy = text(
+      renderToStaticMarkup(
+        await CoursesPage({
+          searchParams: Promise.resolve({ filter: "academy" }),
+        }),
+      ),
+    );
+    expect(academy).toContain("Academy (B2C) 1");
+    expect(academy).toContain("Organisation (B2B) 1");
+    expect(academy).toContain("Cloud Architect Academy");
+    expect(academy).not.toContain("CompTIA Security+ (SY0-701)");
+    const organisation = text(
+      renderToStaticMarkup(
+        await CoursesPage({
+          searchParams: Promise.resolve({ filter: "organisation" }),
+        }),
+      ),
+    );
+    expect(organisation).toContain("CompTIA Security+ (SY0-701)");
+    expect(organisation).not.toContain("Cloud Architect Academy");
+    // A review-only course is never "Live".
+    const live = text(
+      renderToStaticMarkup(
+        await CoursesPage({
+          searchParams: Promise.resolve({ filter: "live" }),
+        }),
+      ),
+    );
+    expect(live).toContain("No course matches");
+  });
+
+  it("never counts a review-only Academy course as live on the dashboard", async () => {
+    m.dashboard.mockResolvedValue(
+      dashboard({
+        catalogue: {
+          ok: true,
+          data: {
+            courses: [securityPlus(), academyCourse()],
+            sources: allSources,
+          },
+        },
+      }),
+    );
+    const plain = text(
+      renderToStaticMarkup(
+        await DashboardPage({ searchParams: Promise.resolve({}) }),
+      ),
+    );
+    expect(plain).toContain("0 live in the public catalogue");
+    expect(plain).toContain("Academy: Approval gates");
   });
 });
 

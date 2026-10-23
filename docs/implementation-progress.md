@@ -24,7 +24,14 @@ CURRENT CHECKPOINT (PARTIAL): ACADEMY-RECOVERY-1, Academy course activation reco
 - MIGRATIONS: none new. 060–065 are now applied to `ducelio-acceptance`; production is not touched. CONFIGURATION: none new.
 - KNOWN FAILURES: none in the local gates. A pre-existing baseline item: `current_academic_activity_state` remains executable by `service_role` (the phase 1–2 grant left for review by migration 057); the readiness contract records it as a baseline.
 - Continuation 2026-10-22 23:15Z (see docs/58 §7): the V2 course package was built outside the repository and validated (TypeScript validator; local real-migration pipeline to REVIEW_ONLY). Hosted synthetic upload test passed (upload, validation diagnostics, review, rejection, access refusal). One defect was found and fixed in this branch: uploads near or above 1 MiB failed silently because of the framework body limit; fixed with a client-side check and `serverActions.bodySizeLimit` 1200kb. The fix is not yet deployed.
-- NEXT EXACT ACTION: owner review and merge of PR #83; the owner uploads `Ducelio_AWS_SAA_C03_Academy_Commercial_V2.json` through `/admin/academy-course-engineering`; owner prices and the 8 pending decisions remain owner actions.
+- Continuation 2026-10-23 (see docs/58 §8): the owner uploaded and published the AWS V2 package as a REVIEW_ONLY Academy course.
+  - The admin Courses lifecycle wrongly asked for a cohort; it now classifies Academy, Organisation or both tracks from recorded relationships only and shows the Academy lifecycle, offer and pending decisions.
+  - The Operations Engineer and dashboard follow the same classification.
+  - Additive read-only migration 066 exposes the offer's priced formats to administrators.
+  - The official purple-and-gold "D" browser icon is added through App Router file conventions.
+  - Local gates pass, and the local branch app was browser-verified against acceptance data.
+- MIGRATIONS (2026-10-23): `202610270066_academy_admin_offer_terms.sql`, not applied to any hosted project (acceptance ledger ends at 065). Until it is applied, the admin page says the Academy prices could not be read.
+- NEXT EXACT ACTION: owner approval to apply migration 066 to `ducelio-acceptance`. Then owner review and merge of PR #83, and hosted re-verification on staging. Owner prices and the 8 pending decisions remain owner actions.
 
 PREVIOUS CHECKPOINT RECORD (RELIABILITY-1, merged through PR #82):
 

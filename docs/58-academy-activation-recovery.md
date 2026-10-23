@@ -108,3 +108,50 @@ The owner asked for two independent results: a genuinely improved V2 package, an
   - It passes the real TypeScript validator (all four formats feasible).
   - On a local PGlite database with all 65 migrations, it passed the full admin pipeline to REVIEW_ONLY, with public sale refused (`POLICY_PENDING`, 8 decisions), no answer keys in the learner attempt payload, and correct database scoring.
   - Its size is below the framework's existing limit, so the owner can upload it today, before this fix is deployed.
+
+## 8. Continuation (2026-10-23): course lifecycle correction and the browser icon
+
+The owner uploaded and published the AWS SAA-C03 V2 package as an Academy course: package `ef6b8a49-849f-4488-84e6-0ebcaa2644f8`, course `eaa1f7ba-…`, offer `aws-solutions-architect-associate` in REVIEW_ONLY, with four GBP formats and 8 pending decisions. `/admin/courses` then wrongly showed "Activate delivery — create cohort" with "Publish offer" and "Public catalogue" blocked.
+
+- **Root cause.** The admin course lifecycle (`src/domain/admin-course-lifecycle.ts`) was built only from the organisation (B2B) registry: `course_package_imports` grouped by package key, commercial activations and offers, and the cohort workspace. The Academy relationship (`academy_courses.package_id` → package → `curriculumImport`) was never read. A published curriculum with no activation therefore always produced B2B cohort advice.
+- **Fix: classification from recorded relationships only.**
+  - A course is an Academy course only when an Academy package's recorded curriculum import (`list_academy_course_packages.curriculumImport.id`) is one of that course's own revisions.
+  - It has organisation delivery only when an activation, an organisation offer or a non-demo cohort exists for it.
+  - Nothing is inferred from titles, keys or vendor names. Tests prove a key containing "aws" or "academy" without the link stays on the organisation track.
+  - The result is `ACADEMY`, `ORGANISATION` or `BOTH`. For a shared curriculum the two tracks are shown independently, and neither gates the other.
+- **Academy lifecycle.**
+  - The eight stages are: upload, validate, review, prepare curriculum, publish course and offer, learner access (individual schedules, no cohort or instructor), approval gates (pending decisions) and public sale and catalogue.
+  - Publication and sale are separate. The sale stage is complete only for `PUBLIC_SALE` confirmed in the public Academy catalogue (`list_academy_catalogue`). REVIEW_ONLY reads "Published for review only — not on public sale".
+  - Every Academy action links to `/admin/academy-course-engineering?packageId=<recorded package id>`.
+  - If the Academy register cannot be read, the organisation "activate" step becomes "track unconfirmed" instead of cohort advice.
+- **Surfaces.**
+  - `/admin/courses` has delivery labels, Academy (B2C) and Organisation (B2B) filters and counts, a "review only" label, an Academy Course Engineering link and a note for Academy packages still in review.
+  - `/admin/courses/[packageKey]` shows the Academy lifecycle, the individual-learning delivery panel (no cohort advice), and the offer with its formats, prices, sale mode and pending decisions.
+  - The dashboard labels Academy stages and counts live courses only on public sale.
+  - The Operations Engineer `inspect_course` result gives the Academy track, offer terms and link, with no cohort note.
+  - The B2B lifecycle is unchanged for organisation courses (existing tests unchanged and passing).
+- **Migration `202610270066_academy_admin_offer_terms.sql` (additive, read-only).**
+  - `CREATE OR REPLACE` of the admin-only `list_academy_course_packages`, same signature and ACL. It adds `course.currency` and `course.formats` (format, weeks, session minutes, study days, price) so the admin lifecycle can show priced formats; until now only the audit log held them.
+  - No table, policy, grant or row changes.
+  - The zod schema treats both fields as optional, so the application works before the migration is applied and says the prices could not be read.
+  - Status: **not applied to any hosted project**. The acceptance ledger ends at `202610260065`. A read-only probe on acceptance with the migration's own SQL returns the AWS offer's four formats (INTENSIVE_4W 4 weeks GBP 30.00; STANDARD_6W 6 weeks GBP 25.00; EXTENDED_8W 8 weeks GBP 20.00; FLEXIBLE_12W 12 weeks GBP 20.00). It also confirms 0 activations and 0 cohorts for the AWS curriculum.
+  - Applying it to acceptance needs the owner's explicit approval (same linked-CLI wrapper as §3).
+- **Browser icon.**
+  - The purple brand leaf (the `.brand-mark` corner shape) with the champagne-gold italic Georgia "D", in the homepage colours `--launch-purple`, `--launch-purple-deep` and `--launch-champagne`.
+  - It is served through the App Router file conventions in `src/app`: `favicon.ico` (16/32/48 PNG frames), `icon.svg`, `icon1.png` (16), `icon2.png` (32), `icon3.png` (48) and `apple-icon.png` (180, opaque).
+  - The rasters are rendered by `scripts/brand/render-favicons.mjs` in headless Chrome. `tests/brand-favicon.test.ts` checks the dimensions, the ICO frames, the brand tokens, static-only SVG, and that the committed SVG matches the generator.
+- **Verification.**
+  - Local gates: `npm run check` (lint, typecheck, 215 test files, 4,905 tests passed, 39 skipped) and `npm run format:check` pass. `npm run build` passes when run, as in CI, without the local Supabase variables. With them, the existing rule "Configured production authentication requires an HTTPS APP_URL" stops a production build whose `APP_URL` is `http://localhost`.
+  - The production server (`next start`) serves `/favicon.ico` (`image/x-icon`), `/icon.svg` (`image/svg+xml`), `/icon1-3.png` and `/apple-icon.png` (`image/png`), with six head link tags.
+  - **Local branch app (`next dev`) against the hosted acceptance Supabase. This is not hosted acceptance of the new code.** Checked as the acceptance administrator and learner in Chrome:
+    - the AWS entry is Academy (B2C) and review only, its headline is "Published for review only — not on public sale. 8 pending decisions must be resolved first.", it has no cohort or activation step and is never "Live", and it links to its record by package id;
+    - the Academy and Organisation filters and counts are correct, and the Live filter excludes AWS;
+    - the detail page has the Academy lifecycle, individual-learning delivery, the offer, all 8 decisions, and the unreadable-prices message, because 066 is not applied;
+    - the Operations Engineer inspection gives the Academy track and link, with no cohort note;
+    - Security+ is unchanged: Organisation (B2B), all eight B2B stages complete, "Live in the catalogue";
+    - the dashboard shows "1 live in the public catalogue" and "Academy: Approval gates";
+    - the review-only AWS slug is absent from the public catalogue and `/academy/<slug>` is not found;
+    - the learner is refused at `/admin/courses`;
+    - the favicon is served on `/`, `/courses`, `/login`, `/academy/<slug>`, `/student`, `/admin` and Academy Course Engineering, and screen captures show it in real Chrome tabs for admin, public and learner pages.
+  - The staging deployment serves `main`, so the new code reaches hosted acceptance only after PR #83 is merged.
+- **Not done (boundaries).** No AWS re-upload, cohort, price change, entitlement, sale enablement or decision change; no production change.

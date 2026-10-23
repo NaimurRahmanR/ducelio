@@ -16,20 +16,40 @@ import {
   StatePill,
   Unavailable,
 } from "@/components/admin-ui";
-import { STAGE_LABELS, type StageState } from "@/domain/admin-course-lifecycle";
+import {
+  DELIVERY_LABELS,
+  STAGE_LABELS,
+  type CourseDelivery,
+  type StageState,
+} from "@/domain/admin-course-lifecycle";
 import { TEST_RECORD_NOTE } from "@/domain/admin-test-records";
 
 export const dynamic = "force-dynamic";
 
 // Every filter except "test" covers real courses only; acceptance-test
-// records are listed only under their own filter.
+// records are listed only under their own filter. The delivery filters use
+// the recorded track (see admin-course-lifecycle.ts); a course with both
+// tracks is counted under each.
 const FILTERS: {
   id: string;
   label: string;
   states: StageState[] | null;
+  delivery?: CourseDelivery[];
   test?: true;
 }[] = [
   { id: "all", label: "All courses", states: null },
+  {
+    id: "academy",
+    label: "Academy (B2C)",
+    states: null,
+    delivery: ["ACADEMY", "BOTH"],
+  },
+  {
+    id: "organisation",
+    label: "Organisation (B2B)",
+    states: null,
+    delivery: ["ORGANISATION", "BOTH"],
+  },
   { id: "action", label: "Needs action", states: ["action", "attention"] },
   { id: "approval", label: "Awaiting approval", states: ["approval"] },
   { id: "live", label: "Live", states: ["complete"] },
@@ -60,7 +80,8 @@ export default async function Page({
     catalogue.courses.filter(
       (c) =>
         c.testRecord === Boolean(f.test) &&
-        (!f.states || f.states.includes(c.lifecycle.stageState)),
+        (!f.states || f.states.includes(c.lifecycle.stageState)) &&
+        (!f.delivery || f.delivery.includes(c.lifecycle.delivery)),
     );
   const courses = inSet(filter).filter(
     (c) => !q || c.title.toLowerCase().includes(q) || c.packageKey.includes(q),
@@ -76,7 +97,7 @@ export default async function Page({
       name={actor.displayName}
       roles={actor.roles}
       title="Courses"
-      description="Every course package from import to the public catalogue, with what each one needs next."
+      description="Every course, Academy (individual learners) and Organisation (cohort delivery), with what each one needs next."
       actions={
         <>
           <Link
@@ -105,6 +126,16 @@ export default async function Page({
           what={`Part of the course register (${missing.join(", ")})`}
         />
       )}
+      {catalogue.academyInProgress ? (
+        <p className="ac-note">
+          {catalogue.academyInProgress} Academy{" "}
+          {catalogue.academyInProgress === 1 ? "package is" : "packages are"}{" "}
+          still in upload, validation or review and not yet a course.{" "}
+          <Link href="/admin/academy-course-engineering" className="ac-link">
+            Open Academy Course Engineering →
+          </Link>
+        </p>
+      ) : null}
 
       <div className="ac-stat-grid">
         {FILTERS.map((f) => (
@@ -191,6 +222,19 @@ export default async function Page({
                     {c.testRecord && (
                       <Pill tone="neutral">Acceptance test</Pill>
                     )}
+                    <Pill
+                      tone={
+                        c.lifecycle.delivery === "ORGANISATION"
+                          ? "neutral"
+                          : "brand"
+                      }
+                    >
+                      {DELIVERY_LABELS[c.lifecycle.delivery]}
+                    </Pill>
+                    {c.lifecycle.academy?.saleMode === "REVIEW_ONLY" &&
+                      c.lifecycle.academy.offerState === "PUBLISHED" && (
+                        <Pill tone="warn">Review only · not on sale</Pill>
+                      )}
                     <p className="ac-muted">
                       Revision {c.lifecycle.current.packageRevision}
                       {c.versionLabel ? ` · ${c.versionLabel}` : ""} ·{" "}
@@ -216,6 +260,11 @@ export default async function Page({
                   >
                     Open course
                   </Link>
+                  {c.lifecycle.academy && (
+                    <Link href={c.lifecycle.academy.href} className="ac-link">
+                      Open Academy Course Engineering
+                    </Link>
+                  )}
                   <Link
                     href={`/admin/operations-engineer?action=inspect_course&packageKey=${encodeURIComponent(c.packageKey)}`}
                     className="ac-link"
