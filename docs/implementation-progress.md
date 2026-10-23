@@ -2,6 +2,17 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
+FINAL LOCAL VERIFICATION (2026-10-23, 19:54 Europe/London): `npm.cmd test -- --maxWorkers=2` **exit 0**, **4,950 passed, 39 skipped, 0 failed**, 222 files passed / 7 skipped (229 total), 937.83s. Lint, typecheck and build pass (build uses a process-only HTTPS APP_URL override); format:check now **exit 0** after LF-normalising four existing CRLF JSON checkouts, with identical parsed JSON and no Git text diff. `git diff --check` passes. The new four-case genuine PostgreSQL race suite is wired into CI's required 43-case job; local execution correctly skips all four because no disposable server is configured. It is not race acceptance evidence.
+
+- BRANCH / REVIEW: A `0288b35`, B `f7f8f44`, [draft PR #84](https://github.com/NaimurRahmanR/ducelio/pull/84). Same branch/worktree, no reset/merge. Named acceptance-work stash preserved, never popped/dropped. Unrelated `desktop.ini` remains unstaged.
+- CI BLOCKER: run `40005640692`, both jobs failed before execution (zero steps); GitHub annotation says recent account payments failed or spending limit needs increasing. No green CI or human review is claimed. No checks were bypassed.
+- LAST COMPLETED CHECKPOINT: A local functionality/verification; B local checkout/coupon functionality/verification.
+- CURRENT PARTIAL CHECKPOINT: B hosted/concurrent release acceptance. C (explicit activation + 23h59m activity availability), complete D and E tenant isolation remain unimplemented, not production-ready.
+- HOSTED / RESET: acceptance identified and inspected READ ONLY at ledger 66. No 067/068 deployment, hosted mutation, provider charge, backup, reset, production deploy or merge. Reviewed non-destructive clean slate, backup/restore prerequisites and rollback limitations are in docs/59.
+- NEXT EXACT ACTION: restore GitHub runner/billing availability and execute the new real-PostgreSQL races; require human/security review. Continue C using the existing scheduler, enforcing all activity timestamps and preserving governed recovery, then complete D/E and hosted acceptance. Do not call the replacement complete.
+
+PREVIOUS CONTINUATION RECORDS (preserved):
+
 UNIFIED CONTINUATION UPDATE (2026-10-23): checkpoint A committed as `0288b35`. Checkpoint B is locally functional, with migration `202610290068_unified_course_checkout.sql`, one-price/duration-unselected orders, partial and 100% coupons, admin coupon creation/expiry/limits/course restrictions/availability/reporting, existing Stripe controller/webhook/refund/session-replacement reuse, and no payment-time timetable creation. Local targeted commerce/server/UI/readiness run: 55/55 across four files, exit 0. Lint/typecheck pass; build passes with process-only HTTPS APP_URL override. Full final regression is running. See [the implementation/release/reset record](59-unified-course-engine.md).
 
 - LAST COMPLETED CHECKPOINT: A, locally functional/tested and committed. Production release acceptance remains open.
