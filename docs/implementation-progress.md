@@ -2,7 +2,43 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-23, 22:44 Europe/London): SAME branch feat/unified-course-engine-20261023 and draft PR #84; runtime implementation committed/pushed c4dd5a0, main reconciled by merge 248851f (9 ahead / 0 behind at last fetch), named acceptance-work stash preserved. Unrelated desktop.ini remains unstaged. Older continuation records below are historical, not current status.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-23, ~23:50 Europe/London; Claude continuation): SAME branch feat/unified-course-engine-20261023 and draft PR #84. The named stash `stash@{0}` is untouched; unrelated `desktop.ini` remains unstaged. Detailed evidence: docs/59, section "Hosted examination failure diagnosis, fixed-amount coupons and release audit".
+
+LAST COMPLETED CHECKPOINT: the hosted examination failure is diagnosed and corrected; fixed-amount coupons (migration 074) are implemented; the security inventory is added; all local gates have run.
+
+- Hosted failure root cause: a single client-side transport failure (fetch threw, HTTP status 0, empty code) on a fresh connection after a ~60-second idle wait. The hosted database proves quiz_4 never committed. It was not a database/RLS/scheduler defect.
+- Harness fix: `scripts/acceptance/hosted-rpc.mjs` adds bounded diagnostics, plus bounded retries for transport failures of server-idempotent RPCs only.
+- Owner-approved hosted rerun: exit 0, 6 passed / 1 skipped (organisation provisioning BLOCKED: no PLATFORM_ADMIN identity), 1703.13s. It reported `TRANSPORT_RETRIES 0`.
+
+COMPLETED ITEMS:
+
+- Codex's uncommitted browser hydration regression test is preserved and passes.
+- Migration 074, `create_organisation_course_amount_coupon`, the minimum-charge refusal (percent and fixed), the admin UI and the learner message.
+- `tests/unified-fixed-amount-coupons-db.test.ts` (7 cases) and a fixed-slot real-PostgreSQL race.
+- `tests/security-inventory-db.test.ts`.
+- A tutor-lab PG fixture timestamp fix.
+- The Sarah pinned migration list and the readiness contract now include 074; the CI PG list includes the new file, with minimum 93.
+- Real PostgreSQL 18.4 gate: 93/93 across 14 files, none skipped; JSON guard passed.
+- lint, typecheck, format:check and build (process-only HTTPS APP_URL): exit 0.
+- First full regression: 5,030 passed / 1 failed (Sarah pinned list, fixed) / 57 skipped.
+
+CURRENT PARTIAL CHECKPOINT: none. Clean full-regression rerun: exit 0, 5,031 passed / 57 skipped / 0 failed (234 files passed / 9 skipped, 666.76s).
+
+INCOMPLETE ITEMS / BLOCKERS:
+
+- Migration 074 is NOT applied to ducelio-acceptance; this needs explicit owner approval. After approval: dry-run, then apply, then `acceptance:academy-readiness`, then the hosted suite (its fixed-coupon case is BLOCKED/skips until then).
+- No PLATFORM_ADMIN acceptance identity.
+- No Stripe test-mode, AI or controller credentials.
+- PR CI has not run green (billing/spending limit).
+- Still outstanding: SMTP, backup/restore, rate limiting, privacy governance, accessibility/device acceptance, deployment security review, human review and genuine AWS academic decisions.
+
+KNOWN FAILURES: none outstanding locally. The local portable PostgreSQL cluster `work/pgdata-unified-20261023` (localhost:55484) is stopped after the gates.
+
+NEXT EXACT ACTION: obtain owner approval to apply 074 to acceptance only, then run the readiness check and the hosted suite. Configure the PLATFORM_ADMIN, Stripe test-mode and AI acceptance credentials. Restore CI billing and obtain green PR CI plus independent review. Do not merge, deploy or claim production readiness.
+
+PREVIOUS RECORD (superseded by the record above):
+
+RECOVERY RECORD (2026-10-23, 22:44 Europe/London): SAME branch feat/unified-course-engine-20261023 and draft PR #84; runtime implementation committed/pushed c4dd5a0, main reconciled by merge 248851f (9 ahead / 0 behind at last fetch), named acceptance-work stash preserved. Unrelated desktop.ini remains unstaged. Older continuation records below are historical, not current status.
 
 LAST COMPLETED CHECKPOINT: A/B/C/D/E local implementation and actual PostgreSQL verification; owner-approved acceptance migrations 067-073 now APPLIED through the pinned credential-safe CLI only to ducelio-acceptance blqaomssojfxaxskcyxd. Post-apply readiness passes all 11 ledger/RPC/ACL/search-path/RLS checks. No production mutation/deploy/merge, destructive cleanup, backup or deletion.
 

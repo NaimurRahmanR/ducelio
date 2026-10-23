@@ -13,7 +13,8 @@
     "202610310070",
     "202611010071",
     "202611020072",
-    "202611030073"
+    "202611030073",
+    "202611040074"
   ],
   "anonRpcs": [
     "apply_academy_commerce_operation",
@@ -40,6 +41,7 @@
     "create_commercial_v1_campaign",
     "create_commercial_v1_order",
     "create_course_organisation_by_email",
+    "create_organisation_course_amount_coupon",
     "create_organisation_course_coupon",
     "create_unified_course_order",
     "current_academic_activity_state",

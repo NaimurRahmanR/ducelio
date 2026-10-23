@@ -5,22 +5,36 @@ import { createSupabase } from "./supabase";
 import { DUCELIO_ORGANISATION } from "./course-organisations";
 import { AccessDenied } from "@/domain/policy";
 
-export const couponInputSchema = z.strictObject({
+const couponTerms = {
   code: z
     .string()
     .trim()
     .toUpperCase()
     .regex(/^[A-Z0-9][A-Z0-9_-]{3,39}$/),
-  percentOff: z.number().int().min(1).max(100),
   expiresAt: z.iso.datetime(),
   redemptionLimit: z.number().int().min(1).max(1000000),
   courseId: z.uuid().nullable(),
   reason: z.string().trim().min(5).max(300),
-});
+};
+// Exactly one discount kind. The database recomputes every price; a fixed
+// amount is bound to one currency and applies only to courses priced in it.
+export const couponInputSchema = z.union([
+  z.strictObject({
+    ...couponTerms,
+    percentOff: z.number().int().min(1).max(100),
+  }),
+  z.strictObject({
+    ...couponTerms,
+    amountOffMinor: z.number().int().min(1).max(100000000),
+    currency: z.enum(["GBP", "USD", "EUR"]),
+  }),
+]);
 const couponSchema = z.strictObject({
   id: z.uuid(),
   code: z.string(),
-  percentOff: z.number().int(),
+  percentOff: z.number().int().nullable(),
+  amountOffMinor: z.number().int().nullable(),
+  currency: z.enum(["GBP", "USD", "EUR"]).nullable(),
   expiresAt: z.string(),
   redemptionLimit: z.number().int(),
   courseId: z.uuid().nullable(),
@@ -59,19 +73,29 @@ export async function createCourseCoupon(
   organisationId = DUCELIO_ORGANISATION,
 ) {
   const p = couponInputSchema.parse(input);
-  return couponRpc(
-    "create_organisation_course_coupon",
-    {
-      p_organisation_id: z.uuid().parse(organisationId),
-      p_code: p.code,
-      p_percent_off: p.percentOff,
-      p_expires_at: p.expiresAt,
-      p_redemption_limit: p.redemptionLimit,
-      p_course_id: p.courseId,
-      p_reason: p.reason,
-    },
-    z.uuid(),
-  );
+  const terms = {
+    p_organisation_id: z.uuid().parse(organisationId),
+    p_code: p.code,
+    p_expires_at: p.expiresAt,
+    p_redemption_limit: p.redemptionLimit,
+    p_course_id: p.courseId,
+    p_reason: p.reason,
+  };
+  return "percentOff" in p
+    ? couponRpc(
+        "create_organisation_course_coupon",
+        { ...terms, p_percent_off: p.percentOff },
+        z.uuid(),
+      )
+    : couponRpc(
+        "create_organisation_course_amount_coupon",
+        {
+          ...terms,
+          p_amount_off_minor: p.amountOffMinor,
+          p_currency: p.currency,
+        },
+        z.uuid(),
+      );
 }
 export const listCourseCoupons = () =>
   couponRpc("list_course_coupons", {}, z.array(couponSchema));

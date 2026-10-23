@@ -99,6 +99,7 @@ jobs:
           tests/unified-academic-review-db.test.ts
           tests/unified-course-checkout-db.test.ts
           tests/unified-legacy-retirement-db.test.ts
+          tests/unified-fixed-amount-coupons-db.test.ts
           --no-file-parallelism
           --reporter=default --reporter=json
           --outputFile.json=pg-concurrency-report.json
@@ -107,7 +108,7 @@ jobs:
         if: always()
         run: >-
           node scripts/ci/assert-pg-concurrency-report.mjs
-          pg-concurrency-report.json 85
+          pg-concurrency-report.json 93
           tests/commercial-v1-checkout-session-replacement-pg-concurrency.test.ts
           tests/interactive-exam-pg-concurrency.test.ts
           tests/academy-pg-concurrency.test.ts
@@ -121,3 +122,4 @@ jobs:
           tests/unified-academic-review-db.test.ts
           tests/unified-course-checkout-db.test.ts
           tests/unified-legacy-retirement-db.test.ts
+          tests/unified-fixed-amount-coupons-db.test.ts

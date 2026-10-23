@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   createCouponAction,
   toggleCouponAction,
@@ -12,6 +12,7 @@ export function CreateCourseCouponForm({
   organisations?: { id: string; name: string; canManage: boolean }[];
 }) {
   const [state, action, pending] = useActionState(createCouponAction, {});
+  const [kind, setKind] = useState<"PERCENT" | "AMOUNT">("PERCENT");
   return (
     <form action={action} className="acad-form">
       <fieldset disabled={pending}>
@@ -40,9 +41,44 @@ export function CreateCourseCouponForm({
           />
         </label>
         <label>
-          Discount percentage
-          <input name="percentOff" type="number" required min={1} max={100} />
+          Discount type
+          <select
+            name="discountKind"
+            value={kind}
+            onChange={(e) =>
+              setKind(e.target.value === "AMOUNT" ? "AMOUNT" : "PERCENT")
+            }
+          >
+            <option value="PERCENT">Percentage of the course price</option>
+            <option value="AMOUNT">Fixed amount in one currency</option>
+          </select>
         </label>
+        {kind === "PERCENT" ? (
+          <label>
+            Discount percentage
+            <input name="percentOff" type="number" required min={1} max={100} />
+          </label>
+        ) : (
+          <>
+            <label>
+              Fixed discount (for example 25.00)
+              <input
+                name="amountOff"
+                inputMode="decimal"
+                required
+                pattern="\d{1,6}(\.\d{1,2})?"
+              />
+            </label>
+            <label>
+              Currency (applies only to courses priced in it)
+              <select name="currency" required defaultValue="GBP">
+                <option value="GBP">GBP</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </label>
+          </>
+        )}
         <label>
           Expiry (UTC)
           <input name="expiresAt" type="datetime-local" required />

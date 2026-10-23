@@ -27,7 +27,8 @@ if (
 const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
 const template = `ducelio_unified_template_${suffix}`;
 const created: string[] = [];
-let freeCoupon: string, halfCoupon: string, packageId: string;
+let freeCoupon: string, halfCoupon: string, fixedCoupon: string;
+let packageId: string;
 const reason = "Synthetic real PostgreSQL race fixture";
 const controllerKeyId = randomUUID(),
   controllerSecret = randomBytes(32);
@@ -153,6 +154,21 @@ describe.skipIf(!endpoint)(
           people.admin,
           "create_course_coupon",
           ["RACE-HALF", 50, expiry, 1, course.courseId, reason],
+        );
+        fixedCoupon = await rpc<string>(
+          q,
+          people.admin,
+          "create_organisation_course_amount_coupon",
+          [
+            "00000000-0000-4000-8000-000000000001",
+            "RACE-FIXED",
+            2500,
+            "GBP",
+            expiry,
+            1,
+            course.courseId,
+            reason,
+          ],
         );
         const pkg = approvedTestPackage("unified-publish-race");
         pkg.course.demoContent = true;
@@ -300,6 +316,32 @@ describe.skipIf(!endpoint)(
           )
         )[0].n,
       ).toBe(1);
+    });
+    it("reserves the last fixed-amount slot once across different learners", async () => {
+      const db = await clone();
+      const sql =
+        "select public.create_unified_course_order('unified-race-test','RACE-FIXED') r";
+      const results = await race(
+        db,
+        "select id from public.course_engine_coupons where id=$1 for update",
+        [fixedCoupon],
+        [
+          () => call(db, people.learnerA.auth, sql, []),
+          () => call(db, people.learnerB.auth, sql, []),
+        ],
+      );
+      expect(results.filter((r) => r.ok === true)).toEqual([
+        expect.objectContaining({ amountMinor: 7501, accessGranted: false }),
+      ]);
+      expect(
+        results.filter((r) => r.code === "COUPON_UNAVAILABLE"),
+      ).toHaveLength(1);
+      expect(
+        await query(
+          db,
+          "select list_amount_minor, discount_amount_minor from public.course_engine_order_terms",
+        ),
+      ).toEqual([{ list_amount_minor: 10001, discount_amount_minor: 2500 }]);
     });
     it("confirms one timetable across concurrent activation retries", async () => {
       const db = await clone();

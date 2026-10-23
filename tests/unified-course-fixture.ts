@@ -10,6 +10,7 @@ export async function publishUnifiedTestCourse(
   q: Query,
   key: string,
   price = 10001,
+  currency: "GBP" | "USD" | "EUR" = "GBP",
 ) {
   const pkg = approvedTestPackage(key);
   pkg.course.demoContent = true;
@@ -31,6 +32,6 @@ export async function publishUnifiedTestCourse(
     q,
     people.admin,
     "publish_unified_course",
-    [packageId, key, "GBP", price, null, reason],
+    [packageId, key, currency, price, null, reason],
   );
 }

@@ -11,6 +11,7 @@ it("submits the email login form, not a social login form", async () => {
       clicks.push(selector);
     },
     waitFor: async () => true,
+    evaluate: async () => true,
   };
 
   await signInThroughUi(
@@ -23,6 +24,31 @@ it("submits the email login form, not a social login form", async () => {
   expect(clicks).toEqual([
     "document.querySelector('input[name=email]')?.form?.querySelector('button[type=submit]')",
   ]);
+});
+
+it("does not type credentials or submit before the actual form hydrates", async () => {
+  let typed = false,
+    submitted = false;
+  const page = {
+    goto: async () => true,
+    waitFor: async () => false,
+    typeInto: async () => {
+      typed = true;
+    },
+    click: async () => {
+      submitted = true;
+    },
+  };
+  await expect(
+    signInThroughUi(
+      page,
+      "http://127.0.0.1:3000",
+      "synthetic@example.test",
+      "synthetic-password",
+    ),
+  ).rejects.toThrow("Sign-in form did not hydrate");
+  expect(typed).toBe(false);
+  expect(submitted).toBe(false);
 });
 
 it("provides a future browser opening and review start margin", () => {

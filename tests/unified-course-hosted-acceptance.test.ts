@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { buildUnifiedAcceptancePackage } from "../scripts/acceptance/unified-fixture.mjs";
+import { callHostedRpc } from "../scripts/acceptance/hosted-rpc.mjs";
 import {
   withConnection,
   assertAcceptanceDatabaseWriteAuthorized,
@@ -72,19 +73,30 @@ async function waitFor(stamp: string) {
     );
 }
 
-// Error logs expose only RPC names and bounded policy/SQLSTATE codes. No
-// sessions, credentials, e-mails or protected response bodies are printed.
+// Error logs expose only RPC names and bounded policy/SQLSTATE/HTTP/transport
+// codes. No sessions, credentials, e-mails or protected response bodies are
+// printed. Only server-idempotent journey RPCs are retried, and only after a
+// transport failure with no HTTP response; every retry is logged as evidence.
+const transportRetries: string[] = [];
 async function rpc<T = Record<string, unknown>>(
   client: SupabaseClient,
   name: string,
   args = {},
 ): Promise<T> {
-  const { data, error } = await client.rpc(name, args);
-  if (error)
-    throw new Error(
-      `${name}: ${/^[A-Z_]+$/.test(error.message) ? error.message : error.code}`,
-    );
-  return data as T;
+  return (await callHostedRpc(client, name, args, {
+    onRetry: ({
+      name: retried,
+      attempt,
+      reason,
+    }: {
+      name: string;
+      attempt: number;
+      reason: string;
+    }) => {
+      transportRetries.push(`${retried} ${reason} retry ${attempt}`);
+      console.warn(`TRANSPORT_RETRY ${retried} ${reason} retry ${attempt}`);
+    },
+  })) as T;
 }
 async function snapshot(db: Db) {
   return (
@@ -258,6 +270,9 @@ describe.skipIf(!enabled)("owner-authorised ducelio-acceptance journey", () => {
       });
     for (const c of new Set([admin, learner, foreign, platform]))
       if (c) await c.auth.signOut({ scope: "local" });
+    console.info(
+      `TRANSPORT_RETRIES ${transportRetries.length}${transportRetries.length ? `: ${transportRetries.join("; ")}` : ""}`,
+    );
     expect(errors).toEqual([]);
   }, 60000);
 
@@ -637,4 +652,79 @@ describe.skipIf(!enabled)("owner-authorised ducelio-acceptance journey", () => {
     expect(ended.state).toBe("SUBMITTED");
     expect(ended.score).toBe(0);
   }, 70000);
+
+  // Requires migration 074. Only order-free outcomes are exercised (a
+  // covering fixed amount and two refusals), so the protected order/payment
+  // ledger snapshot in afterAll stays exact.
+  it("applies fixed-amount coupons by currency and refuses sub-minimum charges", async (context) => {
+    const fixedSlug = `test-fixed-${run}`;
+    const create = async (
+      code: string,
+      amount: number,
+      currency: string,
+      courseId: string | null,
+    ) => {
+      const c = await rpc<string>(
+        admin,
+        "create_organisation_course_amount_coupon",
+        {
+          p_organisation_id: "00000000-0000-4000-8000-000000000001",
+          p_code: code,
+          p_amount_off_minor: amount,
+          p_currency: currency,
+          p_expires_at: new Date(Date.now() + 86400000).toISOString(),
+          p_redemption_limit: 1,
+          p_course_id: courseId,
+          p_reason: reason,
+        },
+      );
+      coupons.push({ owner: admin, id: c });
+      return c;
+    };
+    // Probe with an organisation-wide coupon before publishing anything.
+    const dollars = `DOLLARS-${run}`.toUpperCase();
+    try {
+      await create(dollars, 20000, "USD", null);
+    } catch (e) {
+      if (!String(e).includes("PGRST202")) throw e;
+      console.warn(
+        "BLOCKED hosted fixed-amount coupons: migration 074 is not applied to ducelio-acceptance (owner approval required).",
+      );
+      return context.skip();
+    }
+    const fixedCourse = await publish(
+      admin,
+      await stage(
+        admin,
+        "00000000-0000-4000-8000-000000000001",
+        `fixed-${run}`,
+      ),
+      fixedSlug,
+    );
+    const pennies = `PENNIES-${run}`.toUpperCase();
+    await create(pennies, 9990, "GBP", fixedCourse.courseId);
+    const covers = `COVERS-${run}`.toUpperCase();
+    await create(covers, 20000, "GBP", fixedCourse.courseId);
+    const buy = (code: string) =>
+      rpc<Buy>(learner, "create_unified_course_order", {
+        p_offer_slug: fixedSlug,
+        p_coupon_code: code,
+      });
+    expect(await buy(pennies)).toEqual({
+      ok: false,
+      code: "COUPON_BELOW_MINIMUM_CHARGE",
+    });
+    expect(await buy(dollars)).toEqual({
+      ok: false,
+      code: "COUPON_UNAVAILABLE",
+    });
+    const granted = await buy(covers);
+    expect(granted).toMatchObject({ ok: true, accessGranted: true });
+    const listed = (
+      await rpc<
+        { code: string; percentOff: number | null; amountOffMinor: number }[]
+      >(admin, "list_course_coupons")
+    ).find((c) => c.code === covers);
+    expect(listed).toMatchObject({ percentOff: null, amountOffMinor: 20000 });
+  });
 });

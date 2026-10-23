@@ -16,7 +16,7 @@ Migration `202610290068_unified_course_checkout.sql` adds coupon configuration, 
 
 The DB calculates discounts with integer arithmetic and rounds a fractional minor unit upward in the payable amount. A coupon that cannot reduce a tiny price is refused. The browser supplies only course slug and optional code. A bound Stripe URL is checked against the order identity, kind, amount and currency. A 100% coupon atomically creates one coupon-backed entitlement/enrolment and no Stripe order, event or charge. It also works with card commerce disabled. Neither paid nor free access creates a timetable.
 
-`/admin/course-engineering/coupons` supports code creation, UTC expiry, percentage (including 100), redemption limit, one-course/all-unified-course restriction, activation/deactivation and newest-200 reporting. Coupon terms cannot be rewritten; availability changes are audited. Pending orders consume a reserved use. A retry or expired-session recovery reuses the same order and reservation, including after coupon expiry/deactivation. Changing a pending order's coupon is refused. Capacity is deliberately not released while a Stripe session may still pay. Migration 072 adds verified cancellation and released-slot reporting in My Learning; the server retains the slot when a session is paid, uncertain or not yet bound. An unbound checkout can resume first to establish a verifiable provider session.
+`/admin/course-engineering/coupons` supports code creation, UTC expiry, percentage (including 100) or (migration 074) a fixed amount in one currency, redemption limit, one-course/all-unified-course restriction, activation/deactivation and newest-200 reporting. Coupon terms cannot be rewritten; availability changes are audited. Pending orders consume a reserved use. A retry or expired-session recovery reuses the same order and reservation, including after coupon expiry/deactivation. Changing a pending order's coupon is refused. Capacity is deliberately not released while a Stripe session may still pay. Migration 072 adds verified cancellation and released-slot reporting in My Learning; the server retains the slot when a session is paid, uncertain or not yet bound. An unbound checkout can resume first to establish a verifiable provider session.
 
 ## Verification and limits
 
@@ -107,3 +107,120 @@ The first full continuation run: exit 1, 4,932 passed / 51 failed / 48 skipped, 
 The complete local PostgreSQL run passed 84/84 in 13 files, no skips (399.74s); the repository JSON guard accepted it. A final payment audit then added one event-reuse test: a contradictory signed event cannot fulfil another order or bind its session. The success-page fallback now reuses the existing captured-payment/refund checker from a shared module and records a pre-fulfilment full refund without granting access. That hardening plus upgrade run passed 29/29. All 85 required PG cases must be rerun for the final source. Lint, typecheck and format:check pass; the latest build is running. No green CI, live provider acceptance or hosted migration result is claimed.
 
 The final build passed with a process-only HTTPS APP_URL override; lint, typecheck and format:check passed. The clean full-suite rerun and final 85-case real-PostgreSQL rerun are in progress. Release approval remains open. The source is preserved as a draft feature checkpoint rather than represented as production-ready.
+
+## Approved acceptance continuation and browser correction
+
+The owner explicitly approved applying 067-073 and running labelled synthetic acceptance fixtures on **ducelio-acceptance**, ref **blqaomssojfxaxskcyxd**, with audited archival afterward. The project was reconfirmed ACTIVE_HEALTHY (PostgreSQL 17.6). The pinned CLI dry run listed exactly those seven migrations; its subsequent approved application exited 0. Post-application `acceptance:academy-readiness` passes **11/11** migration/RPC/ACL/search-path/RLS checks. No production deployment or production mutation occurred.
+
+The direct connection initially refused `ACCEPTANCE_TLS_CA_REQUIRED`. The existing Supabase Root 2021 CA was verified against the repository's recorded SHA-256 fingerprint (80:70:25:AD…CA:FA), supplied with process-local `CP2F_CA_FILE`, and the existing helper retained `rejectUnauthorized: true` plus its authorised-TLS-socket assertion. No TLS/global security setting or `.env.local` value was changed.
+
+The real ordinary-browser journey uses the repository's existing dependency-free Chrome CDP driver, real sign-in and ordinary app Server Actions against acceptance. No test HTTP route, service role, synthetic payment or signed academic result is used. Its first sign-in attempts failed because the local app process lacked network permission; restarting only that local process with approved network access fixed this without an authentication change. Chrome outer-window size did not ensure the intended viewport on Windows; the driver now sets CSS device metrics and asserts 390px. Temporary profile removal verifies its absolute parent/name and refuses symlinks.
+
+Visual browser inspection found a real defect: React's successful-action form reset changed the displayed date/timezone after preview, and edits could leave an old preview confirmable. Both initial and revised timetable forms now preserve their controls, invalidate previews on changes and disable confirmation while a new preview is pending. The strengthened browser journey verifies the exact confirmed start date, time and timezone, plus refusal to confirm edited choices without a fresh preview. The Course Engineering review now describes the authoritative 23h59m window rather than the package's legacy sitting-window metadata.
+
+The **eight browser surfaces pass**, exit 0: administrator sign-in; JSON upload/validation; price plus immutable agent-configuration revision/publication; coupon creation; mobile 100% purchase and Activate Course; preview/confirmation; zero browser runtime errors; audited fixture archival. Screenshots were inspected locally at an actual 390px viewport with no document overflow. Private evidence stays under ignored `work/unified-browser/`; it is not committed. Test offers are archived and coupons deactivated, while packages, enrolments, results and audit history remain.
+
+The new synthetic constructor reuses only the existing generic acceptance constructor and reviewed agent settings. It reads no historical AWS or Security+ JSON. Its single lesson, lab, two revision activities and six one-minute objective assessments are explicitly TEST ONLY / demo content and award no external qualification. The separate real JWT/PostgREST journey waits for future scheduled timestamps (~30 minutes), without clock overrides, backdating or direct academic writes. Publication, protected-table/malformed-JWT refusal, concurrent coupon replay and all-duration/idempotent activation passed; classroom/assessment/timeout verification is currently running. A prior past-time attempt was correctly refused by the scheduler and corrected in the harness.
+
+Hosted organisation provisioning is explicitly **BLOCKED/SKIPPED**: the existing acceptance academic admin is not a PLATFORM_ADMIN, and no separate `ACCEPTANCE_PLATFORM_ADMIN_EMAIL` / `ACCEPTANCE_PLATFORM_ADMIN_PASSWORD` is configured. No role was granted to pass a test. The six actual local PostgreSQL tenant-isolation cases remain valid evidence; they do not substitute for hosted organisation provisioning. Stripe test-mode, native AI and controller credentials are also absent. The owner requested continuation with the currently available credentials. No live Stripe/AI acceptance, genuine expired-JWT test, SMTP, verified backup/restore or comprehensive accessibility/device/security acceptance is claimed. Existing cohort-oriented acceptance commands are historical tools, not evidence for the replacement; provider verification must use the canonical unified checkout/classroom once acceptance credentials are configured.
+
+Executed commands (the CA path and opt-in variables were process-local):
+
+```powershell
+node --env-file=.env.local scripts/acceptance/supabase-linked-cli.mjs --cli=./work/npm-cache/_npx/0e23c24576954b26 --workdir=. -- db push --linked --skip-vault --dry-run
+# exit 0: exactly 067-073; no writes
+node --env-file=.env.local scripts/acceptance/supabase-linked-cli.mjs --cli=./work/npm-cache/_npx/0e23c24576954b26 --workdir=. -- db push --linked --skip-vault --yes
+# owner approved; exit 0, acceptance only
+npm.cmd run acceptance:academy-readiness
+# exit 0: 11/11 after application
+
+$env:ACCEPTANCE_WRITE_ENABLED='true'
+node --env-file=.env.local scripts/acceptance/unified-browser.mjs
+# exit 0: eight browser surfaces, audited archive/deactivation
+$env:DUCELIO_RUN_UNIFIED_HOSTED_ACCEPTANCE='true'
+npm.cmd test -- tests/unified-course-hosted-acceptance.test.ts --maxWorkers=1 --reporter=verbose --reporter=json --outputFile.json=work/unified-hosted-acceptance-final.json
+# real-time journey running; missing platform identity is an explicit skip
+```
+
+Do not persist the opt-in flags globally or run the hosted test without owner approval. It independently checks both the TLS-verified database marker and the authenticated Supabase environment marker, exact project hostname and pooler username before fixture operations. Its default test invocation skips all hosted mutations. Archival uses only offers from that run; no destructive cleanup exists. Accounts/cohorts and both payment/refund ledgers are snapshotted for preservation; audit history may grow.
+
+The completed pre-browser full regression is **5,001 passed / 48 skipped / zero failures** (229 files passed / 8 skipped, 732.66s). The completed real PostgreSQL 18.4 gate is **85/85 in 13 required files, zero skips**, 323.47s; `assert-pg-concurrency-report.mjs` passed. The disposable localhost cluster has been stopped. Lint, typecheck, build (process-only HTTPS APP_URL), format and whitespace checks pass after the browser correction. The focused browser-fix regression passed **20/20 across four files**. A fresh full regression including the new harness files is running with:
+
+```powershell
+npm.cmd test -- --maxWorkers=2 --reporter=default --reporter=json --outputFile.json=work/unified-release-after-browser-tests.json
+```
+
+Checkpoint `e79343b` is pushed to the same draft PR #84. Main is reconciled; the named unrelated stash is untouched and `desktop.ini` stays unstaged. Latest inspected CI run **40029700680** again failed before both jobs started (zero steps): its actual annotation says recent account payments failed or the spending limit must be increased. The Ubuntu runner-image notice is separate from that failure. No green CI or human review is claimed. Release remains blocked pending the remaining actual acceptance and independent review; rollback must preserve all additive schema/evidence and compatible unified-order readers/controllers.
+
+## Hosted examination failure diagnosis, fixed-amount coupons and release audit (2026-10-23 continuation)
+
+**Hosted `start_my_academy_assessment` failure: actual cause.** The failing run reported only `start_my_academy_assessment: ` (an empty code) at about 21:57:01 UTC, one second after quiz_4 opened. A read-only, certificate-verified query of ducelio-acceptance showed that the learner's quiz_1, quiz_2, midterm and quiz_3 attempts had started, submitted and scored 10/10. quiz_4 has **no attempt row and no `ACADEMY_ASSESSMENT_STARTED` audit event**, so the request never committed, and no competing active attempt existed. With the repository's supabase-js 2.116 against local endpoints, an empty `code` occurs only when `fetch` throws (HTTP status 0, `TypeError: fetch failed`, e.g. a reset or refused socket). A PostgREST/SQL refusal carries its SQLSTATE or policy code, and a gateway 5xx without JSON prints `undefined`. The hosted gateway (Cloudflare) sends no `Keep-Alive: timeout` hint, so Node 24's undici discards idle sockets after its 4-second default. Each request after the journey's ~60-second waits therefore opens a fresh TCP/TLS connection; that setup failed once. The exact socket cause (DNS, reset or TLS) cannot be recovered: the old harness discarded it, and no Supabase management/API-log credential is configured. The cause was a client-side transport failure. It was not a database, RLS, scheduling or firewall defect.
+
+**Correction (harness only; no server, RLS or authentication change).** `scripts/acceptance/hosted-rpc.mjs` reports bounded diagnostics: the RPC name plus an uppercase policy code, SQLSTATE, `HTTP_<status>` or `TRANSPORT_FAILURE(<cause code>)`. It never prints bodies, sessions or credentials. It retries a transport failure (no HTTP response at all) at most three times, with backoff and each retry logged, and only for RPCs that are idempotent on the server:
+
+- `start_my_academy_assessment` resumes the same ACTIVE attempt;
+- `record_my_academy_response` replays by its idempotency key;
+- `submit_my_academy_attempt` returns the final attempt;
+- the rest are reads.
+
+Orders, coupons, schedule confirmation and publication, whose concurrency is under test, are never retried. Neither is any server refusal. `tests/acceptance-hosted-rpc.test.ts` covers all of these cases.
+
+**Proof.** The owner-approved hosted journey was rerun with the corrected harness: **exit 0, 6 passed / 1 skipped, 1703.13s**.
+
+- The previously failing classroom/lab/revision/examination case passed in 1696.1s on real scheduled timestamps (no clock override), including all six sittings and the PASSED/10000 bp/COMPLETED result.
+- The one-minute independent timer expiry passed.
+- afterAll archival plus order/payment/refund ledger preservation passed.
+- `TRANSPORT_RETRIES 0`: the transient failure did not recur, so the retry path itself was **not** exercised on hosted.
+- Organisation provisioning remains **BLOCKED/SKIPPED**: no PLATFORM_ADMIN acceptance identity exists.
+
+Evidence is in `work/unified-hosted-acceptance-rerun.{log,json}` (ignored).
+
+**Codex browser correction preserved.** The hydration guard in `signInThroughUi` was already committed (`e79343b`). The uncommitted regression test, which refuses to type or submit before React binds the form, is kept and passes.
+
+**Fixed-amount coupons (migration 074, `202611040074_unified_fixed_amount_coupons.sql`).**
+
+- Each coupon has exactly one discount kind, enforced by the `course_engine_coupons_one_discount` constraint: a percentage, or `amount_off_minor` bound to one currency (GBP/USD/EUR).
+- New `create_organisation_course_amount_coupon` RPC (authenticated only; organisation MANAGE authority). The percent and fixed creators share a private `create_unified_coupon`. It validates terms and checks a course-restricted coupon's currency against the course's. Identical terms replay idempotently, null-safe comparisons now apply to both kinds, and any other terms return `COUPON_CONFLICT`. Its audit payload records only the chosen kind.
+- `create_unified_course_order` applies a fixed amount only to a course priced in that currency (otherwise `COUPON_UNAVAILABLE`) and never goes below zero. A fixed amount covering the whole price grants access without payment, like a 100% coupon.
+- New `COUPON_BELOW_MINIMUM_CHARGE` refusal for percent and fixed coupons alike: a partial discount leaving less than Stripe's minimum (GBP 30, USD 50, EUR 50 minor units) is refused before any reservation. This stops a coupon use being held by an order that can never be paid. Previously a 99% coupon could create such an order.
+- Coupon terms remain immutable (`guard_unified_coupon`), and the deploy-time ACL assertions are extended.
+- Admin UI: a discount-type selector; the fixed amount is entered in major units and converted exactly, without floats; a currency selector; the register shows "£25.00 off (GBP courses only)". The learner sees a specific message for the new refusal.
+- Tests:
+  - `tests/unified-fixed-amount-coupons-db.test.ts`: 7 cases on PGlite and real PostgreSQL, covering validation, authority, idempotency/conflict, immutability, audit, RLS, discounting, full cover, the minimum charge (including exactly-minimum), currency isolation and the redemption limit.
+  - A new real multi-connection race for the last fixed-amount slot.
+  - UI/server tests for mapping, strict union input and exact amount parsing.
+  - An opt-in hosted case that probes for 074 first and skips as BLOCKED, publishing nothing, until 074 is applied. It uses only order-free outcomes, so the hosted ledger snapshot stays exact.
+
+**074 is NOT applied to ducelio-acceptance.** It needs explicit owner approval, after which `acceptance:academy-readiness` and the hosted case should be rerun. Until then hosted readiness will correctly report 074 as missing.
+
+**A latent PostgreSQL test-fixture bug, found and fixed.** In the first 14-file gate one case failed: `tests/academy-tutor-lab-pg-concurrency.test.ts`, "reply record and concurrent release insert". The table requires `expires_at = started_at + 30 seconds` exactly, but the fixture used two separate `clock_timestamp()` calls, which differ by microseconds under load. It now derives both columns from one timestamp. The product constraint is unchanged.
+
+**Security audit.**
+
+- A new permanent `tests/security-inventory-db.test.ts` asserts, over the whole migrated schema under Supabase defaults:
+  - every application SECURITY DEFINER function pins `search_path`;
+  - no private-schema function or schema is usable by anon/authenticated/service_role;
+  - anon has no table privileges;
+  - authenticated has no write privilege on any course/academy table, and only the organisation and membership registers are readable, through their `can_read_course_organisation` policies.
+- Payment: the Stripe webhook verifies its signature (`constructEvent`). Fulfilment additionally requires the HMAC controller claim (300-second window) and checks amount, currency, session and event-reuse binding to the order; fixed-coupon orders use the same path.
+- Secrets/AI: client components import no secrets or provider keys. Provider-key reads are server-only, and the admin agents page shows variable names only.
+- Organisation isolation keeps its six real-PostgreSQL cases. Hosted organisation provisioning remains blocked as above.
+- Not newly audited in depth this pass: AI prompt/context contents and the controlled-assessment firewall. These rely on the existing suites, and Professor/Tutor/Counsellor remain not live-provider-tested.
+
+**Gates (this source).**
+
+- Real PostgreSQL 18.4, CI list plus the new file (14 files): **93/93 passed, none skipped, 341.78s**, and `assert-pg-concurrency-report.mjs … 93` passed. CI's minimum is raised from 85 to 93.
+- `npm run lint`, `npm run typecheck` (`next typegen && tsc`) and `npm run format:check`: exit 0.
+- `npm run build`: exit 0 with process-only `APP_URL=https://ducelio.invalid`.
+- Full regression: the first run was **5,030 passed / 1 failed / 57 skipped** (742.24s). The single failure was the pinned Sarah migration list, which now includes 074 (34/34). The clean rerun passed: **exit 0, 5,031 passed / 57 skipped / 0 failed; 234 files passed / 9 skipped; 666.76s**. The skips are the opt-in hosted and real-PostgreSQL suites, which ran separately above.
+
+**Remaining production blockers (unchanged unless stated).**
+
+- PR CI has not run green: earlier runs failed before starting, for billing/spending limits.
+- 074 is not applied to acceptance.
+- There is no PLATFORM_ADMIN acceptance identity, so hosted organisation provisioning is blocked.
+- There is no Stripe test-mode, native AI or controller credential, so there are no live payment or AI journeys.
+- Still outstanding: SMTP, verified backup/restore, rate limiting/abuse controls, privacy/support-data governance, comprehensive accessibility/device acceptance, deployment security review and independent human review.
+- Genuine AWS academic review decisions remain unresolved.
+
+**This branch is not production-ready.**

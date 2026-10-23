@@ -17,6 +17,8 @@ const TEXT: Record<string, string> = {
     "This coupon is invalid, expired, inactive, fully reserved or not valid for this course.",
   COUPON_NO_DISCOUNT:
     "This coupon cannot reduce this course's price in the selected currency.",
+  COUPON_BELOW_MINIMUM_CHARGE:
+    "This coupon would leave less than the minimum card payment for this course. It cannot be used here.",
   CHECKOUT_TERMS_LOCKED:
     "A checkout already exists for this course. Resume it or verify and cancel the unpaid checkout in My Learning before changing its terms.",
 };

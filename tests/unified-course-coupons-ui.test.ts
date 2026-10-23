@@ -42,6 +42,7 @@ describe("course coupon server and UI boundaries", () => {
     );
     for (const name of [
       "code",
+      "discountKind",
       "percentOff",
       "expiresAt",
       "redemptionLimit",
@@ -88,6 +89,101 @@ describe("course coupon server and UI boundaries", () => {
       },
     );
   });
+  it("sends a fixed amount with its currency to the separate amount authority", async () => {
+    await createCourseCoupon({
+      code: "save-25",
+      amountOffMinor: 2500,
+      currency: "GBP",
+      expiresAt: "2030-01-01T00:00:00Z",
+      redemptionLimit: 5,
+      courseId: null,
+      reason: "Synthetic coupon approval",
+    });
+    expect(m.rpc).toHaveBeenCalledExactlyOnceWith(
+      "create_organisation_course_amount_coupon",
+      {
+        p_organisation_id: "00000000-0000-4000-8000-000000000001",
+        p_code: "SAVE-25",
+        p_amount_off_minor: 2500,
+        p_currency: "GBP",
+        p_expires_at: "2030-01-01T00:00:00Z",
+        p_redemption_limit: 5,
+        p_course_id: null,
+        p_reason: "Synthetic coupon approval",
+      },
+    );
+  });
+  it("refuses mixed, partial or unsupported discount input before any RPC", async () => {
+    const base = {
+      code: "MIXED-1",
+      expiresAt: "2030-01-01T00:00:00Z",
+      redemptionLimit: 5,
+      courseId: null,
+      reason: "Synthetic coupon approval",
+    };
+    for (const discount of [
+      { percentOff: 10, amountOffMinor: 100, currency: "GBP" },
+      { amountOffMinor: 100 },
+      { amountOffMinor: 100, currency: "JPY" },
+      { amountOffMinor: 0, currency: "GBP" },
+      { amountOffMinor: 12.5, currency: "GBP" },
+      {},
+    ])
+      await expect(
+        createCourseCoupon({ ...base, ...discount }),
+      ).rejects.toThrow();
+    expect(m.rpc).not.toHaveBeenCalled();
+  });
+  it.each([
+    ["25", 2500],
+    ["25.5", 2550],
+    ["0.30", 30],
+    ["999999.99", 99999999],
+  ])(
+    "converts the admin fixed amount %s exactly to minor units",
+    async (amountOff, minor) => {
+      const f = new FormData();
+      for (const [k, v] of Object.entries({
+        code: "FIXED-TEST",
+        discountKind: "AMOUNT",
+        amountOff,
+        currency: "EUR",
+        expiresAt: "2030-01-01T12:30",
+        redemptionLimit: "5",
+        courseId: "",
+        reason: "Synthetic approval",
+      }))
+        f.set(k, v);
+      expect(await createCouponAction({}, f)).toHaveProperty("message");
+      expect(m.rpc.mock.calls[0][0]).toBe(
+        "create_organisation_course_amount_coupon",
+      );
+      expect(m.rpc.mock.calls[0][1]).toMatchObject({
+        p_amount_off_minor: minor,
+        p_currency: "EUR",
+      });
+      expect(m.rpc.mock.calls[0][1]).not.toHaveProperty("p_percent_off");
+    },
+  );
+  it.each(["0", "1.234", "-5", "1e3", "", "12,50"])(
+    "refuses the malformed admin fixed amount %j",
+    async (amountOff) => {
+      const f = new FormData();
+      for (const [k, v] of Object.entries({
+        code: "FIXED-TEST",
+        discountKind: "AMOUNT",
+        amountOff,
+        currency: "GBP",
+        expiresAt: "2030-01-01T12:30",
+        redemptionLimit: "5",
+        courseId: "",
+        reason: "Synthetic approval",
+      }))
+        f.set(k, v);
+      expect(await createCouponAction({}, f)).toHaveProperty("error");
+      expect(m.rpc).not.toHaveBeenCalled();
+    },
+  );
   it("records an unambiguous UTC expiry from the admin form", async () => {
     const f = new FormData();
     for (const [k, v] of Object.entries({

@@ -527,10 +527,14 @@ describe.skipIf(!ADMIN_URL)(
         (e: Error) => ({ ok: false as const, error: e.message }),
       );
       await waitForBlocked(db, 1);
+      // One timestamp for both columns: the schema requires
+      // expires_at = started_at + 30 seconds exactly, and two separate
+      // clock_timestamp() calls differ by microseconds under load.
       await holder.query(
         `insert into public.tutor_lab_content_releases(student_id, invocation_id, agent_profile, academy_request_id,
            lesson_id, objective_id, state, started_at, expires_at)
-         values ($1, gen_random_uuid(), 'TUTOR', $2, $3, $4, 'ACTIVE', clock_timestamp(), clock_timestamp() + interval '30 seconds')`,
+         select $1, gen_random_uuid(), 'TUTOR', $2, $3, $4, 'ACTIVE', t.ts, t.ts + interval '30 seconds'
+           from (select clock_timestamp() ts) t`,
         [
           request.learner_id,
           requestId,

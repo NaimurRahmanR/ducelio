@@ -10,6 +10,7 @@ import {
   listOrganisationCourseOrders,
 } from "@/server/course-coupons";
 import { listUnifiedCoursePackages } from "@/server/unified-course-engine";
+import { formatMoney } from "@/domain/academy-delivery";
 import {
   CreateCourseCouponForm,
   ToggleCourseCouponForm,
@@ -84,10 +85,13 @@ export default async function Page({
       </Panel>
       <Panel title="New coupon">
         <p>
-          100% coupons grant access without a Stripe charge. Partial discounts
-          use secure card checkout. A pending checkout reserves a use until
-          resolved; resuming it uses the same order and coupon. Existing
-          reservations keep their agreed terms after expiry or deactivation.
+          100% coupons, and fixed amounts that cover the whole price, grant
+          access without a Stripe charge. Partial discounts use secure card
+          checkout and must leave at least the minimum card payment. A fixed
+          amount applies only to courses priced in its currency. A pending
+          checkout reserves a use until resolved; resuming it uses the same
+          order and coupon. Existing reservations keep their agreed terms after
+          expiry or deactivation.
         </p>
         {packages ? (
           <CreateCourseCouponForm
@@ -108,7 +112,10 @@ export default async function Page({
             {coupons.map((c) => (
               <li key={c.id}>
                 <h2>
-                  {c.code}: {c.percentOff}%
+                  {c.code}:{" "}
+                  {c.percentOff !== null
+                    ? `${c.percentOff}% off`
+                    : `${formatMoney(c.amountOffMinor ?? 0, c.currency ?? "GBP")} off (${c.currency ?? ""} courses only)`}
                 </h2>
                 <p>
                   {c.active ? "Active" : "Inactive"}. Expires{" "}
