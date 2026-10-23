@@ -4,7 +4,7 @@
 //   npm run acceptance:academy-readiness
 //
 // An Academy release is not operational until the target database has every
-// Academy migration (060-068) recorded and every RPC the application calls
+// Academy migration (060-069) recorded and every RPC the application calls
 // exists with its intended grants. This verifier checks exactly that, from
 // the operator's acceptance credential (ACCEPTANCE_DATABASE_URL), inside
 // BEGIN TRANSACTION READ ONLY, rolled back. It is operator tooling only:
@@ -156,7 +156,7 @@ export async function readAcademySnapshot(
            (has_table_privilege('anon', c.oid, 'SELECT,INSERT,UPDATE,DELETE')
              or has_table_privilege('authenticated', c.oid, 'SELECT,INSERT,UPDATE,DELETE')) "clientPrivileged"
          from pg_class c
-         where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and (c.relname like 'academy\\_%' or c.relname in ('course_engine_packages','course_engine_publications','course_engine_coupons','course_engine_coupon_redemptions','course_engine_order_terms'))`,
+         where c.relnamespace = 'public'::regnamespace and c.relkind = 'r' and (c.relname like 'academy\\_%' or c.relname in ('course_engine_packages','course_engine_publications','course_engine_coupons','course_engine_coupon_redemptions','course_engine_order_terms','course_engine_recoveries'))`,
       )
     ).rows;
     const schemas = (

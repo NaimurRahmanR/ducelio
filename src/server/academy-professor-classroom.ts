@@ -14,6 +14,8 @@ import type { LearnerClassroomTranscript } from "./academic-runtime/professor-te
 // revocation or the exam firewall is decided here.
 
 export const ACADEMY_CLASS_DENIAL_TEXT: Record<string, string> = {
+  WINDOW_CLOSED:
+    "This class is outside its 23-hour 59-minute window. Request recovery for missed work from My Learning.",
   NOT_YET_STARTED:
     "This class has not started yet. It opens at its scheduled time.",
   NOT_RELEASED:

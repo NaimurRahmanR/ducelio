@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { listCourseRecoveries } from "@/server/unified-course-activation";
+import { ReviewRecoveryForm } from "@/components/course-recovery-forms";
 import { z } from "zod";
 import { AdminForbidden, AdminShell } from "@/components/admin-shell";
 import {
@@ -254,6 +256,7 @@ export default async function Page({
       />
     );
   const actor = access.actor;
+  const recoveryQueue = await listCourseRecoveries().catch(() => null);
   const params = await searchParams;
   const register = await listUnifiedCoursePackages().then(
     (list) => ({ list, failure: null }),
@@ -311,6 +314,26 @@ export default async function Page({
       }
     >
       <Stepper step={step} />
+      <Panel title="Missed-activity recovery reviews (oldest 100)">
+        {recoveryQueue === null ? (
+          <Unavailable what="The recovery review queue" />
+        ) : recoveryQueue.length === 0 ? (
+          <p>No pending recovery requests.</p>
+        ) : (
+          <ul>
+            {recoveryQueue.map((r) => (
+              <li key={r.id}>
+                <p>
+                  Enrolment {r.enrolmentId}; activity {r.itemId}; {r.reasonCode}
+                  . Proposed {new Date(r.opensAt).toISOString()} to{" "}
+                  {new Date(r.closesAt).toISOString()} (UTC).
+                </p>
+                <ReviewRecoveryForm id={r.id} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
       {packages === null && (
         <Unavailable
           what="The Academy package register"

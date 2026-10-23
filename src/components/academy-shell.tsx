@@ -30,7 +30,7 @@ import type { Role } from "@/domain/academy";
 const links = [
   ["Home", "", Home],
   ["Programme", "programme", BookOpen],
-  ["Academy courses", "academy", GraduationCap],
+  ["My Learning", "academy", GraduationCap],
   ["Calendar", "calendar", CalendarDays],
   ["Classes", "classes", Video],
   ["Assignments", "assignments", ClipboardList],

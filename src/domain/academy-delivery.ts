@@ -251,6 +251,7 @@ export const myAcademyEnrolmentsSchema = z.array(
     status: z.enum(["ACTIVE", "COMPLETED"]),
     formatId: formatId.nullable(),
     fixedFormatId: formatId.nullable(),
+    accessRevoked: z.boolean().default(false),
     offerSlug: z.string(),
     formats: z.array(offeredFormat),
     schedule: z
