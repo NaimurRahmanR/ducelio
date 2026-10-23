@@ -604,7 +604,7 @@ describe("access control remains deny-by-default", () => {
           setConfigSql,
           configArgs(draftVersion, "TUTOR", TUTOR, "Non-admin attempt"),
         ),
-      ).rejects.toThrow("Access denied");
+      ).rejects.toThrow("FORBIDDEN");
     }
     await owner();
   });

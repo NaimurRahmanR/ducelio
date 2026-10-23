@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import {
@@ -104,7 +106,7 @@ let fx: {
 };
 
 beforeAll(async () => {
-  const one = await buildCommerceFixture({ throughMigration: 9999 });
+  const one = await buildCommerceFixture({ throughMigration: 72 });
   db = one.db;
   const two = await buildCommerceFixture({ db });
   const three = await buildCommerceFixture({ db });

@@ -28,13 +28,10 @@ import {
 import { setAgentConfig } from "./academic-agent-config";
 import { agentConfigurationSchema } from "@/domain/course-package";
 
-// Ducelio Academy (B2C) Course Engineering: upload -> validate -> review ->
-// publish. Separate from the organisation workflow in course-engineering.ts
-// and course-activation.ts, which are reused, not changed: the embedded
-// COURSE_PACKAGE_V1 curriculum goes through the existing import, validate,
-// apply, agent configuration, pre-publication test and publish authorities.
-// Academy publication then needs no cohort, instructor, activation or
-// manual assessment/lab setup. Every RPC re-checks the role in the database.
+// Shared Academy validation and academic delivery helpers. The canonical
+// unified authority composes the existing materialisation/test/publication
+// pipeline atomically, with entity-scoped organisation checks in the DB.
+// Historical records retain their original curriculum and authority rules.
 async function adminRpc<T>(
   name: string,
   args: Record<string, unknown>,

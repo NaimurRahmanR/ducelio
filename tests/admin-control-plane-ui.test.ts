@@ -698,22 +698,21 @@ describe("Commercial V1 admin navigation", () => {
     ]);
   });
 
-  it("renders inside the five-destination control centre, under Courses", async () => {
+  it("renders inside the current control centre, under Course Engineering", async () => {
     mocks.rpc.mockResolvedValue(rpcOk({ cohorts: [], versions: [] }));
     const html = renderToStaticMarkup(
       await CohortsPage({ searchParams: Promise.resolve({}) }),
     );
     for (const href of [
       "/admin",
-      "/admin/courses",
-      "/admin/operations-engineer",
+      "/admin/course-engineering",
       "/admin/sales",
       "/admin/academy",
     ])
       expect(html).toContain(`href="${href}"`);
     // Cohorts belongs to Courses, which is marked as the current destination.
     expect(html).toMatch(
-      /<a class="ac-nav-link active" aria-current="page" href="\/admin\/courses">.*?Courses<\/a>/,
+      /<a class="ac-nav-link active" aria-current="page" href="\/admin\/course-engineering">.*?Course Engineering<\/a>/,
     );
     // The technical route keeps its own page and governed forms.
     expect(html).toContain("<h1>Cohorts</h1>");

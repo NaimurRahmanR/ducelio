@@ -267,7 +267,7 @@ describe("course package import", () => {
         JSON.stringify(pkg),
         "Attempted import",
       ]),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("FORBIDDEN");
     await resetRole();
   });
 

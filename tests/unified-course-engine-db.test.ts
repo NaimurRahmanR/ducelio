@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { testDatabase } from "./db-helper";
@@ -55,7 +56,10 @@ const publish = (
   ]);
 
 beforeAll(async () => {
-  db = await testDatabase({ supabaseDefaultPrivileges: true });
+  db = await testDatabase({
+    supabaseDefaultPrivileges: true,
+    throughMigration: 72,
+  });
   q = (sql, params) => db.query(sql, params) as ReturnType<Query>;
   await seedPeople(q);
   legacy = await publishAcademyCourse(
@@ -68,6 +72,12 @@ beforeAll(async () => {
     true,
     reason,
   ]);
+  await db.exec(
+    readFileSync(
+      "supabase/migrations/202611030073_unified_legacy_retirement.sql",
+      "utf8",
+    ),
+  );
 }, 180000);
 afterAll(async () => {
   await db?.close();
@@ -78,7 +88,7 @@ describe("unified publication authority on real migrations", () => {
     expect(await rpc(q, null, "list_unified_course_catalogue")).toEqual([]);
     expect(
       (await rpc<unknown[]>(q, null, "list_academy_catalogue")).length,
-    ).toBeGreaterThan(0);
+    ).toBe(0);
   });
 
   it("keeps historical packages outside the new administration register", async () => {

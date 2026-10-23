@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { randomBytes, randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -99,7 +101,7 @@ const provider = new FakeCommerceProviderAdapter();
 const slug = "academy-server-test";
 
 beforeAll(async () => {
-  db = await testDatabase();
+  db = await testDatabase({ throughMigration: 72 });
   m.db = db;
   m.provider = provider;
   q = (sql, params) =>
@@ -411,6 +413,76 @@ describe("unified checkout through real server, signed authorities and a test St
 });
 
 describe("unified cancellation through the real controller and provider boundary", () => {
+  it("uses verified capture and refund evidence on the success-page fallback", async () => {
+    await publishUnifiedTestCourse(q, "unified-refund-before-fulfilment");
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-refund-before-fulfilment",
+      "",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId,
+      session = (
+        await q(
+          "select provider_session_id s from public.academy_orders where id=$1",
+          [id],
+        )
+      ).rows[0].s as string;
+    provider.setSessionStatus(session, "PAID");
+    const original = provider.retrievePayment.bind(provider);
+    const incomplete = vi
+      .spyOn(provider, "retrievePayment")
+      .mockImplementation(async (s) => ({
+        ...(await original(s)),
+        capturedMinor: null,
+      }));
+    try {
+      expect(
+        await reconcileAcademyOrder({ orderId: id, sessionId: session }),
+      ).toMatchObject({ ok: false, code: "INCOMPLETE_EVIDENCE" });
+    } finally {
+      incomplete.mockRestore();
+    }
+    const pending = vi
+      .spyOn(provider, "retrievePayment")
+      .mockImplementation(async (s) => ({
+        ...(await original(s)),
+        refundPending: true,
+      }));
+    try {
+      expect(
+        await reconcileAcademyOrder({ orderId: id, sessionId: session }),
+      ).toMatchObject({ ok: false, code: "REFUND_PENDING" });
+    } finally {
+      pending.mockRestore();
+    }
+    const amount = (
+      await q("select amount_minor n from public.academy_orders where id=$1", [
+        id,
+      ])
+    ).rows[0].n as number;
+    provider.setRefundedAmount(session, amount);
+    expect(
+      await reconcileAcademyOrder({ orderId: id, sessionId: session }),
+    ).toMatchObject({ ok: false, code: "REFUNDED_NO_LINKED_ENTITLEMENT" });
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_order_refunds where order_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_entitlements where order_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
   it("expires and verifies an unpaid session before releasing its coupon reservation", async () => {
     const c = await publishUnifiedTestCourse(q, "unified-cancel-server");
     await rpc(q, people.admin, "create_course_coupon", [

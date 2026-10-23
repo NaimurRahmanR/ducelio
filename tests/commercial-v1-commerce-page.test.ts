@@ -21,6 +21,9 @@ vi.mock("@/server/commercial-v1-commerce", () => ({
   createCommercialV1Checkout: mocks.createCommercialV1Checkout,
   reconcileCommercialV1Order: mocks.reconcileCommercialV1Order,
 }));
+vi.mock("@/server/academy-commerce", () => ({
+  createUnifiedCourseCheckout: mocks.createCommercialV1Checkout,
+}));
 vi.mock("@/lib/env", () => ({ commerceConfig: mocks.commerceConfig }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -102,10 +105,10 @@ describe("action: startCheckout", () => {
     );
   });
 
-  it("passes an optional campaign code and redirects direct access into the learner programme", async () => {
+  it("passes an optional campaign code and redirects direct access into the My Learning", async () => {
     mocks.createCommercialV1Checkout.mockResolvedValue({
       ok: true,
-      kind: "ACCESS_GRANTED",
+      url: "/student/academy",
       entitlementId: "entitlement-1",
       enrolmentId: "enrolment-1",
       offerSlug: "cybersecurity-foundations",
@@ -114,7 +117,7 @@ describe("action: startCheckout", () => {
     form.set("slug", "cybersecurity-foundations");
     form.set("campaignCode", "reviewer-50");
     await expect(startCheckout({}, form)).rejects.toThrow(
-      "REDIRECT:/student/programme?access=granted",
+      "REDIRECT:/student/academy",
     );
     expect(mocks.createCommercialV1Checkout).toHaveBeenCalledWith(
       "cybersecurity-foundations",

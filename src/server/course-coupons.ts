@@ -75,6 +75,25 @@ export async function createCourseCoupon(
 }
 export const listCourseCoupons = () =>
   couponRpc("list_course_coupons", {}, z.array(couponSchema));
+export const listOrganisationCourseOrders = () =>
+  couponRpc(
+    "list_organisation_course_orders",
+    {},
+    z.array(
+      z.object({
+        id: z.uuid(),
+        courseTitle: z.string(),
+        learnerId: z.uuid(),
+        state: z.enum(["PENDING", "FULFILLED", "CANCELLED"]),
+        amountMinor: z.number().int(),
+        currency: z.string(),
+        discountAmountMinor: z.number().int(),
+        paymentConfirmed: z.boolean(),
+        refundRecorded: z.boolean(),
+        createdAt: z.string(),
+      }),
+    ),
+  );
 export const getCourseCouponRedemptions = (id: unknown) =>
   couponRpc(
     "get_course_coupon_redemptions",

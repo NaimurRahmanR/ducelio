@@ -6,7 +6,7 @@ export type AcademyCheckoutState = { error?: string };
 
 const TEXT: Record<string, string> = {
   ALREADY_ENTITLED:
-    "You already have access to this course. Open My Academy courses to continue.",
+    "You already have access to this course. Open My Learning to continue.",
   ACCESS_REVOKED:
     "Your earlier access to this course was refunded or withdrawn. Contact support to review it.",
   SALE_NOT_OPEN: "This course is not open for purchase.",
@@ -18,11 +18,11 @@ const TEXT: Record<string, string> = {
   COUPON_NO_DISCOUNT:
     "This coupon cannot reduce this course's price in the selected currency.",
   CHECKOUT_TERMS_LOCKED:
-    "A checkout already exists for this course. Resume it using its original coupon, or contact support to review the pending order.",
+    "A checkout already exists for this course. Resume it or verify and cancel the unpaid checkout in My Learning before changing its terms.",
 };
 
-// The price, format, ownership and eligibility are decided by the database
-// (create_academy_order); the browser only names the course and format.
+// The database calculates price, discount, ownership and eligibility. The
+// browser supplies only a course slug and optional coupon.
 export async function startAcademyCheckout(
   _state: AcademyCheckoutState,
   data: FormData,

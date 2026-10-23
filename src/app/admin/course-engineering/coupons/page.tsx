@@ -7,6 +7,7 @@ import { COURSE_ADMIN_ROLES } from "@/server/admin-access";
 import {
   listCourseCoupons,
   getCourseCouponRedemptions,
+  listOrganisationCourseOrders,
 } from "@/server/course-coupons";
 import { listUnifiedCoursePackages } from "@/server/unified-course-engine";
 import {
@@ -29,10 +30,11 @@ export default async function Page({
         requires={COURSE_ADMIN_ROLES}
       />
     );
-  const [coupons, packages, params] = await Promise.all([
+  const [coupons, packages, params, orders] = await Promise.all([
     listCourseCoupons().catch(() => null),
     listUnifiedCoursePackages().catch(() => null),
     searchParams,
+    listOrganisationCourseOrders().catch(() => null),
   ]);
   const id = z.uuid().safeParse(params.couponId);
   const redemptions = id.success
@@ -51,6 +53,35 @@ export default async function Page({
         </Link>
       }
     >
+      <Panel title="Course orders and payment evidence (newest 200)">
+        <p>
+          Only orders belonging to your managed organisations appear. A pending
+          order is an attempt to pay. Refunds are recorded after verified
+          provider evidence.
+        </p>
+        {orders === null ? (
+          <Unavailable what="Course orders" />
+        ) : !orders.length ? (
+          <p>No orders yet.</p>
+        ) : (
+          <ul>
+            {orders.map((o) => (
+              <li key={o.id}>
+                <strong>{o.courseTitle}</strong> — {o.state.toLowerCase()},{" "}
+                {new Intl.NumberFormat("en-GB", {
+                  style: "currency",
+                  currency: o.currency,
+                }).format(o.amountMinor / 100)}
+                . Order {o.id}.{" "}
+                {o.paymentConfirmed
+                  ? "Payment confirmed."
+                  : "No confirmed payment."}{" "}
+                {o.refundRecorded ? "Refund recorded." : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
       <Panel title="New coupon">
         <p>
           100% coupons grant access without a Stripe charge. Partial discounts

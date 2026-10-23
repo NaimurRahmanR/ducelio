@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { PGlite } from "@electric-sql/pglite";
@@ -68,7 +70,7 @@ describe("governed People authority (migration 044)", () => {
   let learner: { auth: string; id: string };
 
   beforeAll(async () => {
-    db = await testDatabase();
+    db = await testDatabase({ throughMigration: 72 });
     admin = await signUp("Pat Admin");
     instructor = await signUp("Ira Instructor");
     counsellor = await signUp("Cass Counsellor");
@@ -571,7 +573,7 @@ describe("governed cohort lifecycle (migration 044)", () => {
   let learners: string[] = [];
 
   beforeAll(async () => {
-    db = await testDatabase();
+    db = await testDatabase({ throughMigration: 72 });
     await db.exec("alter table auth.users disable trigger academy_identity");
     for (const [auth, name] of [
       [academicAuth, "Academic"],
@@ -1023,7 +1025,7 @@ describe("cohort guards against real commerce: only verified paid fulfilment may
   });
 
   it("closing archives the published offer, refuses new orders and offers, and a pending unpaid order grants nothing", async () => {
-    const f = await buildCommerceFixture({ throughMigration: 9999 });
+    const f = await buildCommerceFixture({ throughMigration: 72 });
     db = f.db;
     await asPolicyUser(db, 2);
     const offerId = await value<string>(publish, [
@@ -1164,7 +1166,7 @@ describe("cohort guards against real commerce: only verified paid fulfilment may
 
   it("a full cohort refuses an unpaid learner but honours verified paid fulfilment begun with a free seat", async () => {
     await db.close();
-    const f = await buildCommerceFixture({ throughMigration: 9999 });
+    const f = await buildCommerceFixture({ throughMigration: 72 });
     db = f.db;
     const cohort = (
       await db.query<{ title: string; starts_on: string }>(
@@ -1247,7 +1249,7 @@ describe("deactivated staff are never new targets, and INSTRUCTOR revocation kee
   }
 
   beforeAll(async () => {
-    f = await buildCommerceFixture({ throughMigration: 9999 });
+    f = await buildCommerceFixture({ throughMigration: 72 });
     db = f.db;
     platform = await signUp("Pia Platform");
     teacher = await signUp("Theo Teacher");
@@ -1447,7 +1449,7 @@ describe("Commercial V1 checkpoint 1 acceptance workflow: no privileged SQL afte
   });
 
   it("appoints staff, protects the last administrator and runs a cohort lifecycle through governed RPCs only", async () => {
-    db = await testDatabase();
+    db = await testDatabase({ throughMigration: 72 });
     // 1. Existing Ducelio users (real sign-up provisioning).
     const admin = await signUp("Morgan Admin");
     const teacher = await signUp("Tariq Teacher");

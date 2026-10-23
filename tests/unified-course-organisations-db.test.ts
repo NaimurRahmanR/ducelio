@@ -264,6 +264,18 @@ it("scopes coupon codes, management and reporting to the selling organisation", 
   );
   expect(paid.ok).toBe(true);
   expect(paid.orderId).toBeTruthy();
+  const reportA = await rpc<{ id: string }[]>(
+    q,
+    ownerA,
+    "list_organisation_course_orders",
+  );
+  const reportB = await rpc<{ id: string }[]>(
+    q,
+    ownerB,
+    "list_organisation_course_orders",
+  );
+  expect(reportA.some((o) => o.id === paid.orderId)).toBe(false);
+  expect(reportB.some((o) => o.id === paid.orderId)).toBe(true);
   expect(
     (
       await rpc<unknown[]>(q, ownerA, "get_course_coupon_redemptions", [

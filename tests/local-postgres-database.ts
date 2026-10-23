@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { testDatabaseStatements } from "./db-helper";
 
 // Disposable localhost only. No hosted database can be selected by this helper.
-export async function localPostgresDatabase() {
+export async function localPostgresDatabase(
+  options: { throughMigration?: number } = {},
+) {
   const endpoint = process.env.DUCELIO_TEST_POSTGRES_URL;
   if (!endpoint) throw new Error("Disposable local PostgreSQL URL is required");
   const url = new URL(endpoint);
@@ -23,6 +25,7 @@ export async function localPostgresDatabase() {
   };
   try {
     for (const sql of await testDatabaseStatements({
+      ...options,
       supabaseDefaultPrivileges: true,
     }))
       await db.query(sql);

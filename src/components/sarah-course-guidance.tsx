@@ -67,19 +67,31 @@ function formatStartDate(date: string) {
 // projection, resolved by the validated slug. Only the short reason is
 // Sarah's own words, shown as clearly subordinate.
 function RecommendationCard({ card }: { card: SarahCourseRecommendationCard }) {
-  const plan = DELIVERY_PLAN_DEFINITIONS[card.deliveryPlan];
+  const plan = card.deliveryPlan
+    ? DELIVERY_PLAN_DEFINITIONS[card.deliveryPlan]
+    : null;
   return (
     <article className="support-record" aria-label={card.title}>
       <Badge tone="gold">{card.examinationBody}</Badge>{" "}
-      <Badge tone="blue">{plan.label}</Badge>
+      <Badge tone="blue">{plan?.label ?? "Personal timetable"}</Badge>
       <h4>{card.title}</h4>
       <p className="muted">{card.qualificationName}</p>
       <p className="course-price">
         {formatOfferPrice(card.priceAmountMinor, card.currency)}
       </p>
       <p className="muted">
-        Next cohort starts {formatStartDate(card.cohortStartsOn)} · structured
-        over {plan.weeks} weeks.
+        {plan && card.cohortStartsOn ? (
+          <>
+            Next cohort starts {formatStartDate(card.cohortStartsOn)} ·
+            structured over {plan.weeks} weeks.
+          </>
+        ) : (
+          <>
+            Purchase once, then activate a personal timetable over{" "}
+            {card.availableDurationsWeeks?.join(" / ")} weeks. The duration does
+            not change the price.
+          </>
+        )}
       </p>
       <p className="config-caption">
         Why Sarah suggested it (AI): {card.reason}

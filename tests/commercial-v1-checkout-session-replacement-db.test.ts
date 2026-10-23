@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
@@ -135,7 +137,7 @@ async function count(sql: string, args: unknown[] = []) {
 }
 
 beforeAll(async () => {
-  f = await buildCommerceFixture({ throughMigration: 9999 });
+  f = await buildCommerceFixture({ throughMigration: 72 });
   await f.db.query(
     "select commercial_v1_commerce_private.install_controller_key($1,$2::bytea)",
     [keyId, key],

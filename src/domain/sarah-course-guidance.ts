@@ -115,23 +115,58 @@ export const viewerOfferStatusSchema = z.enum([
 ]);
 export type ViewerOfferStatus = z.infer<typeof viewerOfferStatusSchema>;
 
-export const sarahCommercialOfferSchema = z.strictObject({
-  slug: exactSlugSchema,
-  title: shortText,
-  examinationBody: shortText,
-  qualificationName: shortText,
-  priceAmountMinor: z.number().int().min(1).max(100_000_000),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-  summary: z.string().min(1).max(500).nullable(),
-  cohortStartsOn: dateSchema,
-  deliveryPlan: deliveryPlanSchema,
-  // The learner's own canonical enrolment status for this offer's exact
-  // cohort, and whether a new purchase is available: create_commercial_v1_order's
-  // eligibility (no enrolment in that cohort and no entitlement row) AND,
-  // conservatively, an OPEN cohort with a free seat.
-  viewerStatus: viewerOfferStatusSchema,
-  newPurchaseAvailable: z.boolean(),
-});
+export const sarahCommercialOfferSchema = z
+  .strictObject({
+    slug: exactSlugSchema,
+    title: shortText,
+    examinationBody: shortText,
+    qualificationName: shortText,
+    priceAmountMinor: z.number().int().min(1).max(100_000_000),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    summary: z.string().min(1).max(500).nullable(),
+    cohortStartsOn: dateSchema.nullable(),
+    deliveryPlan: deliveryPlanSchema.nullable(),
+    availableDurationsWeeks: z
+      .array(
+        z.union([
+          z.literal(2),
+          z.literal(4),
+          z.literal(6),
+          z.literal(8),
+          z.literal(12),
+        ]),
+      )
+      .min(1)
+      .max(5)
+      .optional(),
+    // The learner's own canonical enrolment status for this offer's exact
+    // cohort, and whether a new purchase is available: create_commercial_v1_order's
+    // eligibility (no enrolment in that cohort and no entitlement row) AND,
+    // conservatively, an OPEN cohort with a free seat.
+    viewerStatus: viewerOfferStatusSchema,
+    newPurchaseAvailable: z.boolean(),
+  })
+  .superRefine((offer, ctx) => {
+    if (offer.deliveryPlan === null || offer.cohortStartsOn === null) {
+      if (
+        offer.deliveryPlan !== null ||
+        offer.cohortStartsOn !== null ||
+        !offer.availableDurationsWeeks ||
+        new Set(offer.availableDurationsWeeks).size !==
+          offer.availableDurationsWeeks.length
+      )
+        ctx.addIssue({
+          code: "custom",
+          message:
+            "Personal timetable facts require valid duration choices and no cohort fields",
+        });
+    } else if (offer.availableDurationsWeeks)
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Delivery facts cannot mix personal and historical cohort choices",
+      });
+  });
 export type SarahCommercialOffer = z.infer<typeof sarahCommercialOfferSchema>;
 
 export const sarahCompletedCourseSchema = z.strictObject({
@@ -206,10 +241,16 @@ export function buildSarahCourseGuidanceProviderContext(
       price: { amountMinor: o.priceAmountMinor, currency: o.currency },
       summary: o.summary,
       cohortStartsOn: o.cohortStartsOn,
-      deliveryPlan: {
-        label: DELIVERY_PLAN_DEFINITIONS[o.deliveryPlan].label,
-        weeks: DELIVERY_PLAN_DEFINITIONS[o.deliveryPlan].weeks,
-      },
+      deliveryPlan: o.deliveryPlan
+        ? {
+            label: DELIVERY_PLAN_DEFINITIONS[o.deliveryPlan].label,
+            weeks: DELIVERY_PLAN_DEFINITIONS[o.deliveryPlan].weeks,
+          }
+        : {
+            durationChoiceWeeks: o.availableDurationsWeeks,
+            activation: "PURCHASE_THEN_PERSONAL_TIMETABLE",
+            priceChangesWithDuration: false,
+          },
       learnerStatus: o.viewerStatus,
       availableForNewPurchase: o.newPurchaseAvailable,
     })),
@@ -343,8 +384,9 @@ export type SarahCourseRecommendationCard = {
   qualificationName: string;
   priceAmountMinor: number;
   currency: string;
-  cohortStartsOn: string;
-  deliveryPlan: z.infer<typeof deliveryPlanSchema>;
+  cohortStartsOn: string | null;
+  deliveryPlan: z.infer<typeof deliveryPlanSchema> | null;
+  availableDurationsWeeks?: number[];
   reason: string;
 };
 
@@ -367,6 +409,9 @@ export function resolveRecommendationCards(
       currency: offer.currency,
       cohortStartsOn: offer.cohortStartsOn,
       deliveryPlan: offer.deliveryPlan,
+      ...(offer.availableDurationsWeeks
+        ? { availableDurationsWeeks: offer.availableDurationsWeeks }
+        : {}),
       reason: recommendation.reason,
     });
   }

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   roles: null as string[] | null,
   reads: [] as string[],
+  organisationMember: false,
 }));
 
 vi.mock("next/link", () => ({
@@ -85,6 +86,24 @@ function client() {
       return query(stubbed);
     },
     rpc: (name: string) => {
+      if (name === "list_my_course_organisations") {
+        m.reads.push(`rpc:${name}`);
+        return query({
+          data: m.organisationMember
+            ? [
+                {
+                  id: "00000000-0000-4000-8000-000000000002",
+                  name: "External organisation",
+                  slug: "external-org",
+                  canManage: true,
+                  canReview: false,
+                  canOwn: false,
+                },
+              ]
+            : [],
+          error: null,
+        });
+      }
       if (name === "current_account_status")
         return query({ data: "ACTIVE", error: null });
       m.reads.push(`rpc:${name}`);
@@ -93,19 +112,25 @@ function client() {
   };
 }
 
-type Access = "ANY_ADMIN" | "COURSE_ADMIN" | "PLATFORM_ADMIN";
+type Access =
+  | "ANY_ADMIN"
+  | "COURSE_ADMIN"
+  | "PLATFORM_ADMIN"
+  | "RETIRED"
+  | "ROUTER"
+  | "COURSE_ENGINE";
 const PAGES: [string, Access, () => Promise<{ default: unknown }>][] = [
-  ["/admin", "ANY_ADMIN", () => import("@/app/admin/page")],
+  ["/admin", "ROUTER", () => import("@/app/admin/page")],
   ["/admin/academy", "ANY_ADMIN", () => import("@/app/admin/academy/page")],
-  ["/admin/courses", "COURSE_ADMIN", () => import("@/app/admin/courses/page")],
+  ["/admin/courses", "RETIRED", () => import("@/app/admin/courses/page")],
   [
     "/admin/courses/[packageKey]",
-    "COURSE_ADMIN",
+    "RETIRED",
     () => import("@/app/admin/courses/[packageKey]/page"),
   ],
   [
     "/admin/operations-engineer",
-    "COURSE_ADMIN",
+    "RETIRED",
     () => import("@/app/admin/operations-engineer/page"),
   ],
   ["/admin/sales", "COURSE_ADMIN", () => import("@/app/admin/sales/page")],
@@ -119,15 +144,11 @@ const PAGES: [string, Access, () => Promise<{ default: unknown }>][] = [
   // The old Academy route is a parameter-validated redirect; covered in unified UI tests.
   [
     "/admin/course-engineering",
-    "COURSE_ADMIN",
+    "COURSE_ENGINE",
     () => import("@/app/admin/course-engineering/page"),
   ],
   ["/admin/agents", "COURSE_ADMIN", () => import("@/app/admin/agents/page")],
-  [
-    "/admin/activation",
-    "COURSE_ADMIN",
-    () => import("@/app/admin/activation/page"),
-  ],
+  ["/admin/activation", "RETIRED", () => import("@/app/admin/activation/page")],
   [
     "/admin/activation/policy",
     "COURSE_ADMIN",
@@ -151,6 +172,9 @@ const PAGES: [string, Access, () => Promise<{ default: unknown }>][] = [
 ];
 
 const ALLOWED: Record<Access, string[]> = {
+  RETIRED: [],
+  ROUTER: [],
+  COURSE_ENGINE: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
   ANY_ADMIN: ["ACADEMIC_ADMIN", "REGISTRAR", "PLATFORM_ADMIN"],
   COURSE_ADMIN: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
   PLATFORM_ADMIN: ["PLATFORM_ADMIN"],
@@ -193,7 +217,8 @@ beforeEach(() => {
   m.reads = [];
 });
 
-const ACTORS: [string, string[] | null][] = [
+const ACTORS: [string, string[] | null, boolean?][] = [
+  ["an external organisation course manager", ["STUDENT"], true],
   ["an anonymous visitor", null],
   ["a learner", ["STUDENT"]],
   ["an instructor", ["INSTRUCTOR"]],
@@ -203,10 +228,42 @@ const ACTORS: [string, string[] | null][] = [
   ["a platform administrator", ["PLATFORM_ADMIN"]],
 ];
 
-describe.each(ACTORS)("admin access for %s", (_who, roles) => {
+describe.each(ACTORS)("admin access for %s", (_who, roles, member = false) => {
   it.each(PAGES)("%s", async (_path, access, load) => {
     m.roles = roles;
+    m.organisationMember = member;
     const outcome = await visit(load);
+    const membershipRead = ["rpc:list_my_course_organisations"];
+    if (roles !== null && access === "RETIRED") {
+      expect(outcome).toEqual({
+        kind: "redirect",
+        to: "/admin/course-engineering",
+      });
+      expect(m.reads).toEqual([]);
+      return;
+    }
+    if (roles !== null && access === "ROUTER") {
+      const destination =
+        member ||
+        roles.some((r) => ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"].includes(r))
+          ? "/admin/course-engineering"
+          : roles.includes("REGISTRAR")
+            ? "/admin/academy"
+            : "/student/academy";
+      expect(outcome).toEqual({ kind: "redirect", to: destination });
+      expect(m.reads).toEqual(membershipRead);
+      return;
+    }
+    if (roles !== null && access === "COURSE_ENGINE") {
+      if (member || roles.some((r) => ALLOWED.COURSE_ENGINE.includes(r))) {
+        expect(outcome).toEqual({ kind: "entered" });
+        expect(m.reads).toContain("rpc:list_unified_course_packages");
+      } else {
+        expect(outcome).toEqual({ kind: "forbidden" });
+        expect(m.reads).toEqual(membershipRead);
+      }
+      return;
+    }
     if (roles === null) {
       expect(outcome).toEqual({ kind: "redirect", to: "/login" });
       expect(m.reads).toEqual([]);

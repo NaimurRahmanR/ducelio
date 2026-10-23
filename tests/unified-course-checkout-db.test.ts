@@ -163,6 +163,14 @@ describe("unified course commerce on the real signed payment authority", () => {
         signed(discounted.orderId, 1),
       ),
     ).toMatchObject({ ok: false, code: "MISMATCHED_AMOUNT" });
+    expect(
+      (
+        await q(
+          "select provider_session_id from public.academy_orders where id=$1",
+          [discounted.orderId],
+        )
+      ).rows[0].provider_session_id,
+    ).toBeNull();
   });
   it("fulfils a discounted verified payment exactly once and leaves timetable activation to the learner", async () => {
     const args = signed(discounted.orderId, discounted.amountMinor);
@@ -331,6 +339,56 @@ describe("unified course commerce on the real signed payment authority", () => {
           ).rows[0],
         ).toEqual({ p: false, c: false });
   });
+});
+
+it("refuses reusing one verified provider event for a different order without binding or granting it", async () => {
+  const c = await publishUnifiedTestCourse(q, "unified-payment-event-test");
+  const a = await buy(learnerA, null, "unified-payment-event-test"),
+    b = await buy(learnerB, null, "unified-payment-event-test");
+  expect(
+    await rpc(
+      q,
+      null,
+      "fulfill_academy_order",
+      signed(
+        a.orderId,
+        a.amountMinor,
+        "PAID",
+        "cs_event_owner_one",
+        "evt_one_payment_fact",
+      ),
+    ),
+  ).toMatchObject({ ok: true, fulfilled: true });
+  expect(
+    await rpc(
+      q,
+      null,
+      "fulfill_academy_order",
+      signed(
+        b.orderId,
+        b.amountMinor,
+        "PAID",
+        "cs_event_owner_two",
+        "evt_one_payment_fact",
+      ),
+    ),
+  ).toMatchObject({ ok: false, code: "PAYMENT_EVENT_CONFLICT" });
+  expect(
+    (
+      await q(
+        "select provider_session_id from public.academy_orders where id=$1",
+        [b.orderId],
+      )
+    ).rows[0].provider_session_id,
+  ).toBeNull();
+  expect(
+    (
+      await q(
+        "select count(*)::int n from public.academy_entitlements where learner_id=$1 and course_id=$2",
+        [learnerB.id, c.courseId],
+      )
+    ).rows[0].n,
+  ).toBe(0);
 });
 
 describe("verified abandoned checkout and coupon release", () => {

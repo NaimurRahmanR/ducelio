@@ -1,3 +1,4 @@
+import { paymentEvidenceProblem } from "./payment-evidence";
 import "server-only";
 import { createHmac } from "node:crypto";
 import { z } from "zod";
@@ -505,7 +506,7 @@ export async function reconcileAcademyOrder(input: {
   const provider = await getCommerceProvider();
   let session;
   try {
-    session = await provider.retrieveCheckoutSession(sessionId);
+    session = await provider.retrievePayment(sessionId);
   } catch {
     return { ok: false as const, code: "PROVIDER_UNAVAILABLE" };
   }
@@ -523,6 +524,29 @@ export async function reconcileAcademyOrder(input: {
     session.currency !== status.order.currency
   )
     return { ok: false as const, code: "MISMATCHED_AMOUNT" };
+  const problem = paymentEvidenceProblem(
+    session,
+    orderId,
+    sessionId,
+    status.order.amountMinor,
+    status.order.currency,
+  );
+  if (problem) return { ok: false as const, code: problem };
+  if (session.refundedMinor! > 0) {
+    if (session.refundedMinor !== session.amountMinor)
+      return { ok: false as const, code: "PARTIAL_REFUND_REVIEW" };
+    try {
+      const refund = await processAcademyPayment(session, {
+        orderId,
+        sessionId,
+        eventId: "SESSION_REFUND_VERIFY:" + sessionId,
+        isRefund: true,
+      });
+      return { ok: false as const, code: refund.reason };
+    } catch {
+      return { ok: false as const, code: "CONFIGURATION_UNAVAILABLE" };
+    }
+  }
   try {
     const result = await attestAcademyFulfillment({
       provider: "STRIPE",

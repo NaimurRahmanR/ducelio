@@ -44,7 +44,7 @@ export default async function Page({
                     : "We could not confirm this payment. Nothing has been granted. If you were charged, contact support with your receipt."}
               </p>
               <Link className="button" href="/student/academy">
-                Open My Academy courses
+                Open My Learning
               </Link>
             </Card>
           </div>
