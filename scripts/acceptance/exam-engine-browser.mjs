@@ -8,9 +8,27 @@
 // text, and the throwaway profile (which holds the signed-in session) is
 // deleted on close.
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve, dirname, basename } from "node:path";
+
+export function verifiedBrowserProfilePath(profile, temporaryRoot = tmpdir()) {
+  const target = resolve(profile);
+  if (
+    dirname(target) !== resolve(temporaryRoot) ||
+    !/^ducelio-cp2-chrome-[A-Za-z0-9]+$/.test(basename(target))
+  )
+    throw new Error(
+      "Refusing browser-profile cleanup outside its temporary directory.",
+    );
+  return target;
+}
+function removeBrowserProfile(profile) {
+  const target = verifiedBrowserProfilePath(profile);
+  if (lstatSync(target).isSymbolicLink())
+    throw new Error("Refusing browser-profile symlink cleanup.");
+  rmSync(target, { recursive: true, force: true });
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const KEYS = {
@@ -83,7 +101,7 @@ export async function launchBrowser({
   }
   if (!ws) {
     chrome.kill();
-    rmSync(profile, { recursive: true, force: true });
+    removeBrowserProfile(profile);
     throw new Error("Chrome did not start.");
   }
   const send = (method, params = {}) =>
@@ -94,6 +112,14 @@ export async function launchBrowser({
     });
   await send("Page.enable");
   await send("Runtime.enable");
+  // Headless Chrome on Windows imposes a minimum outer window width. Set
+  // the actual CSS viewport independently so a 390px check is really 390px.
+  await send("Emulation.setDeviceMetricsOverride", {
+    width,
+    height,
+    deviceScaleFactor: 1,
+    mobile: width < 600,
+  });
 
   const evaluate = async (expression) => {
     const r = await send("Runtime.evaluate", {
@@ -195,6 +221,18 @@ export async function launchBrowser({
       });
       writeFileSync(path, Buffer.from(r.result.data, "base64"));
     },
+    async uploadFile(selector, filePath) {
+      const doc = await send("DOM.getDocument");
+      const found = await send("DOM.querySelector", {
+        nodeId: doc.result.root.nodeId,
+        selector,
+      });
+      if (!found.result?.nodeId) throw new Error("File input not found.");
+      await send("DOM.setFileInputFiles", {
+        nodeId: found.result.nodeId,
+        files: [resolve(filePath)],
+      });
+    },
   };
   const close = async () => {
     try {
@@ -204,7 +242,7 @@ export async function launchBrowser({
     }
     chrome.kill();
     await sleep(300);
-    rmSync(profile, { recursive: true, force: true });
+    removeBrowserProfile(profile);
   };
   return { page, close };
 }
@@ -234,6 +272,16 @@ export async function signInThroughUi(page, baseUrl, email, password) {
     `${baseUrl}/login`,
     "!!document.querySelector('input[type=email], input[name=email]')",
   );
+  // SSR fields can be visible before their React actions have hydrated,
+  // especially on the first development compilation. Wait for the actual
+  // client binding before typing so hydration cannot discard the input.
+  if (
+    !(await page.waitFor(
+      "Object.keys(document.querySelector('input[name=email]') ?? {}).some(k => k.startsWith('__reactProps$'))",
+      30000,
+    ))
+  )
+    throw new Error("Sign-in form did not hydrate.");
   await page.typeInto(
     "document.querySelector('input[type=email], input[name=email]')",
     email,
@@ -242,10 +290,29 @@ export async function signInThroughUi(page, baseUrl, email, password) {
     "document.querySelector('input[type=password], input[name=password]')",
     password,
   );
+  if (
+    !(await page.evaluate(
+      `document.querySelector('input[name=email]').value === ${js(email)} && document.querySelector('input[name=password]').value.length === ${password.length}`,
+    ))
+  )
+    throw new Error("Sign-in inputs were not retained.");
   await page.click(
     "document.querySelector('input[name=email]')?.form?.querySelector('button[type=submit]')",
   );
-  return page.waitFor("!location.pathname.startsWith('/login')", 30000);
+  await page.waitFor(
+    "!location.pathname.startsWith('/login') || !!document.querySelector('.auth-feedback [role=alert]')",
+    30000,
+  );
+  const signedIn = await page.evaluate(
+    "!location.pathname.startsWith('/login')",
+  );
+  if (!signedIn) {
+    const category = await page.evaluate(
+      "(() => { const text=document.querySelector('.auth-feedback')?.textContent??''; return text.includes('Enter a valid email')?'INVALID_FORM':text.includes('Unable to sign in')?'AUTH_DENIED':text.includes('verify your email')?'UNVERIFIED':text.includes('awaiting academy')?'NOT_CONFIGURED':'NO_FEEDBACK'; })()",
+    );
+    throw new Error(`UI sign-in did not complete: ${category}`);
+  }
+  return true;
 }
 
 export async function openQuestion(page, position) {

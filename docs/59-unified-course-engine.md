@@ -1,6 +1,6 @@
 # Unified Course Engine replacement
 
-This branch now implements the shared course lifecycle, checkout/coupons, personal activation/windows, academic revision, tenant authority and legacy retirement locally. It is not a production release: complete repository verification is running, hosted 067-073 remain unapplied, live provider credentials are absent locally and GitHub CI is billing-blocked. The same branch and draft PR #84 are retained; main was reconciled by merge 248851f and the unrelated stash is preserved.
+This branch implements the shared course lifecycle, checkout/coupons, personal activation/windows, academic revision, tenant authority and legacy retirement. Owner-approved migrations 067-073 are now applied only to ducelio-acceptance; all 11 hosted schema/permission readiness checks pass. Real browser upload-to-personal-timetable acceptance passes, including a corrected preview/reset defect. A real-time hosted examination journey and final regression rerun are running. It is not a production release: live provider/platform-admin credentials are absent, remaining operational acceptance is open and GitHub CI is billing-blocked. The same branch and draft PR #84 are retained; main was reconciled by merge 248851f and the unrelated stash is preserved. Earlier dated verification sections below remain as historical evidence; the latest continuation record at the end supersedes their status.
 
 ## Working implementation
 
@@ -42,7 +42,7 @@ The default procedure is non-destructive: migration 067 creates empty active reg
 5. If new-engine acceptance test offers later need removal from sale, propose the exact offer IDs for review and archive them through the existing audited archive authority. Preserve packages, entitlements, learner records and commerce evidence. Recheck preserved counts (audit count can increase), ownership and public catalogue results.
 6. Any physical purge is a separate proposal requiring the exact row/dependency manifest, verified backup/restore receipt and explicit owner approval. No delete/truncate/reset executor is included or authorised here. Local JSON and historical migrations remain intact.
 
-No backup has been taken or verified in this session, and no reset/archive/delete has been executed.
+No backup has been taken or verified in this session, and no destructive reset/delete has been executed. After the owner's explicit acceptance approval, labelled synthetic test offers are archived through the audited authority and their coupons deactivated; all evidence is retained.
 
 ## Release and rollback assessment
 

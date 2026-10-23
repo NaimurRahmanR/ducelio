@@ -234,6 +234,7 @@ export function SchedulePlanner({
   const [chosenZone, setTimezone] = useState<string | null>(null);
   const timezone = chosenZone ?? deviceZone;
   const [requestKey] = useState(() => crypto.randomUUID());
+  const [previewCurrent, setPreviewCurrent] = useState(false);
   const [preview, previewAction, previewing] = useActionState<
     PlanActionState,
     FormData
@@ -246,7 +247,12 @@ export function SchedulePlanner({
   const daysOk =
     days.length >= format.minStudyDays && days.length <= format.maxStudyDays;
   return (
-    <form className="acad-planner" action={previewAction}>
+    <form
+      className="acad-planner"
+      action={previewAction}
+      onReset={(event) => event.preventDefault()}
+      onChange={() => setPreviewCurrent(false)}
+    >
       <input type="hidden" name="enrolmentId" value={enrolmentId} />
       <input type="hidden" name="requestKey" value={requestKey} />
       <fieldset className="acad-formats">
@@ -325,19 +331,34 @@ export function SchedulePlanner({
         </p>
       )}
       <div className="acad-actions">
-        <button className="button secondary" disabled={previewing || !daysOk}>
+        <button
+          className="button secondary"
+          disabled={previewing || !daysOk}
+          onClick={() => setPreviewCurrent(true)}
+        >
           {previewing ? "Building preview…" : "Preview my timetable"}
         </button>
         <button
           className="button"
           formAction={confirmAction}
-          disabled={confirming || !daysOk || !preview.plan?.feasible}
+          disabled={
+            confirming ||
+            previewing ||
+            !daysOk ||
+            !previewCurrent ||
+            !preview.plan?.feasible
+          }
         >
           {confirming ? "Confirming…" : "Confirm this timetable"}
         </button>
       </div>
       {preview.error && <p role="alert">{preview.error}</p>}
       {confirm.error && <p role="alert">{confirm.error}</p>}
+      {preview.plan && !previewCurrent && (
+        <p role="status">
+          Your choices changed. Preview the timetable again before confirming.
+        </p>
+      )}
       {confirm.message && <p role="status">{confirm.message}</p>}
       {preview.plan && <Preview plan={preview.plan} />}
     </form>
@@ -359,6 +380,7 @@ export function ScheduleRevision({
 }) {
   const [days, setDays] = useState<number[]>(current.studyDays);
   const [requestKey] = useState(() => crypto.randomUUID());
+  const [previewCurrent, setPreviewCurrent] = useState(false);
   const [preview, previewAction, previewing] = useActionState<
     PlanActionState,
     FormData
@@ -372,7 +394,12 @@ export function ScheduleRevision({
   const daysOk =
     days.length >= format.minStudyDays && days.length <= format.maxStudyDays;
   return (
-    <form className="acad-planner" action={previewAction}>
+    <form
+      className="acad-planner"
+      action={previewAction}
+      onReset={(event) => event.preventDefault()}
+      onChange={() => setPreviewCurrent(false)}
+    >
       <input type="hidden" name="enrolmentId" value={enrolmentId} />
       <input type="hidden" name="expectedRevision" value={revision} />
       <input type="hidden" name="requestKey" value={requestKey} />
@@ -418,19 +445,34 @@ export function ScheduleRevision({
       </div>
       <Weekdays value={days} onChange={setDays} />
       <div className="acad-actions">
-        <button className="button secondary" disabled={previewing || !daysOk}>
+        <button
+          className="button secondary"
+          disabled={previewing || !daysOk}
+          onClick={() => setPreviewCurrent(true)}
+        >
           {previewing ? "Building preview…" : "Preview changes"}
         </button>
         <button
           className="button"
           formAction={saveAction}
-          disabled={saving || !daysOk || !preview.plan?.feasible}
+          disabled={
+            saving ||
+            previewing ||
+            !daysOk ||
+            !previewCurrent ||
+            !preview.plan?.feasible
+          }
         >
           {saving ? "Saving…" : "Save new future dates"}
         </button>
       </div>
       {preview.error && <p role="alert">{preview.error}</p>}
       {save.error && <p role="alert">{save.error}</p>}
+      {preview.plan && !previewCurrent && (
+        <p role="status">
+          Your choices changed. Preview the changes again before saving.
+        </p>
+      )}
       {save.message && <p role="status">{save.message}</p>}
       {preview.plan && <Preview plan={preview.plan} />}
     </form>

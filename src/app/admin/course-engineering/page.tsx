@@ -188,7 +188,7 @@ function Review({ review }: { review: AcademyReview }) {
             )
             .join(", ")})`,
           `${a.revisionMinutes} min, ${a.minimumDaysAfterTeaching} day gap`,
-          `${a.sittingWindowHours} h`,
+          "23 h 59 min",
           percent(a.weightBp),
         ])}
       />
