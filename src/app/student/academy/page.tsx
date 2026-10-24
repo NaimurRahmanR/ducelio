@@ -1,4 +1,9 @@
+import { CourseCheckoutRecovery } from "@/components/course-checkout-recovery";
+import { listMyUnifiedCourseOrders } from "@/server/academy-commerce";
+import { listMyCourseOrganisations } from "@/server/course-organisations";
 import Link from "next/link";
+import { RequestRecoveryForm } from "@/components/course-recovery-forms";
+import { listMyRecoveries } from "@/server/unified-course-activation";
 import { requireActor, requireStudentPrincipal } from "@/server/identity";
 import {
   getMyAcademyProgress,
@@ -88,7 +93,8 @@ function Timetable({
                     <p className="acad-item-title">
                       {i.kind === "LESSON" &&
                       i.part === 1 &&
-                      Date.parse(i.startsAt) <= now &&
+                      Date.parse(i.opensAt ?? i.startsAt) <= now &&
+                      (!i.closesAt || now < Date.parse(i.closesAt)) &&
                       !timetable.examActive &&
                       !timetable.accessRevoked ? (
                         <Link
@@ -121,11 +127,57 @@ function Timetable({
                       {i.kind === "ASSESSMENT" &&
                         ` · sitting window until ${fmt(i.closesAt!, s.timezone, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`}
                     </p>
+                    {i.opensAt && i.closesAt && (
+                      <p className="muted">
+                        Available{" "}
+                        {fmt(i.opensAt, s.timezone, {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}{" "}
+                        until{" "}
+                        {fmt(i.closesAt, s.timezone, {
+                          weekday: "short",
+                          day: "numeric",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    )}
+                    {i.kind === "REVISION" &&
+                      i.opensAt &&
+                      i.closesAt &&
+                      Date.parse(i.opensAt) <= now &&
+                      now < Date.parse(i.closesAt) &&
+                      !timetable.examActive &&
+                      !timetable.accessRevoked && (
+                        <Link
+                          className="button secondary"
+                          href={`/student/academy/revision?enrolmentId=${enrolmentId}&itemId=${i.id}`}
+                        >
+                          Open revision
+                        </Link>
+                      )}
+                    {i.closesAt &&
+                      now >= Date.parse(i.closesAt) &&
+                      !timetable.accessRevoked &&
+                      !i.studied &&
+                      !i.labSubmitted &&
+                      !i.attempts && (
+                        <RequestRecoveryForm
+                          enrolmentId={enrolmentId}
+                          itemId={i.id}
+                        />
+                      )}
                     {i.kind === "LESSON" &&
                       timetable.status === "ACTIVE" &&
                       !timetable.examActive &&
                       !timetable.accessRevoked &&
-                      (Date.parse(i.startsAt) <= now ? (
+                      (Date.parse(i.opensAt ?? i.startsAt) <= now &&
+                      (!i.closesAt || now < Date.parse(i.closesAt)) ? (
                         <form action={enterAcademyClassAction}>
                           <input
                             type="hidden"
@@ -147,7 +199,8 @@ function Timetable({
                         </form>
                       ) : (
                         <p className="muted">
-                          AI class opens at its scheduled time.
+                          The AI class opens only within its scheduled or
+                          approved recovery window.
                         </p>
                       ))}
                     {i.kind === "ASSESSMENT" &&
@@ -182,7 +235,8 @@ function Timetable({
                       i.part === 1 &&
                       (i.labSubmitted ? (
                         <p className="muted">Submitted.</p>
-                      ) : Date.parse(i.startsAt) <= now ? (
+                      ) : Date.parse(i.opensAt ?? i.startsAt) <= now &&
+                        (!i.closesAt || now < Date.parse(i.closesAt)) ? (
                         <LabSubmissionForm
                           enrolmentId={enrolmentId}
                           labRef={i.ref}
@@ -193,7 +247,8 @@ function Timetable({
                       timetable.status === "ACTIVE" &&
                       !timetable.examActive &&
                       !timetable.accessRevoked &&
-                      Date.parse(i.startsAt) <= now &&
+                      Date.parse(i.opensAt ?? i.startsAt) <= now &&
+                      (!i.closesAt || now < Date.parse(i.closesAt)) &&
                       (i.labGraded ? (
                         <p className="muted">
                           This practical is assessed, so AI Lab Instructor help
@@ -232,6 +287,7 @@ export default async function Page({
 }: {
   searchParams: Promise<{
     enrolmentId?: string;
+    activate?: string;
     classNotice?: string;
     supportNotice?: string;
   }>;
@@ -239,6 +295,8 @@ export default async function Page({
   await requireActor("student");
   const actor = await requireStudentPrincipal();
   const params = await searchParams;
+  const orders = await listMyUnifiedCourseOrders().catch(() => null);
+  const organisations = await listMyCourseOrganisations().catch(() => []);
   const enrolments = await listMyAcademyEnrolments().catch(() => null);
   const selected =
     enrolments?.find((e) => e.enrolmentId === params.enrolmentId) ??
@@ -250,6 +308,9 @@ export default async function Page({
         getMyAcademyProgress(selected.enrolmentId).catch(() => null),
       ])
     : [null, null, null];
+  const recoveries = selected
+    ? await listMyRecoveries(selected.enrolmentId).catch(() => null)
+    : null;
   const format = selected?.formats.find(
     (f) => f.formatId === selected.formatId,
   );
@@ -258,10 +319,43 @@ export default async function Page({
     <AcademyShell name={actor.displayName} roles={actor.roles}>
       <div className="page-heading">
         <p className="eyebrow">DUCELIO ACADEMY</p>
-        <h1>My Academy courses</h1>
+        <h1>My Learning</h1>
         <p className="muted">Self-paced courses on a timetable you choose.</p>
       </div>
       <div className="section-content acad-learner">
+        {organisations.length > 0 && (
+          <p>
+            <Link className="button secondary" href="/admin/course-engineering">
+              Open organisation Course Engineering
+            </Link>
+          </p>
+        )}
+        {orders?.some((o) => o.state === "PENDING") && (
+          <Card>
+            <h2>Unfinished purchases</h2>
+            <p>
+              Resume a checkout, or cancel it after the payment session is
+              verified unpaid and expired. A purchase activates only after
+              payment is confirmed and you choose your timetable.
+            </p>
+            <ul>
+              {orders
+                .filter((o) => o.state === "PENDING")
+                .map((o) => (
+                  <li key={o.id}>
+                    <h3>{o.title}</h3>
+                    <p>
+                      {new Intl.NumberFormat("en-GB", {
+                        style: "currency",
+                        currency: o.currency,
+                      }).format(o.amountMinor / 100)}
+                    </p>
+                    <CourseCheckoutRecovery orderId={o.id} />
+                  </li>
+                ))}
+            </ul>
+          </Card>
+        )}
         {enrolments === null ? (
           <Card>
             <p role="alert">
@@ -309,18 +403,54 @@ export default async function Page({
                 <Badge
                   tone={selected.status === "COMPLETED" ? "green" : "blue"}
                 >
-                  {selected.status === "COMPLETED" ? "Completed" : "Active"}
+                  {selected.accessRevoked
+                    ? "Access ended"
+                    : selected.status === "COMPLETED"
+                      ? "Completed"
+                      : selected.schedule
+                        ? "Active"
+                        : "Purchased - awaiting activation"}
                 </Badge>
               </div>
-              {!selected.schedule && (
-                <SchedulePlanner
-                  enrolmentId={selected.enrolmentId}
-                  formats={selected.formats}
-                  fixedFormatId={selected.fixedFormatId}
-                  today={isoDate(0)}
-                />
+              {selected.accessRevoked && (
+                <p role="status">
+                  Access has ended. Your history and results are preserved.
+                </p>
               )}
+              {!selected.accessRevoked &&
+                !selected.schedule &&
+                params.activate !== "true" && (
+                  <Link
+                    className="button"
+                    href={`/student/academy?enrolmentId=${selected.enrolmentId}&activate=true`}
+                  >
+                    Activate Course
+                  </Link>
+                )}
+              {!selected.accessRevoked &&
+                !selected.schedule &&
+                params.activate === "true" && (
+                  <SchedulePlanner
+                    enrolmentId={selected.enrolmentId}
+                    formats={selected.formats}
+                    fixedFormatId={selected.fixedFormatId}
+                    today={isoDate(0)}
+                  />
+                )}
             </Card>
+            {recoveries && recoveries.length > 0 && (
+              <Card>
+                <h2>Recovery requests</h2>
+                <ul>
+                  {recoveries.map((r) => (
+                    <li key={r.id}>
+                      {r.state}: {new Date(r.opensAt).toISOString()} to{" "}
+                      {new Date(r.closesAt).toISOString()} (UTC)
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
             {params.classNotice && (
               <Card>
                 <p role="status">

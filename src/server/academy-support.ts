@@ -10,6 +10,8 @@ import { createSupabase } from "./supabase";
 // revocation and the exam firewall every time.
 
 export const ACADEMY_SUPPORT_DENIAL_TEXT: Record<string, string> = {
+  WINDOW_CLOSED:
+    "This activity is outside its 23-hour 59-minute window. Request recovery for missed work from My Learning.",
   NOT_YET_STARTED:
     "This practical session has not started yet. Help opens at its scheduled time.",
   NOT_RELEASED:

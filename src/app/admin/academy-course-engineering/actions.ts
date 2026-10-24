@@ -9,7 +9,6 @@ import {
   prepareAcademyCurriculum,
   publishAcademyCourse,
   rejectAcademyPackage,
-  uploadAcademyPackage,
   validateAcademyPackage,
 } from "@/server/academy-course-engineering";
 import {
@@ -17,6 +16,7 @@ import {
   AcademyError,
   academyUploadSizeError,
 } from "@/domain/academy-delivery";
+import { uploadUnifiedCoursePackage as uploadAcademyPackage } from "@/server/unified-course-engine";
 import { ACADEMY_FORMAT_IDS } from "@/domain/academy-scheduler";
 
 export type AcademyAdminState = {
@@ -27,7 +27,7 @@ export type AcademyAdminState = {
 };
 
 const reasonSchema = z.string().trim().min(5).max(300);
-const ROUTE = "/admin/academy-course-engineering";
+const ROUTE = "/admin/course-engineering";
 
 function failure(e: unknown): AcademyAdminState {
   if (e instanceof AcademyError) return { error: ACADEMY_ERROR_TEXT[e.code] };
@@ -64,7 +64,13 @@ export async function uploadAndValidateAction(
         error: "The file is not valid UTF-8 JSON. Nothing was uploaded.",
       };
     }
-    const packageId = await uploadAcademyPackage(parsed, reason);
+    const packageId = await uploadAcademyPackage(
+      parsed,
+      reason,
+      data.get("organisationId")
+        ? z.uuid().parse(data.get("organisationId"))
+        : undefined,
+    );
     const result = await validateAcademyPackage(packageId, reason);
     revalidatePath(ROUTE);
     if (!result.valid)

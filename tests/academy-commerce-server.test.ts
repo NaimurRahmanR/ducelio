@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { randomBytes, randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -11,6 +13,7 @@ import {
   type Query,
 } from "./academy-fixture";
 import { FakeCommerceProviderAdapter } from "@/server/commercial-v1-commerce/test-fake-provider";
+import { publishUnifiedTestCourse } from "./unified-course-fixture";
 
 // End-to-end over the REAL server code: createAcademyCheckout, the existing
 // processCommerceWebhook (Academy branch), reconcileAcademyOrder and the
@@ -22,11 +25,12 @@ const m = vi.hoisted(() => ({
   auth: "" as string | null,
   provider: null as unknown,
   db: null as unknown,
+  cardConfigured: true,
 }));
 vi.mock("@/lib/env", () => ({
   config: () => ({ configured: true, appUrl: "https://ducelio.test" }),
   commerceConfig: () => ({
-    configured: true,
+    configured: m.cardConfigured,
     stripeConfigured: true,
     controllerConfigured: true,
     controllerKeyId: keyId,
@@ -84,6 +88,9 @@ vi.mock("@/server/supabase", () => ({
 
 import {
   createAcademyCheckout,
+  createUnifiedCourseCheckout,
+  cancelMyUnifiedCheckout,
+  resumeMyUnifiedCheckout,
   reconcileAcademyOrder,
 } from "@/server/academy-commerce";
 import { processCommerceWebhook } from "@/server/commercial-v1-commerce/webhooks";
@@ -94,7 +101,7 @@ const provider = new FakeCommerceProviderAdapter();
 const slug = "academy-server-test";
 
 beforeAll(async () => {
-  db = await testDatabase();
+  db = await testDatabase({ throughMigration: 72 });
   m.db = db;
   m.provider = provider;
   q = (sql, params) =>
@@ -256,5 +263,342 @@ describe("Academy checkout through the existing Stripe integration", () => {
       (await q("select count(*)::int n from public.commercial_v1_entitlements"))
         .rows[0].n,
     ).toBe(0);
+  });
+});
+
+describe("unified checkout through real server, signed authorities and a test Stripe adapter", () => {
+  const unifiedSlug = "unified-server-paid-test";
+  let orderId = "";
+  let sessionId = "";
+  it("creates one discounted session and recovers an expired checkout without another redemption", async () => {
+    const c = await publishUnifiedTestCourse(q, unifiedSlug);
+    await rpc(q, people.admin, "create_course_coupon", [
+      "SERVER-HALF",
+      50,
+      new Date(Date.now() + 86400000).toISOString(),
+      1,
+      c.courseId,
+      "Synthetic coupon server acceptance",
+    ]);
+    m.auth = people.learnerA.auth;
+    const first = await createUnifiedCourseCheckout(unifiedSlug, "SERVER-HALF");
+    expect(first.ok).toBe(true);
+    if (!first.ok || !("orderId" in first))
+      throw new Error("Expected a payment order");
+    orderId = first.orderId;
+    sessionId = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [orderId],
+      )
+    ).rows[0].s as string;
+    expect(await provider.retrieveCheckoutSession(sessionId)).toMatchObject({
+      amountMinor: 5001,
+      metadataOrderKind: "ACADEMY",
+    });
+    provider.expireSession(sessionId);
+    expect(
+      await createUnifiedCourseCheckout(unifiedSlug, "SERVER-HALF"),
+    ).toMatchObject({ ok: true, orderId });
+    const replacement = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [orderId],
+      )
+    ).rows[0].s as string;
+    expect(replacement).not.toBe(sessionId);
+    sessionId = replacement;
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.course_engine_coupon_redemptions where order_id=$1",
+          [orderId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+  it("verifies discounted payment, preserves no chosen duration, and retains full refund evidence", async () => {
+    provider.setSessionStatus(sessionId, "PAID");
+    provider.closeSession(sessionId);
+    m.auth = null;
+    expect(
+      await processCommerceWebhook(
+        provider.fakeWebhookEventFor(sessionId),
+        provider as never,
+      ),
+    ).toEqual({ reconciled: true });
+    m.auth = people.learnerA.auth;
+    expect(await reconcileAcademyOrder({ orderId, sessionId })).toMatchObject({
+      ok: true,
+      fulfilled: true,
+    });
+    expect(
+      (
+        await q(
+          "select format_id,state from public.academy_entitlements where order_id=$1",
+          [orderId],
+        )
+      ).rows[0],
+    ).toEqual({ format_id: null, state: "ACTIVE" });
+    provider.setRefundedAmount(sessionId, 5001);
+    m.auth = null;
+    const event = {
+      ...provider.fakeWebhookEventFor(sessionId),
+      eventId: `evt_unified_refund_${randomUUID()}`,
+      eventType: "charge.refunded",
+      paymentIntentId: sessionId,
+      subjectId: "ch_fake_" + sessionId,
+    };
+    expect(await processCommerceWebhook(event, provider as never)).toEqual({
+      reconciled: true,
+    });
+    expect(
+      (
+        await q(
+          "select amount_minor from public.academy_order_refunds where order_id=$1",
+          [orderId],
+        )
+      ).rows[0].amount_minor,
+    ).toBe(5001);
+    expect(
+      (
+        await q(
+          "select state from public.academy_entitlements where order_id=$1",
+          [orderId],
+        )
+      ).rows[0].state,
+    ).toBe("REVOKED");
+  });
+  it("grants full-discount access with card commerce disabled and no provider", async () => {
+    const c = await publishUnifiedTestCourse(q, "unified-server-free-test");
+    await rpc(q, people.admin, "create_course_coupon", [
+      "SERVER-FREE",
+      100,
+      new Date(Date.now() + 86400000).toISOString(),
+      1,
+      c.courseId,
+      "Synthetic free coupon acceptance",
+    ]);
+    m.auth = people.learnerA.auth;
+    m.cardConfigured = false;
+    m.provider = null;
+    try {
+      const first = await createUnifiedCourseCheckout(
+        "unified-server-free-test",
+        "SERVER-FREE",
+      );
+      expect(first).toMatchObject({
+        ok: true,
+        url: expect.stringContaining("/student/academy?enrolmentId="),
+      });
+      expect(
+        await createUnifiedCourseCheckout(
+          "unified-server-free-test",
+          "SERVER-FREE",
+        ),
+      ).toEqual(first);
+      expect(
+        (
+          await q(
+            "select count(*)::int n from public.academy_orders where course_id=$1",
+            [c.courseId],
+          )
+        ).rows[0].n,
+      ).toBe(0);
+    } finally {
+      m.cardConfigured = true;
+      m.provider = provider;
+    }
+  });
+});
+
+describe("unified cancellation through the real controller and provider boundary", () => {
+  it("uses verified capture and refund evidence on the success-page fallback", async () => {
+    await publishUnifiedTestCourse(q, "unified-refund-before-fulfilment");
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-refund-before-fulfilment",
+      "",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId,
+      session = (
+        await q(
+          "select provider_session_id s from public.academy_orders where id=$1",
+          [id],
+        )
+      ).rows[0].s as string;
+    provider.setSessionStatus(session, "PAID");
+    const original = provider.retrievePayment.bind(provider);
+    const incomplete = vi
+      .spyOn(provider, "retrievePayment")
+      .mockImplementation(async (s) => ({
+        ...(await original(s)),
+        capturedMinor: null,
+      }));
+    try {
+      expect(
+        await reconcileAcademyOrder({ orderId: id, sessionId: session }),
+      ).toMatchObject({ ok: false, code: "INCOMPLETE_EVIDENCE" });
+    } finally {
+      incomplete.mockRestore();
+    }
+    const pending = vi
+      .spyOn(provider, "retrievePayment")
+      .mockImplementation(async (s) => ({
+        ...(await original(s)),
+        refundPending: true,
+      }));
+    try {
+      expect(
+        await reconcileAcademyOrder({ orderId: id, sessionId: session }),
+      ).toMatchObject({ ok: false, code: "REFUND_PENDING" });
+    } finally {
+      pending.mockRestore();
+    }
+    const amount = (
+      await q("select amount_minor n from public.academy_orders where id=$1", [
+        id,
+      ])
+    ).rows[0].n as number;
+    provider.setRefundedAmount(session, amount);
+    expect(
+      await reconcileAcademyOrder({ orderId: id, sessionId: session }),
+    ).toMatchObject({ ok: false, code: "REFUNDED_NO_LINKED_ENTITLEMENT" });
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_order_refunds where order_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_entitlements where order_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("expires and verifies an unpaid session before releasing its coupon reservation", async () => {
+    const c = await publishUnifiedTestCourse(q, "unified-cancel-server");
+    await rpc(q, people.admin, "create_course_coupon", [
+      "CANCEL-SERVER",
+      50,
+      new Date(Date.now() + 86400000).toISOString(),
+      1,
+      c.courseId,
+      "TEST ONLY server cancellation",
+    ]);
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-cancel-server",
+      "CANCEL-SERVER",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId;
+    const session = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [id],
+      )
+    ).rows[0].s as string;
+    expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+      ok: true,
+      code: "CANCELLED",
+    });
+    expect(await provider.retrieveCheckoutSession(session)).toMatchObject({
+      status: "EXPIRED",
+      paymentStatus: "UNPAID",
+      url: null,
+    });
+    expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+      ok: true,
+      code: "ALREADY_CANCELLED",
+    });
+    expect(await resumeMyUnifiedCheckout(id)).toMatchObject({
+      ok: false,
+      code: "INVALID_STATE",
+    });
+    const next = await createUnifiedCourseCheckout(
+      "unified-cancel-server",
+      "CANCEL-SERVER",
+    );
+    expect(next.ok).toBe(true);
+    if (next.ok && "orderId" in next) expect(next.orderId).not.toBe(id);
+  });
+  it("refuses to cancel a session paid during checkout", async () => {
+    await publishUnifiedTestCourse(q, "unified-cancel-paid");
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-cancel-paid",
+      "",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId;
+    const session = (
+      await q(
+        "select provider_session_id s from public.academy_orders where id=$1",
+        [id],
+      )
+    ).rows[0].s as string;
+    provider.setSessionStatus(session, "PAID");
+    expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+      ok: false,
+      code: "PAYMENT_REVIEW_REQUIRED",
+    });
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.course_engine_checkout_cancellations where order_id=$1",
+          [id],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+  });
+  it("retains reservations on provider identity mismatch or outage", async () => {
+    await publishUnifiedTestCourse(q, "unified-cancel-outage");
+    m.auth = people.learnerA.auth;
+    const checkout = await createUnifiedCourseCheckout(
+      "unified-cancel-outage",
+      "",
+    );
+    if (!checkout.ok || !("orderId" in checkout))
+      throw new Error("Checkout fixture failed");
+    const id = checkout.orderId;
+    const original = provider.retrieveCheckoutSession.bind(provider);
+    const spy = vi
+      .spyOn(provider, "retrieveCheckoutSession")
+      .mockImplementation(async (session) => ({
+        ...(await original(session)),
+        metadataOrderKind: null,
+      }));
+    try {
+      expect(await cancelMyUnifiedCheckout(id)).toMatchObject({
+        ok: false,
+        code: "CANCELLATION_MISMATCH",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    const outage = vi
+      .spyOn(provider, "retrieveCheckoutSession")
+      .mockRejectedValue(new Error("TEST provider outage"));
+    try {
+      await expect(cancelMyUnifiedCheckout(id)).rejects.toThrow(
+        "TEST provider outage",
+      );
+    } finally {
+      outage.mockRestore();
+    }
+    expect(
+      (await q("select state from public.academy_orders where id=$1", [id]))
+        .rows[0].state,
+    ).toBe("PENDING");
   });
 });

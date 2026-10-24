@@ -67,6 +67,7 @@ export interface CommerceProvider {
     input: CreateCheckoutInput,
   ): Promise<CreateCheckoutResult>;
   retrieveCheckoutSession(sessionId: string): Promise<RetrievedCheckout>;
+  expireCheckoutSession?(sessionId: string): Promise<RetrievedCheckout>;
   retrievePayment(sessionId: string): Promise<RetrievedPayment>;
   findCheckoutForPaymentIntent(paymentIntentId: string): Promise<string | null>;
   findCheckoutForOrder(

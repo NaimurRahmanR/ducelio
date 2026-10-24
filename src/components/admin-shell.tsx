@@ -15,7 +15,7 @@ import { Brand } from "./ui";
 import { logout } from "@/app/auth/actions";
 import type { Role } from "@/domain/academy";
 
-// The admin control centre's single navigation: exactly five destinations.
+// One course workspace, with separate protected historical operations.
 // The menu only aids discovery; every page enforces its own roles on the
 // server and the database enforces them again.
 export type Destination =
@@ -38,16 +38,9 @@ export const ADMIN_DESTINATIONS = [
   },
   {
     id: "courses",
-    label: "Courses",
-    href: "/admin/courses",
+    label: "Course Engineering",
+    href: "/admin/course-engineering",
     icon: BookOpenCheck,
-    roles: COURSE_ADMIN,
-  },
-  {
-    id: "operations",
-    label: "Operations Engineer",
-    href: "/admin/operations-engineer",
-    icon: Bot,
     roles: COURSE_ADMIN,
   },
   {
@@ -59,7 +52,7 @@ export const ADMIN_DESTINATIONS = [
   },
   {
     id: "academy",
-    label: "Academy Operations",
+    label: "Historical academic records",
     href: "/admin/academy",
     icon: GraduationCap,
     roles: ANY_ADMIN,

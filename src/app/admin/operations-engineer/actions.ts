@@ -1,56 +1,30 @@
 "use server";
-import { revalidatePath } from "next/cache";
-import { unstable_rethrow } from "next/navigation";
-import {
-  executeOperation,
-  interpretOperationRequest,
-  prepareOperation,
-  type InterpretResult,
-  type PrepareResult,
-  type Receipt,
+import type {
+  InterpretResult,
+  PrepareResult,
+  Receipt,
 } from "@/server/operations-engineer";
-import { AccessDenied } from "@/domain/policy";
-
-// Thin server-action wrappers. Authority, validation, state reads and
-// execution all live in src/server/operations-engineer.ts; these only turn
-// a refusal into a message instead of an error page.
 export type ActionError = { status: "FORBIDDEN" | "ERROR"; message: string };
-
-function failure(error: unknown): ActionError {
-  unstable_rethrow(error);
-  return error instanceof AccessDenied
-    ? {
-        status: "FORBIDDEN",
-        message: "Your roles do not allow this operation.",
-      }
-    : {
-        status: "ERROR",
-        message: "The request could not be processed. Nothing was changed.",
-      };
-}
-
+const retired = (): ActionError => ({
+  status: "ERROR",
+  message:
+    "This workflow has retired. Use Course Engineering for courses and course coupons for discounts.",
+});
 export async function prepareOperationAction(
-  actionId: string,
-  raw: Record<string, string>,
+  _actionId: string,
+  _raw: Record<string, string>,
 ): Promise<PrepareResult | ActionError> {
-  try {
-    return await prepareOperation(actionId, raw);
-  } catch (error) {
-    return failure(error);
-  }
+  void _actionId;
+  void _raw;
+  return retired();
 }
-
 export async function interpretRequestAction(
-  text: string,
+  _text: string,
 ): Promise<InterpretResult | ActionError> {
-  try {
-    return await interpretOperationRequest(text);
-  } catch (error) {
-    return failure(error);
-  }
+  void _text;
+  return retired();
 }
-
-export async function executeOperationAction(request: {
+export async function executeOperationAction(_request: {
   actionId: string;
   raw: Record<string, string>;
   issuedAt: string;
@@ -58,14 +32,6 @@ export async function executeOperationAction(request: {
   proposalId: string;
   confirmed: boolean;
 }): Promise<Receipt | ActionError> {
-  try {
-    const receipt = await executeOperation(request);
-    if (receipt.status === "SUCCEEDED") {
-      revalidatePath("/admin", "layout");
-      revalidatePath("/courses");
-    }
-    return receipt;
-  } catch (error) {
-    return failure(error);
-  }
+  void _request;
+  return retired();
 }

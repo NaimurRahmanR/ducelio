@@ -36,7 +36,7 @@ function Outcome({ state }: { state: AcademyAdminState }) {
       {state.packageId && !state.error && (
         <Link
           className="ac-link"
-          href={`/admin/academy-course-engineering?packageId=${state.packageId}`}
+          href={`/admin/course-engineering?packageId=${state.packageId}`}
         >
           Open the review →
         </Link>
@@ -60,7 +60,11 @@ function Reason({ id, placeholder }: { id: string; placeholder: string }) {
   );
 }
 
-export function AcademyUploadForm() {
+export function AcademyUploadForm({
+  organisations = [],
+}: {
+  organisations?: { id: string; name: string; canManage: boolean }[];
+}) {
   const [state, action, pending] = useActionState(uploadAndValidateAction, {});
   const [sizeError, setSizeError] = useState<string | null>(null);
   return (
@@ -78,6 +82,20 @@ export function AcademyUploadForm() {
         if (error) event.preventDefault();
       }}
     >
+      {organisations.length > 0 && (
+        <label>
+          Course owner
+          <select name="organisationId" required>
+            {organisations
+              .filter((o) => o.canManage)
+              .map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
       <label htmlFor="academy-package">
         Course package (.json, ACADEMY_COURSE_PACKAGE_V1)
         <input

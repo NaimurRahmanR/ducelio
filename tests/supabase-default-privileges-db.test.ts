@@ -27,6 +27,7 @@ const INTENDED_ANON_FUNCTIONS = [
   "get_commercial_v1_offer",
   "list_academy_catalogue",
   "list_commercial_v1_offers",
+  "list_unified_course_catalogue",
 ];
 const MASTERY_POLICY =
   "public.apply_objective_mastery_policy(uuid,uuid,uuid,uuid)";

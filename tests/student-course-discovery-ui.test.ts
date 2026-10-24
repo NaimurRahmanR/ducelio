@@ -114,7 +114,7 @@ describe("academy navigation", () => {
     expect(browseLinks(mobile)).toHaveLength(1);
   });
 
-  it("keeps the existing academy entries", () => {
+  it("offers My Learning and a clearly historical programme entry", () => {
     const html = renderToStaticMarkup(
       createElement(
         AcademyShell,
@@ -122,7 +122,11 @@ describe("academy navigation", () => {
         "content",
       ),
     );
-    for (const href of ["/student", "/student/programme", "/student/sarah"])
+    for (const href of [
+      "/student/academy",
+      "/student/programme",
+      "/student/sarah",
+    ])
       expect(html).toContain(`href="${href}"`);
   });
 });

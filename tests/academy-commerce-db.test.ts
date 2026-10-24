@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -106,7 +108,7 @@ type Fulfilled = {
 };
 
 beforeAll(async () => {
-  db = await testDatabase();
+  db = await testDatabase({ throughMigration: 72 });
   q = (sql, params) =>
     db.query(sql, params) as Promise<{ rows: Record<string, unknown>[] }>;
   await seedPeople(q);

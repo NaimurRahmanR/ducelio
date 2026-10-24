@@ -30,7 +30,7 @@ import type { Role } from "@/domain/academy";
 const links = [
   ["Home", "", Home],
   ["Programme", "programme", BookOpen],
-  ["Academy courses", "academy", GraduationCap],
+  ["My Learning", "academy", GraduationCap],
   ["Calendar", "calendar", CalendarDays],
   ["Classes", "classes", Video],
   ["Assignments", "assignments", ClipboardList],
@@ -88,14 +88,23 @@ export function AcademyShell({
       {links
         .filter(
           ([, slug]) =>
-            !demo ||
-            (slug !== "practicals" &&
-              slug !== "academy" &&
-              slug !== "leaderboard" &&
-              slug !== "progress" &&
-              // The credential-free demo never reaches the governed Sarah
-              // execution plane.
-              slug !== "sarah"),
+            (!demo
+              ? [
+                  "academy",
+                  "support",
+                  "sarah",
+                  "profile",
+                  "programme",
+                ].includes(slug)
+              : true) &&
+            (!demo ||
+              (slug !== "practicals" &&
+                slug !== "academy" &&
+                slug !== "leaderboard" &&
+                slug !== "progress" &&
+                // The credential-free demo never reaches the governed Sarah
+                // execution plane.
+                slug !== "sarah")),
         )
         .map(([label, slug, Icon]) => {
           const href = slug ? base + "/" + slug : base;
@@ -110,7 +119,7 @@ export function AcademyShell({
               }
             >
               <Icon size={18} strokeWidth={1.7} />
-              {label}
+              {!demo && slug === "programme" ? "Historical programmes" : label}
               {label === "Support" && <span className="nav-dot" />}
             </Link>
           );

@@ -1,3 +1,5 @@
+// Historical creation protocol through 072. Current cutover and retained-order
+// verification run in unified-legacy-retirement-db.test.ts against 073.
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import pg from "pg";
 import type { PGlite } from "@electric-sql/pglite";
@@ -185,6 +187,7 @@ describe.skipIf(!ADMIN_URL)(
       const client = await connect(BASE);
       try {
         for (const sql of await testDatabaseStatements({
+          throughMigration: 72,
           supabaseDefaultPrivileges: true,
         }))
           await client.query(sql);

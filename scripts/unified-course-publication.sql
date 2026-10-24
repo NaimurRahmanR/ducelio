@@ -1,0 +1,4 @@
+-- REVIEW DRAFT RETIRED: its corrected implementation is preserved in
+-- supabase/migrations/202610280067_unified_course_engine.sql.
+-- This file intentionally contains no executable SQL. Review and apply the
+-- migration through the normal release process; never run this draft hosted.

@@ -1095,6 +1095,14 @@ describe("Sarah static boundaries", () => {
       "202610260064_shared_execution_reliability.sql",
       "202610260065_academy_ai_hardening.sql",
       "202610270066_admin_course_delivery_evidence.sql",
+      "202610280067_unified_course_engine.sql",
+      "202610290068_unified_course_checkout.sql",
+      "202610300069_unified_activation_windows.sql",
+      "202610310070_unified_organisations.sql",
+      "202611010071_unified_academic_review.sql",
+      "202611020072_unified_checkout_cancellation.sql",
+      "202611030073_unified_legacy_retirement.sql",
+      "202611040074_unified_fixed_amount_coupons.sql",
     ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");

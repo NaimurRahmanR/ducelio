@@ -114,6 +114,18 @@ export class StripeCommerceProvider implements CommerceProvider {
     };
   }
 
+  async expireCheckoutSession(sessionId: string): Promise<RetrievedCheckout> {
+    await this.#stripe().checkout.sessions.expire(
+      sessionId,
+      {},
+      {
+        idempotencyKey: "DUCELIO_EXPIRE_CHECKOUT:" + sessionId,
+      },
+    );
+    // Re-read provider state; an attempted API mutation alone is not evidence.
+    return this.retrieveCheckoutSession(sessionId);
+  }
+
   async verifyWebhookEvent(
     rawBody: string,
     signatureHeader: string | null,

@@ -1,3 +1,5 @@
+// Historical reviewer-acquisition protocol. The 073 cutover and retained
+// payment paths are exercised by unified-legacy-retirement-db.test.ts.
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,7 +33,7 @@ async function owner(db: PGlite) {
 const SLUG = "reviewer-course";
 const CODE = "REVIEW-046";
 
-async function fixture(capacity?: number, throughMigration = 9999) {
+async function fixture(capacity?: number, throughMigration = 72) {
   const f = await buildCommerceFixture({ throughMigration });
   databases.push(f.db);
   await asPolicyUser(f.db, 2);

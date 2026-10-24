@@ -1,3 +1,4 @@
+import { paymentEvidenceProblem } from "./payment-evidence";
 import "server-only";
 import { createHmac } from "node:crypto";
 import { z } from "zod";
@@ -100,6 +101,16 @@ export async function attestAcademyFulfillment(checkout: VerifiedCheckout) {
 
 const operationSchema = z.union([
   z.strictObject({
+    kind: z.literal("CANCEL_UNIFIED_CHECKOUT"),
+    learnerId: z.uuid(),
+    orderId: z.uuid(),
+    sessionId: z.string().regex(/^cs_[A-Za-z0-9_]{1,197}$/),
+    amountMinor: z.number().int().positive(),
+    currency: currencyCodeSchema,
+    sessionStatus: z.literal("EXPIRED"),
+    paymentStatus: z.literal("UNPAID"),
+  }),
+  z.strictObject({
     kind: z.literal("REFUND"),
     orderId: z.uuid(),
     sessionId: z.string().min(1).max(200),
@@ -157,7 +168,7 @@ const createdOrderSchema = z.union([
     amountMinor: z.number().int().positive(),
     currency: currencyCodeSchema,
     offerSlug: z.string(),
-    formatId: z.enum(ACADEMY_FORMAT_IDS as [string, ...string[]]),
+    formatId: z.enum(ACADEMY_FORMAT_IDS as [string, ...string[]]).nullable(),
     reused: z.boolean(),
   }),
   z.object({ ok: z.literal(false), code: z.string() }),
@@ -168,7 +179,7 @@ const bindingSchema = z.union([
     order: z
       .object({
         id: z.uuid(),
-        state: z.enum(["PENDING", "FULFILLED"]),
+        state: z.enum(["PENDING", "FULFILLED", "CANCELLED"]),
         sessionId: z.string().nullable(),
       })
       .passthrough(),
@@ -180,10 +191,10 @@ export const academyOrderSchema = z.union([
     ok: z.literal(true),
     order: z.strictObject({
       id: z.uuid(),
-      state: z.enum(["PENDING", "FULFILLED"]),
+      state: z.enum(["PENDING", "FULFILLED", "CANCELLED"]),
       amountMinor: z.number().int(),
       currency: z.string(),
-      formatId: z.string(),
+      formatId: z.string().nullable(),
       sessionId: z.string().nullable(),
       offerSlug: z.string(),
       title: z.string(),
@@ -227,9 +238,60 @@ export async function createAcademyCheckout(
   const order = createdOrderSchema.parse(data);
   if (!order.ok) return order;
 
+  return openAcademyOrderCheckout(actor, client, order);
+}
+
+export async function createUnifiedCourseCheckout(
+  offerSlug: unknown,
+  couponCode: unknown,
+) {
+  const slug = z
+    .string()
+    .max(80)
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+    .parse(offerSlug);
+  const coupon = z
+    .string()
+    .trim()
+    .max(40)
+    .transform((s) => s.toUpperCase())
+    .parse(couponCode ?? "");
+  const actor = await requireActor("student");
+  const client = await createSupabase();
+  const { data, error } = await client.rpc("create_unified_course_order", {
+    p_offer_slug: slug,
+    p_coupon_code: coupon || null,
+  });
+  if (error) return { ok: false as const, code: "CHECKOUT_UNAVAILABLE" };
+  const access = z
+    .strictObject({
+      ok: z.literal(true),
+      accessGranted: z.literal(true),
+      enrolmentId: z.uuid(),
+      reused: z.boolean(),
+    })
+    .safeParse(data);
+  if (access.success)
+    return {
+      ok: true as const,
+      url: `/student/academy?enrolmentId=${access.data.enrolmentId}`,
+    };
+  const order = createdOrderSchema.parse(data);
+  if (!order.ok) return order;
+  // Full-discount access above requires no Stripe credentials or provider.
+  if (!commerceConfig().configured)
+    return { ok: false as const, code: "CHECKOUT_UNAVAILABLE" };
+  return openAcademyOrderCheckout(actor, client, order);
+}
+
+async function openAcademyOrderCheckout(
+  actor: { id: string },
+  client: Awaited<ReturnType<typeof createSupabase>>,
+  order: Extract<z.infer<typeof createdOrderSchema>, { ok: true }>,
+): Promise<AcademyCheckoutResult> {
   const env = config();
   const successUrl = `${env.appUrl}/academy/checkout/success?order=${order.orderId}&session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = `${env.appUrl}/academy/${order.offerSlug}`;
+  const cancelUrl = `${env.appUrl}/student/academy?checkout=${order.orderId}`;
   const provider = await getCommerceProvider();
   const orderKey = "DUCELIO_ACADEMY_ORDER:" + order.orderId;
   const sessionInput = (idempotencyKey: string) => ({
@@ -282,7 +344,9 @@ export async function createAcademyCheckout(
     if (
       bound.sessionId !== binding.order.sessionId ||
       bound.metadataOrderId !== order.orderId ||
-      bound.metadataOrderKind !== "ACADEMY"
+      bound.metadataOrderKind !== "ACADEMY" ||
+      bound.amountMinor !== order.amountMinor ||
+      bound.currency !== order.currency
     )
       return unavailable;
     if (
@@ -328,6 +392,95 @@ export async function getMyAcademyOrder(orderId: unknown) {
   return academyOrderSchema.parse(data);
 }
 
+export async function listMyUnifiedCourseOrders() {
+  await requireActor("student");
+  const { data, error } = await (
+    await createSupabase()
+  ).rpc("list_my_unified_course_orders");
+  if (error) throw new Error("ORDER_SERVICE_UNAVAILABLE");
+  return z
+    .array(
+      z.object({
+        id: z.uuid(),
+        state: z.enum(["PENDING", "FULFILLED", "CANCELLED"]),
+        title: z.string(),
+        offerSlug: z.string(),
+        amountMinor: z.number().int(),
+        currency: currencyCodeSchema,
+        sessionBound: z.boolean(),
+        createdAt: z.string(),
+      }),
+    )
+    .parse(data);
+}
+export async function resumeMyUnifiedCheckout(orderId: unknown) {
+  const actor = await requireActor("student");
+  const status = await getMyAcademyOrder(orderId);
+  if (
+    !status.ok ||
+    status.order.state !== "PENDING" ||
+    status.order.formatId !== null
+  )
+    return { ok: false as const, code: "INVALID_STATE" };
+  const o = status.order;
+  return openAcademyOrderCheckout(actor, await createSupabase(), {
+    ok: true,
+    orderId: o.id,
+    amountMinor: o.amountMinor,
+    currency: currencyCodeSchema.parse(o.currency),
+    offerSlug: o.offerSlug,
+    formatId: null,
+    reused: true,
+  });
+}
+export async function cancelMyUnifiedCheckout(orderId: unknown) {
+  const actor = await requireActor("student");
+  const status = await getMyAcademyOrder(orderId);
+  if (!status.ok || status.order.formatId !== null)
+    return { ok: false, code: "NOT_FOUND_OR_FORBIDDEN" };
+  const o = status.order;
+  if (o.state === "CANCELLED") return { ok: true, code: "ALREADY_CANCELLED" };
+  if (o.state !== "PENDING" || !o.sessionId)
+    return { ok: false, code: "CHECKOUT_NOT_BOUND" };
+  const provider = await getCommerceProvider();
+  const matches = (
+    s: Awaited<ReturnType<typeof provider.retrieveCheckoutSession>>,
+  ) =>
+    s.sessionId === o.sessionId &&
+    s.metadataOrderId === o.id &&
+    s.metadataOrderKind === "ACADEMY" &&
+    s.amountMinor === o.amountMinor &&
+    s.currency === o.currency;
+  let session = await provider.retrieveCheckoutSession(o.sessionId);
+  if (!matches(session)) return { ok: false, code: "CANCELLATION_MISMATCH" };
+  if (session.paymentStatus !== "UNPAID")
+    return { ok: false, code: "PAYMENT_REVIEW_REQUIRED" };
+  if (session.status === "OPEN" && provider.expireCheckoutSession) {
+    try {
+      await provider.expireCheckoutSession(o.sessionId);
+    } catch {
+      /* A concurrent payment/expiration must be re-read, never inferred. */
+    }
+    session = await provider.retrieveCheckoutSession(o.sessionId);
+  }
+  if (
+    !matches(session) ||
+    session.status !== "EXPIRED" ||
+    session.paymentStatus !== "UNPAID"
+  )
+    return { ok: false, code: "CHECKOUT_STILL_PAYABLE" };
+  return attestAcademyOperation({
+    kind: "CANCEL_UNIFIED_CHECKOUT",
+    learnerId: actor.id,
+    orderId: o.id,
+    sessionId: o.sessionId,
+    amountMinor: o.amountMinor,
+    currency: currencyCodeSchema.parse(o.currency),
+    sessionStatus: "EXPIRED",
+    paymentStatus: "UNPAID",
+  });
+}
+
 // Success-page fallback: never trusts the redirect. Retrieves the real
 // session from Stripe, requires it to reference this Academy order, PAID,
 // with complete amount and currency matching the order, then converges on
@@ -353,7 +506,7 @@ export async function reconcileAcademyOrder(input: {
   const provider = await getCommerceProvider();
   let session;
   try {
-    session = await provider.retrieveCheckoutSession(sessionId);
+    session = await provider.retrievePayment(sessionId);
   } catch {
     return { ok: false as const, code: "PROVIDER_UNAVAILABLE" };
   }
@@ -371,6 +524,29 @@ export async function reconcileAcademyOrder(input: {
     session.currency !== status.order.currency
   )
     return { ok: false as const, code: "MISMATCHED_AMOUNT" };
+  const problem = paymentEvidenceProblem(
+    session,
+    orderId,
+    sessionId,
+    status.order.amountMinor,
+    status.order.currency,
+  );
+  if (problem) return { ok: false as const, code: problem };
+  if (session.refundedMinor! > 0) {
+    if (session.refundedMinor !== session.amountMinor)
+      return { ok: false as const, code: "PARTIAL_REFUND_REVIEW" };
+    try {
+      const refund = await processAcademyPayment(session, {
+        orderId,
+        sessionId,
+        eventId: "SESSION_REFUND_VERIFY:" + sessionId,
+        isRefund: true,
+      });
+      return { ok: false as const, code: refund.reason };
+    } catch {
+      return { ok: false as const, code: "CONFIGURATION_UNAVAILABLE" };
+    }
+  }
   try {
     const result = await attestAcademyFulfillment({
       provider: "STRIPE",

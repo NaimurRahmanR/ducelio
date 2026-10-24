@@ -21,6 +21,9 @@ vi.mock("@/server/commercial-v1-commerce", () => ({
   createCommercialV1Checkout: mocks.createCommercialV1Checkout,
   reconcileCommercialV1Order: mocks.reconcileCommercialV1Order,
 }));
+vi.mock("@/server/academy-commerce", () => ({
+  createUnifiedCourseCheckout: mocks.createCommercialV1Checkout,
+}));
 vi.mock("@/lib/env", () => ({ commerceConfig: mocks.commerceConfig }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -47,8 +50,6 @@ vi.mock("@/components/buy-course-form", () => ({
   }) => `BUY_FORM_MARKER:${slug}:${paymentAvailable}`,
 }));
 
-import CoursesPage from "@/app/courses/page";
-import CourseDetailPage from "@/app/courses/[slug]/page";
 import SuccessPage from "@/app/checkout/success/page";
 import CancelPage from "@/app/checkout/cancel/page";
 import { startCheckout } from "@/app/courses/actions";
@@ -78,23 +79,6 @@ function flatten(node: unknown): string {
   return "";
 }
 
-const baseOffer = {
-  ok: true as const,
-  slug: "cybersecurity-foundations",
-  title: "Cybersecurity Foundations",
-  examinationBody: "ISC2",
-  qualificationName: "Certified in Cybersecurity",
-  priceAmountMinor: 19900,
-  currency: "GBP",
-  summary: "A hands-on introduction.",
-  cohortStartsOn: "2026-09-01",
-  deliveryPlan: "STANDARD_6_WEEK" as const,
-  viewerAuthenticated: false,
-  viewerEntitled: false,
-  viewerEnrolmentId: null,
-  viewerEnrolmentStatus: "NONE" as const,
-};
-
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.commerceConfig.mockReturnValue({ configured: true });
@@ -105,154 +89,7 @@ beforeEach(() => {
   });
 });
 
-describe("page: /courses", () => {
-  it("renders the published catalogue", async () => {
-    mocks.listCommercialV1Offers.mockResolvedValue([
-      {
-        slug: "cybersecurity-foundations",
-        title: "Cybersecurity Foundations",
-        examinationBody: "ISC2",
-        qualificationName: "Certified in Cybersecurity",
-        priceAmountMinor: 19900,
-        currency: "GBP",
-        summary: "A hands-on introduction.",
-        cohortStartsOn: "2026-09-01",
-        // The published projection always carries a plan (schema default).
-        deliveryPlan: "STANDARD_6_WEEK",
-      },
-    ]);
-    const el = await CoursesPage();
-    const text = flatten(el);
-    expect(text).toContain("Cybersecurity Foundations");
-    expect(text).toContain("ISC2");
-  });
-
-  it("renders an honest empty state, never fabricated content", async () => {
-    mocks.listCommercialV1Offers.mockResolvedValue([]);
-    const el = await CoursesPage();
-    const text = flatten(el);
-    expect(text).toMatch(/no courses/i);
-  });
-});
-
-describe("page: /courses/[slug]", () => {
-  it("calls notFound() for an unknown/unpublished slug", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ok: false,
-      code: "NOT_FOUND",
-    });
-    await expect(
-      CourseDetailPage({ params: Promise.resolve({ slug: "unknown" }) }),
-    ).rejects.toThrow("NOT_FOUND");
-    expect(mocks.notFound).toHaveBeenCalled();
-  });
-
-  it("prompts an anonymous viewer to sign in/create an account with next= preserved, and shows no buy form", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue(baseOffer);
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toMatch(/sign in to continue/i);
-    expect(text).toContain("Create an account");
-  });
-
-  it("V2 correction (item 4): an ACTIVE-enrolled or entitled viewer sees Continue learning, never a buy button", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-      viewerEntitled: true,
-      viewerEnrolmentStatus: "ACTIVE",
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toMatch(/already have access/i);
-    expect(text).not.toContain("BUY_FORM_MARKER:");
-  });
-
-  it("V2 correction (item 4): a PAUSED-enrolled viewer is told to contact support, never offered a fresh purchase", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-      viewerEnrolmentStatus: "PAUSED",
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toMatch(/paused/i);
-    expect(text).not.toContain("BUY_FORM_MARKER:");
-  });
-
-  it("V2 correction (item 4): a COMPLETED-enrolled viewer is told they already completed the course, never offered a fresh purchase", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-      viewerEnrolmentStatus: "COMPLETED",
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toMatch(/already completed/i);
-    expect(text).not.toContain("BUY_FORM_MARKER:");
-  });
-
-  it("V2 correction (item 4): a WITHDRAWN-enrolled viewer is told to contact support, never offered a fresh purchase", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-      viewerEnrolmentStatus: "WITHDRAWN",
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toMatch(/contact support/i);
-    expect(text).not.toContain("BUY_FORM_MARKER:");
-  });
-
-  it("when card checkout is unavailable, still exposes the code form for complimentary access", async () => {
-    mocks.commerceConfig.mockReturnValue({ configured: false });
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toMatch(/card checkout is temporarily unavailable/i);
-    expect(text).toContain("BUY_FORM_MARKER:cybersecurity-foundations:false");
-  });
-
-  it("shows the buy/code form for an authenticated, unenrolled, unentitled viewer when commerce is configured", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).toContain("BUY_FORM_MARKER:cybersecurity-foundations:true");
-  });
-
-  it("V2 correction (item 12): the scheduling caption never claims immediate access -- only that it opens once verified/confirmed", async () => {
-    mocks.getCommercialV1Offer.mockResolvedValue({
-      ...baseOffer,
-      viewerAuthenticated: true,
-    });
-    const el = await CourseDetailPage({
-      params: Promise.resolve({ slug: "cybersecurity-foundations" }),
-    });
-    const text = flatten(el);
-    expect(text).not.toMatch(/open(s)? immediately/i);
-  });
-});
-
+// Public course pages now use the unified catalogue; see course-pages-ui.test.ts.
 describe("action: startCheckout", () => {
   it("redirects to the real Stripe-hosted URL on success", async () => {
     mocks.createCommercialV1Checkout.mockResolvedValue({
@@ -268,10 +105,10 @@ describe("action: startCheckout", () => {
     );
   });
 
-  it("passes an optional campaign code and redirects direct access into the learner programme", async () => {
+  it("passes an optional campaign code and redirects direct access into the My Learning", async () => {
     mocks.createCommercialV1Checkout.mockResolvedValue({
       ok: true,
-      kind: "ACCESS_GRANTED",
+      url: "/student/academy",
       entitlementId: "entitlement-1",
       enrolmentId: "enrolment-1",
       offerSlug: "cybersecurity-foundations",
@@ -280,7 +117,7 @@ describe("action: startCheckout", () => {
     form.set("slug", "cybersecurity-foundations");
     form.set("campaignCode", "reviewer-50");
     await expect(startCheckout({}, form)).rejects.toThrow(
-      "REDIRECT:/student/programme?access=granted",
+      "REDIRECT:/student/academy",
     );
     expect(mocks.createCommercialV1Checkout).toHaveBeenCalledWith(
       "cybersecurity-foundations",

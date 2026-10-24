@@ -39,11 +39,10 @@ export function AcademyOfferCard({ offer }: { offer: AcademyCatalogueOffer }) {
       </dl>
       <div className="offer-card-footer">
         <p className="offer-card-price">
-          {offer.formats.length > 1 ? "From " : ""}
           {formatMoney(from, offer.currency)}
           <span>{offer.currency}</span>
         </p>
-        <Link href={`/academy/${offer.slug}`} className="offer-card-link">
+        <Link href={`/courses/${offer.slug}`} className="offer-card-link">
           View course<span className="sr-only">: {offer.title}</span>{" "}
           <span aria-hidden="true">→</span>
         </Link>

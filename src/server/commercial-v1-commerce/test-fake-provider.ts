@@ -103,6 +103,14 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
     existing.expired = true;
   }
 
+  async expireCheckoutSession(sessionId: string) {
+    const current = await this.retrieveCheckoutSession(sessionId);
+    if (current.status !== "OPEN" || current.paymentStatus !== "UNPAID")
+      throw new Error("Not expirable");
+    this.expireSession(sessionId);
+    return this.retrieveCheckoutSession(sessionId);
+  }
+
   // Test helper: simulate Stripe pruning an idempotency key (about 24
   // hours), after which the same key creates a NEW session.
   forgetIdempotencyKey(idempotencyKey: string) {
@@ -122,7 +130,7 @@ export class FakeCommerceProviderAdapter implements CommerceProvider {
         };
       }
     }
-    const sessionId = `cs_test_fake_${randomUUID()}`;
+    const sessionId = `cs_test_fake_${randomUUID().replaceAll("-", "")}`;
     this.#sessions.set(sessionId, {
       orderId: input.orderId,
       orderKind: input.orderKind ?? null,

@@ -155,6 +155,7 @@ describe("final curriculum and migration audit", () => {
       // Migration 060: the read-only Ducelio Academy catalogue of PUBLISHED
       // offers and approved per-format prices (never package content).
       "public.list_academy_catalogue()",
+      "public.list_unified_course_catalogue()",
       // Migration 061: Academy fulfilment and the Academy signed operations
       // envelope (verified full refund, expired-session replacement). Like
       // the cohort pair above, every claim requires the controller MAC.
