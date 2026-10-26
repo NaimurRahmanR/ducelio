@@ -29,7 +29,7 @@ vi.mock("@/server/commercial-v1-examiner-recovery/operations", () => ({
 vi.mock("next/cache", () => ({ revalidatePath: mocks.refresh }));
 vi.mock("@/app/auth/actions", () => ({ logout: vi.fn() }));
 
-import ReviewPage from "@/app/admin/academic-review/page";
+import ReviewPage from "@/app/admin/academic-review/results/page";
 import RecoveryPage from "@/app/admin/activation/recovery/page";
 import {
   submitAssessmentReviewAction,
@@ -150,7 +150,7 @@ describe("academic review page", () => {
     );
     expect(html).toContain("Initial grading escalated to human review");
     expect(html).toContain("Lee Learner");
-    expect(html).toContain(`/admin/academic-review?case=${CASE}`);
+    expect(html).toContain(`/admin/academic-review/results?case=${CASE}`);
     expect(html).not.toContain("Grant only what is needed");
   });
 
@@ -261,7 +261,7 @@ describe("academic review Server Actions", () => {
       },
     );
     expect(state.message).toContain("First grade recorded");
-    expect(mocks.refresh).toHaveBeenCalledWith("/admin/academic-review");
+    expect(mocks.refresh).toHaveBeenCalledWith("/admin/academic-review/results");
     expect(mocks.refresh).toHaveBeenCalledWith("/admin/activation/recovery");
   });
 
@@ -499,7 +499,7 @@ describe("navigation and recovery status truth", () => {
     ]);
     const html = renderToStaticMarkup(await RecoveryPage());
     expect(html).toContain("Resolved by academic review");
-    expect(html).toContain(`/admin/academic-review?case=${Q2}`);
-    expect(html).not.toContain(`/admin/academic-review?case=${LAB_CASE}`);
+    expect(html).toContain(`/admin/academic-review/results?case=${Q2}`);
+    expect(html).not.toContain(`/admin/academic-review/results?case=${LAB_CASE}`);
   });
 });

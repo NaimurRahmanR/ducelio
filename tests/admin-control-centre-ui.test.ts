@@ -69,6 +69,15 @@ vi.mock("@/app/admin/operations-engineer/actions", () => ({
   prepareOperationAction: vi.fn(),
   interpretRequestAction: vi.fn(),
   executeOperationAction: vi.fn(),
+  prepareUnifiedOperationAction: vi.fn(),
+  executeUnifiedOperationAction: vi.fn(),
+}));
+vi.mock("@/server/course-organisations", () => ({
+  courseEngineeringAccess: async () => ({
+    actor: m.actor,
+    organisations: [],
+    allowed: m.actor.roles.includes("ACADEMIC_ADMIN") || m.actor.roles.includes("PLATFORM_ADMIN"),
+  }),
 }));
 vi.mock("@/server/commercial-v1-commerce", () => ({
   listCommercialV1OfferActivations: m.offerActivations,
@@ -265,7 +274,7 @@ beforeEach(() => {
 });
 
 describe("navigation and compatibility", () => {
-  it("offers the four current destinations to a course administrator", async () => {
+  it("offers the restored review and operations destinations to a course administrator", async () => {
     const html = renderToStaticMarkup(
       AdminShell({
         active: "dashboard",
@@ -278,6 +287,8 @@ describe("navigation and compatibility", () => {
     expect(navHrefs(html)).toEqual([
       "/admin",
       "/admin/course-engineering",
+      "/admin/academic-review",
+      "/admin/operations-engineer",
       "/admin/sales",
       "/admin/academy",
     ]);
@@ -341,10 +352,11 @@ describe("retired course creation routes", () => {
       expect(m.catalogue).not.toHaveBeenCalled();
     },
   );
-  it("retires the parallel Operations Engineer workspace", async () => {
-    await expect(
-      OperationsPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow("REDIRECT:/admin/course-engineering");
+  it("restores the governed Operations Engineer workspace without legacy mutation options", async () => {
+    const html = renderToStaticMarkup(await OperationsPage());
+    expect(html).toContain("Operations Engineer");
+    expect(html).toContain("Review request");
+    expect(html).toContain("Upload a new course package");
     expect(m.options).not.toHaveBeenCalled();
   });
 });

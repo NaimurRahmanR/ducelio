@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import {
   LayoutDashboard,
   BookOpenCheck,
+  ClipboardCheck,
   Bot,
   ReceiptText,
   GraduationCap,
@@ -19,7 +20,7 @@ import type { Role } from "@/domain/academy";
 // The menu only aids discovery; every page enforces its own roles on the
 // server and the database enforces them again.
 export type Destination =
-  "dashboard" | "courses" | "operations" | "sales" | "academy";
+  "dashboard" | "courses" | "review" | "operations" | "sales" | "academy";
 
 const COURSE_ADMIN: readonly Role[] = ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"];
 const ANY_ADMIN: readonly Role[] = [
@@ -41,6 +42,20 @@ export const ADMIN_DESTINATIONS = [
     label: "Course Engineering",
     href: "/admin/course-engineering",
     icon: BookOpenCheck,
+    roles: COURSE_ADMIN,
+  },
+  {
+    id: "review",
+    label: "Academic Review",
+    href: "/admin/academic-review",
+    icon: ClipboardCheck,
+    roles: COURSE_ADMIN,
+  },
+  {
+    id: "operations",
+    label: "Operations Engineer",
+    href: "/admin/operations-engineer",
+    icon: Bot,
     roles: COURSE_ADMIN,
   },
   {
@@ -80,7 +95,7 @@ const TECHNICAL_HOME: Record<string, Destination> = {
   Commerce: "sales",
   Agents: "academy",
   People: "academy",
-  "Academic review": "academy",
+  "Academic review": "review",
   "Academic results": "academy",
   "Grade recovery": "academy",
 };
