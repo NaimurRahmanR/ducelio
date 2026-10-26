@@ -13,6 +13,12 @@ import {
 } from "@/server/unified-course-engine";
 import { validateAcademyCoursePackage } from "@/domain/academy-course-package";
 
+const reviewShape = z.object({
+  pendingDecisions: z.array(
+    z.object({ key: z.string(), summary: z.string() }),
+  ),
+});
+
 export const dynamic = "force-dynamic";
 
 // Course-package review is separate from historical learner grading.
@@ -46,7 +52,8 @@ export default async function Page({
   const record = selected
     ? await getAcademyPackageReview(selected.id).catch(() => null)
     : null;
-  const review = record?.review;
+  const parsedReview = reviewShape.safeParse(record?.review);
+  const review = parsedReview.success ? parsedReview.data : null;
   const decisions = selected
     ? await getUnifiedAcademicResolutions(selected.id).catch(() => [])
     : [];
@@ -99,7 +106,7 @@ export default async function Page({
               {selected.status.toLowerCase()}
             </Pill>
           </p>
-          {(review?.pendingDecisions ?? []).length ? (
+          {(review?.pendingDecisions.length ?? 0) > 0 ? (
             <>
               <h3>Outstanding academic decisions</h3>
               <ul className="acad-issues">
