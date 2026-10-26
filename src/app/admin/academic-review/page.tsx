@@ -106,7 +106,7 @@ export default async function Page({
               {selected.status.toLowerCase()}
             </Pill>
           </p>
-          {(review?.pendingDecisions.length ?? 0) > 0 ? (
+          {review && review.pendingDecisions.length > 0 ? (
             <>
               <h3>Outstanding academic decisions</h3>
               <ul className="acad-issues">
