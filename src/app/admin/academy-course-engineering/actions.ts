@@ -17,6 +17,7 @@ import {
   academyUploadSizeError,
 } from "@/domain/academy-delivery";
 import { uploadUnifiedCoursePackage as uploadAcademyPackage } from "@/server/unified-course-engine";
+import { validateAcademyCoursePackage } from "@/domain/academy-course-package";
 import { ACADEMY_FORMAT_IDS } from "@/domain/academy-scheduler";
 
 export type AcademyAdminState = {
@@ -64,6 +65,15 @@ export async function uploadAndValidateAction(
         error: "The file is not valid UTF-8 JSON. Nothing was uploaded.",
       };
     }
+    // Preflight validation must not create a rejected database revision.
+    const checked = validateAcademyCoursePackage(parsed);
+    if (!checked.valid)
+      return {
+        error: "The JSON failed course-package validation. No database revision was created.",
+        issues: checked.errors
+          .slice(0, 50)
+          .map((e) => `${e.path || "package"} — ${e.message}`),
+      };
     const packageId = await uploadAcademyPackage(
       parsed,
       reason,
@@ -86,6 +96,11 @@ export async function uploadAndValidateAction(
       message: `Validated. ${result.review.warnings.length} warning${result.review.warnings.length === 1 ? "" : "s"}. Review the course below before publishing.`,
     };
   } catch (e) {
+    if (e instanceof AcademyError && e.code === "REVISION_CONFLICT")
+      return {
+        error:
+          "This course key and revision already exist with different content. Existing records were preserved. Open the original course review and create a new reviewed revision; do not overwrite the existing version.",
+      };
     return failure(e);
   }
 }
