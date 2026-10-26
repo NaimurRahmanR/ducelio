@@ -45,6 +45,10 @@ export async function prepareUnifiedOperationAction(
     await authorised();
     const request = requestSchema.parse(form.get("request"));
     const command = request.trim();
+    if (/\b(delete|drop|truncate|execute|sql|refund|erase|reset)\b/i.test(command))
+      return {
+        error: "That request is outside the reviewed Operations Engineer capabilities. No changes were made.",
+      };
     const match = /^(activate|deactivate)\s+coupon\s+([A-Z0-9_-]{4,40})$/i.exec(
       command,
     );
