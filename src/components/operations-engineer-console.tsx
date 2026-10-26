@@ -11,14 +11,13 @@ import {
 } from "lucide-react";
 import {
   OPERATION_ACTIONS,
-  OPERATIONS_ENGINEER_DISABLED,
-  isOperationEnabled,
   operationActionIds,
   type FieldSpec,
   type OperationActionId,
 } from "@/domain/operations-engineer";
 import type {
   InterpretResult,
+  Link as OperationLink,
   OperationOptions,
   PrepareResult,
   Proposal,
@@ -46,13 +45,24 @@ const READS = operationActionIds.filter(
   (id) => OPERATION_ACTIONS[id].kind === "READ",
 );
 const CHANGES = operationActionIds.filter(
-  (id) => OPERATION_ACTIONS[id].kind === "MUTATION" && isOperationEnabled(id),
+  (id) => OPERATION_ACTIONS[id].kind === "MUTATION",
 );
 
-const DISABLED = operationActionIds.flatMap((id) => {
-  const d = OPERATIONS_ENGINEER_DISABLED[id];
-  return d ? [{ id, ...d }] : [];
-});
+// Fields shown only for the chosen discount kind.
+function hiddenField(id: OperationActionId, name: string, kind?: string) {
+  if (id !== "create_coupon") return false;
+  if (name === "percentOff") return kind !== "PERCENT";
+  if (name === "amountOff" || name === "currency") return kind !== "AMOUNT";
+  return false;
+}
+
+// The attached file travels to the server only, inside FormData.
+function upload(file: File | null) {
+  if (!file) return undefined;
+  const data = new FormData();
+  data.set("package", file);
+  return data;
+}
 
 export function OperationsEngineerConsole({
   options,
@@ -66,10 +76,9 @@ export function OperationsEngineerConsole({
   initialValues?: Record<string, string>;
 }) {
   const [actionId, setActionId] = useState<OperationActionId>(
-    initialAction && isOperationEnabled(initialAction)
-      ? initialAction
-      : "inspect_course",
+    initialAction ?? "list_courses",
   );
+  const [file, setFile] = useState<File | null>(null);
   const [values, setValues] = useState<Record<string, string>>(
     initialValues ?? {},
   );
@@ -90,7 +99,11 @@ export function OperationsEngineerConsole({
   function prepare(id: OperationActionId, raw: Record<string, string>) {
     setConfirmed(false);
     start(async () => {
-      const result = await prepareOperationAction(id, raw);
+      const result = await prepareOperationAction(
+        id,
+        raw,
+        id === "upload_course_package" ? upload(file) : undefined,
+      );
       setOutcome(
         isError(result)
           ? { kind: "message", tone: "error", text: result.message }
@@ -137,14 +150,17 @@ export function OperationsEngineerConsole({
 
   function execute(p: Proposal) {
     start(async () => {
-      const receipt = await executeOperationAction({
-        actionId: p.actionId,
-        raw: p.raw,
-        issuedAt: p.issuedAt,
-        nonce: p.nonce,
-        proposalId: p.proposalId,
-        confirmed: true,
-      });
+      const receipt = await executeOperationAction(
+        {
+          actionId: p.actionId,
+          raw: p.raw,
+          issuedAt: p.issuedAt,
+          nonce: p.nonce,
+          proposalId: p.proposalId,
+          confirmed: true,
+        },
+        p.actionId === "upload_course_package" ? upload(file) : undefined,
+      );
       if (isError(receipt))
         return setOutcome({
           kind: "message",
@@ -167,7 +183,7 @@ export function OperationsEngineerConsole({
   }
 
   const missingChoices = def.fields.some(
-    (f) => f.kind === "choice" && options[f.source].length === 0,
+    (f) => f.kind === "choice" && !f.optional && options[f.source].length === 0,
   );
 
   return (
@@ -204,7 +220,7 @@ export function OperationsEngineerConsole({
           onChange={(e) => setRequest(e.target.value)}
           placeholder={
             aiConfigured
-              ? "For example: why is Security+ not on sale yet?"
+              ? "For example: why can't the AWS course be published yet?"
               : "Unavailable: AI interpretation is not configured."
           }
         />
@@ -253,24 +269,6 @@ export function OperationsEngineerConsole({
             />
           ))}
         </div>
-        <div className="ac-note oe-disabled" role="note">
-          <div>
-            <strong>Not available here yet.</strong> These changes stay with
-            their dedicated forms until the database records the evidence needed
-            to refuse a duplicate or replayed confirmation.
-            <ul>
-              {DISABLED.map((d) => (
-                <li key={d.id}>
-                  {OPERATION_ACTIONS[d.id].title}:{" "}
-                  <a href={d.manualHref} className="ac-link">
-                    {d.manualLabel}
-                  </a>
-                  . {d.reason}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
         <form
           id={formId}
           className="oe-form"
@@ -288,11 +286,12 @@ export function OperationsEngineerConsole({
               value={values[f.name] ?? ""}
               options={f.kind === "choice" ? options[f.source] : []}
               onChange={(v) => setValues((old) => ({ ...old, [f.name]: v }))}
-              hidden={
-                actionId === "create_campaign" &&
-                ((f.name === "percentOff" && values.kind !== "PERCENT_OFF") ||
-                  (f.name === "fixedPrice" && values.kind !== "FIXED_PRICE"))
-              }
+              onFile={(f) => {
+                setFile(f);
+                setOutcome(null);
+                setConfirmed(false);
+              }}
+              hidden={hiddenField(actionId, f.name, values.discountKind)}
             />
           ))}
           {missingChoices && (
@@ -382,12 +381,14 @@ function Field({
   value,
   options,
   onChange,
+  onFile,
   hidden,
 }: {
   spec: FieldSpec;
   value: string;
   options: { value: string; label: string; warning?: string }[];
   onChange: (v: string) => void;
+  onFile: (file: File | null) => void;
   hidden: boolean;
 }) {
   const id = useId();
@@ -397,14 +398,21 @@ function Field({
   return (
     <div className="field">
       <label htmlFor={id}>{spec.label}</label>
-      {spec.kind === "choice" ? (
+      {spec.kind === "file" ? (
+        <input
+          id={id}
+          type="file"
+          accept={spec.accept}
+          onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+        />
+      ) : spec.kind === "choice" ? (
         <select
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          required
+          required={!spec.optional}
         >
-          <option value="">Choose…</option>
+          <option value="">{spec.optional?.label ?? "Choose…"}</option>
           {options.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -465,7 +473,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           required
         />
-      ) : (
+      ) : spec.kind === "text" ? (
         <input
           id={id}
           value={value}
@@ -473,7 +481,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           required={!spec.optional}
         />
-      )}
+      ) : null}
       {selected?.warning && (
         <small className="oe-warning">
           <AlertTriangle size={13} aria-hidden="true" /> {selected.warning}
@@ -556,6 +564,17 @@ function Prepared({
             </table>
           </div>
         )}
+        {result.table.summary && (
+          <dl className="ac-dl oe-dl">
+            {result.table.summary.map((d) => (
+              <div key={d.label}>
+                <dt>{d.label}</dt>
+                <dd>{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+        {result.table.links && <Links links={result.table.links} />}
         {result.table.note && <p className="ac-muted">{result.table.note}</p>}
       </section>
     );
@@ -670,6 +689,20 @@ function Prepared({
   );
 }
 
+function Links({ links }: { links: OperationLink[] }) {
+  return (
+    <ul className="oe-links">
+      {links.map((l) => (
+        <li key={l.href}>
+          <a className="ac-link" href={l.href}>
+            {l.label}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function StatusIcon({ status }: { status: Receipt["status"] }) {
   return status === "SUCCEEDED" || status === "ALREADY_DONE" ? (
     <CheckCircle2 size={16} aria-hidden="true" className="oe-good" />
@@ -724,6 +757,7 @@ function ReceiptCard({ receipt: r }: { receipt: Receipt }) {
           ))}
         </dl>
       )}
+      {r.links && <Links links={r.links} />}
       {r.executedAt && (
         <p className="ac-muted">
           Executed {new Date(r.executedAt).toLocaleString("en-GB")} under your

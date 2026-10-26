@@ -455,9 +455,9 @@ describe("no artificial question/objective ceilings (101 items)", () => {
 });
 
 describe("navigation and recovery status truth", () => {
-  it("exposes Academic review as a real control-plane route to reviewers only", () => {
+  it("exposes Learner result review as a real control-plane route to reviewers only", () => {
     const route = adminControlRoutesForRoles(["ACADEMIC_ADMIN"]).find(
-      (r) => r.label === "Academic review",
+      (r) => r.label === "Learner result review",
     );
     expect(route?.href).toBe("/admin/academic-review");
     expect(existsSync(resolve("src/app/admin/academic-review/page.tsx"))).toBe(
@@ -465,7 +465,7 @@ describe("navigation and recovery status truth", () => {
     );
     expect(
       adminControlRoutesForRoles(["REGISTRAR"]).map((r) => r.label),
-    ).not.toContain("Academic review");
+    ).not.toContain("Learner result review");
     expect(adminControlRoutesForRoles(["INSTRUCTOR"])).toEqual([]);
   });
 

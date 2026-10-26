@@ -1,37 +1,84 @@
 "use server";
-import type {
-  InterpretResult,
-  PrepareResult,
-  Receipt,
+import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
+import {
+  executeOperation,
+  interpretOperationRequest,
+  prepareOperation,
+  readAttachment,
+  type InterpretResult,
+  type PrepareResult,
+  type Receipt,
 } from "@/server/operations-engineer";
+import { AccessDenied } from "@/domain/policy";
+
+// Thin server-action wrappers. Authority, validation, state reads and
+// execution all live in src/server/operations-engineer.ts; these only turn
+// a refusal into a message instead of an error page.
 export type ActionError = { status: "FORBIDDEN" | "ERROR"; message: string };
-const retired = (): ActionError => ({
-  status: "ERROR",
-  message:
-    "This workflow has retired. Use Course Engineering for courses and course coupons for discounts.",
-});
+
+function failure(error: unknown): ActionError {
+  unstable_rethrow(error);
+  return error instanceof AccessDenied
+    ? {
+        status: "FORBIDDEN",
+        message: "Your roles do not allow this operation.",
+      }
+    : {
+        status: "ERROR",
+        message: "The request could not be processed. Nothing was changed.",
+      };
+}
+
+// The optional FormData carries only an attached course package file.
 export async function prepareOperationAction(
-  _actionId: string,
-  _raw: Record<string, string>,
+  actionId: string,
+  raw: Record<string, string>,
+  upload?: FormData,
 ): Promise<PrepareResult | ActionError> {
-  void _actionId;
-  void _raw;
-  return retired();
+  try {
+    return await prepareOperation(
+      actionId,
+      raw,
+      upload ? await readAttachment(upload.get("package")) : null,
+    );
+  } catch (error) {
+    return failure(error);
+  }
 }
+
 export async function interpretRequestAction(
-  _text: string,
+  text: string,
 ): Promise<InterpretResult | ActionError> {
-  void _text;
-  return retired();
+  try {
+    return await interpretOperationRequest(text);
+  } catch (error) {
+    return failure(error);
+  }
 }
-export async function executeOperationAction(_request: {
-  actionId: string;
-  raw: Record<string, string>;
-  issuedAt: string;
-  nonce: string;
-  proposalId: string;
-  confirmed: boolean;
-}): Promise<Receipt | ActionError> {
-  void _request;
-  return retired();
+
+export async function executeOperationAction(
+  request: {
+    actionId: string;
+    raw: Record<string, string>;
+    issuedAt: string;
+    nonce: string;
+    proposalId: string;
+    confirmed: boolean;
+  },
+  upload?: FormData,
+): Promise<Receipt | ActionError> {
+  try {
+    const receipt = await executeOperation(
+      request,
+      upload ? await readAttachment(upload.get("package")) : null,
+    );
+    if (receipt.status === "SUCCEEDED") {
+      revalidatePath("/admin", "layout");
+      revalidatePath("/courses");
+    }
+    return receipt;
+  } catch (error) {
+    return failure(error);
+  }
 }

@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   configureUnifiedCourseAgents,
   getUnifiedCourseAgents,
+  getUnifiedPublicationGate,
   publishUnifiedCourse,
 } from "@/server/unified-course-engine";
 import {
@@ -31,6 +32,17 @@ export async function publishUnifiedAction(
       return {
         error:
           "Confirm the course policy, agent configuration and selling price before publishing.",
+      };
+    // Check the recorded publication gate first: an agent-configuration
+    // change creates a new revision, which must never be left behind by a
+    // publication the database would refuse anyway.
+    const gate = await getUnifiedPublicationGate(input.packageId);
+    if (!gate.ok)
+      return {
+        error:
+          gate.code === "POLICY_PENDING"
+            ? `Not published, and nothing was changed: ${gate.pending.length} academic decision${gate.pending.length === 1 ? "" : "s"} (${gate.pending.join(", ")}) must be resolved in Course academic review first.`
+            : "Not published, and nothing was changed: only a structurally validated revision can be published. Reload the course to check its current state.",
       };
     const agents = await getUnifiedCourseAgents(input.packageId);
     for (const role of Object.keys(agents) as (keyof typeof agents)[]) {

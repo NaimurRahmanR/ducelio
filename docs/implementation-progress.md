@@ -2,7 +2,23 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-23, ~23:50 Europe/London; Claude continuation): SAME branch feat/unified-course-engine-20261023 and draft PR #84. The named stash `stash@{0}` is untouched; unrelated `desktop.ini` remains unstaged. Detailed evidence: docs/59, section "Hosted examination failure diagnosis, fixed-amount coupons and release audit".
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
+
+LAST COMPLETED CHECKPOINT: the Operations Engineer is restored on the unified Course Engine; course upload no longer burns revisions; publication checks its gate before any write; lifecycle stages are explicit; a dedicated Course academic review exists, separate from Learner result review; decision-only resolution is available. No migration.
+
+COMPLETED ITEMS: lint, typecheck, format and build pass; real PostgreSQL 93/93 across 14 files; real browser 19/19 on acceptance with owner-authorised TEST fixtures; the AWS SAA-C03 real package proven end to end on disposable PostgreSQL with synthetic evidence. Full-regression figures are in the PR.
+
+INCOMPLETE ITEMS / BLOCKERS:
+
+- The 8 AWS academic and business decisions are genuinely unresolved (owner and independent review evidence required; see docs/60).
+- No PLATFORM_ADMIN or second-organisation acceptance identity, so hosted cross-organisation refusal is unverified.
+- No AI provider, Stripe test-mode or controller credentials.
+- Not done: SMTP, backup/restore, rate-limit and abuse review, privacy governance, deployment security review, independent human review.
+- The learner dashboard redesign awaits owner specifications.
+
+NEXT EXACT ACTION: owner review of the single draft PR and its one CI run. Do not merge, deploy or approve decisions without the owner.
+
+RECORD (2026-10-23, ~23:50 Europe/London; Claude continuation): SAME branch feat/unified-course-engine-20261023 and draft PR #84. The named stash `stash@{0}` is untouched; unrelated `desktop.ini` remains unstaged. Detailed evidence: docs/59, section "Hosted examination failure diagnosis, fixed-amount coupons and release audit".
 
 LAST COMPLETED CHECKPOINT: the hosted examination failure is diagnosed and corrected; fixed-amount coupons (migration 074) are implemented; the security inventory is added; all local gates have run.
 

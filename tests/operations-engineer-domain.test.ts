@@ -4,7 +4,6 @@ import {
   OPERATIONS_ENGINEER_CAPABILITY,
   OPERATION_ACTIONS,
   composeOperationsEngineerInstructions,
-  isOperationEnabled,
   majorToMinor,
   operationActionIds,
   parseActionInput,
@@ -17,22 +16,40 @@ import {
 import { providerInstructions } from "@/server/academic-runtime/provider";
 
 const reason = "Quarterly pricing review";
-const activationId = "50000000-0000-4000-8000-000000000001";
+const packageId = "50000000-0000-4000-8000-000000000001";
+const organisationId = "00000000-0000-4000-8000-000000000001";
+const future = "2031-01-01T09:00";
 
 describe("action registry", () => {
-  it("is closed, and every change is admin-only with consequence and recovery text", () => {
-    expect(operationActionIds).toHaveLength(12);
+  it("is closed, targets only the unified engine and states every change's consequence and recovery", () => {
+    expect([...operationActionIds]).toEqual([
+      "list_courses",
+      "inspect_course",
+      "list_coupons",
+      "sales_report",
+      "check_agent_health",
+      "upload_course_package",
+      "publish_course",
+      "create_coupon",
+      "set_coupon_active",
+    ]);
     for (const id of operationActionIds) {
       const a = OPERATION_ACTIONS[id];
-      expect(a.roles).toEqual(["ACADEMIC_ADMIN", "PLATFORM_ADMIN"]);
       if (a.kind === "MUTATION") {
         expect(a.consequence).toBeTruthy();
         expect(a.recovery).toBeTruthy();
       }
     }
+    // No retired cohort, campaign or commercial-offer operation survives.
     expect(JSON.stringify(OPERATION_ACTIONS)).not.toMatch(
-      /\b(sql|shell|secrets?|deploy|merge|refund)\b/i,
+      /\b(cohorts?|campaigns?|activations?|sql|shell|secrets?|deploy|merge)\b/i,
     );
+    // Refunds may be reported, never carried out; nor grades or enrolments.
+    expect(operationActionIds.join(" ")).not.toMatch(/refund|grade|enrol/i);
+    expect(OPERATION_ACTIONS.check_agent_health.roles).toEqual([
+      "ACADEMIC_ADMIN",
+      "PLATFORM_ADMIN",
+    ]);
   });
 
   it("registers interpretation as a proposal-only platform capability", () => {
@@ -59,118 +76,130 @@ describe("money and input parsing", () => {
     expect(majorToMinor(text)).toBeNull();
   });
 
-  it("produces the exact governed publish input", () => {
+  it("produces the exact governed publication input", () => {
     expect(
-      parseActionInput("publish_offer", {
-        activationId,
-        slug: " Security-Plus-Autumn ",
+      parseActionInput("publish_course", {
+        packageId,
+        slug: " aws-saa-c03 ",
         price: "249.00",
         currency: "gbp",
-        deliveryPlan: "INTENSIVE_4_WEEK",
         summary: "",
         reason,
       }),
     ).toEqual({
       ok: true,
       input: {
-        activationId,
-        slug: "security-plus-autumn",
-        priceAmountMinor: 24900,
+        packageId,
+        slug: "aws-saa-c03",
         currency: "GBP",
+        amountMinor: 24900,
         summary: null,
-        deliveryPlan: "INTENSIVE_4_WEEK",
         reason,
       },
     });
+    for (const bad of [
+      { currency: "JPY" },
+      { price: "0" },
+      { slug: "Not A Slug" },
+      { packageId: "nope" },
+    ])
+      expect(
+        parseActionInput("publish_course", {
+          packageId,
+          slug: "aws-saa-c03",
+          price: "249.00",
+          currency: "GBP",
+          reason,
+          ...bad,
+        }).ok,
+      ).toBe(false);
   });
 
-  it("only offers two-decimal currencies, matching how prices are displayed", () => {
-    const result = parseActionInput("publish_offer", {
-      activationId,
-      slug: "x-course",
-      price: "1000",
-      currency: "JPY",
-      reason,
-    });
-    expect(result.ok).toBe(false);
+  it("requires a meaningful reason within the audit limit for every change", () => {
+    for (const r of ["no", "x".repeat(271)]) {
+      expect(
+        parseActionInput("upload_course_package", { organisationId, reason: r })
+          .ok,
+      ).toBe(false);
+      expect(
+        parseActionInput("set_coupon_active", {
+          couponId: packageId,
+          active: "false",
+          reason: r,
+        }).ok,
+      ).toBe(false);
+    }
   });
 
-  it("requires a meaningful reason within the audit limit", () => {
-    expect(
-      parseActionInput("archive_offer", { slug: "x-course", reason: "no" }).ok,
-    ).toBe(false);
-    expect(
-      parseActionInput("archive_offer", {
-        slug: "x-course",
-        reason: "x".repeat(271),
-      }).ok,
-    ).toBe(false);
-  });
-
-  it("keeps free access to the explicit reviewer campaign kind", () => {
+  it("parses a percentage or a fixed-amount coupon, never both", () => {
     const common = {
-      offerSlug: "x-course",
-      code: "LAUNCH-20",
-      maxRedemptions: "50",
-      startsAt: "2026-11-01T09:00",
-      endsAt: "2026-12-01T09:00",
+      organisationId,
+      code: " launch-20 ",
+      expiresAt: future,
+      redemptionLimit: "50",
+      courseId: "",
       reason,
     };
     expect(
-      parseActionInput("create_campaign", {
+      parseActionInput("create_coupon", {
         ...common,
-        kind: "PERCENT_OFF",
-        percentOff: "100",
-      }).ok,
-    ).toBe(false);
-    const percent = parseActionInput("create_campaign", {
-      ...common,
-      kind: "PERCENT_OFF",
-      percentOff: "20",
-    });
-    expect(percent).toMatchObject({
+        discountKind: "PERCENT",
+        percentOff: "20",
+        amountOff: "10.00",
+        currency: "GBP",
+      }),
+    ).toEqual({
       ok: true,
       input: {
-        kind: "PERCENT_OFF",
+        organisationId,
+        code: "LAUNCH-20",
+        expiresAt: "2031-01-01T09:00:00.000Z",
+        redemptionLimit: 50,
+        courseId: null,
+        reason,
         percentOff: 20,
-        startsAt: "2026-11-01T09:00:00.000Z",
       },
     });
     expect(
-      parseActionInput("create_campaign", {
+      parseActionInput("create_coupon", {
         ...common,
-        kind: "FIXED_PRICE",
-        fixedPrice: "199.00",
+        discountKind: "AMOUNT",
+        amountOff: "25.50",
+        currency: "eur",
       }),
-    ).toMatchObject({ ok: true, input: { fixedPriceAmountMinor: 19900 } });
-    expect(
-      parseActionInput("create_campaign", {
-        ...common,
-        kind: "REVIEWER_COMPLIMENTARY",
-      }).ok,
-    ).toBe(true);
-    expect(
-      parseActionInput("create_campaign", {
-        ...common,
-        kind: "PERCENT_OFF",
-        percentOff: "20",
-        endsAt: "2026-10-01T09:00",
-      }).ok,
-    ).toBe(false);
+    ).toMatchObject({
+      ok: true,
+      input: { amountOffMinor: 2550, currency: "EUR" },
+    });
+    for (const bad of [
+      { discountKind: "PERCENT", percentOff: "0" },
+      { discountKind: "PERCENT", percentOff: "101" },
+      { discountKind: "AMOUNT", amountOff: "0", currency: "GBP" },
+      { discountKind: "AMOUNT", amountOff: "5", currency: "JPY" },
+      { discountKind: "FREE" },
+      { discountKind: "PERCENT", percentOff: "10", code: "x" },
+      { discountKind: "PERCENT", percentOff: "10", expiresAt: "" },
+    ])
+      expect(parseActionInput("create_coupon", { ...common, ...bad }).ok).toBe(
+        false,
+      );
   });
 
-  it("validates cohort transitions' input and identifiers", () => {
+  it("accepts only an explicit availability for a coupon", () => {
     expect(
-      parseActionInput("change_cohort_status", {
-        cohortId: "nope",
-        status: "CLOSED",
+      parseActionInput("set_coupon_active", {
+        couponId: packageId,
+        active: "false",
         reason,
-      }).ok,
-    ).toBe(false);
+      }),
+    ).toEqual({
+      ok: true,
+      input: { couponId: packageId, active: false, reason },
+    });
     expect(
-      parseActionInput("change_cohort_status", {
-        cohortId: activationId,
-        status: "DELETED",
+      parseActionInput("set_coupon_active", {
+        couponId: packageId,
+        active: "yes",
         reason,
       }).ok,
     ).toBe(false);
@@ -181,38 +210,40 @@ describe("interpreter contract", () => {
   it("accepts only the strict JSON shape", () => {
     expect(
       parseInterpreterOutput(
-        '```json\n{"action":"list_offers","arguments":{},"explanation":"Lists offers."}\n```',
+        '```json\n{"action":"list_courses","arguments":{},"explanation":"Lists courses."}\n```',
       ),
     ).toEqual({
-      action: "list_offers",
+      action: "list_courses",
       arguments: {},
-      explanation: "Lists offers.",
+      explanation: "Lists courses.",
     });
     expect(
       parseInterpreterOutput('{"action":"none","explanation":"Out of scope."}'),
     ).toMatchObject({ action: "none" });
     expect(parseInterpreterOutput("Sure! I published it.")).toBeNull();
+    for (const retired of ["drop_table", "publish_offer", "create_campaign"])
+      expect(
+        parseInterpreterOutput(
+          `{"action":"${retired}","arguments":{},"explanation":"x"}`,
+        ),
+      ).toBeNull();
     expect(
       parseInterpreterOutput(
-        '{"action":"drop_table","arguments":{},"explanation":"x"}',
-      ),
-    ).toBeNull();
-    expect(
-      parseInterpreterOutput(
-        '{"action":"list_offers","arguments":{},"explanation":"x","execute":true}',
+        '{"action":"list_courses","arguments":{},"explanation":"x","execute":true}',
       ),
     ).toBeNull();
   });
 
-  it("gives the model only the closed registry and the no-execution rule", () => {
+  it("gives the model only the closed registry, no file access and no approval authority", () => {
     const text = composeOperationsEngineerInstructions();
-    // Every enabled action, and no disabled one.
-    for (const id of operationActionIds)
-      if (isOperationEnabled(id)) expect(text).toContain(`- ${id} [`);
-      else expect(text).not.toContain(`- ${id} [`);
+    for (const id of operationActionIds) expect(text).toContain(`- ${id} [`);
     expect(text).toContain("You never execute anything");
     expect(text).toContain('return action "none"');
     expect(text).toContain("Never invent identifiers");
+    expect(text).toContain("You cannot see files");
+    expect(text).toContain("You cannot approve academic decisions");
+    // The file field itself is never described to the model as an argument.
+    expect(text).not.toContain("package (Course package file");
   });
 
   it("routes the Operations Engineer to its own instructions, never the academic ones", () => {
@@ -231,32 +262,21 @@ describe("duplicate protection is stated honestly", () => {
     const levels = Object.fromEntries(
       Object.entries(DUPLICATE_PROTECTION).map(([id, p]) => [id, p.level]),
     );
-    expect(levels).toMatchObject({
-      publish_offer: "database",
-      create_campaign: "database",
-      archive_campaign: "database",
-      // No status revision: a reopen makes an old close match again.
-      change_cohort_status: "partial",
-      // No row lock: simultaneous confirmations could each record an event.
-      archive_offer: "partial",
-      // Serialised, but two confirmations would record two runs.
-      run_course_test: "partial",
+    expect(levels).toEqual({
+      list_courses: "read-only",
+      inspect_course: "read-only",
+      list_coupons: "read-only",
+      sales_report: "read-only",
+      check_agent_health: "read-only",
+      upload_course_package: "database",
+      publish_course: "database",
+      create_coupon: "database",
+      // No availability revision: a change and change-back makes a stale
+      // proposal match again. Its replay can only re-apply the confirmed,
+      // reversible availability; it has no other effect.
+      set_coupon_active: "partial",
     });
     for (const id of operationActionIds)
       expect(DUPLICATE_PROTECTION[id].text.length).toBeGreaterThan(0);
-    for (const id of operationActionIds.filter(
-      (a) => OPERATION_ACTIONS[a].kind === "READ",
-    ))
-      expect(DUPLICATE_PROTECTION[id].level).toBe("read-only");
-  });
-});
-
-describe("what the Operations Engineer will carry out", () => {
-  it("disables exactly the changes whose protection is only partial", () => {
-    for (const id of operationActionIds)
-      expect(isOperationEnabled(id)).toBe(
-        DUPLICATE_PROTECTION[id].level !== "partial",
-      );
-    expect(isOperationEnabled("change_cohort_status")).toBe(false);
   });
 });

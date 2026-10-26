@@ -683,7 +683,7 @@ describe("Commercial V1 admin navigation", () => {
       "Activation",
       "Policy setup",
       "Grade recovery",
-      "Academic review",
+      "Learner result review",
       "Academic results",
       "Agents",
       "Commerce",

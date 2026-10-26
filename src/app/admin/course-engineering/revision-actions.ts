@@ -13,38 +13,22 @@ export async function reviseCourseAction(
 ): Promise<AcademyAdminState> {
   try {
     const sourceId = z.uuid().parse(form.get("sourceId"));
-    const source = await getUnifiedRevisionSource(sourceId);
+    // Fails unless the caller can read this revision.
+    await getUnifiedRevisionSource(sourceId);
     const text = String(form.get("rawPackage") ?? "");
     const tooLarge = academyUploadSizeError(
       new TextEncoder().encode(text).length,
     );
     if (tooLarge) return { error: tooLarge };
     const raw = JSON.parse(text);
-    const pending = z
-      .array(z.object({ key: z.string(), summary: z.string() }))
-      .parse(source.pendingDecisions);
-    const selected = pending.filter(
-      (d) => form.get(`resolve_${d.key}`) === "on",
-    );
-    if (selected.length && form.get("attest") !== "on")
-      return {
-        error:
-          "Attest that the named decisions were actually reviewed and approved by an authorised human.",
-      };
-    const resolutions = selected.map((d) => ({
-      key: d.key,
-      evidenceReference: form.get(`evidence_${d.key}`),
-      rationale: form.get(`rationale_${d.key}`),
-    }));
+    // Content-only revision: academic decisions are resolved with evidence
+    // in Course academic review. Removing one here is refused by the database.
     if (!Array.isArray(raw.pendingDecisions))
       return { error: "Keep pendingDecisions as an array." };
-    raw.pendingDecisions = raw.pendingDecisions.filter(
-      (d: { key: string }) => !selected.some((s) => s.key === d.key),
-    );
     const result = await reviseUnifiedCoursePackage({
       sourceId,
       raw,
-      resolutions,
+      resolutions: [],
       requestKey: form.get("requestKey"),
       reason: form.get("reason"),
     });
@@ -58,13 +42,13 @@ export async function reviseCourseAction(
     return {
       packageId: result.packageId,
       message:
-        "Validated revision recorded with human review evidence. Review its price and agents before publishing.",
+        "Validated content revision recorded. Pending academic decisions are unchanged.",
     };
   } catch (e) {
     return {
       error:
         e instanceof Error && e.message === "ACADEMIC_EVIDENCE_REQUIRED"
-          ? "Every removed decision requires recorded human evidence and rationale."
+          ? "A pending academic decision was removed from the JSON. Keep pendingDecisions unchanged here and resolve decisions in Course academic review."
           : "Revision refused. Check the JSON, revision number, review authority, evidence and request details.",
     };
   }

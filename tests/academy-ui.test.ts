@@ -246,14 +246,15 @@ describe("admin actions", () => {
     expect(state.issues!.join("\n")).toMatch(
       /grading\.components — Component weights total 96%/,
     );
-    expect(m.rpc).toHaveBeenCalledWith(
+    // Validated before anything is stored: no record, so the revision number
+    // stays free for the corrected file.
+    expect(state.error).toMatch(/Nothing was stored/);
+    for (const write of [
+      "upload_organisation_course_package",
       "reject_academy_course_package",
-      expect.anything(),
-    );
-    expect(m.rpc).not.toHaveBeenCalledWith(
       "mark_academy_course_package_validated",
-      expect.anything(),
-    );
+    ])
+      expect(m.rpc).not.toHaveBeenCalledWith(write, expect.anything());
   });
 
   it("publishes only explicitly priced, confirmed formats", async () => {

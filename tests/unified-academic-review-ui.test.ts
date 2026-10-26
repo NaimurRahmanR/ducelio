@@ -43,7 +43,7 @@ function form() {
     f.set(k, v);
   return f;
 }
-it("exposes actionable revision and evidence controls with no approval selected by default", () => {
+it("is a content editor only: no approval controls, untrusted content escaped", () => {
   const html = renderToStaticMarkup(
     createElement(CourseRevisionForm, {
       sourceId: id,
@@ -51,40 +51,39 @@ it("exposes actionable revision and evidence controls with no approval selected 
       pending,
     }),
   );
+  for (const name of ["rawPackage", "requestKey", "reason"])
+    expect(html).toContain(`name="${name}"`);
   for (const name of [
-    "rawPackage",
-    "requestKey",
     "resolve_SOURCE_REVIEW",
     "evidence_SOURCE_REVIEW",
-    "rationale_SOURCE_REVIEW",
     "attest",
   ])
-    expect(html).toContain(`name="${name}"`);
-  expect(html).not.toContain("checked=");
+    expect(html).not.toContain(`name="${name}"`);
+  expect(html).toContain(
+    `href="/admin/course-engineering/review?packageId=${id}"`,
+  );
+  expect(html).toContain("2 decisions remain pending");
   expect(html).toContain("&lt;script&gt;");
   expect(html).not.toContain("<script>untrusted</script>");
 });
-it("refuses asserted decisions without human attestation", async () => {
-  expect(await reviseCourseAction({}, form())).toHaveProperty("error");
-  expect(m.revise).not.toHaveBeenCalled();
-});
-it("retains unresolved findings and sends only the explicitly evidenced decision", async () => {
+it("ignores forged resolution fields: a content revision never resolves a decision", async () => {
   const f = form();
   f.set("attest", "on");
   expect(await reviseCourseAction({}, f)).toHaveProperty("packageId", id);
   expect(m.revise.mock.calls[0][0]).toMatchObject({
     sourceId: id,
     requestKey: id,
-    raw: { pendingDecisions: [pending[1]] },
-    resolutions: [
-      {
-        key: "SOURCE_REVIEW",
-        evidenceReference: "TEST ONLY evidence reference",
-        rationale: "TEST ONLY actual human review fixture rationale.",
-      },
-    ],
+    raw: { pendingDecisions: pending },
+    resolutions: [],
   });
-  expect(pending).toHaveLength(2);
+});
+it("explains a removed decision as belonging to Course academic review", async () => {
+  m.revise.mockRejectedValue(new Error("ACADEMIC_EVIDENCE_REQUIRED"));
+  const f = form();
+  f.set("rawPackage", JSON.stringify({ pendingDecisions: [pending[1]] }));
+  expect((await reviseCourseAction({}, f)).error).toMatch(
+    /resolve decisions in Course academic review/,
+  );
 });
 it("returns validation findings without publishing or presenting them as approval", async () => {
   const f = form();

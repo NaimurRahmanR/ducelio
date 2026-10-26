@@ -224,23 +224,19 @@ beforeEach(() => {
     audit: [],
   });
   m.options.mockResolvedValue({
-    courses: [
+    packages: [
       {
-        value: "security-plus-sy0-701",
-        label: "CompTIA Security+ — revision 6",
+        value: "10000000-0000-4000-8000-000000000001",
+        label:
+          "AWS SAA-C03 — revision 3 (structurally validated · awaiting academic review)",
       },
     ],
-    appliedPackages: [],
-    activationsWithoutOffer: [
-      {
-        value: "a1",
-        label: "Security+ — Acceptance cohort (starts 2026-10-13)",
-        warning: "Staging or acceptance cohort: not for paying learners.",
-      },
+    publishablePackages: [],
+    organisations: [
+      { value: "00000000-0000-4000-8000-000000000001", label: "Ducelio" },
     ],
-    publishedOffers: [],
-    activeCampaigns: [],
-    cohorts: [],
+    publishedCourses: [],
+    coupons: [],
   });
   m.offerActivations.mockResolvedValue([]);
   m.campaigns.mockResolvedValue([]);
@@ -265,7 +261,7 @@ beforeEach(() => {
 });
 
 describe("navigation and compatibility", () => {
-  it("offers the four current destinations to a course administrator", async () => {
+  it("offers the six current destinations to a course administrator", async () => {
     const html = renderToStaticMarkup(
       AdminShell({
         active: "dashboard",
@@ -278,6 +274,8 @@ describe("navigation and compatibility", () => {
     expect(navHrefs(html)).toEqual([
       "/admin",
       "/admin/course-engineering",
+      "/admin/course-engineering/review",
+      "/admin/operations-engineer",
       "/admin/sales",
       "/admin/academy",
     ]);
@@ -341,10 +339,37 @@ describe("retired course creation routes", () => {
       expect(m.catalogue).not.toHaveBeenCalled();
     },
   );
-  it("retires the parallel Operations Engineer workspace", async () => {
-    await expect(
-      OperationsPage({ searchParams: Promise.resolve({}) }),
-    ).rejects.toThrow("REDIRECT:/admin/course-engineering");
+  it("opens the Operations Engineer as its own workspace, not a redirect", async () => {
+    m.aiConfigured = false;
+    const html = renderToStaticMarkup(
+      await OperationsPage({ searchParams: Promise.resolve({}) }),
+    );
+    const plain = text(html);
+    expect(m.redirect).not.toHaveBeenCalled();
+    expect(m.options).toHaveBeenCalledOnce();
+    expect(plain).toContain("Operations Engineer");
+    expect(plain).toContain("AI interpretation not configured");
+    for (const title of [
+      "Courses and publication states",
+      "Upload a course package",
+      "Publish a course",
+      "Orders and sales statistics",
+      "Create a discount code",
+      "Activate or deactivate a discount code",
+    ])
+      expect(plain).toContain(title);
+    expect(plain).toContain("Approve or resolve academic decisions");
+    expect(html).toContain('aria-current="page"');
+  });
+
+  it("refuses the Operations Engineer to roles without course access, loading nothing", async () => {
+    m.actor.roles = ["REGISTRAR"];
+    const plain = text(
+      renderToStaticMarkup(
+        await OperationsPage({ searchParams: Promise.resolve({}) }),
+      ),
+    );
+    expect(plain).toContain("You do not have access to this workspace");
     expect(m.options).not.toHaveBeenCalled();
   });
 });
