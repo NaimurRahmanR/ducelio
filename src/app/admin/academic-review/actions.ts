@@ -26,7 +26,7 @@ function wholeNumber(value: string | undefined) {
   return Number(value.trim());
 }
 function outcome(code: "RESULT_CREATED" | "ALREADY_RESOLVED") {
-  revalidatePath("/admin/academic-review");
+  revalidatePath("/admin/academic-review/results");
   revalidatePath("/admin", "layout");
   revalidatePath("/admin/activation/recovery");
   revalidatePath("/admin", "layout");
