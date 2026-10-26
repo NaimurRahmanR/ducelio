@@ -32,10 +32,12 @@
     "@supabase/supabase-js": "2.116.0",
     "lucide-react": "1.43.0",
     "next": "16.4.2",
+    "pdf-lib": "1.17.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "server-only": "0.0.1",
     "stripe": "22.6.2",
+    "web-push": "3.6.7",
     "zod": "4.5.4"
   },
   "devDependencies": {
@@ -45,6 +47,7 @@
     "@types/pg": "8.23.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
+    "@types/web-push": "3.6.4",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.2",
     "pg": "8.23.0",
