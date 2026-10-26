@@ -85,7 +85,7 @@ export default async function Page() {
                 t.recoveryExecutionId && (
                   <Link
                     className="text-link"
-                    href={`/admin/academic-review?case=${t.recoveryExecutionId}`}
+                    href={`/admin/academic-review/results?case=${t.recoveryExecutionId}`}
                   >
                     Open academic review
                   </Link>
