@@ -96,3 +96,14 @@ The temporary test and the package copy were not committed.
   - **hosted cross-organisation refusal:** no second-organisation or PLATFORM_ADMIN acceptance identity exists. It is covered by the access matrix, the OE unit tests and the six organisation tests on real PostgreSQL.
   - **AI interpretation with a live provider:** no key.
   - **recording a decision on hosted:** not authorised.
+
+## Follow-up after owner inspection (2026-10-26)
+
+- **Dashboard restored.**
+  - The cause: `c4dd5a0` (PR #84) had replaced `/admin` with a router that sent course administrators to Course Engineering, so clicking "Dashboard" opened Course Engineering.
+  - `/admin` is a dashboard again. It uses the previous layout components, filled from unified sources: course pipeline by latest revision, pending academic review, payment-confirmed orders (recognised revenue still not reported), active coupons, AI services and the audit trail. Test records are excluded.
+  - Registrars and learners keep their previous routing.
+- **AWS SAA-C03 revision 4 rejected (owner-approved).**
+  - At 12:19 UTC, during local inspection, all 8 decisions were recorded through the review form, with the evidence "test phase rahee", creating revision 4 (unpublished).
+  - At the owner's direction it was rejected through the audited Reject action at 14:26 UTC. The resolutions remain in immutable history.
+  - Revision 3 (8 decisions pending) remains the working revision.

@@ -49,8 +49,10 @@ import {
   type AcademyPackageListItem,
 } from "@/domain/academy-delivery";
 import type { AcademyReview } from "@/domain/academy-course-package";
-import { courseStage } from "@/domain/unified-course-lifecycle";
-import { isAcceptanceCourse } from "@/domain/admin-test-records";
+import {
+  courseStage,
+  isTestCourseRecord,
+} from "@/domain/unified-course-lifecycle";
 import { AccessDenied } from "@/domain/policy";
 
 // The Operations Engineer execution plane for the unified Course Engine.
@@ -205,10 +207,7 @@ const canManage = (access: Access, organisationId?: string) =>
 // verification. All run with the administrator's own session.
 // ---------------------------------------------------------------------------
 
-const isTestCourse = (p: { packageKey: string; title: string | null }) =>
-  isAcceptanceCourse({ packageKey: p.packageKey, title: p.title ?? "" }) ||
-  /^test only\b/i.test(p.title ?? "") ||
-  /^test-/.test(p.packageKey);
+const isTestCourse = isTestCourseRecord;
 
 // Real records first; test records after them, labelled, so a choice list
 // never leads with test traffic.

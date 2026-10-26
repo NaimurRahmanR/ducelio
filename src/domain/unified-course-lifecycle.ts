@@ -87,3 +87,13 @@ export function canonicalJson(value: unknown): string {
       .join(",")}}`;
   return JSON.stringify(value);
 }
+
+// Shared-environment test courses, recognised by the acceptance harness's
+// fixed naming (there is no recorded test flag): "acceptance-"/"test-" keys
+// and "Acceptance Run"/"TEST ONLY" titles. Business figures exclude them.
+export const isTestCourseRecord = (p: {
+  packageKey: string;
+  title: string | null;
+}) =>
+  /^(acceptance|test)-/i.test(p.packageKey) ||
+  /^(acceptance run|test only)\b/i.test((p.title ?? "").trim());

@@ -248,15 +248,23 @@ describe.each(ACTORS)("admin access for %s", (_who, roles, member = false) => {
       return;
     }
     if (roles !== null && access === "ROUTER") {
-      const destination =
+      // The Dashboard itself: course administrators and organisation members
+      // stay on it; everyone else is routed to their own home.
+      if (
         member ||
         roles.some((r) => ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"].includes(r))
-          ? "/admin/course-engineering"
-          : roles.includes("REGISTRAR")
+      ) {
+        expect(outcome).toEqual({ kind: "entered" });
+        expect(m.reads).toContain("rpc:list_unified_course_packages");
+      } else {
+        expect(outcome).toEqual({
+          kind: "redirect",
+          to: roles.includes("REGISTRAR")
             ? "/admin/academy"
-            : "/student/academy";
-      expect(outcome).toEqual({ kind: "redirect", to: destination });
-      expect(m.reads).toEqual(membershipRead);
+            : "/student/academy",
+        });
+        expect(m.reads).toEqual(membershipRead);
+      }
       return;
     }
     if (roles !== null && access === "COURSE_ENGINE") {
