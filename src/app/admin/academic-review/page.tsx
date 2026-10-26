@@ -26,7 +26,7 @@ export default async function Page({
     return (
       <AdminForbidden
         actor={access.actor}
-        active="courses"
+        active="review"
         title="Academic review"
         requires={COURSE_ADMIN_ROLES}
       />
@@ -64,7 +64,7 @@ export default async function Page({
 
   return (
     <AdminShell
-      active="courses"
+      active="review"
       name={access.actor.displayName}
       roles={access.actor.roles}
       title="Academic review"
