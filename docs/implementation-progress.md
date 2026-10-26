@@ -2,7 +2,21 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-26; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`. No upstream; nothing pushed; no hosted change. Contract and ownership: docs/61.
+
+LAST COMPLETED CHECKPOINT: read-only audits A (frontend), B (academic backend) and C (learner services) completed. Contract, file ownership and migration allocation committed (`db98860`); shared projection types committed (`f1f9744`). Dependencies pdf-lib 1.17.1 and web-push 3.6.7 added. The npm audit high finding is pre-existing zod 4.5.4 (fix 4.6.7), not introduced here.
+
+CURRENT CHECKPOINT: parallel implementation in isolated worktrees.
+
+- Lane A: frontend.
+- Lane B: academic policies, migration 075, learner-academics server.
+- Lane C: learner services, migration 076.
+
+UNVERIFIED DEPENDENCIES: no AI provider, Stripe, email provider, VAPID or local Supabase Storage. Live delivery for email/push/payments will remain unverified.
+
+NEXT EXACT ACTION: review each lane's handoff diff, integrate B then C then A into this branch, wire pages to server functions, update the migration list, readiness contract and CI PostgreSQL list, then run the full gates, the real-PostgreSQL suites, the browser checks and the independent review.
+
+PREVIOUS RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
 
 LAST COMPLETED CHECKPOINT: the Operations Engineer is restored on the unified Course Engine; course upload no longer burns revisions; publication checks its gate before any write; lifecycle stages are explicit; a dedicated Course academic review exists, separate from Learner result review; decision-only resolution is available. No migration.
 
