@@ -41,6 +41,14 @@ function Outcome({ state }: { state: AcademyAdminState }) {
           Open the review →
         </Link>
       )}
+      {state.packageId && !state.error && (
+        <Link
+          className="ac-link"
+          href={`/admin/academic-review?packageId=${state.packageId}`}
+        >
+          Open academic review
+        </Link>
+      )}
     </div>
   );
 }
