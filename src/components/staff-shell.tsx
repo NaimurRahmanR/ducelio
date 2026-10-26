@@ -15,7 +15,7 @@ const TECHNICAL_TITLES: Record<string, string> = {
   Activation: "Course activation",
   "Policy setup": "Grading and result policy setup",
   "Grade recovery": "Examiner grade recovery",
-  "Academic review": "Academic review",
+  "Learner result review": "Learner result review",
   "Academic results": "Academic results",
   Agents: "AI agent configuration",
   Commerce: "Commerce operations",
@@ -84,7 +84,7 @@ export const adminControlRoutes = [
     roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
   },
   {
-    label: "Academic review",
+    label: "Learner result review",
     href: "/admin/academic-review",
     roles: ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"],
   },

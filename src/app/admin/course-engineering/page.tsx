@@ -38,6 +38,7 @@ import {
   listUnifiedCoursePackages,
 } from "@/server/unified-course-engine";
 import type { AcademyReview } from "@/domain/academy-course-package";
+import { courseStage } from "@/domain/unified-course-lifecycle";
 import { ACADEMY_FORMATS } from "@/domain/academy-scheduler";
 import {
   ACADEMY_ERROR_TEXT,
@@ -405,17 +406,7 @@ export default async function Page({
                   {p.organisationName ? `${p.organisationName} · ` : ""}
                   {p.packageKey} · revision {p.packageRevision}
                 </span>
-                <Pill
-                  tone={
-                    p.status === "PUBLISHED"
-                      ? "good"
-                      : p.status === "REJECTED"
-                        ? "bad"
-                        : "neutral"
-                  }
-                >
-                  {p.status.toLowerCase()}
-                </Pill>
+                <Pill tone={courseStage(p).tone}>{courseStage(p).label}</Pill>
                 {p.rejectedReason && (
                   <small className="ac-muted">{p.rejectedReason}</small>
                 )}
@@ -429,7 +420,17 @@ export default async function Page({
         <Panel
           id="review"
           title={`Review · ${review?.title ?? selected.packageKey} (revision ${selected.packageRevision})`}
+          description={`${courseStage(selected).label}. ${courseStage(selected).detail}`}
         >
+          <p>
+            <Link
+              className="ac-link"
+              href={`/admin/course-engineering/review?packageId=${selected.id}`}
+            >
+              Open in Course academic review
+            </Link>{" "}
+            to inspect and record academic decisions.
+          </p>
           {selected.status === "REJECTED" ? (
             <p>This revision was rejected: {selected.rejectedReason}</p>
           ) : review ? (
@@ -473,10 +474,8 @@ export default async function Page({
           description="Review the package, set the selling price and configure agents. Publish runs the existing curriculum and security checks automatically."
         >
           <p className="ac-note">
-            Curriculum pipeline:{" "}
-            <strong>
-              {selected.curriculumImport?.status.toLowerCase() ?? "not started"}
-            </strong>
+            <strong>{courseStage(selected).label}.</strong>{" "}
+            {courseStage(selected).detail}
           </p>
           {agents ? (
             <UnifiedCoursePublicationForm

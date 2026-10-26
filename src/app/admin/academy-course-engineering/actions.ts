@@ -16,7 +16,12 @@ import {
   AcademyError,
   academyUploadSizeError,
 } from "@/domain/academy-delivery";
-import { uploadUnifiedCoursePackage as uploadAcademyPackage } from "@/server/unified-course-engine";
+import {
+  checkUnifiedCoursePackageUpload,
+  describeUploadConflict,
+  uploadUnifiedCoursePackage as uploadAcademyPackage,
+} from "@/server/unified-course-engine";
+import { DUCELIO_ORGANISATION } from "@/server/course-organisations";
 import { ACADEMY_FORMAT_IDS } from "@/domain/academy-scheduler";
 
 export type AcademyAdminState = {
@@ -64,26 +69,57 @@ export async function uploadAndValidateAction(
         error: "The file is not valid UTF-8 JSON. Nothing was uploaded.",
       };
     }
-    const packageId = await uploadAcademyPackage(
-      parsed,
-      reason,
-      data.get("organisationId")
-        ? z.uuid().parse(data.get("organisationId"))
-        : undefined,
-    );
-    const result = await validateAcademyPackage(packageId, reason);
+    const organisationId = data.get("organisationId")
+      ? z.uuid().parse(data.get("organisationId"))
+      : DUCELIO_ORGANISATION;
+    // Validate and check the revision before anything is stored, so an
+    // invalid file or an occupied revision number never creates a record.
+    const check = await checkUnifiedCoursePackageUpload(parsed, organisationId);
+    if (check.status === "INVALID")
+      return {
+        error: `The package failed validation with ${check.issues.length} issue${check.issues.length === 1 ? "" : "s"}. Nothing was stored; correct the file and upload it again.`,
+        issues: check.issues,
+      };
+    if (check.status === "REVISION_TAKEN")
+      return {
+        packageId: check.existingId ?? undefined,
+        error: describeUploadConflict(check),
+      };
+    const packageId =
+      check.status === "ALREADY_UPLOADED"
+        ? check.packageId
+        : await uploadAcademyPackage(parsed, reason, organisationId);
+    if (
+      check.status === "ALREADY_UPLOADED" &&
+      check.packageStatus !== "UPLOADED"
+    )
+      return {
+        packageId,
+        message: `This exact file is already stored as revision ${check.revision} (${check.packageStatus.toLowerCase()}). Nothing new was created; open it below.`,
+      };
+    let result;
+    try {
+      result = await validateAcademyPackage(packageId, reason);
+    } catch {
+      revalidatePath(ROUTE);
+      return {
+        packageId,
+        error:
+          "The package was stored but its validation could not be recorded. Upload the identical file again to complete it; identical re-uploads create nothing new.",
+      };
+    }
     revalidatePath(ROUTE);
     if (!result.valid)
       return {
         packageId,
-        error: `Validation failed with ${result.errors.length} issue${result.errors.length === 1 ? "" : "s"}. The revision was rejected; correct the package and upload it as a new revision.`,
+        error: `The stored package failed the server's validation with ${result.errors.length} issue${result.errors.length === 1 ? "" : "s"} and was rejected. Correct it and upload it as a new revision.`,
         issues: result.errors
           .slice(0, 50)
           .map((e) => `${e.path || "package"} — ${e.message}`),
       };
     return {
       packageId,
-      message: `Validated. ${result.review.warnings.length} warning${result.review.warnings.length === 1 ? "" : "s"}. Review the course below before publishing.`,
+      message: `Uploaded and structurally validated as revision ${result.package.packageRevision}. ${result.review.warnings.length} warning${result.review.warnings.length === 1 ? "" : "s"}; ${result.review.pendingDecisions.length} academic decision${result.review.pendingDecisions.length === 1 ? "" : "s"} pending. Open it below.`,
     };
   } catch (e) {
     return failure(e);

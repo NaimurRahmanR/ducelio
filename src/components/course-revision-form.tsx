@@ -15,12 +15,21 @@ export function CourseRevisionForm({
   const [key] = useState(() => crypto.randomUUID());
   return (
     <details>
-      <summary>Correct academic findings and record a new revision</summary>
+      <summary>Correct course content and record a new revision</summary>
       <p>
-        Update the package policy, rubrics or content below. Resolve a decision
-        only after the required human review has happened. Retain unresolved
-        decisions; publication remains blocked while any remain. Existing
-        published and enrolled history is preserved.
+        Update the package policy, rubrics or content below. Keep
+        &quot;pendingDecisions&quot; unchanged: academic decisions are resolved
+        only in{" "}
+        <Link
+          className="ac-link"
+          href={`/admin/course-engineering/review?packageId=${sourceId}`}
+        >
+          Course academic review
+        </Link>
+        , with recorded evidence.{" "}
+        {pending.length > 0 &&
+          `${pending.length} decision${pending.length === 1 ? " remains" : "s remain"} pending; publication stays blocked until they are resolved. `}
+        Existing published and enrolled history is preserved.
       </p>
       <form action={action} className="acad-form">
         <fieldset disabled={busy}>
@@ -37,40 +46,6 @@ export function CourseRevisionForm({
               spellCheck={false}
             />
           </label>
-          {pending.map((d) => (
-            <fieldset key={d.key}>
-              <legend>{d.key}</legend>
-              <p>{d.summary}</p>
-              <label>
-                <input type="checkbox" name={`resolve_${d.key}`} />
-                This decision has human approval
-              </label>
-              <label>
-                Evidence reference
-                <input
-                  name={`evidence_${d.key}`}
-                  minLength={10}
-                  maxLength={300}
-                />
-              </label>
-              <label>
-                Review rationale
-                <textarea
-                  name={`rationale_${d.key}`}
-                  minLength={20}
-                  maxLength={1000}
-                  rows={3}
-                />
-              </label>
-            </fieldset>
-          ))}
-          {pending.length > 0 && (
-            <label>
-              <input type="checkbox" name="attest" />I am authorised to record
-              these actual human approvals and the references identify their
-              supporting evidence.
-            </label>
-          )}
           <label>
             Reason for this revision
             <input name="reason" required minLength={5} maxLength={300} />

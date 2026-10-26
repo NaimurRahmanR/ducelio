@@ -1,23 +1,6 @@
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
-import { requireAnyRole } from "./identity";
-import {
-  archiveCommercialV1Campaign,
-  archiveCommercialV1Offer,
-  createCommercialV1Campaign,
-  listCommercialV1Campaigns,
-  listCommercialV1OfferActivations,
-  listCommercialV1Offers,
-  publishCommercialV1Offer,
-} from "./commercial-v1-commerce";
-import { listCommerceOperations } from "./commercial-v1-commerce/operations";
-import { listCommercialV1Activations } from "./course-activation";
-import { changeCohortStatus, getCohortWorkspace } from "./cohorts";
-import {
-  getCoursePackageTestStatus,
-  listCoursePackages,
-  runCoursePackageTest,
-} from "./course-engineering";
+import { courseEngineeringAccess } from "./course-organisations";
 import {
   describeProductionProfiles,
   providerCredentialReadiness,
@@ -27,14 +10,33 @@ import {
   resolvePlatformRuntimeProfile,
 } from "./academic-runtime/profile-registry";
 import { runGovernedProviderExecution } from "./academic-runtime/runtime";
-import { getCourseCatalogue, parseOfferRow } from "./admin-control-centre";
+import {
+  checkUnifiedCoursePackageUpload,
+  describeUploadConflict,
+  getUnifiedAcademicResolutions,
+  getUnifiedPublicationGate,
+  listUnifiedCourseCatalogue,
+  listUnifiedCoursePackages,
+  publishUnifiedCourse,
+  uploadUnifiedCoursePackage,
+  type UploadCheck,
+} from "./unified-course-engine";
+import {
+  getAcademyPackageReview,
+  validateAcademyPackage,
+} from "./academy-course-engineering";
+import {
+  createCourseCoupon,
+  listCourseCoupons,
+  listOrganisationCourseOrders,
+  setCourseCouponActive,
+} from "./course-coupons";
+import { commerceConfig } from "@/lib/env";
 import {
   OPERATIONS_ENGINEER_CAPABILITY,
   OPERATIONS_ENGINEER_PROVIDER_ROLE,
   DUPLICATE_PROTECTION,
-  OPERATIONS_ENGINEER_DISABLED,
   OPERATION_ACTIONS,
-  isOperationEnabled,
   operationActionIdSchema,
   parseActionInput,
   parseInterpreterOutput,
@@ -42,42 +44,48 @@ import {
   type OperationActionId,
 } from "@/domain/operations-engineer";
 import {
-  academyFormatPrice,
-  cohortPurpose,
-  DELIVERY_LABELS,
-} from "@/domain/admin-course-lifecycle";
-import { formatOfferPrice } from "@/domain/commercial-v1-commerce";
-import { DELIVERY_PLAN_DEFINITIONS } from "@/domain/commercial-v1-launch";
-import type { DeliveryPlan } from "@/domain/commercial-v1-launch";
-import {
-  isAcceptanceOffer,
-  isAcceptanceOfferSlug,
-} from "@/domain/admin-test-records";
+  academyUploadSizeError,
+  formatMoney,
+  type AcademyPackageListItem,
+} from "@/domain/academy-delivery";
+import type { AcademyReview } from "@/domain/academy-course-package";
+import { courseStage } from "@/domain/unified-course-lifecycle";
+import { isAcceptanceCourse } from "@/domain/admin-test-records";
+import { AccessDenied } from "@/domain/policy";
 
-const TEST_LABEL_NOTE =
-  "Rows marked “acceptance test” are shared-environment test records, recognised by their naming; they are not business sales.";
+// The Operations Engineer execution plane for the unified Course Engine.
+// Natural-language request -> intent (AI, when configured) -> authoritative
+// state read with the administrator's own session -> typed, validated
+// proposal -> explicit confirmation -> execution through the existing
+// governed service AS THAT ADMINISTRATOR -> verification re-read -> receipt.
+// The model holds no authority at any point: it only names an action from
+// the closed registry, and its arguments are untrusted input re-validated
+// exactly like a typed form. Organisation scope is enforced by the database
+// on every read and write; the choice lists only contain records the
+// administrator's own session returned.
 
-// The Operations Engineer execution plane. Natural-language request ->
-// intent (AI, when configured) -> authoritative state read -> typed,
-// validated proposal -> explicit administrator confirmation -> execution
-// through the existing governed service AS THAT ADMINISTRATOR -> verification
-// re-read -> receipt. The model holds no authority at any point: it only
-// names an action from the closed registry, and its arguments are untrusted
-// input re-validated exactly like a typed form.
-
-const ADMINS = ["ACADEMIC_ADMIN", "PLATFORM_ADMIN"] as const;
 const PROPOSAL_TTL_MS = 15 * 60 * 1000;
+// A change whose duplicate protection is only partial (see
+// DUPLICATE_PROTECTION) gets a shorter confirmation window.
+const PARTIAL_TTL_MS = 5 * 60 * 1000;
+export const proposalTtl = (id: OperationActionId) =>
+  DUPLICATE_PROTECTION[id].level === "partial"
+    ? PARTIAL_TTL_MS
+    : PROPOSAL_TTL_MS;
 
 export type Option = { value: string; label: string; warning?: string };
 export type OperationOptions = Record<ChoiceSource, Option[]>;
+export type Link = { label: string; href: string };
+export type DisplayLine = { label: string; value: string };
 export type ReadTable = {
   title: string;
   columns: string[];
   rows: string[][];
+  summary?: DisplayLine[];
+  links?: Link[];
   note?: string;
 };
 export type Check = { ok: boolean; text: string; blocking: boolean };
-export type DisplayLine = { label: string; value: string };
 
 export type Proposal = {
   actionId: OperationActionId;
@@ -120,6 +128,7 @@ export type Receipt = {
   verified: boolean | null;
   verification: string;
   recovery: string;
+  links?: Link[];
 };
 
 export type InterpretResult =
@@ -134,106 +143,151 @@ export type InterpretResult =
       raw: Record<string, string>;
     };
 
-// ---------------------------------------------------------------------------
-// Authoritative reads used for options, proposals and verification.
-// ---------------------------------------------------------------------------
+// A file attached in the browser for upload_course_package. Its bytes are
+// hashed into the proposal, so a confirmation with a different file is
+// refused as a changed proposal.
+export type Attachment = {
+  name: string;
+  size: number;
+  sha256: string;
+  json: unknown;
+  problem: string | null;
+};
 
-async function readCommerce() {
-  const [offerActivations, activations, live, campaigns] = await Promise.all([
-    listCommercialV1OfferActivations(),
-    listCommercialV1Activations(),
-    listCommercialV1Offers().catch(() => null),
-    listCommercialV1Campaigns(),
-  ]);
-  return {
-    offerActivations,
-    activations: activations.activations,
-    live,
-    campaigns,
-  };
+export async function readAttachment(
+  file: unknown,
+): Promise<Attachment | null> {
+  if (!(file instanceof Blob) || file.size === 0) return null;
+  const name = "name" in file ? String((file as File).name) : "package.json";
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const base = { name: name.slice(0, 120), size: file.size, sha256 };
+  if (!name.toLowerCase().endsWith(".json"))
+    return { ...base, json: null, problem: "The file must be a .json file." };
+  const tooLarge = academyUploadSizeError(file.size);
+  if (tooLarge) return { ...base, json: null, problem: tooLarge };
+  try {
+    const json = JSON.parse(
+      new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+    );
+    return { ...base, json, problem: null };
+  } catch {
+    return {
+      ...base,
+      json: null,
+      problem: "The file is not valid UTF-8 JSON.",
+    };
+  }
 }
 
-// Real records first; acceptance-test records after them, labelled, so a
-// choice list never leads with test traffic.
+// ---------------------------------------------------------------------------
+// Authority: course-engineering access (platform course administrators or
+// organisation members), plus any platform role the action itself requires.
+// ---------------------------------------------------------------------------
+
+type Access = Awaited<ReturnType<typeof courseEngineeringAccess>>;
+
+async function requireOperator(id?: OperationActionId): Promise<Access> {
+  const access = await courseEngineeringAccess();
+  if (!access.allowed) throw new AccessDenied();
+  const roles = id ? OPERATION_ACTIONS[id].roles : [];
+  if (roles.length && !roles.some((r) => access.actor.roles.includes(r)))
+    throw new AccessDenied();
+  return access;
+}
+
+const canManage = (access: Access, organisationId?: string) =>
+  !!organisationId &&
+  access.organisations.some((o) => o.id === organisationId && o.canManage);
+
+// ---------------------------------------------------------------------------
+// Authoritative reads used for options, inspections, proposals and
+// verification. All run with the administrator's own session.
+// ---------------------------------------------------------------------------
+
+const isTestCourse = (p: { packageKey: string; title: string | null }) =>
+  isAcceptanceCourse({ packageKey: p.packageKey, title: p.title ?? "" }) ||
+  /^test only\b/i.test(p.title ?? "") ||
+  /^test-/.test(p.packageKey);
+
+// Real records first; test records after them, labelled, so a choice list
+// never leads with test traffic.
 function businessFirst(options: (Option & { test: boolean })[]): Option[] {
   return [
     ...options.filter((o) => !o.test),
     ...options.filter((o) => o.test),
   ].map(({ test, ...o }) =>
-    test ? { ...o, label: `${o.label} (acceptance test)` } : o,
+    test ? { ...o, label: `${o.label} (test record)` } : o,
   );
 }
 
+const titleOf = (p: AcademyPackageListItem) => p.title ?? p.packageKey;
+type Coupon = Awaited<ReturnType<typeof listCourseCoupons>>[number];
+const discountText = (c: {
+  percentOff: number | null;
+  amountOffMinor: number | null;
+  currency: string | null;
+}) =>
+  c.percentOff !== null
+    ? `${c.percentOff}% off`
+    : `${formatMoney(c.amountOffMinor ?? 0, c.currency ?? "GBP")} off (${c.currency} courses only)`;
+const utcText = (iso: string) =>
+  `${new Date(iso).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
+async function courseCurrencies() {
+  const catalogue = await listUnifiedCourseCatalogue().catch(() => []);
+  return new Map(catalogue.map((c) => [c.offerId, c.currency]));
+}
+
 export async function getOperationOptions(): Promise<OperationOptions> {
-  await requireAnyRole(ADMINS);
-  const [catalogue, commerce, cohorts, packages] = await Promise.all([
-    getCourseCatalogue().catch(() => null),
-    readCommerce().catch(() => null),
-    getCohortWorkspace(null).catch(() => null),
-    listCoursePackages().catch(() => []),
+  const access = await requireOperator();
+  const [packages, coupons, currencies] = await Promise.all([
+    listUnifiedCoursePackages().catch(() => []),
+    listCourseCoupons().catch(() => []),
+    courseCurrencies(),
   ]);
-  const titleByKey = new Map(
-    (catalogue?.courses ?? []).map((c) => [c.packageKey, c.title]),
-  );
   return {
-    courses: businessFirst(
-      (catalogue?.courses ?? []).map((c) => ({
-        value: c.packageKey,
-        label: `${c.title} — revision ${c.lifecycle.current.packageRevision}`,
-        test: c.testRecord,
-      })),
-    ),
-    appliedPackages: packages
-      .filter((p) => p.status === "APPLIED")
-      .map((p) => ({
+    packages: businessFirst(
+      packages.map((p) => ({
         value: p.id,
-        label: `${titleByKey.get(p.package_key) ?? p.package_key} — revision ${p.package_revision} (draft)`,
+        label: `${titleOf(p)} — revision ${p.packageRevision} (${courseStage(p).label.toLowerCase()})`,
+        test: isTestCourse(p),
       })),
-    activationsWithoutOffer: (commerce?.offerActivations ?? [])
-      .filter((a) => !a.publishedOfferSlug)
-      .map((a) => {
-        const purpose = cohortPurpose({ title: a.cohortTitle, isDemo: false });
-        return {
-          value: a.activationId,
-          label: `${a.programmeTitle} — ${a.cohortTitle} (starts ${a.cohortStartsOn})`,
-          warning:
-            purpose === "LIKELY_STAGING"
-              ? "Staging or acceptance cohort: not for paying learners."
-              : undefined,
-        };
-      }),
-    publishedOffers: businessFirst(
-      (commerce?.offerActivations ?? [])
-        .filter((a) => a.publishedOfferSlug)
-        .map((a) => ({
-          value: a.publishedOfferSlug as string,
-          label: `${a.programmeTitle} — ${a.cohortTitle} (/courses/${a.publishedOfferSlug})`,
-          test: isAcceptanceOffer({
-            slug: a.publishedOfferSlug,
-            course: a.programmeTitle,
-            cohort: a.cohortTitle,
-          }),
-        })),
     ),
-    activeCampaigns: businessFirst(
-      (commerce?.campaigns ?? [])
-        .filter((c) => c.state === "ACTIVE")
-        .map((c) => ({
-          value: c.code,
-          label: `${c.code} — ${c.offerSlug}`,
-          test: isAcceptanceOfferSlug(c.offerSlug),
-        })),
-    ),
-    cohorts: (cohorts?.workspace.cohorts ?? [])
-      .filter((c) => c.status !== "COMPLETED" && !c.isDemo)
-      .map((c) => ({
-        value: c.id,
-        label: `${c.title} — ${c.programmeTitle} (${c.status.toLowerCase()})`,
-        warning:
-          cohortPurpose(c) === "LIKELY_STAGING"
-            ? "Staging or acceptance cohort."
+    publishablePackages: businessFirst(
+      packages
+        .filter(
+          (p) =>
+            p.status === "VALIDATED" && canManage(access, p.organisationId),
+        )
+        .map((p) => ({
+          value: p.id,
+          label: `${titleOf(p)} — revision ${p.packageRevision}`,
+          warning: p.pendingDecisions.length
+            ? `${p.pendingDecisions.length} academic decision(s) pending: publication is blocked.`
             : undefined,
-      })),
+          test: isTestCourse(p),
+        })),
+    ),
+    organisations: access.organisations
+      .filter((o) => o.canManage)
+      .map((o) => ({ value: o.id, label: o.name })),
+    publishedCourses: businessFirst(
+      packages
+        .filter((p) => p.course?.offerState === "PUBLISHED")
+        .map((p) => {
+          const currency = currencies.get(p.course!.offerId ?? "");
+          return {
+            value: p.course!.id,
+            label: `${titleOf(p)} (/courses/${p.course!.slug}${currency ? `, ${currency}` : ""})`,
+            test: isTestCourse(p),
+          };
+        }),
+    ),
+    coupons: coupons.map((c) => ({
+      value: c.id,
+      label: `${c.code} — ${discountText(c)} · ${c.active ? "active" : "inactive"}`,
+    })),
   };
 }
 
@@ -241,151 +295,226 @@ export async function getOperationOptions(): Promise<OperationOptions> {
 // Read-only inspections: executed immediately, no confirmation needed.
 // ---------------------------------------------------------------------------
 
-const money = (minor: number, currency: string) =>
-  formatOfferPrice(minor, currency);
+async function decisionHistory(
+  packages: AcademyPackageListItem[],
+  p: AcademyPackageListItem,
+) {
+  const lineage = packages.filter(
+    (x) =>
+      x.packageKey === p.packageKey &&
+      x.organisationId === p.organisationId &&
+      x.packageRevision <= p.packageRevision,
+  );
+  const rows = await Promise.all(
+    lineage.map((x) =>
+      getUnifiedAcademicResolutions(x.id).then((r) =>
+        r.map((d) => ({ ...d, revision: x.packageRevision })),
+      ),
+    ),
+  );
+  return rows.flat();
+}
 
 async function runRead(
   id: OperationActionId,
   input: Record<string, unknown>,
 ): Promise<ReadTable> {
   switch (id) {
+    case "list_courses": {
+      const packages = await listUnifiedCoursePackages();
+      return {
+        title: "Courses and publication states",
+        columns: [
+          "Course",
+          "Organisation",
+          "Revision",
+          "Stage",
+          "Pending decisions",
+          "Offer",
+        ],
+        rows: packages.map((p) => [
+          `${titleOf(p)}${isTestCourse(p) ? " (test record)" : ""}`,
+          p.organisationName ?? "—",
+          `${p.packageKey} · ${p.packageRevision}`,
+          courseStage(p).label,
+          String(p.pendingDecisions.length),
+          p.course?.slug
+            ? `/courses/${p.course.slug} (${p.course.offerState?.toLowerCase() ?? "no offer"})`
+            : "—",
+        ]),
+        note: "Newest 200 revisions you can see. Earlier revisions are retained unchanged.",
+      };
+    }
     case "inspect_course": {
-      const catalogue = await getCourseCatalogue();
-      const course = catalogue.courses.find(
-        (c) => c.packageKey === input.packageKey,
-      );
-      if (!course)
+      const packages = await listUnifiedCoursePackages();
+      const p = packages.find((x) => x.id === input.packageId);
+      if (!p)
         return {
-          title: "Course not found",
+          title: "Course revision not found",
           columns: ["Result"],
-          rows: [["No course package with that key is visible to you."]],
+          rows: [["This revision is not in your course register."]],
         };
-      const life = course.lifecycle;
-      if (life.individual) {
-        // Individual learning: never cohort advice. Cohort-delivery stages
-        // are listed separately only when that model is also recorded.
-        const a = life.individual;
-        const cohortStages = life.cohortStages ?? [];
-        const formats =
-          a.formats === null
-            ? "Format prices could not be read."
-            : a.formats.length
-              ? `Formats: ${a.formats
-                  .map(
-                    (f) =>
-                      `${f.formatId} ${f.weeks} weeks ${academyFormatPrice(f, a.currency)}`,
-                  )
-                  .join("; ")}.`
-              : "";
-        return {
-          title: `${course.title} — revision ${life.current.packageRevision} · ${DELIVERY_LABELS[life.delivery]}`,
-          columns: ["Stage", "Status", "Detail"],
-          rows: [
-            ...life.stages.map((s) => [
-              `Individual learning: ${s.label}`,
-              STATE_WORDS[s.state],
-              s.summary,
-            ]),
-            ...cohortStages.map((s) => [
-              `Cohort delivery: ${s.label}`,
-              STATE_WORDS[s.state],
-              s.summary,
-            ]),
-          ],
-          note: [
-            life.headline,
-            a.offerId
-              ? `Individual-learning offer “${a.slug}” (${a.saleMode === "PUBLIC_SALE" ? "public sale" : "review only, not on public sale"}).`
-              : "No individual-learning offer yet.",
-            formats,
-            "Individual learning: learners confirm their own schedules; no cohort is needed for this delivery model.",
-            `Manage it in Academy Course Engineering: ${a.href}`,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        };
+      const [review, history] = await Promise.all([
+        p.status === "UPLOADED"
+          ? null
+          : getAcademyPackageReview(p.id).then(
+              (r) => (r.review as AcademyReview | null) ?? null,
+            ),
+        decisionHistory(packages, p),
+      ]);
+      const stage = courseStage(p);
+      const newer = packages.find(
+        (x) =>
+          x.packageKey === p.packageKey &&
+          x.organisationId === p.organisationId &&
+          x.packageRevision > p.packageRevision,
+      );
+      const rows: string[][] = [
+        ["Stage", `${stage.label}. ${stage.detail}`],
+        ["Organisation", p.organisationName ?? "—"],
+        ["Revision", `${p.packageKey} · ${p.packageRevision}`],
+      ];
+      if (newer)
+        rows.push([
+          "Newer revision",
+          `Revision ${newer.packageRevision} exists (${courseStage(newer).label.toLowerCase()}).`,
+        ]);
+      if (review)
+        rows.push([
+          "Content",
+          `${review.totals.modules} modules, ${review.totals.lessons} lessons, ${review.labs.length} labs (${review.labs.filter((l) => l.graded).length} graded), ${review.assessments.length} assessments: ${review.assessments.map((a) => `${a.kind.toLowerCase()} ${a.questionCount} items/${a.durationMinutes} min`).join("; ")}.`,
+        ]);
+      for (const d of review?.pendingDecisions ?? [])
+        rows.push([`Pending: ${d.key}`, d.summary]);
+      for (const r of history)
+        rows.push([
+          `Resolved: ${r.key}`,
+          `Revision ${r.revision}. ${r.rationale} Evidence: ${r.evidenceReference}.`,
+        ]);
+      rows.push([
+        "Curriculum",
+        p.curriculumImport
+          ? `Imported (${p.curriculumImport.status.toLowerCase()}).`
+          : "Not imported yet: the curriculum is imported and tested at publication.",
+      ]);
+      rows.push([
+        "Offer",
+        p.course?.slug
+          ? `/courses/${p.course.slug}: ${p.course.offerState?.toLowerCase()}, ${p.course.saleMode === "PUBLIC_SALE" ? "public sale" : "review only"}.`
+          : "None.",
+      ]);
+      return {
+        title: `${titleOf(p)} · revision ${p.packageRevision}`,
+        columns: ["Item", "Detail"],
+        rows,
+        links: [
+          {
+            label: "Open in Course academic review",
+            href: `/admin/course-engineering/review?packageId=${p.id}`,
+          },
+          {
+            label: "Open in Course Engineering",
+            href: `/admin/course-engineering?packageId=${p.id}`,
+          },
+        ],
+        note: "Protected assessment content and answer keys are never shown here.",
+      };
+    }
+    case "list_coupons": {
+      const coupons = await listCourseCoupons();
+      return {
+        title: "Discount codes",
+        columns: [
+          "Code",
+          "Discount",
+          "Scope",
+          "Expires",
+          "Limit",
+          "Reserved",
+          "Redeemed",
+          "Availability",
+        ],
+        rows: coupons.map((c) => [
+          c.code,
+          discountText(c),
+          c.courseId
+            ? `Course ${c.courseId}`
+            : "All of its organisation's courses",
+          utcText(c.expiresAt),
+          String(c.redemptionLimit),
+          String(c.reserved),
+          String(c.redeemed),
+          c.active ? "Active" : "Inactive",
+        ]),
+        note: "Newest 200 coupons in organisations you manage.",
+      };
+    }
+    case "sales_report": {
+      const orders = await listOrganisationCourseOrders();
+      const currencies = [...new Set(orders.map((o) => o.currency))].sort();
+      const summary: DisplayLine[] = [];
+      for (const cur of currencies) {
+        const list = orders.filter((o) => o.currency === cur);
+        const fulfilled = list.filter((o) => o.state === "FULFILLED");
+        const confirmed = list.filter((o) => o.paymentConfirmed);
+        const sum = (
+          xs: typeof list,
+          f: (o: (typeof list)[number]) => number,
+        ) =>
+          formatMoney(
+            xs.reduce((n, o) => n + f(o), 0),
+            cur,
+          );
+        summary.push(
+          {
+            label: `${cur} orders`,
+            value: `${list.length}: ${fulfilled.length} fulfilled, ${list.filter((o) => o.state === "PENDING").length} pending, ${list.filter((o) => o.state === "CANCELLED").length} cancelled`,
+          },
+          {
+            label: `${cur} fulfilled order totals`,
+            value: `${sum(fulfilled, (o) => o.amountMinor)} (order amounts, not settled revenue)`,
+          },
+          {
+            label: `${cur} payment confirmed`,
+            value: `${confirmed.length} orders with a verified paid event, totalling ${sum(confirmed, (o) => o.amountMinor)} in order amounts`,
+          },
+          {
+            label: `${cur} discounts given`,
+            value: sum(list, (o) => o.discountAmountMinor),
+          },
+          {
+            label: `${cur} refunds recorded`,
+            value: `${list.filter((o) => o.refundRecorded).length} orders (refund amounts are not in this report)`,
+          },
+        );
       }
+      summary.push({
+        label: "Recognised revenue",
+        value:
+          "Not reported. There is no reviewed settled-revenue ledger; captured and refunded amounts are not available here.",
+      });
       return {
-        title: `${course.title} — revision ${course.lifecycle.current.packageRevision}`,
-        columns: ["Stage", "Status", "Detail"],
-        rows: course.lifecycle.stages.map((s) => [
-          s.label,
-          STATE_WORDS[s.state],
-          s.summary,
+        title: "Orders and sales statistics",
+        columns: [
+          "Created (UTC)",
+          "Course",
+          "State",
+          "Order amount",
+          "Discount",
+          "Payment confirmed",
+          "Refund recorded",
+        ],
+        rows: orders.map((o) => [
+          utcText(o.createdAt),
+          o.courseTitle,
+          o.state.toLowerCase(),
+          formatMoney(o.amountMinor, o.currency),
+          formatMoney(o.discountAmountMinor, o.currency),
+          o.paymentConfirmed ? "Yes" : "No",
+          o.refundRecorded ? "Yes" : "No",
         ]),
-        note: course.lifecycle.cohorts.length
-          ? `Cohorts for this curriculum: ${course.lifecycle.cohorts
-              .map(
-                (c) =>
-                  `${c.title} (${c.status.toLowerCase()}${c.purpose === "LIKELY_STAGING" ? ", staging" : ""})`,
-              )
-              .join("; ")}.`
-          : "No cohort exists for this curriculum version.",
-      };
-    }
-    case "list_offers": {
-      const c = await readCommerce();
-      return {
-        title: "Activated deliveries and offers",
-        columns: ["Course", "Cohort", "Offer", "Public price"],
-        rows: c.offerActivations.map((a) => {
-          const live = c.live?.find((o) => o.slug === a.publishedOfferSlug);
-          const test = isAcceptanceOffer({
-            slug: a.publishedOfferSlug,
-            course: a.programmeTitle,
-            cohort: a.cohortTitle,
-          });
-          return [
-            a.programmeTitle + (test ? " (acceptance test)" : ""),
-            `${a.cohortTitle} (starts ${a.cohortStartsOn})`,
-            a.publishedOfferSlug
-              ? `/courses/${a.publishedOfferSlug}`
-              : "No offer",
-            live
-              ? money(live.priceAmountMinor, live.currency)
-              : a.publishedOfferSlug
-                ? "Not in public catalogue"
-                : "—",
-          ];
-        }),
-        note:
-          c.live === null
-            ? "The public catalogue could not be read."
-            : TEST_LABEL_NOTE,
-      };
-    }
-    case "list_campaigns": {
-      const campaigns = await listCommercialV1Campaigns();
-      return {
-        title: "Campaigns",
-        columns: ["Code", "Offer", "Type", "Price", "Used", "Window", "State"],
-        rows: campaigns.map((x) => [
-          x.code +
-            (isAcceptanceOfferSlug(x.offerSlug) ? " (acceptance test)" : ""),
-          x.offerSlug,
-          KIND_WORDS[x.kind],
-          money(x.effectivePriceAmountMinor, x.currency),
-          `${x.redemptionCount} of ${x.maxRedemptions}`,
-          `${x.startsAt.slice(0, 10)} → ${x.endsAt.slice(0, 10)}`,
-          x.state === "ACTIVE" ? "Active" : "Archived",
-        ]),
-        note: TEST_LABEL_NOTE,
-      };
-    }
-    case "review_payment_issues": {
-      const issues = await listCommerceOperations({ view: "issues" });
-      return {
-        title: "Payment exceptions (latest 25)",
-        columns: ["Received", "Event", "State", "Reason"],
-        rows: issues.rows.map((r) => [
-          r.occurredAt?.slice(0, 16).replace("T", " ") ?? "—",
-          r.subtitle,
-          r.state,
-          r.reason ?? "—",
-        ]),
-        note: issues.hasMore
-          ? "More records exist; open Sales & Commerce for the full queue."
-          : undefined,
+        summary,
+        note: `Covers the newest ${orders.length} paid-checkout orders (at most 200) for organisations you manage. Free coupon access creates no order and is not counted.`,
       };
     }
     case "check_agent_health": {
@@ -406,46 +535,10 @@ async function runRead(
         note: "Configured means the provider key is present in this deployment; it is not a live call.",
       };
     }
-    case "list_cohorts": {
-      const w = await getCohortWorkspace(null);
-      return {
-        title: "Cohorts",
-        columns: [
-          "Cohort",
-          "Course",
-          "Status",
-          "Dates",
-          "Active learners",
-          "Offer",
-        ],
-        rows: w.workspace.cohorts.map((c) => [
-          `${c.title}${cohortPurpose(c) === "LIKELY_STAGING" ? " (staging)" : ""}`,
-          `${c.programmeTitle} · ${c.versionLabel}`,
-          c.status.toLowerCase(),
-          `${c.startsOn}${c.endsOn ? ` → ${c.endsOn}` : ""}`,
-          String(c.enrolments.active),
-          c.publishedOfferSlug ? `/courses/${c.publishedOfferSlug}` : "—",
-        ]),
-      };
-    }
     default:
       throw new Error("Not a read action");
   }
 }
-
-const STATE_WORDS = {
-  complete: "Complete",
-  action: "Action needed",
-  approval: "Awaiting approval",
-  blocked: "Blocked",
-  attention: "Needs attention",
-} as const;
-
-const KIND_WORDS = {
-  PERCENT_OFF: "Percentage discount",
-  FIXED_PRICE: "Fixed price",
-  REVIEWER_COMPLIMENTARY: "Complimentary reviewer",
-} as const;
 
 // ---------------------------------------------------------------------------
 // Mutation proposals: authoritative state, checks, fingerprint.
@@ -456,6 +549,7 @@ type Planned = {
   checks: Check[];
   fingerprint: unknown; // the exact authoritative state the proposal relies on
   done: boolean; // the requested end state already holds
+  upload?: UploadCheck; // reused by perform for upload_course_package
 };
 
 function stable(value: unknown): string {
@@ -481,357 +575,329 @@ const ok = (text: string): Check => ({ ok: true, text, blocking: false });
 const stop = (text: string): Check => ({ ok: false, text, blocking: true });
 const warn = (text: string): Check => ({ ok: false, text, blocking: false });
 
+const sameCouponTerms = (c: Coupon, input: Record<string, unknown>) =>
+  c.percentOff === ((input.percentOff as number | undefined) ?? null) &&
+  c.amountOffMinor === ((input.amountOffMinor as number | undefined) ?? null) &&
+  c.currency === ((input.currency as string | undefined) ?? null) &&
+  sameInstant(c.expiresAt, input.expiresAt) &&
+  c.redemptionLimit === input.redemptionLimit &&
+  c.courseId === input.courseId;
+
 async function plan(
   id: OperationActionId,
   input: Record<string, unknown>,
+  access: Access,
+  attachment: Attachment | null,
 ): Promise<Planned> {
   switch (id) {
-    case "publish_offer": {
-      const c = await readCommerce();
-      const activation = c.offerActivations.find(
-        (a) => a.activationId === input.activationId,
+    case "upload_course_package": {
+      const org = access.organisations.find(
+        (o) => o.id === input.organisationId,
       );
-      const detail = c.activations.find(
-        (a) => a.activationId === input.activationId,
-      );
-      const slugs = await listCommerceOperations({
-        view: "offers",
-        query: String(input.slug),
-      });
-      const slugTaken = slugs.rows.some(
-        (r) => r.subtitle.split(" / ")[0] === input.slug,
-      );
-      const publishedRow = slugs.rows
-        .map(parseOfferRow)
-        .find((o) => o.slug === input.slug && o.state === "PUBLISHED");
-      const purpose = activation
-        ? cohortPurpose({ title: activation.cohortTitle, isDemo: false })
-        : null;
-      const plan =
-        DELIVERY_PLAN_DEFINITIONS[
-          (input.deliveryPlan ?? "STANDARD_6_WEEK") as DeliveryPlan
-        ];
-      const checks: Check[] = [
-        activation
-          ? ok(
-              `Delivery “${activation.programmeTitle} — ${activation.cohortTitle}” is activated.`,
-            )
-          : stop(
-              "That activated delivery no longer exists or is not visible to you.",
-            ),
-        activation?.publishedOfferSlug
-          ? stop(
-              `This delivery already has a published offer (/courses/${activation.publishedOfferSlug}). Archive it first to change the price.`,
-            )
-          : ok("This delivery has no published offer yet."),
-        slugTaken
-          ? stop(
-              `The slug “${String(input.slug)}” is already used by another offer.`,
-            )
-          : ok(`The public URL /courses/${String(input.slug)} is free.`),
-        purpose === "LIKELY_STAGING"
-          ? stop(
-              "This delivery's cohort is a staging or acceptance cohort. Paying learners must not be sold a place in it; activate a dedicated delivery cohort instead.",
-            )
-          : ok(
-              "The cohort is not flagged as a staging or acceptance cohort. Confirm it is the intended delivery cohort.",
-            ),
-        detail &&
-        !(detail.gradingPolicyPublished && detail.resultPolicyPublished)
-          ? warn(
-              "The grading or result policy for this delivery is not published yet.",
-            )
-          : ok("Grading and result policies are published."),
-      ];
-      return {
-        display: [
-          { label: "Course", value: activation?.programmeTitle ?? "Unknown" },
-          {
-            label: "Cohort",
-            value: activation
-              ? `${activation.cohortTitle} (starts ${activation.cohortStartsOn})`
-              : "Unknown",
-          },
-          { label: "Public URL", value: `/courses/${String(input.slug)}` },
-          {
-            label: "Price",
-            value: money(
-              Number(input.priceAmountMinor),
-              String(input.currency),
-            ),
-          },
-          { label: "Delivery plan", value: plan.label },
-          {
-            label: "Public summary",
-            value: (input.summary as string | null) ?? "None",
-          },
-          { label: "Reason", value: String(input.reason) },
-        ],
-        checks,
-        fingerprint: {
-          offer: activation?.publishedOfferSlug ?? null,
-          slugTaken,
-          exists: Boolean(activation),
+      const display: DisplayLine[] = [
+        { label: "Organisation", value: org?.name ?? "Not one you manage" },
+        {
+          label: "File",
+          value: attachment
+            ? `${attachment.name} (${Math.ceil(attachment.size / 1024)} KiB, SHA-256 ${attachment.sha256.slice(0, 16)}…)`
+            : "None attached",
         },
-        // The requested offer, exactly: this delivery, this slug, this price.
-        // A different offer that won a race for the slug is not "done".
-        done:
-          activation?.publishedOfferSlug === input.slug &&
-          publishedRow?.priceAmountMinor === input.priceAmountMinor &&
-          publishedRow?.currency === input.currency,
-      };
-    }
-    case "archive_offer": {
-      const c = await readCommerce();
-      const activation = c.offerActivations.find(
-        (a) => a.publishedOfferSlug === input.slug,
-      );
-      return {
-        display: [
-          { label: "Offer", value: `/courses/${String(input.slug)}` },
-          {
-            label: "Course",
-            value: activation
-              ? `${activation.programmeTitle} — ${activation.cohortTitle}`
-              : "Not currently published",
-          },
-          { label: "Reason", value: String(input.reason) },
-        ],
-        checks: [
-          activation
-            ? ok("The offer is currently published.")
-            : stop(
-                "No published offer has this slug. It may already be archived.",
-              ),
-          ok("Existing orders and entitlements will not change."),
-        ],
-        fingerprint: { published: Boolean(activation) },
-        done: !activation,
-      };
-    }
-    case "create_campaign": {
-      const c = await readCommerce();
-      const offer = c.offerActivations.find(
-        (a) => a.publishedOfferSlug === input.offerSlug,
-      );
-      const live = c.live?.find((o) => o.slug === input.offerSlug);
-      const existing = c.campaigns.find(
-        (x) => x.code === String(input.code).toUpperCase(),
-      );
-      const kind = input.kind as keyof typeof KIND_WORDS;
-      const effective =
-        kind === "FIXED_PRICE"
-          ? Number(input.fixedPriceAmountMinor)
-          : kind === "PERCENT_OFF" && live
-            ? null
-            : 0;
-      const checks: Check[] = [
-        offer
-          ? ok("The offer is published.")
-          : stop("That offer is not published."),
-        existing
-          ? stop(
-              `The code ${existing.code} already exists (${existing.state.toLowerCase()}).`,
-            )
-          : ok("The code is not in use."),
       ];
-      if (
-        kind === "FIXED_PRICE" &&
-        live &&
-        Number(input.fixedPriceAmountMinor) >= live.priceAmountMinor
-      )
+      const checks: Check[] = [];
+      if (!canManage(access, org?.id))
         checks.push(
-          warn("The campaign price is not lower than the published price."),
+          stop("You do not manage course packages for this organisation."),
         );
-      if (kind === "REVIEWER_COMPLIMENTARY")
+      if (!attachment)
         checks.push(
-          warn(
-            "Reviewer campaigns grant access without payment and never create a payment order.",
+          stop(
+            "Attach the course package JSON file. Nothing has been uploaded.",
           ),
         );
-      return {
-        display: [
-          { label: "Offer", value: `/courses/${String(input.offerSlug)}` },
-          { label: "Code", value: String(input.code).toUpperCase() },
-          { label: "Type", value: KIND_WORDS[kind] },
-          {
-            label: "Campaign price",
-            value:
-              kind === "PERCENT_OFF"
-                ? `${String(input.percentOff)}% off${live ? ` (computed by the server from ${money(live.priceAmountMinor, live.currency)})` : ""}`
-                : effective !== null && live
-                  ? money(effective, live.currency)
-                  : effective === 0
-                    ? "Free"
-                    : "Computed by the server",
-          },
-          { label: "Maximum redemptions", value: String(input.maxRedemptions) },
-          {
-            label: "Window (UTC)",
-            value: `${String(input.startsAt)} → ${String(input.endsAt)}`,
-          },
-          { label: "Reason", value: String(input.reason) },
-        ],
-        checks,
-        fingerprint: {
-          offer: Boolean(offer),
-          existing: existing?.state ?? null,
-        },
-        // The requested campaign, exactly. A different campaign that took
-        // the same code is not "done".
-        done: Boolean(
-          existing &&
-          existing.offerSlug === input.offerSlug &&
-          existing.state === "ACTIVE" &&
-          existing.kind === kind &&
-          existing.maxRedemptions === input.maxRedemptions &&
-          sameInstant(existing.startsAt, input.startsAt) &&
-          sameInstant(existing.endsAt, input.endsAt) &&
-          (kind === "FIXED_PRICE"
-            ? existing.effectivePriceAmountMinor === input.fixedPriceAmountMinor
-            : kind === "REVIEWER_COMPLIMENTARY"
-              ? existing.effectivePriceAmountMinor === 0
-              : true),
-        ),
-      };
-    }
-    case "archive_campaign": {
-      const campaigns = await listCommercialV1Campaigns();
-      const campaign = campaigns.find(
-        (x) => x.code === String(input.code).toUpperCase(),
-      );
-      return {
-        display: [
-          { label: "Campaign", value: String(input.code).toUpperCase() },
-          {
-            label: "Offer",
-            value: campaign ? `/courses/${campaign.offerSlug}` : "Unknown",
-          },
-          { label: "Reason", value: String(input.reason) },
-        ],
-        checks: [
-          !campaign
-            ? stop("No campaign has this code.")
-            : campaign.state === "ACTIVE"
-              ? ok(
-                  `Active, ${campaign.redemptionCount} of ${campaign.maxRedemptions} redemptions used.`,
+      else if (attachment.problem)
+        checks.push(stop(`${attachment.problem} Nothing has been uploaded.`));
+      let upload: UploadCheck | undefined;
+      if (attachment && !attachment.problem && org) {
+        upload = await checkUnifiedCoursePackageUpload(attachment.json, org.id);
+        if (upload.status === "INVALID")
+          checks.push(
+            stop(
+              `The package failed validation with ${upload.issues.length} issue(s): ${upload.issues.slice(0, 5).join("; ")}${upload.issues.length > 5 ? "; …" : ""}. Nothing has been stored.`,
+            ),
+          );
+        else if (upload.status === "REVISION_TAKEN")
+          checks.push(stop(describeUploadConflict(upload)));
+        else if (upload.status === "ALREADY_UPLOADED")
+          checks.push(
+            ok(
+              `This exact file is already stored as revision ${upload.revision} (${upload.packageStatus.toLowerCase()}). Confirming creates nothing new${upload.packageStatus === "UPLOADED" ? " and records its validation" : ""}.`,
+            ),
+          );
+        else {
+          display.push(
+            { label: "Course", value: upload.title },
+            {
+              label: "Package and revision",
+              value: `${upload.packageKey} · revision ${upload.revision}`,
+            },
+          );
+          checks.push(
+            ok(
+              "The file is a structurally valid ACADEMY_COURSE_PACKAGE_V1 package.",
+            ),
+            ok(
+              `Revision ${upload.revision} is not stored yet${upload.latestRevision ? ` (latest stored revision: ${upload.latestRevision})` : ""}.`,
+            ),
+            upload.pendingDecisions
+              ? warn(
+                  `${upload.pendingDecisions} academic decision(s) must be reviewed before it can be published.`,
                 )
-              : stop("This campaign is already archived."),
-        ],
-        fingerprint: { state: campaign?.state ?? null },
-        done: campaign?.state === "ARCHIVED",
+              : ok("It declares no pending academic decision."),
+          );
+        }
+      }
+      return {
+        display,
+        checks,
+        upload,
+        fingerprint: {
+          sha: attachment?.sha256 ?? null,
+          upload:
+            upload?.status === "READY"
+              ? { status: upload.status, latest: upload.latestRevision }
+              : upload?.status === "ALREADY_UPLOADED"
+                ? {
+                    status: upload.status,
+                    id: upload.packageId,
+                    s: upload.packageStatus,
+                  }
+                : (upload?.status ?? null),
+        },
+        done:
+          upload?.status === "ALREADY_UPLOADED" &&
+          upload.packageStatus !== "UPLOADED",
       };
     }
-    case "change_cohort_status": {
-      const w = await getCohortWorkspace(null);
-      const cohort = w.workspace.cohorts.find((c) => c.id === input.cohortId);
-      const to = String(input.status);
-      const from = cohort?.status ?? null;
-      const allowed =
-        (from === "OPEN" && to === "CLOSED") ||
-        (from === "CLOSED" && (to === "OPEN" || to === "COMPLETED"));
-      const checks: Check[] = [
-        cohort
-          ? ok(`Cohort “${cohort.title}” is ${from?.toLowerCase()}.`)
-          : stop("That cohort no longer exists."),
+    case "publish_course": {
+      const gate = await getUnifiedPublicationGate(String(input.packageId));
+      const packages = await listUnifiedCoursePackages();
+      const p = "package" in gate ? gate.package : undefined;
+      const checks: Check[] = [];
+      const display: DisplayLine[] = [
+        {
+          label: "Course",
+          value: p
+            ? `${titleOf(p)} — revision ${p.packageRevision}`
+            : "Not found",
+        },
+        { label: "Organisation", value: p?.organisationName ?? "—" },
+        { label: "Address", value: `/courses/${String(input.slug)}` },
+        {
+          label: "Price",
+          value: `${formatMoney(Number(input.amountMinor), String(input.currency))} for every supported duration`,
+        },
       ];
-      if (cohort && from !== to)
-        checks.push(
-          allowed
-            ? ok(
-                `${from?.toLowerCase()} → ${to.toLowerCase()} is an allowed change.`,
-              )
-            : stop(
-                `A cohort cannot move from ${from?.toLowerCase()} to ${to.toLowerCase()}.`,
-              ),
+      if (input.summary)
+        display.push({ label: "Summary", value: String(input.summary) });
+      if (!p)
+        checks.push(stop("This revision is not in your course register."));
+      else {
+        if (!canManage(access, p.organisationId))
+          checks.push(stop("You do not manage this course's organisation."));
+        if (gate.ok && gate.published)
+          checks.push(
+            p.course?.slug === input.slug
+              ? ok(`Already published at /courses/${String(input.slug)}.`)
+              : stop(
+                  `This revision is already published at /courses/${p.course?.slug ?? "?"}.`,
+                ),
+          );
+        else if (!gate.ok && gate.code === "POLICY_PENDING")
+          checks.push(
+            stop(
+              `${gate.pending.length} academic decision(s) are pending (${gate.pending.join(", ")}). They must be resolved by an authorised reviewer in Course academic review before publication.`,
+            ),
+          );
+        else if (!gate.ok)
+          checks.push(
+            stop(
+              `Only a structurally validated revision can be published; this one is "${courseStage(p).label}".`,
+            ),
+          );
+        else checks.push(ok("No academic decision is pending."));
+        const taken = packages.find(
+          (x) => x.course?.slug === input.slug && x.id !== p.id,
         );
-      if (cohort && to === "CLOSED" && cohort.publishedOfferSlug)
-        checks.push(
-          warn(
-            `Closing archives its published offer /courses/${cohort.publishedOfferSlug}.`,
-          ),
+        if (taken)
+          checks.push(
+            stop(
+              `/courses/${String(input.slug)} is already used by ${titleOf(taken)}.`,
+            ),
+          );
+        const newer = packages.find(
+          (x) =>
+            x.packageKey === p.packageKey &&
+            x.organisationId === p.organisationId &&
+            x.packageRevision > p.packageRevision,
         );
-      if (to === "COMPLETED")
-        checks.push(warn("Completion is final and cannot be undone."));
+        if (newer)
+          checks.push(
+            warn(
+              `A newer revision (${newer.packageRevision}) of this course exists.`,
+            ),
+          );
+      }
+      checks.push(
+        commerceConfig().configured
+          ? ok("Card checkout is configured in this deployment.")
+          : warn(
+              "Card checkout is not configured in this deployment: learners can join only with a coupon until it is.",
+            ),
+      );
       return {
-        display: [
-          {
-            label: "Cohort",
-            value: cohort
-              ? `${cohort.title} — ${cohort.programmeTitle}`
-              : "Unknown",
-          },
-          {
-            label: "Change",
-            value: `${from?.toLowerCase() ?? "unknown"} → ${to.toLowerCase()}`,
-          },
-          {
-            label: "Active learners",
-            value: String(cohort?.enrolments.active ?? 0),
-          },
-          { label: "Reason", value: String(input.reason) },
-        ],
+        display,
         checks,
         fingerprint: {
-          status: from,
-          offer: cohort?.publishedOfferSlug ?? null,
+          status: p?.status ?? null,
+          pending: p?.pendingDecisions ?? null,
+          course: p?.course ?? null,
+          taken: packages
+            .filter((x) => x.course?.slug === input.slug)
+            .map((x) => x.id),
         },
-        done: from === to,
+        done: p?.status === "PUBLISHED" && p.course?.slug === input.slug,
       };
     }
-    case "run_course_test": {
-      const packages = await listCoursePackages();
-      const pkg = packages.find((p) => p.id === input.importId);
-      const status =
-        pkg?.status === "APPLIED"
-          ? await getCoursePackageTestStatus(pkg.id).catch(() => null)
-          : null;
-      return {
-        display: [
-          {
-            label: "Course revision",
-            value: pkg
-              ? `${pkg.package_key} — revision ${pkg.package_revision}`
-              : "Unknown",
-          },
-          {
-            label: "Current test status",
-            value: status ? TEST_WORDS[status.status] : "Unavailable",
-          },
-          { label: "Reason", value: String(input.reason) },
-        ],
-        checks: [
-          pkg?.status === "APPLIED"
-            ? ok("The revision is applied as a draft and can be tested.")
-            : stop(
-                pkg
-                  ? `This revision is ${pkg.status.toLowerCase()}; only an applied draft can be tested.`
-                  : "That course revision no longer exists.",
-              ),
-          status?.status === "PASSED_CURRENT"
-            ? warn(
-                "A current passing test already exists; another run is not needed for publication.",
-              )
-            : ok("A new run will record the current state's result."),
-        ],
-        fingerprint: {
-          status: pkg?.status ?? null,
-          run: status?.runSequence ?? null,
+    case "create_coupon": {
+      const org = access.organisations.find(
+        (o) => o.id === input.organisationId,
+      );
+      const [coupons, packages, currencies] = await Promise.all([
+        listCourseCoupons(),
+        listUnifiedCoursePackages(),
+        courseCurrencies(),
+      ]);
+      const existing = coupons.find((c) => c.code === input.code);
+      const course = input.courseId
+        ? packages.find((p) => p.course?.id === input.courseId)
+        : undefined;
+      const courseCurrency = course?.course?.offerId
+        ? currencies.get(course.course.offerId)
+        : undefined;
+      const fixed = typeof input.amountOffMinor === "number";
+      const display: DisplayLine[] = [
+        { label: "Organisation", value: org?.name ?? "Not one you manage" },
+        { label: "Code", value: String(input.code) },
+        {
+          label: "Discount",
+          value: discountText({
+            percentOff: (input.percentOff as number | undefined) ?? null,
+            amountOffMinor:
+              (input.amountOffMinor as number | undefined) ?? null,
+            currency: (input.currency as string | undefined) ?? null,
+          }),
         },
-        done: false,
+        {
+          label: "Applies to",
+          value: input.courseId
+            ? course
+              ? `${titleOf(course)} (/courses/${course.course?.slug})`
+              : "A course not in your register"
+            : `All of ${org?.name ?? "the organisation"}'s courses`,
+        },
+        { label: "Expires", value: utcText(String(input.expiresAt)) },
+        { label: "Total uses", value: String(input.redemptionLimit) },
+      ];
+      const checks: Check[] = [];
+      if (!canManage(access, org?.id))
+        checks.push(stop("You do not manage coupons for this organisation."));
+      if (Date.parse(String(input.expiresAt)) <= Date.now())
+        checks.push(stop("The expiry must be in the future."));
+      if (input.courseId && !course)
+        checks.push(
+          stop("The course restriction is not one of your published courses."),
+        );
+      if (course && course.organisationId !== org?.id)
+        checks.push(stop("The course belongs to a different organisation."));
+      if (fixed && courseCurrency && courseCurrency !== input.currency)
+        checks.push(
+          stop(
+            `This course is priced in ${courseCurrency}; a fixed amount must use ${courseCurrency}.`,
+          ),
+        );
+      if (fixed && !input.courseId)
+        checks.push(
+          ok(
+            `Applies only to the organisation's courses priced in ${String(input.currency)}.`,
+          ),
+        );
+      if (input.percentOff === 100)
+        checks.push(warn("A 100% coupon grants access without any payment."));
+      checks.push(
+        warn(
+          "A partial discount that would leave less than the minimum card payment is refused at checkout.",
+        ),
+      );
+      if (existing)
+        checks.push(
+          sameCouponTerms(existing, input)
+            ? ok(
+                "This code already exists with these exact terms; confirming creates nothing new.",
+              )
+            : stop(
+                "This code already exists with different terms. Coupon terms cannot be changed; choose a new code.",
+              ),
+        );
+      return {
+        display,
+        checks,
+        fingerprint: {
+          existing: existing ?? null,
+          course: course?.course ?? null,
+        },
+        done: !!existing && sameCouponTerms(existing, input),
+      };
+    }
+    case "set_coupon_active": {
+      const coupon = (await listCourseCoupons()).find(
+        (c) => c.id === input.couponId,
+      );
+      const display: DisplayLine[] = coupon
+        ? [
+            {
+              label: "Coupon",
+              value: `${coupon.code} — ${discountText(coupon)}`,
+            },
+            {
+              label: "Availability",
+              value: `${coupon.active ? "Active" : "Inactive"} → ${input.active ? "Active" : "Inactive"}`,
+            },
+            {
+              label: "Uses",
+              value: `${coupon.reserved} reserved, ${coupon.redeemed} redeemed of ${coupon.redemptionLimit}`,
+            },
+          ]
+        : [{ label: "Coupon", value: "Not found" }];
+      const checks: Check[] = [];
+      if (!coupon)
+        checks.push(stop("This coupon is not in your coupon register."));
+      else if (coupon.active === input.active)
+        checks.push(
+          ok(
+            `The coupon is already ${coupon.active ? "active" : "inactive"}; confirming changes nothing.`,
+          ),
+        );
+      return {
+        display,
+        checks,
+        fingerprint: { active: coupon?.active ?? null },
+        done: coupon?.active === input.active,
       };
     }
     default:
       throw new Error("Not a mutation action");
   }
 }
-
-const TEST_WORDS = {
-  NOT_TESTED: "Not tested",
-  FAILED: "Failed",
-  PASSED_CURRENT: "Passed (current)",
-  PASSED_STALE: "Passed (out of date)",
-} as const;
 
 function proposalHash(
   actorId: string,
@@ -856,18 +922,12 @@ function rawStrings(raw: unknown): Record<string, string> {
 export async function prepareOperation(
   actionId: unknown,
   rawInput: unknown,
+  attachment: Attachment | null = null,
   now = new Date(),
 ): Promise<PrepareResult> {
   const id = operationActionIdSchema.parse(actionId);
   const def = OPERATION_ACTIONS[id];
-  const actor = await requireAnyRole(def.roles);
-  const disabled = OPERATIONS_ENGINEER_DISABLED[id];
-  if (disabled)
-    return {
-      status: "UNAVAILABLE",
-      actionId: id,
-      message: `The Operations Engineer does not carry out this change yet. ${disabled.reason} Use the dedicated form instead: ${disabled.manualLabel}. Nothing was changed.`,
-    };
+  const access = await requireOperator(id);
   const raw = rawStrings(rawInput);
   const parsed = parseActionInput(id, raw);
   if (!parsed.ok)
@@ -879,7 +939,7 @@ export async function prepareOperation(
         actionId: id,
         table: await runRead(id, parsed.input),
       };
-    const planned = await plan(id, parsed.input);
+    const planned = await plan(id, parsed.input, access, attachment);
     const issuedAt = now.toISOString();
     const nonce = randomUUID();
     return {
@@ -895,10 +955,10 @@ export async function prepareOperation(
         recovery: def.recovery ?? "",
         duplicateProtection: DUPLICATE_PROTECTION[id].text,
         issuedAt,
-        expiresAt: new Date(now.getTime() + PROPOSAL_TTL_MS).toISOString(),
+        expiresAt: new Date(now.getTime() + proposalTtl(id)).toISOString(),
         nonce,
         proposalId: proposalHash(
-          actor.id,
+          access.actor.id,
           id,
           parsed.input,
           planned.fingerprint,
@@ -912,7 +972,7 @@ export async function prepareOperation(
       status: "UNAVAILABLE",
       actionId: id,
       message:
-        "The current state could not be read from the governed services, so no proposal was prepared. Nothing was changed.",
+        "The current state could not be read from the governed services, so nothing was prepared. Nothing was changed.",
     };
   }
 }
@@ -935,36 +995,81 @@ function remember(id: string, at: number) {
 const annotate = (reason: string, proposalId: string) =>
   `${reason} · Ops Engineer ref ${proposalId.slice(0, 8)}`.slice(0, 300);
 
+// A bounded policy code from a governed service, for the receipt only.
+const policyCode = (error: unknown) =>
+  error instanceof Error && /^[A-Z_]{3,40}$/.test(error.message)
+    ? error.message
+    : null;
+
 async function perform(
   id: OperationActionId,
   input: Record<string, unknown>,
   reason: string,
-): Promise<string> {
+  planned: Planned,
+  attachment: Attachment | null,
+): Promise<{ outcome: string; links?: Link[] }> {
   switch (id) {
-    case "publish_offer":
-      await publishCommercialV1Offer({ ...input, reason });
-      return `Offer /courses/${String(input.slug)} published.`;
-    case "archive_offer":
-      await archiveCommercialV1Offer({ ...input, reason });
-      return `Offer /courses/${String(input.slug)} archived.`;
-    case "create_campaign":
-      await createCommercialV1Campaign({ ...input, reason });
-      return `Campaign ${String(input.code).toUpperCase()} created.`;
-    case "archive_campaign":
-      await archiveCommercialV1Campaign({ ...input, reason });
-      return `Campaign ${String(input.code).toUpperCase()} archived.`;
-    case "change_cohort_status": {
-      const result = await changeCohortStatus({ ...input, reason });
-      return result.archivedOfferIds.length
-        ? `Cohort is now ${result.status.toLowerCase()}; ${result.archivedOfferIds.length} offer(s) archived.`
-        : `Cohort is now ${result.status.toLowerCase()}.`;
+    case "upload_course_package": {
+      const check = planned.upload;
+      if (!check || !attachment) throw new Error("INVALID_STATE");
+      const packageId =
+        check.status === "ALREADY_UPLOADED"
+          ? check.packageId
+          : await uploadUnifiedCoursePackage(
+              attachment.json,
+              reason,
+              String(input.organisationId),
+            );
+      const result =
+        check.status === "ALREADY_UPLOADED" &&
+        check.packageStatus !== "UPLOADED"
+          ? null
+          : await validateAcademyPackage(packageId, reason);
+      if (result && !result.valid) throw new Error("MALFORMED_PACKAGE");
+      return {
+        outcome: result
+          ? `Stored and structurally validated as revision ${result.package.packageRevision}, with ${result.review.pendingDecisions.length} academic decision(s) pending review.`
+          : "This exact file was already stored; nothing new was created.",
+        links: [
+          {
+            label: "Open its academic review",
+            href: `/admin/course-engineering/review?packageId=${packageId}`,
+          },
+          {
+            label: "Open in Course Engineering",
+            href: `/admin/course-engineering?packageId=${packageId}`,
+          },
+        ],
+      };
     }
-    case "run_course_test": {
-      const run = await runCoursePackageTest(String(input.importId), reason);
-      return run.outcome === "PASS"
-        ? "Pre-publication test passed for the current state."
-        : `Pre-publication test failed (${run.failureCode ?? "see course engineering"}).`;
+    case "publish_course": {
+      const result = await publishUnifiedCourse({ ...input, reason });
+      return {
+        outcome: result.replayed
+          ? `Already published at /courses/${String(input.slug)} with these exact terms.`
+          : `Published at /courses/${String(input.slug)}.`,
+        links: [
+          {
+            label: "Open the course page",
+            href: `/courses/${String(input.slug)}`,
+          },
+        ],
+      };
     }
+    case "create_coupon": {
+      const { organisationId, ...coupon } = input;
+      await createCourseCoupon({ ...coupon, reason }, String(organisationId));
+      return { outcome: `Coupon ${String(input.code)} created.` };
+    }
+    case "set_coupon_active":
+      await setCourseCouponActive(
+        String(input.couponId),
+        input.active === true,
+        reason,
+      );
+      return {
+        outcome: `Coupon is now ${input.active ? "active" : "inactive"} for new checkouts.`,
+      };
     default:
       throw new Error("Not a mutation action");
   }
@@ -979,11 +1084,12 @@ export async function executeOperation(
     proposalId: unknown;
     confirmed: unknown;
   },
+  attachment: Attachment | null = null,
   now = new Date(),
 ): Promise<Receipt> {
   const id = operationActionIdSchema.parse(request.actionId);
   const def = OPERATION_ACTIONS[id];
-  const actor = await requireAnyRole(def.roles);
+  const access = await requireOperator(id);
   const proposalId =
     typeof request.proposalId === "string" ? request.proposalId : "";
   const base = {
@@ -1002,13 +1108,6 @@ export async function executeOperation(
       status: "REFUSED",
       outcome: "Read-only inspections need no confirmation.",
     };
-  if (!isOperationEnabled(id))
-    return {
-      ...base,
-      status: "REFUSED",
-      outcome:
-        "Not executed: the Operations Engineer does not carry out this change yet. Use its dedicated form.",
-    };
   if (request.confirmed !== true)
     return {
       ...base,
@@ -1019,7 +1118,7 @@ export async function executeOperation(
   const issued = Date.parse(issuedAt);
   if (
     !Number.isFinite(issued) ||
-    now.getTime() - issued > PROPOSAL_TTL_MS ||
+    now.getTime() - issued > proposalTtl(id) ||
     issued > now.getTime() + 60_000
   )
     return {
@@ -1055,7 +1154,7 @@ export async function executeOperation(
   try {
     let planned: Planned;
     try {
-      planned = await plan(id, parsed.input);
+      planned = await plan(id, parsed.input, access, attachment);
     } catch {
       return {
         ...base,
@@ -1067,7 +1166,7 @@ export async function executeOperation(
     const display = planned.display;
     const nonce = typeof request.nonce === "string" ? request.nonce : "";
     const expected = proposalHash(
-      actor.id,
+      access.actor.id,
       id,
       parsed.input,
       planned.fingerprint,
@@ -1087,7 +1186,7 @@ export async function executeOperation(
             display,
             status: "STATE_CHANGED",
             outcome:
-              "Not executed: the state changed since this proposal was prepared, or the proposal was altered. Review the new proposal before confirming.",
+              "Not executed: the records (or the attached file) changed since this proposal was prepared, or the proposal was altered. Review the new proposal before confirming.",
           };
     if (planned.checks.some((c) => c.blocking))
       return {
@@ -1105,24 +1204,21 @@ export async function executeOperation(
     // null: the records could not be re-read.
     const applied = async (): Promise<boolean | null> => {
       try {
-        const after = await plan(id, parsed.input);
-        return id === "run_course_test"
-          ? runSequence(after.fingerprint) !== null &&
-              runSequence(after.fingerprint) !==
-                runSequence(planned.fingerprint)
-          : after.done;
+        return (await plan(id, parsed.input, access, attachment)).done;
       } catch {
         return null;
       }
     };
-    let outcome: string;
+    let result: { outcome: string; links?: Link[] };
     try {
-      outcome = await perform(
+      result = await perform(
         id,
         parsed.input,
         annotate(String(parsed.input.reason), proposalId),
+        planned,
+        attachment,
       );
-    } catch {
+    } catch (error) {
       // An error does not prove nothing changed: the database may have
       // committed before the response was lost. Decide from the records.
       const state = await applied();
@@ -1150,13 +1246,13 @@ export async function executeOperation(
           recovery:
             "Do not retry yet. Inspect the record (for example with a read-only inspection) and prepare a new proposal only if the change is absent.",
         };
+      const code = policyCode(error);
       return {
         ...base,
         display,
         executedAt,
         status: "FAILED",
-        outcome:
-          "The governed service refused or could not complete the operation, and re-reading the records confirms the change was not applied.",
+        outcome: `The governed service refused or could not complete the operation${code ? ` (${code})` : ""}, and re-reading the records confirms the change was not applied.`,
         recovery:
           "Prepare the proposal again to see the current state, then correct the input or the blocking condition.",
       };
@@ -1168,7 +1264,8 @@ export async function executeOperation(
       display,
       executedAt,
       status: "SUCCEEDED",
-      outcome,
+      outcome: result.outcome,
+      links: result.links,
       verified: state,
       verification:
         state === true
@@ -1194,7 +1291,7 @@ export function operationsEngineerConfigured(): boolean {
 export async function interpretOperationRequest(
   text: unknown,
 ): Promise<InterpretResult> {
-  await requireAnyRole(ADMINS);
+  await requireOperator();
   const request = typeof text === "string" ? text.trim().slice(0, 2000) : "";
   if (request.length < 3)
     return {
@@ -1248,11 +1345,8 @@ export async function interpretOperationRequest(
     explanation: intent.explanation,
     actionId: intent.action,
     raw,
-    prepared: await prepareOperation(intent.action, raw),
+    // A file is never inferred: an upload is prepared without one, which
+    // asks the administrator to attach it.
+    prepared: await prepareOperation(intent.action, raw, null),
   };
-}
-
-function runSequence(fingerprint: unknown): number | null {
-  const run = (fingerprint as { run?: unknown } | null)?.run;
-  return typeof run === "number" ? run : null;
 }

@@ -130,8 +130,13 @@ const PAGES: [string, Access, () => Promise<{ default: unknown }>][] = [
   ],
   [
     "/admin/operations-engineer",
-    "RETIRED",
+    "COURSE_ENGINE",
     () => import("@/app/admin/operations-engineer/page"),
+  ],
+  [
+    "/admin/course-engineering/review",
+    "COURSE_ENGINE",
+    () => import("@/app/admin/course-engineering/review/page"),
   ],
   ["/admin/sales", "COURSE_ADMIN", () => import("@/app/admin/sales/page")],
   ["/admin/people", "PLATFORM_ADMIN", () => import("@/app/admin/people/page")],

@@ -1,69 +1,185 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The Operations Engineer execution plane, end to end through the real
-// registry, proposal, confirmation and receipt code. Only the governed
-// services it calls (and the AI runtime) are stubbed, so every check below
-// is about this layer's own safeguards.
+// registry, proposal, confirmation and receipt code, over the unified Course
+// Engine. Only the governed services it calls (and the AI runtime) are
+// replaced by an in-memory model of their recorded state, so every check
+// below is about this layer's own safeguards.
+const DUCELIO = "00000000-0000-4000-8000-000000000001";
+const OTHER_ORG = "00000000-0000-4000-8000-0000000000aa";
+const AWS = "10000000-0000-4000-8000-000000000003";
+const READY = "10000000-0000-4000-8000-000000000004";
+const FOREIGN = "10000000-0000-4000-8000-000000000009";
+const COURSE = "20000000-0000-4000-8000-000000000001";
+const COUPON = "30000000-0000-4000-8000-000000000001";
+
+type Pkg = {
+  id: string;
+  organisationId: string;
+  organisationName: string;
+  packageKey: string;
+  packageRevision: number;
+  status: "UPLOADED" | "VALIDATED" | "PUBLISHED" | "REJECTED";
+  title: string;
+  pendingDecisions: string[];
+  rejectedReason: string | null;
+  curriculumImport: null | {
+    id: string;
+    status: string;
+    programmeVersionId: null;
+  };
+  course: null | {
+    id: string;
+    offerId: string | null;
+    slug: string | null;
+    offerState: "PUBLISHED" | "ARCHIVED" | null;
+    saleMode: "REVIEW_ONLY" | "PUBLIC_SALE" | null;
+  };
+};
+type CouponRow = {
+  id: string;
+  code: string;
+  percentOff: number | null;
+  amountOffMinor: number | null;
+  currency: string | null;
+  expiresAt: string;
+  redemptionLimit: number;
+  courseId: string | null;
+  active: boolean;
+  reserved: number;
+  redeemed: number;
+};
+
 const m = vi.hoisted(() => ({
-  requireAnyRole: vi.fn(),
-  offerActivations: [] as {
-    activationId: string;
-    programmeTitle: string;
-    cohortTitle: string;
-    cohortStartsOn: string;
-    publishedOfferSlug: string | null;
-  }[],
+  access: null as unknown,
+  packages: [] as Pkg[],
+  stored: new Map<string, string>(),
+  coupons: [] as CouponRow[],
+  orders: [] as Record<string, unknown>[],
+  catalogue: [] as { offerId: string; currency: string }[],
+  checkout: false,
+  readFails: false,
+  reads: [] as string[],
+  upload: vi.fn(),
+  validate: vi.fn(),
   publish: vi.fn(),
-  archive: vi.fn(),
-  createCampaign: vi.fn(),
-  archiveCampaign: vi.fn(),
-  changeCohortStatus: vi.fn(),
-  runTest: vi.fn(),
-  offersView: vi.fn(),
-  offerRows: [] as { subtitle: string; state: string }[],
-  campaigns: [] as Record<string, unknown>[],
-  courses: [] as Record<string, unknown>[],
-  cohorts: [] as Record<string, unknown>[],
+  createCoupon: vi.fn(),
+  setActive: vi.fn(),
   adapter: null as unknown,
   runtime: vi.fn(),
 }));
 
-vi.mock("@/server/identity", () => ({ requireAnyRole: m.requireAnyRole }));
-vi.mock("@/server/commercial-v1-commerce", () => ({
-  listCommercialV1OfferActivations: async () => m.offerActivations,
-  listCommercialV1Offers: async () => [],
-  listCommercialV1Campaigns: async () => m.campaigns,
-  publishCommercialV1Offer: m.publish,
-  archiveCommercialV1Offer: m.archive,
-  createCommercialV1Campaign: m.createCampaign,
-  archiveCommercialV1Campaign: m.archiveCampaign,
+const read = vi.hoisted(
+  () =>
+    <T>(name: string, value: () => T) =>
+      vi.fn(async () => {
+        m.reads.push(name);
+        if (m.readFails) throw new Error("SERVICE_UNAVAILABLE");
+        return structuredClone(value());
+      }),
+);
+
+vi.mock("@/server/course-organisations", () => ({
+  courseEngineeringAccess: async () => m.access,
 }));
-vi.mock("@/server/commercial-v1-commerce/operations", () => ({
-  listCommerceOperations: m.offersView,
+vi.mock("@/lib/env", async (original) => ({
+  ...(await original<typeof import("@/lib/env")>()),
+  commerceConfig: () => ({ configured: m.checkout }),
 }));
-vi.mock("@/server/course-activation", () => ({
-  listCommercialV1Activations: async () => ({
-    activations: m.offerActivations.map((a) => ({
-      activationId: a.activationId,
-      gradingPolicyPublished: true,
-      resultPolicyPublished: true,
-    })),
+vi.mock("@/server/unified-course-engine", () => ({
+  listUnifiedCoursePackages: read("packages", () => m.packages),
+  listUnifiedCourseCatalogue: read("catalogue", () => m.catalogue),
+  getUnifiedAcademicResolutions: async () => [],
+  getUnifiedPublicationGate: async (id: string) => {
+    m.reads.push("gate");
+    if (m.readFails) throw new Error("SERVICE_UNAVAILABLE");
+    const p = structuredClone(m.packages.find((x) => x.id === id));
+    if (!p) return { ok: false, code: "NOT_FOUND" };
+    if (p.status === "PUBLISHED")
+      return { ok: true, package: p, published: true };
+    if (p.status !== "VALIDATED")
+      return { ok: false, code: "INVALID_STATE", package: p };
+    if (p.pendingDecisions.length)
+      return {
+        ok: false,
+        code: "POLICY_PENDING",
+        package: p,
+        pending: p.pendingDecisions,
+      };
+    return { ok: true, package: p, published: false };
+  },
+  checkUnifiedCoursePackageUpload: async (
+    json: {
+      schemaVersion?: string;
+      packageKey: string;
+      packageRevision: number;
+    },
+    org: string,
+  ) => {
+    m.reads.push("upload-check");
+    if (json?.schemaVersion !== "ACADEMY_COURSE_PACKAGE_V1")
+      return {
+        status: "INVALID",
+        issues: ["schemaVersion — must be ACADEMY_COURSE_PACKAGE_V1"],
+      };
+    const same = m.packages.find(
+      (p) =>
+        p.organisationId === org &&
+        p.packageKey === json.packageKey &&
+        p.packageRevision === json.packageRevision,
+    );
+    if (same && m.stored.get(same.id) === JSON.stringify(json))
+      return {
+        status: "ALREADY_UPLOADED",
+        packageId: same.id,
+        packageKey: same.packageKey,
+        revision: same.packageRevision,
+        packageStatus: same.status,
+      };
+    if (same)
+      return {
+        status: "REVISION_TAKEN",
+        packageKey: same.packageKey,
+        revision: same.packageRevision,
+        existingStatus: same.status,
+        existingId: same.id,
+        latestRevision: same.packageRevision,
+        nextRevision: same.packageRevision + 1,
+      };
+    return {
+      status: "READY",
+      packageKey: json.packageKey,
+      revision: json.packageRevision,
+      title: "Synthetic course",
+      pendingDecisions: 2,
+      latestRevision: null,
+    };
+  },
+  describeUploadConflict: (c: { revision: number; nextRevision: number }) =>
+    `Revision ${c.revision} already exists; use ${c.nextRevision}.`,
+  uploadUnifiedCoursePackage: m.upload,
+  publishUnifiedCourse: m.publish,
+}));
+vi.mock("@/server/academy-course-engineering", () => ({
+  getAcademyPackageReview: async () => ({
+    id: AWS,
+    status: "VALIDATED",
+    review: {
+      totals: { modules: 5, lessons: 22 },
+      labs: [{ graded: false }],
+      assessments: [{ kind: "FINAL", questionCount: 65, durationMinutes: 130 }],
+      pendingDecisions: [
+        { key: "EXAM_ITEM_INDEPENDENT_REVIEW", summary: "Review items." },
+      ],
+    },
   }),
+  validateAcademyPackage: m.validate,
 }));
-vi.mock("@/server/cohorts", () => ({
-  getCohortWorkspace: async () => ({
-    workspace: { cohorts: m.cohorts, versions: [] },
-  }),
-  changeCohortStatus: m.changeCohortStatus,
-}));
-vi.mock("@/server/course-engineering", () => ({
-  listCoursePackages: async () => [],
-  getCoursePackageTestStatus: async () => null,
-  runCoursePackageTest: m.runTest,
-}));
-vi.mock("@/server/admin-control-centre", async (original) => ({
-  ...(await original<typeof import("@/server/admin-control-centre")>()),
-  getCourseCatalogue: async () => ({ courses: m.courses, sources: {} }),
+vi.mock("@/server/course-coupons", () => ({
+  listCourseCoupons: read("coupons", () => m.coupons),
+  listOrganisationCourseOrders: read("orders", () => m.orders),
+  createCourseCoupon: m.createCoupon,
+  setCourseCouponActive: m.setActive,
 }));
 vi.mock("@/server/academic-runtime/profile-registry", () => ({
   resolvePlatformRuntimeProfile: () => ({
@@ -88,821 +204,737 @@ import {
   getOperationOptions,
   interpretOperationRequest,
   prepareOperation,
+  readAttachment,
+  type Attachment,
   type Proposal,
 } from "@/server/operations-engineer";
 import { AccessDenied } from "@/domain/policy";
-import { deriveCourseLifecycle } from "@/domain/admin-course-lifecycle";
-import {
-  OPERATIONS_ENGINEER_DISABLED,
-  composeOperationsEngineerInstructions,
-} from "@/domain/operations-engineer";
 
-// What the database holds after an offer is published (by anyone).
-function commitOffer(slug: string, minor = 24900, currency = "GBP") {
-  m.offerActivations[0].publishedOfferSlug = slug;
-  m.offerRows.push({
-    subtitle: `${slug} / Autumn 2026 / ${minor} ${currency}`,
-    state: "PUBLISHED",
-  });
-}
-
-const ACTIVATION = "50000000-0000-4000-8000-000000000001";
 const admin = {
   id: "60000000-0000-4000-8000-000000000001",
   displayName: "Avery Admin",
   roles: ["ACADEMIC_ADMIN"],
 };
-const raw = {
-  activationId: ACTIVATION,
-  slug: "security-plus-autumn-2026",
-  price: "249.00",
-  currency: "GBP",
-  deliveryPlan: "STANDARD_6_WEEK",
-  summary: "",
-  reason: "Launch the autumn cohort",
+const org = (id: string, name: string, canManage = true) => ({
+  id,
+  name,
+  slug: name.toLowerCase(),
+  canManage,
+  canReview: canManage,
+  canOwn: false,
+});
+const pkg = (over: Partial<Pkg>): Pkg => ({
+  id: AWS,
+  organisationId: DUCELIO,
+  organisationName: "Ducelio",
+  packageKey: "aws-saa-c03-architect-academy",
+  packageRevision: 3,
+  status: "VALIDATED",
+  title: "AWS Solutions Architect – Associate (SAA-C03) Exam Preparation",
+  pendingDecisions: [],
+  rejectedReason: null,
+  curriculumImport: null,
+  course: null,
+  ...over,
+});
+const reason = "Synthetic operations test";
+const synthetic = {
+  schemaVersion: "ACADEMY_COURSE_PACKAGE_V1",
+  packageKey: "synthetic-course",
+  packageRevision: 1,
 };
+const file = (json: unknown, name = "course.json") =>
+  readAttachment(new File([JSON.stringify(json)], name));
 
-async function proposal(input = raw): Promise<Proposal> {
-  const result = await prepareOperation("publish_offer", input);
-  if (result.status !== "PROPOSAL") throw new Error(result.status);
+async function proposal(
+  id: string,
+  raw: Record<string, string>,
+  attachment: Attachment | null = null,
+  now?: Date,
+): Promise<Proposal> {
+  const result = await prepareOperation(id, raw, attachment, now);
+  if (result.status !== "PROPOSAL")
+    throw new Error(`${result.status} ${JSON.stringify(result)}`);
   return result.proposal;
 }
-const confirm = (p: Proposal, over: Record<string, unknown> = {}) =>
-  executeOperation({
-    actionId: p.actionId,
-    raw: p.raw,
-    issuedAt: p.issuedAt,
-    nonce: p.nonce,
-    proposalId: p.proposalId,
-    confirmed: true,
-    ...over,
-  });
+const confirm = (
+  p: Proposal,
+  attachment: Attachment | null = null,
+  over: Record<string, unknown> = {},
+  now?: Date,
+) =>
+  executeOperation(
+    {
+      actionId: p.actionId,
+      raw: p.raw,
+      issuedAt: p.issuedAt,
+      nonce: p.nonce,
+      proposalId: p.proposalId,
+      confirmed: true,
+      ...over,
+    },
+    attachment,
+    now,
+  );
+const publishRaw = {
+  packageId: READY,
+  slug: "synthetic-ready",
+  price: "249.00",
+  currency: "GBP",
+  summary: "",
+  reason,
+};
+const blocking = (p: Proposal) =>
+  p.checks.filter((c) => c.blocking).map((c) => c.text);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.requireAnyRole.mockResolvedValue(admin);
-  m.offerActivations = [
+  m.access = {
+    actor: admin,
+    allowed: true,
+    organisations: [
+      org(DUCELIO, "Ducelio"),
+      org(OTHER_ORG, "Other Org", false),
+    ],
+  };
+  m.packages = [
+    pkg({
+      pendingDecisions: [
+        "OFFICIAL_SOURCE_RECONCILIATION",
+        "EXAM_ITEM_INDEPENDENT_REVIEW",
+      ],
+    }),
+    pkg({
+      id: READY,
+      packageKey: "synthetic-ready",
+      packageRevision: 1,
+      title: "Synthetic ready course",
+    }),
+    pkg({
+      id: FOREIGN,
+      organisationId: OTHER_ORG,
+      organisationName: "Other Org",
+      packageKey: "org-foreign",
+      packageRevision: 1,
+      title: "Other organisation course",
+    }),
+  ];
+  m.stored = new Map();
+  m.coupons = [
     {
-      activationId: ACTIVATION,
-      programmeTitle: "CompTIA Security+ (SY0-701)",
-      cohortTitle: "Autumn 2026",
-      cohortStartsOn: "2026-11-02",
-      publishedOfferSlug: null,
+      id: COUPON,
+      code: "SPRING-10",
+      percentOff: 10,
+      amountOffMinor: null,
+      currency: null,
+      expiresAt: "2031-01-01T00:00:00.000Z",
+      redemptionLimit: 100,
+      courseId: null,
+      active: true,
+      reserved: 1,
+      redeemed: 4,
     },
   ];
-  m.offerRows = [];
-  m.campaigns = [];
-  m.courses = [];
-  m.cohorts = [];
-  m.offersView.mockImplementation(async () => ({
-    hasMore: false,
-    rows: m.offerRows,
-  }));
-  m.publish.mockImplementation(
-    async (input: {
-      slug: string;
-      priceAmountMinor: number;
-      currency: string;
-    }) => {
-      commitOffer(input.slug, input.priceAmountMinor, input.currency);
-      return "70000000-0000-4000-8000-000000000001";
+  m.orders = [];
+  m.catalogue = [];
+  m.checkout = false;
+  m.readFails = false;
+  m.reads = [];
+  m.adapter = null;
+  m.upload.mockImplementation(
+    async (
+      json: { packageKey: string; packageRevision: number },
+      _r: string,
+      o: string,
+    ) => {
+      const id = "10000000-0000-4000-8000-0000000000f1";
+      m.packages.push(
+        pkg({
+          id,
+          organisationId: o,
+          packageKey: json.packageKey,
+          packageRevision: json.packageRevision,
+          status: "UPLOADED",
+          title: "Synthetic course",
+        }),
+      );
+      m.stored.set(id, JSON.stringify(json));
+      return id;
     },
   );
-  m.adapter = null;
+  m.validate.mockImplementation(async (id: string) => {
+    m.packages.find((p) => p.id === id)!.status = "VALIDATED";
+    return {
+      valid: true,
+      package: { packageRevision: 1 },
+      review: { pendingDecisions: [{}, {}], warnings: [] },
+    };
+  });
+  m.publish.mockImplementation(
+    async (input: { packageId: string; slug: string }) => {
+      const p = m.packages.find((x) => x.id === input.packageId)!;
+      p.status = "PUBLISHED";
+      p.course = {
+        id: COURSE,
+        offerId: "40000000-0000-4000-8000-000000000001",
+        slug: input.slug,
+        offerState: "PUBLISHED",
+        saleMode: "PUBLIC_SALE",
+      };
+      return { courseId: COURSE, offerId: p.course.offerId, replayed: false };
+    },
+  );
+  m.createCoupon.mockImplementation(async (input: Record<string, unknown>) => {
+    m.coupons.push({
+      id: "30000000-0000-4000-8000-0000000000f2",
+      code: String(input.code),
+      percentOff: (input.percentOff as number) ?? null,
+      amountOffMinor: (input.amountOffMinor as number) ?? null,
+      currency: (input.currency as string) ?? null,
+      expiresAt: String(input.expiresAt),
+      redemptionLimit: Number(input.redemptionLimit),
+      courseId: (input.courseId as string) ?? null,
+      active: true,
+      reserved: 0,
+      redeemed: 0,
+    });
+    return "30000000-0000-4000-8000-0000000000f2";
+  });
+  m.setActive.mockImplementation(async (id: string, active: boolean) => {
+    m.coupons.find((c) => c.id === id)!.active = active;
+    return id;
+  });
 });
 
-describe("authority", () => {
-  it("refuses before reading state or calling any service", async () => {
-    m.requireAnyRole.mockRejectedValue(new AccessDenied());
-    await expect(prepareOperation("publish_offer", raw)).rejects.toThrow(
-      AccessDenied,
-    );
+describe("authority and organisation scope", () => {
+  it("refuses an actor without course-engineering access before reading any state", async () => {
+    m.access = { actor: admin, allowed: false, organisations: [] };
+    for (const run of [
+      () => prepareOperation("list_courses", {}),
+      () => getOperationOptions(),
+      () => interpretOperationRequest("list the courses"),
+      () =>
+        executeOperation({
+          actionId: "set_coupon_active",
+          raw: { couponId: COUPON, active: "false", reason },
+          issuedAt: new Date().toISOString(),
+          nonce: "n",
+          proposalId: "p",
+          confirmed: true,
+        }),
+    ])
+      await expect(run()).rejects.toBeInstanceOf(AccessDenied);
+    expect(m.reads).toEqual([]);
+    expect(m.setActive).not.toHaveBeenCalled();
+  });
+
+  it("keeps platform runtime health behind platform course-administrator roles", async () => {
+    m.access = {
+      actor: { ...admin, roles: ["STUDENT"] },
+      allowed: true,
+      organisations: [org(OTHER_ORG, "Other Org")],
+    };
     await expect(
-      executeOperation({
-        actionId: "publish_offer",
-        raw,
-        issuedAt: "",
-        nonce: "",
-        proposalId: "x",
-        confirmed: true,
-      }),
-    ).rejects.toThrow(AccessDenied);
-    expect(m.offersView).not.toHaveBeenCalled();
-    expect(m.publish).not.toHaveBeenCalled();
-    expect(m.requireAnyRole).toHaveBeenCalledWith([
-      "ACADEMIC_ADMIN",
-      "PLATFORM_ADMIN",
+      prepareOperation("check_agent_health", {}),
+    ).rejects.toBeInstanceOf(AccessDenied);
+    expect((await prepareOperation("list_courses", {})).status).toBe(
+      "READ_RESULT",
+    );
+  });
+
+  it("rejects retired and unknown operations outright", async () => {
+    for (const retired of [
+      "publish_offer",
+      "create_campaign",
+      "change_cohort_status",
+      "drop_table",
+    ])
+      await expect(prepareOperation(retired, {})).rejects.toThrow();
+  });
+
+  it("offers only organisations the administrator manages", async () => {
+    const options = await getOperationOptions();
+    expect(options.organisations).toEqual([
+      { value: DUCELIO, label: "Ducelio" },
+    ]);
+    expect(options.publishablePackages.map((o) => o.value)).toEqual([
+      AWS,
+      READY,
     ]);
   });
 
-  it("rejects an action outside the registry", async () => {
-    await expect(prepareOperation("run_sql", {})).rejects.toThrow();
-    await expect(
-      executeOperation({
-        actionId: "deploy_production",
-        raw: {},
-        issuedAt: "",
-        nonce: "",
-        proposalId: "",
-        confirmed: true,
-      }),
-    ).rejects.toThrow();
+  it("refuses changes inside an organisation the administrator does not manage", async () => {
+    const upload = await proposal(
+      "upload_course_package",
+      { organisationId: OTHER_ORG, reason },
+      await file(synthetic),
+    );
+    expect(blocking(upload)).toContain(
+      "You do not manage course packages for this organisation.",
+    );
+    const publish = await proposal("publish_course", {
+      ...publishRaw,
+      packageId: FOREIGN,
+      slug: "foreign-course",
+    });
+    expect(blocking(publish)).toContain(
+      "You do not manage this course's organisation.",
+    );
+    const coupon = await proposal("create_coupon", {
+      organisationId: OTHER_ORG,
+      code: "FOREIGN-10",
+      discountKind: "PERCENT",
+      percentOff: "10",
+      expiresAt: "2031-01-01T09:00",
+      redemptionLimit: "5",
+      reason,
+    });
+    expect(blocking(coupon)).toContain(
+      "You do not manage coupons for this organisation.",
+    );
+    for (const p of [upload, publish, coupon])
+      expect((await confirm(p, await file(synthetic))).status).toBe("REFUSED");
+    expect(m.upload).not.toHaveBeenCalled();
+    expect(m.publish).not.toHaveBeenCalled();
+    expect(m.createCoupon).not.toHaveBeenCalled();
   });
 });
 
 describe("read-only inspections", () => {
-  it("run immediately and change nothing", async () => {
-    const result = await prepareOperation("list_offers", {});
-    expect(result.status).toBe("READ_RESULT");
-    if (result.status === "READ_RESULT")
-      expect(result.table.rows[0]).toEqual([
-        "CompTIA Security+ (SY0-701)",
-        "Autumn 2026 (starts 2026-11-02)",
-        "No offer",
-        "—",
-      ]);
-    expect(m.publish).not.toHaveBeenCalled();
+  it("list courses with explicit lifecycle stages, not raw pipeline states", async () => {
+    const result = await prepareOperation("list_courses", {});
+    if (result.status !== "READ_RESULT") throw new Error(result.status);
+    const aws = result.table.rows.find((r) => r[0].startsWith("AWS"))!;
+    expect(aws[3]).toBe("Structurally validated · awaiting academic review");
+    expect(aws[4]).toBe("2");
+    expect(JSON.stringify(result.table)).not.toContain("not started");
   });
 
-  it("inspects an individual-learning course with no cohort advice", async () => {
-    const importId = "10000000-0000-4000-8000-0000000000a2";
-    const packageId = "ef6b8a49-0000-4000-8000-000000000001";
-    m.courses = [
+  it("inspect one revision with its decisions, gate explanation and review links", async () => {
+    const result = await prepareOperation("inspect_course", { packageId: AWS });
+    if (result.status !== "READ_RESULT") throw new Error(result.status);
+    const text = JSON.stringify(result.table);
+    expect(text).toContain("Pending: EXAM_ITEM_INDEPENDENT_REVIEW");
+    expect(text).toContain("imported and tested at publication");
+    expect(text).toContain("65 items/130 min");
+    expect(result.table.links?.[0]).toEqual({
+      label: "Open in Course academic review",
+      href: `/admin/course-engineering/review?packageId=${AWS}`,
+    });
+  });
+
+  it("report sales without presenting order amounts as recognised revenue", async () => {
+    m.orders = [
       {
-        packageKey: "cloud-architect-academy",
-        title: "Cloud Architect Academy",
-        testRecord: false,
-        lifecycle: deriveCourseLifecycle({
-          revisions: [
-            {
-              id: importId,
-              packageKey: "cloud-architect-academy",
-              packageRevision: 2,
-              status: "PUBLISHED",
-              programmeId: null,
-              programmeVersionId: "20000000-0000-4000-8000-0000000000a2",
-              createdAt: "2026-10-22T10:00:00Z",
-              appliedAt: "2026-10-22T11:00:00Z",
-              publishedAt: "2026-10-22T12:00:00Z",
-              rejectedAt: null,
-            },
-          ],
-          activations: [],
-          offerActivations: [],
-          liveOfferSlugs: [],
-          cohorts: [],
-          academyPackages: [
-            {
-              id: packageId,
-              packageRevision: 2,
-              status: "PUBLISHED",
-              pendingDecisions: ["COURSE_PRICE_APPROVAL"],
-              curriculumImport: { id: importId, status: "PUBLISHED" },
-              course: {
-                id: "ea000000-0000-4000-8000-000000000001",
-                offerId: "1d000000-0000-4000-8000-000000000001",
-                slug: "cloud-architect",
-                offerState: "PUBLISHED",
-                saleMode: "REVIEW_ONLY",
-                currency: "GBP",
-                formats: [
-                  {
-                    formatId: "STANDARD_6W",
-                    weeks: 6,
-                    sessionMinutes: 90,
-                    minStudyDays: 3,
-                    maxStudyDays: 5,
-                    amountMinor: 35000,
-                  },
-                ],
-              },
-            },
-          ],
-          academyCatalogueSlugs: [],
-        }),
+        id: "o1",
+        courseTitle: "C",
+        learnerId: "l",
+        state: "FULFILLED",
+        amountMinor: 20000,
+        currency: "GBP",
+        discountAmountMinor: 5000,
+        paymentConfirmed: true,
+        refundRecorded: true,
+        createdAt: "2026-10-25T10:00:00Z",
+      },
+      {
+        id: "o2",
+        courseTitle: "C",
+        learnerId: "l",
+        state: "PENDING",
+        amountMinor: 10000,
+        currency: "GBP",
+        discountAmountMinor: 0,
+        paymentConfirmed: false,
+        refundRecorded: false,
+        createdAt: "2026-10-25T11:00:00Z",
       },
     ];
-    const result = await prepareOperation("inspect_course", {
-      packageKey: "cloud-architect-academy",
-    });
-    expect(result.status).toBe("READ_RESULT");
-    if (result.status !== "READ_RESULT") return;
-    expect(result.table.title).toContain("Individual learning");
-    expect(result.table.rows.map((r) => r[0])).toContain(
-      "Individual learning: Approval gates",
+    const result = await prepareOperation("sales_report", {});
+    if (result.status !== "READ_RESULT") throw new Error(result.status);
+    const summary = Object.fromEntries(
+      result.table.summary!.map((d) => [d.label, d.value]),
     );
-    const all = JSON.stringify(result.table);
-    expect(all).not.toMatch(
-      /No cohort exists|Activate delivery|\/admin\/cohorts/,
+    expect(summary["GBP orders"]).toBe(
+      "2: 1 fulfilled, 1 pending, 0 cancelled",
     );
-    expect(result.table.note).toContain("review only, not on public sale");
-    expect(result.table.note).toContain("STANDARD_6W 6 weeks GBP 350.00");
-    expect(result.table.note).toContain(
-      `/admin/academy-course-engineering?packageId=${packageId}`,
+    expect(summary["GBP fulfilled order totals"]).toContain("£200.00");
+    expect(summary["GBP fulfilled order totals"]).toContain(
+      "not settled revenue",
     );
-    expect(m.publish).not.toHaveBeenCalled();
+    expect(summary["GBP refunds recorded"]).toContain("1 orders");
+    expect(summary["Recognised revenue"]).toMatch(/^Not reported/);
+    // No learner identifier is exposed in the report rows.
+    expect(JSON.stringify(result.table.rows)).not.toContain('"l"');
   });
 
-  it("cannot be 'executed' as a change", async () => {
+  it("cannot be executed as a change", async () => {
     const receipt = await executeOperation({
-      actionId: "list_offers",
+      actionId: "list_courses",
       raw: {},
       issuedAt: new Date().toISOString(),
-      nonce: "",
-      proposalId: "x",
+      nonce: "n",
+      proposalId: "p",
       confirmed: true,
     });
     expect(receipt.status).toBe("REFUSED");
   });
 });
 
-describe("proposals", () => {
-  it("shows the exact change with business-friendly values and passing checks", async () => {
-    const p = await proposal();
-    expect(p.display).toEqual(
-      expect.arrayContaining([
-        { label: "Public URL", value: "/courses/security-plus-autumn-2026" },
-        { label: "Price", value: "£249.00" },
-        { label: "Delivery plan", value: "6-week Standard" },
-      ]),
+describe("course package upload", () => {
+  it("never pretends a file was supplied", async () => {
+    const p = await proposal("upload_course_package", {
+      organisationId: DUCELIO,
+      reason,
+    });
+    expect(blocking(p)).toContain(
+      "Attach the course package JSON file. Nothing has been uploaded.",
+    );
+    expect((await confirm(p)).status).toBe("REFUSED");
+    expect(m.upload).not.toHaveBeenCalled();
+  });
+
+  it("stops invalid or non-JSON files before anything is stored", async () => {
+    const invalid = await proposal(
+      "upload_course_package",
+      { organisationId: DUCELIO, reason },
+      await file({ schemaVersion: "OTHER" }),
+    );
+    expect(blocking(invalid)[0]).toMatch(/failed validation with 1 issue/);
+    const notJson = await proposal(
+      "upload_course_package",
+      { organisationId: DUCELIO, reason },
+      await readAttachment(new File(["{not json"], "course.json")),
+    );
+    expect(blocking(notJson)[0]).toMatch(/not valid UTF-8 JSON/);
+    expect(m.upload).not.toHaveBeenCalled();
+  });
+
+  it("explains an occupied revision instead of overwriting history", async () => {
+    m.stored.set(READY, "different");
+    const p = await proposal(
+      "upload_course_package",
+      { organisationId: DUCELIO, reason },
+      await file({ ...synthetic, packageKey: "synthetic-ready" }),
+    );
+    expect(blocking(p)).toEqual(["Revision 1 already exists; use 2."]);
+  });
+
+  it("stores and validates a confirmed file once, under the administrator, and verifies it", async () => {
+    const attachment = await file(synthetic);
+    const p = await proposal(
+      "upload_course_package",
+      { organisationId: DUCELIO, reason },
+      attachment,
     );
     expect(p.blocked).toBe(false);
-    expect(p.proposalId).toMatch(/^[0-9a-f]{64}$/);
+    expect(p.display.find((d) => d.label === "File")?.value).toContain(
+      attachment!.sha256.slice(0, 16),
+    );
+    const receipt = await confirm(p, attachment);
+    expect(receipt).toMatchObject({ status: "SUCCEEDED", verified: true });
+    expect(m.upload).toHaveBeenCalledOnce();
+    expect(m.upload.mock.calls[0][1]).toMatch(
+      new RegExp(`^${reason} · Ops Engineer ref ${p.proposalId.slice(0, 8)}$`),
+    );
+    expect(m.upload.mock.calls[0][2]).toBe(DUCELIO);
+    expect(m.validate).toHaveBeenCalledOnce();
+    expect(receipt.links?.[0].href).toBe(
+      "/admin/course-engineering/review?packageId=10000000-0000-4000-8000-0000000000f1",
+    );
+    // A repeat on this server is refused; elsewhere the records show it done.
+    expect((await confirm(p, attachment)).status).toBe("DUPLICATE");
+    expect(m.upload).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a confirmation that carries a different file", async () => {
+    const p = await proposal(
+      "upload_course_package",
+      { organisationId: DUCELIO, reason },
+      await file(synthetic),
+    );
+    const receipt = await confirm(
+      p,
+      await file({ ...synthetic, packageRevision: 2 }),
+    );
+    expect(receipt.status).toBe("STATE_CHANGED");
+    expect(m.upload).not.toHaveBeenCalled();
+  });
+
+  it("reports an upload completed elsewhere from the records alone", async () => {
+    const attachment = await file(synthetic);
+    const p = await proposal(
+      "upload_course_package",
+      { organisationId: DUCELIO, reason },
+      attachment,
+    );
+    await m.upload(synthetic, reason, DUCELIO);
+    await m.validate("10000000-0000-4000-8000-0000000000f1");
+    m.upload.mockClear();
+    expect((await confirm(p, attachment)).status).toBe("ALREADY_DONE");
+    expect(m.upload).not.toHaveBeenCalled();
+  });
+});
+
+describe("publication", () => {
+  it("is blocked while academic decisions are pending and points to the review", async () => {
+    const p = await proposal("publish_course", {
+      ...publishRaw,
+      packageId: AWS,
+      slug: "aws-saa-c03",
+    });
+    expect(blocking(p)).toEqual([
+      "2 academic decision(s) are pending (OFFICIAL_SOURCE_RECONCILIATION, EXAM_ITEM_INDEPENDENT_REVIEW). They must be resolved by an authorised reviewer in Course academic review before publication.",
+    ]);
+    expect((await confirm(p)).status).toBe("REFUSED");
     expect(m.publish).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid input before reading state", async () => {
-    const result = await prepareOperation("publish_offer", {
-      ...raw,
-      price: "twelve",
+  it("publishes an approved revision with the exact governed input and verifies it", async () => {
+    const p = await proposal("publish_course", publishRaw);
+    expect(p.blocked).toBe(false);
+    expect(p.checks.map((c) => c.text)).toContain(
+      "Card checkout is not configured in this deployment: learners can join only with a coupon until it is.",
+    );
+    const receipt = await confirm(p);
+    expect(receipt).toMatchObject({ status: "SUCCEEDED", verified: true });
+    expect(m.publish).toHaveBeenCalledExactlyOnceWith({
+      packageId: READY,
+      slug: "synthetic-ready",
+      currency: "GBP",
+      amountMinor: 24900,
+      summary: null,
+      reason: `${reason} · Ops Engineer ref ${p.proposalId.slice(0, 8)}`,
     });
-    expect(result).toMatchObject({ status: "INVALID" });
-    expect(m.offersView).not.toHaveBeenCalled();
   });
 
-  it("blocks a second offer for the same delivery", async () => {
-    m.offerActivations[0].publishedOfferSlug = "existing-offer";
-    const p = await proposal();
-    expect(p.blocked).toBe(true);
-    expect(p.checks.find((c) => c.blocking)?.text).toContain(
-      "already has a published offer",
+  it("refuses an address another course already uses", async () => {
+    m.packages[0].course = {
+      id: COURSE,
+      offerId: null,
+      slug: "synthetic-ready",
+      offerState: "PUBLISHED",
+      saleMode: "PUBLIC_SALE",
+    };
+    const p = await proposal("publish_course", publishRaw);
+    expect(blocking(p)[0]).toMatch(/already used by AWS/);
+  });
+
+  it("reports a service refusal with its policy code and no change", async () => {
+    m.publish.mockRejectedValueOnce(new Error("TEST_GATE_NOT_SATISFIED"));
+    const receipt = await confirm(await proposal("publish_course", publishRaw));
+    expect(receipt.status).toBe("FAILED");
+    expect(receipt.outcome).toContain("(TEST_GATE_NOT_SATISFIED)");
+    expect(receipt.outcome).toContain("not applied");
+  });
+
+  it("reports a publication committed before its reply was lost as done, from the records", async () => {
+    m.publish.mockImplementationOnce(
+      async (input: { packageId: string; slug: string }) => {
+        const p = m.packages.find((x) => x.id === input.packageId)!;
+        p.status = "PUBLISHED";
+        p.course = {
+          id: COURSE,
+          offerId: null,
+          slug: input.slug,
+          offerState: "PUBLISHED",
+          saleMode: "PUBLIC_SALE",
+        };
+        throw new Error("fetch failed");
+      },
+    );
+    const receipt = await confirm(await proposal("publish_course", publishRaw));
+    expect(receipt).toMatchObject({ status: "SUCCEEDED", verified: true });
+  });
+
+  it("never guesses when the outcome cannot be re-read", async () => {
+    m.publish.mockImplementationOnce(async () => {
+      m.readFails = true;
+      throw new Error("fetch failed");
+    });
+    const receipt = await confirm(await proposal("publish_course", publishRaw));
+    expect(receipt.status).toBe("UNCERTAIN");
+  });
+});
+
+describe("discount codes", () => {
+  const percent = {
+    organisationId: DUCELIO,
+    code: "launch-25",
+    discountKind: "PERCENT",
+    percentOff: "25",
+    expiresAt: "2031-01-01T09:00",
+    redemptionLimit: "50",
+    reason,
+  };
+
+  it("creates a confirmed coupon through the coupon authority, scoped to its organisation", async () => {
+    const p = await proposal("create_coupon", percent);
+    expect(p.blocked).toBe(false);
+    expect((await confirm(p)).status).toBe("SUCCEEDED");
+    expect(m.createCoupon).toHaveBeenCalledExactlyOnceWith(
+      {
+        code: "LAUNCH-25",
+        expiresAt: "2031-01-01T09:00:00.000Z",
+        redemptionLimit: 50,
+        courseId: null,
+        percentOff: 25,
+        reason: `${reason} · Ops Engineer ref ${p.proposalId.slice(0, 8)}`,
+      },
+      DUCELIO,
     );
   });
 
-  it("blocks selling a place in a staging or acceptance cohort", async () => {
-    m.offerActivations[0].cohortTitle = "Acceptance cohort 1791-security";
-    const p = await proposal();
-    expect(p.blocked).toBe(true);
+  it("warns that a 100% coupon is free access and refuses a fixed amount in the wrong currency", async () => {
+    const free = await proposal("create_coupon", {
+      ...percent,
+      percentOff: "100",
+    });
     expect(
-      p.checks.some(
-        (c) => c.blocking && c.text.includes("staging or acceptance cohort"),
-      ),
+      free.checks.some((c) => !c.ok && c.text.includes("without any payment")),
     ).toBe(true);
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("REFUSED");
-    expect(m.publish).not.toHaveBeenCalled();
+    m.packages[1].status = "PUBLISHED";
+    m.packages[1].course = {
+      id: COURSE,
+      offerId: "40000000-0000-4000-8000-000000000001",
+      slug: "synthetic-ready",
+      offerState: "PUBLISHED",
+      saleMode: "PUBLIC_SALE",
+    };
+    m.catalogue = [
+      { offerId: "40000000-0000-4000-8000-000000000001", currency: "GBP" },
+    ];
+    const wrong = await proposal("create_coupon", {
+      ...percent,
+      code: "TEN-DOLLARS",
+      discountKind: "AMOUNT",
+      amountOff: "10.00",
+      currency: "USD",
+      courseId: COURSE,
+    });
+    expect(blocking(wrong)).toEqual([
+      "This course is priced in GBP; a fixed amount must use GBP.",
+    ]);
   });
 
-  it("blocks a slug already used by another offer", async () => {
-    m.offersView.mockResolvedValue({
-      hasMore: false,
-      rows: [{ subtitle: "security-plus-autumn-2026 / Old / 100 GBP" }],
+  it("never rewrites an existing code's terms", async () => {
+    const p = await proposal("create_coupon", {
+      ...percent,
+      code: "SPRING-10",
     });
-    expect((await proposal()).blocked).toBe(true);
+    expect(blocking(p)).toEqual([
+      "This code already exists with different terms. Coupon terms cannot be changed; choose a new code.",
+    ]);
+    expect((await confirm(p)).status).toBe("REFUSED");
+    expect(m.createCoupon).not.toHaveBeenCalled();
+  });
+
+  it("changes availability after confirmation and verifies it", async () => {
+    const p = await proposal("set_coupon_active", {
+      couponId: COUPON,
+      active: "false",
+      reason,
+    });
+    expect(p.display.find((d) => d.label === "Availability")?.value).toBe(
+      "Active → Inactive",
+    );
+    expect(await confirm(p)).toMatchObject({
+      status: "SUCCEEDED",
+      verified: true,
+    });
+    expect(m.setActive).toHaveBeenCalledExactlyOnceWith(
+      COUPON,
+      false,
+      `${reason} · Ops Engineer ref ${p.proposalId.slice(0, 8)}`,
+    );
+  });
+
+  it("gives a partially protected change a shorter confirmation window", async () => {
+    const t0 = new Date("2030-06-01T10:00:00Z");
+    const toggle = await proposal(
+      "set_coupon_active",
+      { couponId: COUPON, active: "false", reason },
+      null,
+      t0,
+    );
+    const create = await proposal("create_coupon", percent, null, t0);
+    expect(Date.parse(toggle.expiresAt) - t0.getTime()).toBe(5 * 60_000);
+    expect(Date.parse(create.expiresAt) - t0.getTime()).toBe(15 * 60_000);
+    const later = new Date(t0.getTime() + 6 * 60_000);
+    expect((await confirm(toggle, null, {}, later)).status).toBe("EXPIRED");
+    expect(m.setActive).not.toHaveBeenCalled();
   });
 });
 
 describe("confirmation and execution", () => {
   it("never executes without explicit confirmation", async () => {
-    const p = await proposal();
-    const receipt = await confirm(p, { confirmed: false });
-    expect(receipt.status).toBe("REFUSED");
+    const p = await proposal("publish_course", publishRaw);
+    expect((await confirm(p, null, { confirmed: false })).status).toBe(
+      "REFUSED",
+    );
+    expect((await confirm(p, null, { confirmed: "true" })).status).toBe(
+      "REFUSED",
+    );
     expect(m.publish).not.toHaveBeenCalled();
   });
 
-  it("executes the confirmed proposal once, as the administrator, with audit provenance, and verifies it", async () => {
-    const p = await proposal();
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("SUCCEEDED");
-    expect(m.publish).toHaveBeenCalledTimes(1);
-    const sent = m.publish.mock.calls[0][0];
-    expect(sent).toMatchObject({
-      activationId: ACTIVATION,
-      slug: "security-plus-autumn-2026",
-      priceAmountMinor: 24900,
-      currency: "GBP",
-    });
-    expect(sent.reason).toBe(
-      `Launch the autumn cohort · Ops Engineer ref ${p.proposalId.slice(0, 8)}`,
-    );
-    expect(receipt.verified).toBe(true);
-    expect(receipt.reference).toBe(p.proposalId.slice(0, 8));
-  });
-
-  it("refuses to run the same proposal twice", async () => {
-    const p = await proposal();
-    await confirm(p);
-    const again = await confirm(p);
-    expect(again.status).toBe("DUPLICATE");
-    expect(m.publish).toHaveBeenCalledTimes(1);
-  });
-
-  it("reports an operation already completed elsewhere instead of repeating it", async () => {
-    const p = await proposal();
-    // Another administrator (or instance) publishes the same offer first.
-    commitOffer("security-plus-autumn-2026");
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("ALREADY_DONE");
+  it("refuses an altered proposal or input, re-validating at execution", async () => {
+    const p = await proposal("publish_course", publishRaw);
+    expect(
+      (await confirm(p, null, { raw: { ...p.raw, price: "1.00" } })).status,
+    ).toBe("STATE_CHANGED");
+    expect(
+      (await confirm(p, null, { raw: { ...p.raw, price: "free" } })).status,
+    ).toBe("REFUSED");
+    expect(
+      (await confirm(p, null, { proposalId: "0".repeat(64) })).status,
+    ).toBe("STATE_CHANGED");
     expect(m.publish).not.toHaveBeenCalled();
   });
 
   it("refuses when the records changed since the proposal", async () => {
-    const p = await proposal();
-    m.offerActivations[0].publishedOfferSlug = "a-different-offer";
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("STATE_CHANGED");
-    expect(m.publish).not.toHaveBeenCalled();
-  });
-
-  it("refuses an altered proposal", async () => {
-    const p = await proposal();
-    const receipt = await confirm(p, { raw: { ...p.raw, price: "1.00" } });
-    expect(receipt.status).toBe("STATE_CHANGED");
+    const p = await proposal("publish_course", publishRaw);
+    m.packages[1].pendingDecisions = ["NEW_DECISION"];
+    expect((await confirm(p)).status).toBe("STATE_CHANGED");
     expect(m.publish).not.toHaveBeenCalled();
   });
 
   it("refuses an expired proposal", async () => {
-    const p = await proposal();
-    const receipt = await executeOperation(
-      {
-        actionId: p.actionId,
-        raw: p.raw,
-        issuedAt: p.issuedAt,
-        nonce: p.nonce,
-        proposalId: p.proposalId,
-        confirmed: true,
-      },
-      new Date(Date.now() + 16 * 60 * 1000),
-    );
-    expect(receipt.status).toBe("EXPIRED");
-    expect(m.publish).not.toHaveBeenCalled();
-  });
-
-  it("reports a service refusal with recovery guidance and allows a corrected retry", async () => {
-    m.publish.mockRejectedValueOnce(
-      new Error("The course offer could not be published."),
-    );
-    const p = await proposal();
-    const failed = await confirm(p);
-    expect(failed.status).toBe("FAILED");
-    // The claim is based on a fresh read, not assumed from the error.
-    expect(failed.outcome).toContain(
-      "re-reading the records confirms the change was not applied",
-    );
-    expect(failed.recovery).toContain("Prepare the proposal again");
-    const retry = await confirm(await proposal());
-    expect(retry.status).toBe("SUCCEEDED");
-  });
-
-  it("reports a change committed before its reply was lost as done, from the records", async () => {
-    m.publish.mockImplementationOnce(async (input: { slug: string }) => {
-      commitOffer(input.slug);
-      throw new Error("network reset after commit");
-    });
-    const p = await proposal();
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("SUCCEEDED");
-    expect(receipt.verified).toBe(true);
-    expect(receipt.outcome).toContain("it was not applied twice");
-    // Not repeated: the same proposal is now refused on this server, and
-    // the records no longer match it anywhere.
-    expect((await confirm(p)).status).toBe("DUPLICATE");
-    expect(m.publish).toHaveBeenCalledTimes(1);
-  });
-
-  it("never guesses when the outcome cannot be re-read", async () => {
-    const p = await proposal();
-    m.publish.mockImplementationOnce(async () => {
-      m.offersView.mockRejectedValue(new Error("records unavailable"));
-      throw new Error("timeout");
-    });
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("UNCERTAIN");
-    expect(receipt.recovery).toContain("Do not retry yet");
+    const t0 = new Date("2030-06-01T10:00:00Z");
+    const p = await proposal("publish_course", publishRaw, null, t0);
+    const later = new Date(t0.getTime() + 16 * 60_000);
+    expect((await confirm(p, null, {}, later)).status).toBe("EXPIRED");
   });
 
   it("runs only one of two simultaneous confirmations on this server", async () => {
-    let release: () => void = () => {};
-    m.publish.mockImplementationOnce(async (input: { slug: string }) => {
-      await new Promise<void>((r) => (release = r));
-      commitOffer(input.slug);
-    });
-    const p = await proposal();
+    let release!: () => void;
+    m.publish.mockImplementationOnce(
+      () =>
+        new Promise(
+          (resolve) => (release = () => resolve({ replayed: false })),
+        ),
+    );
+    const p = await proposal("publish_course", publishRaw);
     const first = confirm(p);
-    await new Promise((r) => setTimeout(r, 10));
-    const second = await confirm(p);
+    await vi.waitFor(() => expect(m.publish).toHaveBeenCalledOnce());
+    expect((await confirm(p)).status).toBe("DUPLICATE");
     release();
-    expect(second.status).toBe("DUPLICATE");
-    expect((await first).status).toBe("SUCCEEDED");
-    expect(m.publish).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("duplicate protection across server instances", () => {
-  // A fresh module has empty per-instance guards: it stands for a different
-  // server instance receiving the same confirmed proposal.
-  async function otherInstance() {
-    vi.resetModules();
-    return import("@/server/operations-engineer");
-  }
-
-  it("refuses a proposal already executed elsewhere, from the records alone", async () => {
-    const p = await proposal();
-    expect((await confirm(p)).status).toBe("SUCCEEDED");
-    const second = await otherInstance();
-    const receipt = await second.executeOperation({
-      actionId: p.actionId,
-      raw: p.raw,
-      issuedAt: p.issuedAt,
-      nonce: p.nonce,
-      proposalId: p.proposalId,
-      confirmed: true,
-    });
-    expect(receipt.status).toBe("ALREADY_DONE");
-    expect(m.publish).toHaveBeenCalledTimes(1);
-  });
-
-  it("relies on the database when two instances race past the record check", async () => {
-    const p = await proposal();
-    const second = await otherInstance();
-    // Both instances passed the record check. Instance one commits first;
-    // when instance two's call reaches the database, the unique index on
-    // one published offer per activation refuses it.
-    m.publish.mockImplementationOnce(async (input: { slug: string }) => {
-      commitOffer(input.slug); // instance one
-      throw new Error("ALREADY_PUBLISHED"); // instance two's refusal
-    });
-    const receipt = await second.executeOperation({
-      actionId: p.actionId,
-      raw: p.raw,
-      issuedAt: p.issuedAt,
-      nonce: p.nonce,
-      proposalId: p.proposalId,
-      confirmed: true,
-    });
-    // Reported from the records: the offer exists once, not twice.
-    expect(receipt.status).toBe("SUCCEEDED");
-    expect(receipt.outcome).toContain("it was not applied twice");
-    expect(m.offerActivations.filter((a) => a.publishedOfferSlug).length).toBe(
-      1,
-    );
-  });
-
-  it("states each action's database guarantee on its proposal", async () => {
-    const p = await proposal();
-    expect(p.duplicateProtection).toContain(
-      "one published offer per activation",
-    );
-  });
-
-  it("re-validates the input server-side at execution", async () => {
-    const p = await proposal();
-    const receipt = await confirm(p, { raw: { ...p.raw, reason: "no" } });
-    expect(receipt.status).toBe("REFUSED");
-    expect(m.publish).not.toHaveBeenCalled();
-  });
-});
-
-describe("further failure modes", () => {
-  it("rejects missing arguments before reading state", async () => {
-    const { slug: _slug, ...missing } = raw;
-    void _slug;
-    const result = await prepareOperation("publish_offer", missing);
-    expect(result.status).toBe("INVALID");
-    expect(m.offersView).not.toHaveBeenCalled();
-  });
-
-  it("does not report another offer that won a race for the slug as its own success", async () => {
-    const p = await proposal();
-    // A simultaneous, different publication (another price) takes the slug;
-    // this confirmation is then refused by the database.
-    m.publish.mockImplementationOnce(async () => {
-      commitOffer("security-plus-autumn-2026", 9900);
-      throw new Error("SLUG_TAKEN");
-    });
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("FAILED");
-    expect(receipt.status).not.toBe("SUCCEEDED");
-  });
-
-  it("does not report a different campaign that took the code as its own success", async () => {
-    m.offerActivations[0].publishedOfferSlug = "security-plus-autumn-2026";
-    const campaign = {
-      offerSlug: "security-plus-autumn-2026",
-      code: "AUTUMN25",
-      kind: "FIXED_PRICE",
-      fixedPrice: "199.00",
-      maxRedemptions: "50",
-      startsAt: "2026-11-01T00:00",
-      endsAt: "2026-11-30T00:00",
-      reason: "Autumn launch campaign",
-    };
-    const prepared = await prepareOperation("create_campaign", campaign);
-    if (prepared.status !== "PROPOSAL") throw new Error(prepared.status);
-    m.createCampaign.mockImplementationOnce(async () => {
-      // Someone else created AUTUMN25 at another price first.
-      m.campaigns.push({
-        code: "AUTUMN25",
-        offerSlug: "security-plus-autumn-2026",
-        kind: "FIXED_PRICE",
-        effectivePriceAmountMinor: 100,
-        currency: "GBP",
-        maxRedemptions: 50,
-        redemptionCount: 0,
-        startsAt: "2026-11-01T00:00:00.000Z",
-        endsAt: "2026-11-30T00:00:00.000Z",
-        state: "ACTIVE",
-      });
-      throw new Error("CODE_TAKEN");
-    });
-    const receipt = await confirm(prepared.proposal);
-    expect(receipt.status).toBe("FAILED");
-  });
-
-  it("reports a lost campaign reply as done only when the exact campaign exists", async () => {
-    m.offerActivations[0].publishedOfferSlug = "security-plus-autumn-2026";
-    const prepared = await prepareOperation("create_campaign", {
-      offerSlug: "security-plus-autumn-2026",
-      code: "AUTUMN25",
-      kind: "FIXED_PRICE",
-      fixedPrice: "199.00",
-      maxRedemptions: "50",
-      startsAt: "2026-11-01T00:00",
-      endsAt: "2026-11-30T00:00",
-      reason: "Autumn launch campaign",
-    });
-    if (prepared.status !== "PROPOSAL") throw new Error(prepared.status);
-    m.createCampaign.mockImplementationOnce(async () => {
-      m.campaigns.push({
-        code: "AUTUMN25",
-        offerSlug: "security-plus-autumn-2026",
-        kind: "FIXED_PRICE",
-        effectivePriceAmountMinor: 19900,
-        currency: "GBP",
-        maxRedemptions: 50,
-        redemptionCount: 0,
-        startsAt: "2026-11-01T00:00:00.000Z",
-        endsAt: "2026-11-30T00:00:00.000Z",
-        state: "ACTIVE",
-      });
-      throw new Error("network reset after commit");
-    });
-    const receipt = await confirm(prepared.proposal);
-    expect(receipt.status).toBe("SUCCEEDED");
-    expect(receipt.verified).toBe(true);
-    expect(m.createCampaign).toHaveBeenCalledTimes(1);
-  });
-
-  it("says so when a successful change cannot be verified by re-reading", async () => {
-    const p = await proposal();
-    m.publish.mockImplementationOnce(async (input: { slug: string }) => {
-      commitOffer(input.slug);
-      m.offersView.mockRejectedValue(new Error("records unavailable"));
-    });
-    const receipt = await confirm(p);
-    expect(receipt.status).toBe("SUCCEEDED");
-    expect(receipt.verified).toBeNull();
-    expect(receipt.verification).toContain("could not be re-read");
+    await first;
+    expect(m.publish).toHaveBeenCalledOnce();
   });
 
   it("prepares nothing when the current state cannot be read", async () => {
-    m.offersView.mockRejectedValue(new Error("records unavailable"));
-    const result = await prepareOperation("publish_offer", raw);
-    expect(result.status).toBe("UNAVAILABLE");
-    expect(m.publish).not.toHaveBeenCalled();
-  });
-});
-
-describe("cohort status changes and stale-proposal replay", () => {
-  const COHORT = "40000000-0000-4000-8000-000000000009";
-  const setStatus = (status: string) => {
-    m.cohorts = [
-      {
-        id: COHORT,
-        title: "Autumn 2026",
-        programmeTitle: "CompTIA Security+ (SY0-701)",
-        versionLabel: "Revision 6",
-        status,
-        startsOn: "2026-11-02",
-        endsOn: null,
-        isDemo: false,
-        enrolments: { active: 0, paused: 0, completed: 0, withdrawn: 0 },
-        activationId: null,
-        publishedOfferSlug: null,
-      },
-    ];
-  };
-  const closeRequest = (over: Record<string, unknown> = {}) => ({
-    actionId: "change_cohort_status",
-    raw: { cohortId: COHORT, status: "CLOSED", reason: "Close the intake" },
-    issuedAt: new Date().toISOString(),
-    nonce: "n-1",
-    proposalId: "a".repeat(64),
-    confirmed: true,
-    ...over,
-  });
-  beforeEach(() => {
-    setStatus("OPEN");
-    m.changeCohortStatus.mockImplementation(
-      async (input: { status: string }) => {
-        setStatus(input.status);
-        return { status: input.status, archivedOfferIds: [] };
-      },
+    m.readFails = true;
+    expect((await prepareOperation("publish_course", publishRaw)).status).toBe(
+      "UNAVAILABLE",
     );
-  });
-
-  it("prepares no cohort status proposal and reads nothing", async () => {
-    const result = await prepareOperation("change_cohort_status", {
-      cohortId: COHORT,
-      status: "CLOSED",
-      reason: "Close the intake",
-    });
-    expect(result.status).toBe("UNAVAILABLE");
-    if (result.status === "UNAVAILABLE")
-      expect(result.message).toContain("Cohorts");
-    expect(m.changeCohortStatus).not.toHaveBeenCalled();
-  });
-
-  it("never replays a close after the cohort was reopened (OPEN → CLOSED → OPEN)", async () => {
-    // The status alone cannot tell the original OPEN from the reopened one,
-    // so a close confirmed again must never be carried out.
-    expect((await executeOperation(closeRequest())).status).toBe("REFUSED");
-    setStatus("CLOSED"); // closed through the manual Cohorts workflow
-    setStatus("OPEN"); // and reopened, within the 15-minute window
-    vi.resetModules();
-    const otherInstance = await import("@/server/operations-engineer");
-    const replay = await otherInstance.executeOperation(closeRequest());
-    expect(replay.status).toBe("REFUSED");
-    expect(m.changeCohortStatus).not.toHaveBeenCalled();
-    expect(m.cohorts[0].status).toBe("OPEN");
-  });
-
-  it("refuses repeated confirmation and any proposal contents, in every state", async () => {
-    for (const status of ["OPEN", "CLOSED", "OPEN"]) {
-      setStatus(status);
-      for (const over of [
-        {},
-        { proposalId: "b".repeat(64), nonce: "n-2" },
-        { raw: { cohortId: COHORT, status: "COMPLETED", reason: "Done" } },
-      ]) {
-        const receipt = await executeOperation(closeRequest(over));
-        expect(receipt.status).toBe("REFUSED");
-        expect(receipt.outcome).toContain("dedicated form");
-      }
-    }
-    expect(m.changeCohortStatus).not.toHaveBeenCalled();
-  });
-
-  it("refuses a stale proposal before any expiry or record check", async () => {
-    const receipt = await executeOperation(
-      closeRequest({ issuedAt: "2020-01-01T00:00:00.000Z" }),
-    );
-    // Refused as disabled, not merely as expired: no state is consulted.
-    expect(receipt.status).toBe("REFUSED");
-    expect(m.changeCohortStatus).not.toHaveBeenCalled();
-  });
-
-  it("is not offered to the AI interpreter, and a model naming it gets no proposal", async () => {
-    expect(composeOperationsEngineerInstructions()).not.toContain(
-      "- change_cohort_status",
-    );
-    m.adapter = { name: "fake" };
-    m.runtime.mockResolvedValue({
-      outcome: "SUCCEEDED",
-      usage: {},
-      response: {
-        outputText: JSON.stringify({
-          action: "change_cohort_status",
-          arguments: { cohortId: COHORT, status: "CLOSED", reason: "Close" },
-          explanation: "Closes the intake.",
-        }),
-      },
-    });
-    const result = await interpretOperationRequest("close the autumn cohort");
-    expect(result.status).toBe("INTERPRETED");
-    if (result.status === "INTERPRETED")
-      expect(result.prepared.status).toBe("UNAVAILABLE");
-    expect(m.changeCohortStatus).not.toHaveBeenCalled();
-  });
-});
-
-describe("choice lists", () => {
-  it("lead with real records and label acceptance-test records", async () => {
-    const course = (
-      packageKey: string,
-      title: string,
-      testRecord: boolean,
-    ) => ({
-      packageKey,
-      title,
-      testRecord,
-      lifecycle: { current: { packageRevision: 1 } },
-    });
-    m.courses = [
-      course("acceptance-1791", "Acceptance Run 1791", true),
-      course("security-plus-sy0-701", "CompTIA Security+ SY0-701", false),
-    ];
-    m.offerActivations.push({
-      activationId: "50000000-0000-4000-8000-000000000002",
-      programmeTitle: "Acceptance Run 1791",
-      cohortTitle: "Acceptance cohort 1791",
-      cohortStartsOn: "2026-10-13",
-      publishedOfferSlug: "acceptance-journey-1791",
-    });
-    m.offerActivations[0].publishedOfferSlug = "security-plus-autumn-2026";
-    const options = await getOperationOptions();
-    expect(options.courses.map((o) => o.label)).toEqual([
-      "CompTIA Security+ SY0-701 — revision 1",
-      "Acceptance Run 1791 — revision 1 (acceptance test)",
-    ]);
-    expect(options.publishedOffers.map((o) => o.value)).toEqual([
-      "security-plus-autumn-2026",
-      "acceptance-journey-1791",
-    ]);
-    expect(options.publishedOffers[1].label).toContain("(acceptance test)");
-  });
-});
-
-describe("changes without full duplicate protection are disabled", () => {
-  it("disables exactly the partially protected changes", () => {
-    expect(Object.keys(OPERATIONS_ENGINEER_DISABLED).sort()).toEqual([
-      "archive_offer",
-      "change_cohort_status",
-      "run_course_test",
-    ]);
-  });
-
-  it("neither prepares nor reads anything for a disabled change", async () => {
-    for (const [actionId, input] of [
-      ["archive_offer", { slug: "security-plus-autumn-2026", reason: "Ends" }],
-      ["run_course_test", { importId: ACTIVATION, reason: "Retest now" }],
-    ] as const) {
-      const result = await prepareOperation(actionId, input);
-      expect(result.status).toBe("UNAVAILABLE");
-      if (result.status === "UNAVAILABLE")
-        expect(result.message).toContain("dedicated form");
-    }
-    expect(m.offersView).not.toHaveBeenCalled();
-  });
-
-  it("refuses a hand-made confirmation of a disabled change", async () => {
-    for (const actionId of ["archive_offer", "run_course_test"]) {
-      const receipt = await executeOperation({
-        actionId,
-        raw: { slug: "security-plus-autumn-2026", reason: "Ends now" },
-        issuedAt: new Date().toISOString(),
-        nonce: "n",
-        proposalId: "f".repeat(64),
-        confirmed: true,
-      });
-      expect(receipt.status).toBe("REFUSED");
-    }
-    expect(m.archive).not.toHaveBeenCalled();
-    expect(m.runTest).not.toHaveBeenCalled();
-  });
-
-  it("does not offer disabled changes to the AI interpreter", () => {
-    const instructions = composeOperationsEngineerInstructions();
-    expect(instructions).not.toContain("- archive_offer");
-    expect(instructions).not.toContain("- run_course_test");
-    expect(instructions).toContain("- publish_offer");
-  });
-
-  it("turns a model answer naming a disabled change into no proposal", async () => {
-    m.adapter = { name: "fake" };
-    m.runtime.mockResolvedValue({
-      outcome: "SUCCEEDED",
-      usage: {},
-      response: {
-        outputText: JSON.stringify({
-          action: "archive_offer",
-          arguments: { slug: "security-plus-autumn-2026", reason: "Ends" },
-          explanation: "Archives the offer.",
-        }),
-      },
-    });
-    const result = await interpretOperationRequest("archive the autumn offer");
-    expect(result.status).toBe("INTERPRETED");
-    if (result.status === "INTERPRETED")
-      expect(result.prepared.status).toBe("UNAVAILABLE");
-    expect(m.archive).not.toHaveBeenCalled();
   });
 });
 
 describe("natural-language interpretation", () => {
   it("says so truthfully when no AI provider is configured", async () => {
     const result = await interpretOperationRequest(
-      "Publish Security+ for £249",
+      "Why can't AWS be published?",
     );
     expect(result.status).toBe("AI_NOT_CONFIGURED");
     expect(m.runtime).not.toHaveBeenCalled();
@@ -915,14 +947,14 @@ describe("natural-language interpretation", () => {
       usage: {},
       response: {
         outputText: JSON.stringify({
-          action: "publish_offer",
-          arguments: raw,
-          explanation: "This publishes the autumn delivery at £249.",
+          action: "publish_course",
+          arguments: publishRaw,
+          explanation: "This publishes the ready course at £249.",
         }),
       },
     });
     const result = await interpretOperationRequest(
-      "Put Security+ autumn on sale at 249 pounds",
+      "Put the ready course on sale at 249 pounds",
     );
     expect(result.status).toBe("INTERPRETED");
     if (result.status === "INTERPRETED")
@@ -933,34 +965,66 @@ describe("natural-language interpretation", () => {
       role: "OPERATIONS_ENGINEER",
       capability: "interpret_operations_request",
     });
-    expect(request.context.administratorRequest).toBe(
-      "Put Security+ autumn on sale at 249 pounds",
-    );
+    // Reference data comes from the administrator's own authorised reads.
+    expect(request.context.referenceData.organisations).toEqual([
+      { value: DUCELIO, label: "Ducelio" },
+    ]);
   });
 
-  it("discards an answer naming an operation outside the registry", async () => {
+  it("prepares an interpreted upload without a file, asking for the attachment", async () => {
     m.adapter = { name: "fake" };
     m.runtime.mockResolvedValue({
       outcome: "SUCCEEDED",
       usage: {},
       response: {
         outputText: JSON.stringify({
-          action: "drop_table",
-          arguments: {},
-          explanation: "x",
+          action: "upload_course_package",
+          arguments: { organisationId: DUCELIO, reason },
+          explanation: "Uploads the attached package.",
         }),
       },
     });
-    expect((await interpretOperationRequest("delete everything")).status).toBe(
-      "AI_FAILED",
+    const result = await interpretOperationRequest(
+      "Upload the attached AWS package",
     );
+    if (
+      result.status !== "INTERPRETED" ||
+      result.prepared.status !== "PROPOSAL"
+    )
+      throw new Error("expected a proposal");
+    expect(result.prepared.proposal.blocked).toBe(true);
+    expect(blocking(result.prepared.proposal)).toContain(
+      "Attach the course package JSON file. Nothing has been uploaded.",
+    );
+    expect(m.upload).not.toHaveBeenCalled();
+  });
+
+  it("discards an answer naming a retired or unknown operation", async () => {
+    m.adapter = { name: "fake" };
+    for (const action of ["publish_offer", "drop_table"]) {
+      m.runtime.mockResolvedValue({
+        outcome: "SUCCEEDED",
+        usage: {},
+        response: {
+          outputText: JSON.stringify({
+            action,
+            arguments: {},
+            explanation: "x",
+          }),
+        },
+      });
+      expect((await interpretOperationRequest("do it")).status).toBe(
+        "AI_FAILED",
+      );
+    }
   });
 
   it("reports a failed model call without changing anything", async () => {
     m.adapter = { name: "fake" };
     m.runtime.mockResolvedValue({ outcome: "TIMEOUT", usage: {} });
-    const result = await interpretOperationRequest("list offers");
-    expect(result.status).toBe("AI_FAILED");
-    expect(m.publish).not.toHaveBeenCalled();
+    expect((await interpretOperationRequest("list coupons")).status).toBe(
+      "AI_FAILED",
+    );
+    expect(m.createCoupon).not.toHaveBeenCalled();
   });
 });

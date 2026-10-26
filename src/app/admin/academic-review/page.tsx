@@ -33,7 +33,7 @@ export default async function Page({
       <AdminForbidden
         actor={access.actor}
         active="academy"
-        title="Academic review"
+        title="Learner result review"
         requires={COURSE_ADMIN_ROLES}
       />
     );
@@ -44,14 +44,14 @@ export default async function Page({
     <StaffShell
       kind="admin"
       name={actor.displayName}
-      section="Academic review"
+      section="Learner result review"
       sections={adminSectionsForRoles(actor.roles)}
       roles={actor.roles}
     >
       <Card>
         <div className="section-heading">
           <div>
-            <p className="eyebrow">ACADEMIC REVIEW</p>
+            <p className="eyebrow">LEARNER RESULT REVIEW</p>
             <h2>Results awaiting human academic review</h2>
           </div>
           <Badge tone="muted">GOVERNED · AUDITED</Badge>
@@ -63,6 +63,14 @@ export default async function Page({
           grade creates the learner&apos;s first result, which then counts
           towards progress and completion like any other result and can later be
           regraded through the normal regrade process.
+        </p>
+        <p>
+          Reviewing a course package&apos;s content, sources, assessments or
+          publication approvals?{" "}
+          <Link href="/admin/course-engineering/review">
+            Open Course academic review
+          </Link>
+          .
         </p>
         {cases.length ? (
           <div className="data-table-wrap">

@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   agents: vi.fn(),
   publish: vi.fn(),
   configure: vi.fn(),
+  gate: vi.fn(),
   refresh: vi.fn(),
 }));
 vi.mock("next/link", () => ({
@@ -51,6 +52,7 @@ vi.mock("@/server/unified-course-engine", () => ({
   getUnifiedAcademicResolutions: async () => [],
   publishUnifiedCourse: m.publish,
   configureUnifiedCourseAgents: m.configure,
+  getUnifiedPublicationGate: m.gate,
 }));
 vi.mock("@/server/academy-course-engineering", () => ({
   getAcademyPackageReview: m.review,
@@ -98,6 +100,7 @@ function form() {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  m.gate.mockResolvedValue({ ok: true, published: false, package: {} });
   m.organisations.mockResolvedValue([]);
   m.actor.mockResolvedValue({
     id,
@@ -209,6 +212,20 @@ describe("single course engineering flow", () => {
       summary: null,
       reason: "Synthetic publication review",
     });
+  });
+  it("checks the publication gate before creating any agent-configuration revision", async () => {
+    m.gate.mockResolvedValue({
+      ok: false,
+      code: "POLICY_PENDING",
+      pending: ["SOURCE_REVIEW"],
+      package: {},
+    });
+    const result = await publishUnifiedAction({}, form());
+    expect(result.error).toContain("SOURCE_REVIEW");
+    expect(result.error).toContain("nothing was changed");
+    expect(m.agents).not.toHaveBeenCalled();
+    expect(m.configure).not.toHaveBeenCalled();
+    expect(m.publish).not.toHaveBeenCalled();
   });
   it("requires explicit commercial and policy approval before any configuration mutation", async () => {
     const f = form();
