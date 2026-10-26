@@ -184,3 +184,38 @@ export async function executeUnifiedOperationAction(
     return { error: "The operation was refused; its success was not established. Reload and inspect the coupon state before retrying." };
   }
 }
+
+// Compatibility signatures for the old, unmounted console. They must remain
+// non-executable because its action registry operates on retired cohorts and
+// legacy commercial entities. The live page uses the unified actions above.
+import type {
+  InterpretResult,
+  PrepareResult,
+  Receipt,
+} from "@/server/operations-engineer";
+export type ActionError = { status: "FORBIDDEN" | "ERROR"; message: string };
+const legacyRetired = (): ActionError => ({
+  status: "ERROR",
+  message: "Legacy Operations Engineer commands are retired; use unified operations.",
+});
+export async function prepareOperationAction(
+  _actionId: string,
+  _raw: Record<string, string>,
+): Promise<PrepareResult | ActionError> {
+  return legacyRetired();
+}
+export async function interpretRequestAction(
+  _text: string,
+): Promise<InterpretResult | ActionError> {
+  return legacyRetired();
+}
+export async function executeOperationAction(_request: {
+  actionId: string;
+  raw: Record<string, string>;
+  issuedAt: string;
+  nonce: string;
+  proposalId: string;
+  confirmed: boolean;
+}): Promise<Receipt | ActionError> {
+  return legacyRetired();
+}
