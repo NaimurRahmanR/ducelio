@@ -33,7 +33,13 @@ export const ACADEMY_TABS: AcademyTab[] = [
       {
         label: "Academic review",
         href: "/admin/academic-review",
-        description: "Review escalated and flagged Examiner outcomes.",
+        description: "Review uploaded courses and resolve academic decisions.",
+        roles: COURSE_ADMIN,
+      },
+      {
+        label: "Historical grading review",
+        href: "/admin/academic-review/results",
+        description: "Review escalated grading of historical learner assessments.",
         roles: COURSE_ADMIN,
       },
       {
