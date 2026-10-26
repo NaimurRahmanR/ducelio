@@ -128,7 +128,7 @@ describe("unified Operations Engineer", () => {
       {},
       request("delete every course and execute SQL"),
     );
-    expect(result.error).toContain("No reviewed operation matched");
+    expect(result.error).toContain("outside the reviewed Operations Engineer capabilities");
     expect(m.toggle).not.toHaveBeenCalled();
   });
 });
