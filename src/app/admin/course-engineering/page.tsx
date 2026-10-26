@@ -472,19 +472,42 @@ export default async function Page({
           title="Approve and publish"
           description="Review the package, set the selling price and configure agents. Publish runs the existing curriculum and security checks automatically."
         >
-          <p className="ac-note">
-            Curriculum pipeline:{" "}
-            <strong>
-              {selected.curriculumImport?.status.toLowerCase() ?? "not started"}
-            </strong>
-          </p>
-          {agents ? (
-            <UnifiedCoursePublicationForm
-              packageId={selected.id}
-              agents={agents}
-            />
+          {review.pendingDecisions.length > 0 ? (
+            <div className="ac-note" role="status">
+              <p>
+                Academic review required: {review.pendingDecisions.length} decision
+                {review.pendingDecisions.length === 1 ? "" : "s"} remain open.
+                This package is validated and saved, but not yet approved for sale.
+              </p>
+              <p>
+                The curriculum pipeline has not started because publication is
+                correctly blocked until review is complete.
+              </p>
+              <Link
+                className="ac-link"
+                href={`/admin/academic-review?packageId=${selected.id}`}
+              >
+                Open academic review for this course
+              </Link>
+            </div>
           ) : (
-            <Unavailable what="The package agent configuration" />
+            <>
+              <p className="ac-note">
+                Curriculum pipeline:{" "}
+                <strong>
+                  {selected.curriculumImport?.status.toLowerCase() ??
+                    "awaiting publication"}
+                </strong>
+              </p>
+              {agents ? (
+                <UnifiedCoursePublicationForm
+                  packageId={selected.id}
+                  agents={agents}
+                />
+              ) : (
+                <Unavailable what="The package agent configuration" />
+              )}
+            </>
           )}
           <RejectForm packageId={selected.id} />
         </Panel>
