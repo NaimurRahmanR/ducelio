@@ -83,7 +83,7 @@ const text = (html: string) =>
     .replace(/\s+/g, " ")
     .trim();
 const browseLinks = (html: string) =>
-  html.match(/<a href="\/courses" class="nav-link">.*?Browse courses<\/a>/g) ??
+  html.match(/<a href="\/courses" class="nav-link">.*?Browse Courses<\/a>/g) ??
   [];
 const render = async (section = "") =>
   renderToStaticMarkup(await LiveStudent({ section }));
@@ -94,7 +94,7 @@ beforeEach(() => {
 });
 
 describe("academy navigation", () => {
-  it("offers Browse courses in both the desktop sidebar and the mobile menu", () => {
+  it("offers Browse Courses in both the desktop sidebar and the mobile menu", () => {
     const html = renderToStaticMarkup(
       createElement(
         AcademyShell,
@@ -114,7 +114,7 @@ describe("academy navigation", () => {
     expect(browseLinks(mobile)).toHaveLength(1);
   });
 
-  it("offers My Learning and a clearly historical programme entry", () => {
+  it("offers My Learning and keeps earlier records and Sarah reachable outside the main navigation", () => {
     const html = renderToStaticMarkup(
       createElement(
         AcademyShell,
@@ -122,12 +122,18 @@ describe("academy navigation", () => {
         "content",
       ),
     );
-    for (const href of [
-      "/student/academy",
-      "/student/programme",
-      "/student/sarah",
-    ])
+    const sidebar = html.slice(
+      html.indexOf('aria-label="Academy navigation"'),
+      html.indexOf("sidebar-bottom"),
+    );
+    expect(sidebar).toContain('href="/student/learning"');
+    // The compatibility course route and the legacy records stay reachable
+    // (My Learning rows and quiet secondary links), not as main items.
+    for (const href of ["/student/programme", "/student/sarah"]) {
+      expect(sidebar).not.toContain(`href="${href}"`);
       expect(html).toContain(`href="${href}"`);
+    }
+    expect(html).not.toContain("Historical programmes");
   });
 });
 
