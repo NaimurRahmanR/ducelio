@@ -540,11 +540,45 @@ describe("attempt policy", () => {
     expect(Date.parse(active.expiresAt) - Date.parse(active.startedAt)).toBe(
       25 * 60000,
     );
-    // The resumed attempt keeps exactly the saved answers.
-    expect(active.questions.map((x) => x.response !== null)).toEqual(
-      active.questions.map((_, i) => i < 3),
+    // The resumed attempt keeps exactly the saved answers (the first three
+    // authored questions, wherever this attempt's order places them).
+    const authored = template("quiz-1").questions.map(
+      (x: { position: number }) => x.position,
     );
+    expect(
+      active.questions
+        .filter((x) => x.response !== null)
+        .map((x) => x.position)
+        .sort((a, b) => a - b),
+    ).toEqual(authored.slice(0, 3));
     expect(JSON.stringify(active)).not.toMatch(PROTECTED);
+    // This attempt's own order: stable across reads, not the authored
+    // order, the same questions, the same choice ids, some options moved.
+    const reread = attemptSchema.parse(
+      await rpc(q, learnerA, "get_my_academy_attempt", [first.attemptId]),
+    );
+    if (reread.state !== "ACTIVE") throw new Error("expected ACTIVE");
+    const shown = active.questions.map((x) => x.position);
+    expect(reread.questions.map((x) => x.position)).toEqual(shown);
+    expect(shown).not.toEqual(authored);
+    expect([...shown].sort((a, b) => a - b)).toEqual(authored);
+    const optionIds = (interaction: Record<string, unknown>) =>
+      ((interaction.options as { id: string }[] | undefined) ?? []).map(
+        (o) => o.id,
+      );
+    let moved = 0;
+    for (const x of active.questions) {
+      const original = optionIds(
+        template("quiz-1").questions.find(
+          (t: { position: number }) => t.position === x.position,
+        ).interaction,
+      );
+      expect([...optionIds(x.interaction)].sort()).toEqual(
+        [...original].sort(),
+      );
+      if (optionIds(x.interaction).join() !== original.join()) moved++;
+    }
+    expect(moved).toBeGreaterThan(0);
     const submitted = await rpc(q, learnerA, "submit_my_academy_attempt", [
       first.attemptId,
     ]);
@@ -568,6 +602,42 @@ describe("attempt policy", () => {
       ok: false,
       code: "NO_ATTEMPTS_REMAINING",
     });
+    // Question-bank integrity: each attempt has its own server-chosen
+    // question order and option order over the same questions and choice
+    // ids; marks are unaffected; the seed never reaches the learner and
+    // cannot be changed.
+    const views = await Promise.all(
+      [first.attemptId, second.attemptId].map(async (id) =>
+        attemptSchema.parse(
+          await rpc(q, learnerA, "get_my_academy_attempt", [id]),
+        ),
+      ),
+    );
+    const seeds = (
+      await q(
+        "select presentation_seed from public.academy_assessment_attempts where id = any($1) order by attempt_number",
+        [[first.attemptId, second.attemptId]],
+      )
+    ).rows.map((r) => r.presentation_seed as string);
+    expect(seeds.every((x) => /^[0-9a-f]{32}$/.test(x))).toBe(true);
+    expect(seeds[0]).not.toBe(seeds[1]);
+    for (const [i, seed] of seeds.entries())
+      expect(JSON.stringify(views[i])).not.toContain(seed);
+    expect(
+      (
+        await q(
+          "select score from public.academy_assessment_attempts where id=$1",
+          [second.attemptId],
+        )
+      ).rows[0].score,
+    ).toBe(maxMarks("quiz-1"));
+    await expect(
+      q(
+        "update public.academy_assessment_attempts set presentation_seed=$2 where id=$1",
+        [first.attemptId, "0".repeat(32)],
+      ),
+    ).rejects.toThrow(/IMMUTABLE_HISTORY/);
+
     expect(
       (
         await q(
@@ -767,10 +837,13 @@ describe("release after the deadline", () => {
     expect(first.releasedAt).toBeTruthy();
     const questions = template("quiz-1").questions;
     expect(first.review).toHaveLength(questions.length);
-    for (const [i, r] of first.review!.entries()) {
-      const source = questions.find(
+    // The review follows this attempt's own order; the first three AUTHORED
+    // questions were answered correctly, the rest left unanswered.
+    for (const r of first.review!) {
+      const i = questions.findIndex(
         (x: { position: number }) => x.position === r.position,
       );
+      const source = questions[i];
       expect(r.correctAnswer).toEqual(source.answerKey);
       expect(r.explanation).toBe(source.markingGuidance);
       expect(r.expectedAnswer).toBe(source.expectedAnswer);
@@ -842,6 +915,36 @@ describe("release after the deadline", () => {
         )
       ).rows[0].n,
     ).toBe(2);
+    // Each released review keeps its own attempt's question order.
+    const reviewOrder = async (id: string) => {
+      const v = attemptSchema.parse(
+        await rpc(q, learnerA, "get_my_academy_attempt", [id]),
+      );
+      if (v.state !== "SUBMITTED" || !v.review) throw new Error("no review");
+      return v.review.map((x) => x.position).join();
+    };
+    expect(await reviewOrder(attempts[0].id)).not.toBe(
+      await reviewOrder(attempts[1].id),
+    );
+    // Release also requires final grading. Academy assessments are scored
+    // deterministically at finalisation, and the table itself refuses a
+    // SUBMITTED attempt without a score, so an unscored attempt can never
+    // exist to be released (the release rule checks it regardless).
+    await q(
+      "alter table public.academy_assessment_attempts disable trigger guard_history",
+    );
+    try {
+      await expect(
+        q(
+          "update public.academy_assessment_attempts set score = null where id=$1",
+          [attempts[0].id],
+        ),
+      ).rejects.toThrow(/check constraint/);
+    } finally {
+      await q(
+        "alter table public.academy_assessment_attempts enable trigger guard_history",
+      );
+    }
     // Another learner can never read or refresh this enrolment.
     await expect(
       rpc(q, learnerB, "refresh_my_academy_releases", [enrol.aA]),

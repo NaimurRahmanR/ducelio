@@ -63,13 +63,18 @@ language sql stable security definer set search_path='' as $$
   select w.closes_at from academy_private.item_window((academy_private.assessment_item(p_enrolment_id, p_ref)).id) w
 $$;
 
--- RELEASED: the enrolment's assessment window has closed and no attempt is
--- ACTIVE (a stale attempt must first be finalised by a volatile call).
+-- RELEASED (owner decision 2026-10-27): the learner's OWN full scheduled
+-- window has closed and grading is final (no attempt ACTIVE or unscored; a
+-- stale attempt must first be finalised by a volatile call). Never earlier,
+-- even when every allowed attempt is used; never delayed for other
+-- learners. Score, correct answers and explanations release together.
 create function academy_private.assessment_released(p_enrolment_id uuid, p_ref text) returns boolean
 language sql stable security definer set search_path='' as $$
   select coalesce(clock_timestamp() >= academy_private.assessment_closes_at(p_enrolment_id, p_ref), false)
     and not exists (select 1 from public.academy_assessment_attempts a
-      where a.enrolment_id = p_enrolment_id and a.assessment_ref = p_ref and a.state = 'ACTIVE')
+      where a.enrolment_id = p_enrolment_id and a.assessment_ref = p_ref
+        -- Grading is final: no attempt still open, none submitted unscored.
+        and (a.state = 'ACTIVE' or a.score is null))
 $$;
 
 create function academy_private.attempts_allowed(p_template jsonb) returns integer
@@ -173,6 +178,62 @@ do $$ declare t text; begin
     execute format('revoke all on table public.%I from public, anon, authenticated, service_role', t);
   end loop;
 end $$;
+
+-- Question-bank integrity (owner decision 2026-10-27): every learner gets
+-- their answers when their own window closes, so answer sharing across
+-- schedules is mitigated by per-attempt variation rather than by delaying
+-- release. Each new attempt carries a server-generated random seed that
+-- orders its questions and shuffles answer options; the seed is never
+-- returned to a client and never changes. Scoring is keyed by question
+-- position and option id, so variation never affects marks. Attempts that
+-- predate this migration keep the authored order (null seed).
+alter table public.academy_assessment_attempts add column presentation_seed text
+  check (presentation_seed ~ '^[0-9a-f]{32}$');
+alter table public.academy_assessment_attempts
+  alter column presentation_seed set default replace(gen_random_uuid()::text, '-', '');
+
+create function academy_private.immutable_presentation_seed() returns trigger
+language plpgsql set search_path='' as $$
+begin
+  if new.presentation_seed is distinct from old.presentation_seed then
+    raise exception 'IMMUTABLE_HISTORY' using errcode = '55000';
+  end if;
+  return new;
+end $$;
+create trigger presentation_seed_immutable before update of presentation_seed on public.academy_assessment_attempts
+  for each row execute function academy_private.immutable_presentation_seed();
+
+-- A seeded permutation of a JSON array of {id, ...} choices.
+create function academy_private.shuffled(p_items jsonb, p_seed text, p_salt text) returns jsonb
+language sql immutable set search_path='' as $$
+  select coalesce(jsonb_agg(x.value order by md5(p_seed || ':' || p_salt || ':' || coalesce(x.value->>'id', x.n::text))), '[]'::jsonb)
+  from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) with ordinality x(value, n)
+$$;
+
+-- The learner-visible interaction for one attempt. Ordering questions keep
+-- their authored display order: authoring guarantees it differs from the
+-- correct order, which a random permutation could reproduce.
+create function academy_private.present_interaction(p_type text, p_interaction jsonb, p_seed text, p_position integer)
+returns jsonb language sql immutable set search_path='' as $$
+  select case
+    when p_seed is null or p_interaction is null then p_interaction
+    when p_type in ('SINGLE_SELECT','MULTIPLE_SELECT') then
+      jsonb_set(p_interaction, '{options}', academy_private.shuffled(p_interaction->'options', p_seed, p_position || ':options'))
+    when p_type = 'PBQ_MATCHING' then
+      jsonb_set(jsonb_set(p_interaction, '{items}', academy_private.shuffled(p_interaction->'items', p_seed, p_position || ':items')),
+        '{targets}', academy_private.shuffled(p_interaction->'targets', p_seed, p_position || ':targets'))
+    when p_type = 'PBQ_CONFIGURATION' then
+      jsonb_set(p_interaction, '{fields}', coalesce((select jsonb_agg(f.value || jsonb_build_object('options',
+          academy_private.shuffled(f.value->'options', p_seed, p_position || ':field:' || (f.value->>'id'))) order by f.n)
+        from jsonb_array_elements(p_interaction->'fields') with ordinality f(value, n)), '[]'::jsonb))
+    else p_interaction end
+$$;
+
+-- Sort key for a question within one attempt (authored order without a seed).
+create function academy_private.question_rank(p_seed text, p_position integer) returns text
+language sql immutable set search_path='' as $$
+  select case when p_seed is null then lpad(p_position::text, 10, '0') else md5(p_seed || ':question:' || p_position) end
+$$;
 
 -- ==========================================================================
 -- Section 3: finalisation scores and closes only; release processing writes
@@ -458,13 +519,15 @@ begin
     if academy_private.exam_active() then return result; end if;
     return result || jsonb_build_object('review', (select coalesce(jsonb_agg(jsonb_build_object(
         'position', (q->>'position')::integer, 'prompt', q->>'prompt', 'questionType', q->>'questionType',
-        'interaction', q->'interaction', 'maxMarks', (q->>'maxMarks')::integer,
+        'interaction', academy_private.present_interaction(q->>'questionType', q->'interaction', a.presentation_seed, (q->>'position')::integer),
+        'maxMarks', (q->>'maxMarks')::integer,
         'response', (select r.body from public.academy_assessment_responses r where r.attempt_id = a.id
             and r.question_position = (q->>'position')::integer
             and (a.submission = 'STUDENT_SUBMIT' or r.recorded_at <= a.expires_at) order by r.id desc limit 1),
         'marks', (select m.marks from public.academy_question_marks m where m.attempt_id = a.id and m.question_position = (q->>'position')::integer),
         'correctAnswer', q->'answerKey', 'expectedAnswer', q->>'expectedAnswer', 'explanation', q->>'markingGuidance')
-        order by (q->>'position')::integer), '[]'::jsonb) from jsonb_array_elements(template->'questions') q));
+        order by academy_private.question_rank(a.presentation_seed, (q->>'position')::integer)), '[]'::jsonb)
+      from jsonb_array_elements(template->'questions') q));
   end if;
   -- Learner-visible definition only: prompt, type, interaction, marks.
   return jsonb_build_object('attemptId', a.id, 'enrolmentId', a.enrolment_id, 'assessmentRef', a.assessment_ref, 'title', template->>'title',
@@ -472,12 +535,15 @@ begin
     'serverTime', clock_timestamp(), 'durationMinutes', (template->>'durationMinutes')::integer,
     'attemptNumber', a.attempt_number, 'attemptsAllowed', academy_private.attempts_allowed(template),
     'questions', (select jsonb_agg(jsonb_build_object('position', (q->>'position')::integer, 'prompt', q->>'prompt',
-        'questionType', q->>'questionType', 'interaction', q->'interaction', 'maxMarks', (q->>'maxMarks')::integer,
+        'questionType', q->>'questionType',
+        'interaction', academy_private.present_interaction(q->>'questionType', q->'interaction', a.presentation_seed, (q->>'position')::integer),
+        'maxMarks', (q->>'maxMarks')::integer,
         'response', (select r.body from public.academy_assessment_responses r where r.attempt_id = a.id
                      and r.question_position = (q->>'position')::integer order by r.id desc limit 1),
         'revisions', (select count(*) from public.academy_assessment_responses r where r.attempt_id = a.id
                      and r.question_position = (q->>'position')::integer))
-        order by (q->>'position')::integer) from jsonb_array_elements(template->'questions') q));
+        order by academy_private.question_rank(a.presentation_seed, (q->>'position')::integer))
+      from jsonb_array_elements(template->'questions') q));
 end $$;
 
 create or replace function public.record_my_academy_response(p_attempt_id uuid, p_question_position integer, p_body text, p_idempotency_key text)

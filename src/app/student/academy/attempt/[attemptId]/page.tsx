@@ -77,9 +77,12 @@ export default async function Page({
               expires_at: attempt.expiresAt,
             }}
             serverNow={attempt.serverTime}
-            questions={attempt.questions.map((q) => ({
+            // Questions arrive in this attempt's own server-chosen order;
+            // they are numbered as shown, while answers stay keyed to the
+            // authored position (the id).
+            questions={attempt.questions.map((q, index) => ({
               id: `q-${q.position}`,
-              position: q.position,
+              position: index + 1,
               prompt: q.prompt,
               max_marks: q.maxMarks,
               question_type: q.questionType,

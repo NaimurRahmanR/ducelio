@@ -59,7 +59,16 @@ vi.mock("@/components/academy-shell", () => ({
     createElement("main", null, children),
 }));
 vi.mock("@/components/academy-exam", () => ({
-  AcademyExam: () => createElement("div", null, "EXAM IN PROGRESS"),
+  AcademyExam: ({
+    questions,
+  }: {
+    questions: { id: string; position: number }[];
+  }) =>
+    createElement(
+      "div",
+      null,
+      `EXAM IN PROGRESS ${questions.map((x) => `${x.position}=${x.id}`).join(" ")}`,
+    ),
 }));
 
 import {
@@ -321,6 +330,41 @@ describe("Attempt page release firewall", () => {
     expect(page).toContain("Your answer: Fixture A");
     expect(page).toContain("Correct answer: Fixture B");
     expect(page).toContain("Explanation: Fixture guidance.");
+  });
+});
+
+describe("Attempt page question order", () => {
+  it("numbers this attempt's server-chosen order as shown, keeping answers keyed to the authored position", async () => {
+    const question = (position: number) => ({
+      position,
+      prompt: `Fixture ${position}`,
+      questionType: "SINGLE_SELECT",
+      interaction: { options: [] },
+      maxMarks: 1,
+      response: null,
+      revisions: 0,
+    });
+    mocks.getMyAcademyAttempt.mockResolvedValueOnce({
+      attemptId: ATTEMPT,
+      enrolmentId: ENROLMENT,
+      assessmentRef: "quiz-2",
+      title: "Fixture Quiz",
+      instructions: "",
+      state: "ACTIVE",
+      startedAt: "2026-10-27T10:00:00.000Z",
+      expiresAt: "2026-10-27T10:25:00.000Z",
+      serverTime: "2026-10-27T10:01:00.000Z",
+      durationMinutes: 25,
+      attemptNumber: 1,
+      attemptsAllowed: 2,
+      questions: [question(3), question(1), question(2)],
+    });
+    const page = text(
+      renderToStaticMarkup(
+        await AttemptPage({ params: Promise.resolve({ attemptId: ATTEMPT }) }),
+      ),
+    );
+    expect(page).toContain("EXAM IN PROGRESS 1=q-3 2=q-1 3=q-2");
   });
 });
 

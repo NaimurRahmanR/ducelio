@@ -30,10 +30,16 @@ Branch `feat/complete-learner-experience` (local only, from `main` `ee8fec7`). T
 - **Attempts:** `allowed = least(template.attemptsAllowed, 2)`. Both attempts must start inside the availability window.
 - **Effective attempt deadline:** `expires_at = least(started_at + duration, closes_at)`. A start is allowed while `now < closes_at`.
 - **Same-attempt resume:** an ACTIVE attempt is resumed with its saved responses and its original `expires_at`. Duplicate or stale starts never create another attempt.
-- **Release:** an assessment is _released_ for an enrolment when `now >= closes_at` of that enrolment's assessment window **and** no attempt is ACTIVE after lazy expiry. Before release, no RPC returns a score, mark, per-question correctness, correct answer, explanation, outcome, provisional score or completion status derived from that assessment. After release:
+- **Release (owner decision, 2026-10-27):** an assessment is _released_ for an enrolment when `now >= closes_at` of **that learner's own** full scheduled 23 h 59 min window **and** grading is final (no attempt ACTIVE after lazy expiry, none unscored). It is never earlier, even when both attempts are used. It is never delayed until other learners finish, and it never waits for the question set to be retired. Score, correct answers and the concise Examiner explanation are published together. Before release, no RPC returns a score, mark, per-question correctness, correct answer, explanation, outcome, provisional score or completion status derived from that assessment. After release:
   - best eligible score per `attemptScoring` (HIGHEST/LATEST);
   - per-question correct answers;
   - explanation = the question's authored `markingGuidance`.
+- **Question-bank integrity:** this mitigates answer sharing between learners whose deadlines differ, and never overrides the release rule.
+  - Every new attempt receives a server-generated random `presentation_seed`. It is immutable and never returned to a client.
+  - The seed decides the attempt's question order and shuffles the answer options, matching items and targets, and configuration options.
+  - Ordering-question steps keep their authored display order, which authoring guarantees differs from the correct order.
+  - Marks are keyed by question position and choice id, so variation never changes a score.
+  - The released review keeps the attempt's own order.
 - **Deferred processing:** assessment objective evidence, mastery updates and `evaluate_completion` run at **release processing**, not at finalisation. Release processing is idempotent, runs from volatile learner RPCs and a learner-callable `refresh_my_academy_releases(enrolment)`, and never trusts the client clock.
 - **Cross-course collisions:** preview, confirm and revise refuse any occupied interval overlapping an occupied interval of another of the learner's current schedules (`SCHEDULE_CONFLICT` with the conflicting item). The check runs under the learner-profile row lock, so concurrent activations serialise. An attempt start is refused if `[now, expires_at)` overlaps an occupied session interval of another course (`SCHEDULE_CONFLICT`).
 - **Attendance:** `check_in_my_academy_class(enrolment, item)` records one attendance row, only inside the window. Attendance is not completion or mastery.
