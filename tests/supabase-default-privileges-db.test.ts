@@ -19,15 +19,23 @@ let at057: PGlite;
 
 // Reviewed public RPCs the migrations themselves grant to anon (catalogue
 // reads and the HMAC-attested commerce controller surface).
+// Each anon-callable function is individually reviewed: catalogue reads,
+// HMAC-claim-gated commerce and learner-services dispatchers (migration 076),
+// and the public certificate verification read.
 const INTENDED_ANON_FUNCTIONS = [
   "apply_academy_commerce_operation",
   "apply_commercial_v1_commerce_operation",
+  "claim_learner_email_batch",
+  "claim_learner_push_batch",
+  "complete_learner_email",
+  "complete_learner_push",
   "fulfill_academy_order",
   "fulfill_commercial_v1_order",
   "get_commercial_v1_offer",
   "list_academy_catalogue",
   "list_commercial_v1_offers",
   "list_unified_course_catalogue",
+  "verify_certificate",
 ];
 const MASTERY_POLICY =
   "public.apply_objective_mastery_policy(uuid,uuid,uuid,uuid)";

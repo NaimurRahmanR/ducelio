@@ -1103,6 +1103,7 @@ describe("Sarah static boundaries", () => {
       "202611020072_unified_checkout_cancellation.sql",
       "202611030073_unified_legacy_retirement.sql",
       "202611040074_unified_fixed_amount_coupons.sql",
+      "202611060076_learner_services.sql",
     ]);
     const seed = read("supabase/seed.sql");
     expect(seed).not.toContain("Sarah Mitchell");
