@@ -548,7 +548,7 @@ function EnrolledCourses({ enrolled }: { enrolled: EnrolledCourseSummary[] }) {
       {enrolled.length === 0 ? (
         <p className="ln-empty-line">
           No courses yet.{" "}
-          <Link className="ln-textlink" href="/courses">
+          <Link className="button" href="/courses">
             Browse Courses
           </Link>
         </p>

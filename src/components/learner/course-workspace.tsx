@@ -37,6 +37,18 @@ function durationText(fromIso: string, toIso: string): string | null {
   return [h ? `${h} h` : "", m ? `${m} min` : ""].filter(Boolean).join(" ");
 }
 
+// Each panel carries its semantic tone (classroom and progression indigo,
+// Tutor soft blue, assessments amber-gold, practicals teal, released
+// results green) and an id, so timetable and dashboard cards open it.
+const PANEL_TONE: Record<string, string> = {
+  classroom: "ln-tone-indigo",
+  tutor: "ln-tone-blue",
+  assessment: "ln-tone-amber",
+  lab: "ln-tone-teal",
+  results: "ln-tone-green",
+  progression: "ln-tone-indigo",
+};
+
 function Panel({
   id,
   title,
@@ -50,7 +62,8 @@ function Panel({
 }) {
   return (
     <section
-      className="ln-panel ln-wpanel"
+      id={id}
+      className={`ln-panel ln-wpanel ln-accented ${PANEL_TONE[id] ?? "ln-tone-indigo"}`}
       aria-labelledby={`ln-${id}-heading`}
       data-panel={id}
     >
@@ -171,7 +184,7 @@ export function CourseWorkspaceView({
         <p className="ln-banner" role="status">
           Choose your timetable to begin this course.{" "}
           <Link
-            className="ln-textlink"
+            className="button"
             href={`/student/academy?enrolmentId=${encodeURIComponent(enrolmentId)}&activate=true`}
           >
             Choose timetable
@@ -186,12 +199,16 @@ export function CourseWorkspaceView({
           icon={<GraduationCap size={18} />}
         >
           {!cls ? (
-            <p className="ln-empty-line">
-              No class is open or scheduled next.{" "}
-              <Link className="ln-textlink" href="/student/timetable">
-                See your timetable
-              </Link>
-            </p>
+            <>
+              <p className="ln-empty-line">
+                No class is open or scheduled next.
+              </p>
+              <div className="ln-actions">
+                <Link className="button secondary" href="/student/timetable">
+                  See your timetable
+                </Link>
+              </div>
+            </>
           ) : (
             <>
               <h3 className="ln-wpanel__item">{activityTitle(cls)}</h3>
@@ -371,7 +388,7 @@ export function CourseWorkspaceView({
                 />
                 <button className="button">Ask the Tutor</button>
               </form>
-              <Link className="ln-textlink" href={tutorNotesHref}>
+              <Link className="button secondary" href={tutorNotesHref}>
                 Previous class notes
               </Link>
             </>
@@ -520,12 +537,14 @@ export function CourseWorkspaceView({
             progression={workspace.progression}
             timeZone={timeZone}
           />
-          <Link
-            className="ln-textlink"
-            href={`/student/courses/${encodeURIComponent(enrolmentId)}/progression`}
-          >
-            View detailed progression
-          </Link>
+          <div className="ln-actions">
+            <Link
+              className="button secondary"
+              href={`/student/courses/${encodeURIComponent(enrolmentId)}/progression`}
+            >
+              View detailed progression
+            </Link>
+          </div>
         </Panel>
       </div>
     </div>

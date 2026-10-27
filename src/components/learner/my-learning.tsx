@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ArrowRight, GraduationCap } from "lucide-react";
 import { Badge, EmptyState } from "@/components/ui";
 import type { LearnerCourse } from "@/domain/learner-contract";
 import {
   courseStatusLabel,
   courseStatusTone,
+  courseTone,
   workspaceHref,
 } from "./learner-format";
 
@@ -31,10 +32,12 @@ export function MyLearningView({
       ) : courses.length === 0 ? (
         <div className="ln-panel">
           <EmptyState title="No courses yet">
-            When you enrol on a course it appears here.{" "}
-            <Link className="ln-textlink" href="/courses">
-              Browse Courses
-            </Link>
+            When you enrol on a course it appears here.
+            <span className="ln-actions">
+              <Link className="button" href="/courses">
+                Browse Courses
+              </Link>
+            </span>
           </EmptyState>
         </div>
       ) : (
@@ -42,9 +45,12 @@ export function MyLearningView({
           {courses.map((c) => (
             <li key={c.enrolmentId}>
               <Link
-                className="ln-course-row"
+                className={`ln-course-row ${courseTone(c)}`}
                 href={workspaceHref(c.enrolmentId)}
               >
+                <span className="ln-course-row__icon" aria-hidden="true">
+                  <GraduationCap size={22} />
+                </span>
                 <span className="ln-course-row__main">
                   <span className="ln-course-row__title">{c.title}</span>
                   <span className="ln-course-row__provider">{c.provider}</span>
@@ -55,11 +61,9 @@ export function MyLearningView({
                     {courseStatusLabel(c)}
                   </Badge>
                 </span>
-                <ChevronRight
-                  className="ln-course-row__chevron"
-                  size={20}
-                  aria-hidden="true"
-                />
+                <span className="ln-course-row__open" aria-hidden="true">
+                  Open course <ArrowRight size={14} />
+                </span>
               </Link>
             </li>
           ))}

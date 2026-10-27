@@ -213,3 +213,40 @@ export function weekHref(
 export function workspaceHref(enrolmentId: string): string {
   return `/student/courses/${encodeURIComponent(enrolmentId)}`;
 }
+
+// Semantic tone of an activity kind (design system: classroom indigo,
+// practical teal, assessment amber-gold, revision soft blue). The kind is
+// always also written as text, so the colour is never the only signal.
+export const KIND_TONE: Record<ActivityKind, string> = {
+  LESSON: "ln-tone-indigo",
+  LAB: "ln-tone-teal",
+  ASSESSMENT: "ln-tone-amber",
+  REVISION: "ln-tone-blue",
+};
+
+// Visual treatment of a server-derived state (its badge names it).
+export function activityStateClass(state: ActivityState): string {
+  if (state === "OPEN") return "is-open";
+  if (state === "ATTENDED" || state === "SUBMITTED" || state === "RELEASED")
+    return "is-done";
+  if (state === "MISSED" || state === "CLOSED") return "is-past";
+  return "";
+}
+
+// Where an activity opens: its own panel of the course workspace, which
+// re-derives every window, entitlement and firewall on the server.
+const KIND_PANEL: Record<ActivityKind, string> = {
+  LESSON: "#classroom",
+  LAB: "#lab",
+  ASSESSMENT: "#assessment",
+  REVISION: "",
+};
+export function activityHref(a: Pick<LearnerActivity, "enrolmentId" | "kind">) {
+  return `${workspaceHref(a.enrolmentId)}${KIND_PANEL[a.kind]}`;
+}
+
+export function courseTone(course: LearnerCourse): string {
+  if (course.accessRevoked) return "ln-tone-muted";
+  if (course.status === "COMPLETED") return "ln-tone-green";
+  return course.scheduled ? "ln-tone-indigo" : "ln-tone-amber";
+}

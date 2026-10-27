@@ -68,6 +68,7 @@ export type ReleasedResult = {
   maxScore: number;
   attemptsUsed: number;
   passed: boolean | null; // null when the component has no pass mark
+  reviewAttemptId: string | null; // the learner's own released attempt review
 };
 
 export type AssessmentCentre = {

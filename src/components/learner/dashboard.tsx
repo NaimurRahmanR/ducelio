@@ -10,8 +10,10 @@ import type {
 } from "@/domain/learner-contract";
 import {
   KIND_LABEL,
+  KIND_TONE,
   STATE_LABEL,
   STATE_TONE,
+  activityHref,
   activityTitle,
   formatDate,
   formatTime,
@@ -43,15 +45,22 @@ export function NextActivityCard({
   timeZone: string;
   hasCourses: boolean;
 }) {
+  // With an activity the whole card opens it (one link, stretched); the
+  // empty state offers its own separate actions instead.
   return (
     <section
-      className="ln-panel ln-next"
+      className={
+        activity
+          ? `ln-panel ln-next ln-accented ln-clickable ${KIND_TONE[activity.kind]}`
+          : "ln-panel ln-next ln-accented ln-tone-indigo"
+      }
       aria-labelledby="ln-next-heading"
       data-panel="next-activity"
     >
       <p className="ln-eyebrow">Next activity</p>
       {activity ? (
         <>
+          <span className="ln-next__kind">{KIND_LABEL[activity.kind]}</span>
           <h2 id="ln-next-heading" className="ln-next__title">
             {activityTitle(activity)}
           </h2>
@@ -60,10 +69,6 @@ export function NextActivityCard({
             <span className="ln-muted"> · {activity.provider}</span>
           </p>
           <dl className="ln-next__facts">
-            <div>
-              <dt>Type</dt>
-              <dd>{KIND_LABEL[activity.kind]}</dd>
-            </div>
             <div>
               <dt>Date</dt>
               <dd>
@@ -89,7 +94,10 @@ export function NextActivityCard({
               </dd>
             </div>
           </dl>
-          <Link className="button" href={workspaceHref(activity.enrolmentId)}>
+          <Link
+            className="ln-cta ln-clickable__link"
+            href={activityHref(activity)}
+          >
             {accessLabel(activity)} <ArrowRight size={16} aria-hidden="true" />
           </Link>
         </>
@@ -141,7 +149,10 @@ export function LearnerDashboardView({
     <div className="ln-dashboard">
       <h1 className="ln-sr">Dashboard</h1>
       <div className="ln-row ln-row--intro" data-row="1">
-        <div className="ln-panel ln-panel--flush" data-panel="sarah">
+        <div
+          className="ln-panel ln-panel--flush ln-accented ln-tone-indigo"
+          data-panel="sarah"
+        >
           <SarahCompactChat initialIdempotencyKey={sarahIdempotencyKey} />
         </div>
         <NextActivityCard
@@ -153,22 +164,29 @@ export function LearnerDashboardView({
 
       {hasCourses && (
         <div className="ln-row" data-row="2">
-          <Link className="ln-explore" href="/courses">
-            <Compass size={20} aria-hidden="true" />
-            <span>
+          <Link className="ln-explore ln-clickable" href="/courses">
+            <span className="ln-explore__icon" aria-hidden="true">
+              <Compass size={22} />
+            </span>
+            <span className="ln-explore__text">
               <strong>Explore more courses</strong>
-              <span className="ln-muted">
+              <span>
                 Browse the published catalogue when you are ready for your next
                 course.
               </span>
             </span>
-            <ArrowRight size={18} aria-hidden="true" />
+            <span className="ln-cta" aria-hidden="true">
+              Explore More Courses <ArrowRight size={16} />
+            </span>
           </Link>
         </div>
       )}
 
       <div className="ln-row ln-row--week" data-row="3">
-        <div className="ln-panel" data-panel="timetable">
+        <div
+          className="ln-panel ln-accented ln-tone-blue"
+          data-panel="timetable"
+        >
           {courses === null || week === null ? (
             <>
               <h2>This week</h2>
@@ -190,7 +208,7 @@ export function LearnerDashboardView({
           )}
         </div>
         <section
-          className="ln-panel"
+          className="ln-panel ln-accented ln-tone-indigo"
           aria-labelledby="ln-progress-heading"
           data-panel="progression"
         >
@@ -215,7 +233,7 @@ export function LearnerDashboardView({
                 ) : (
                   <article
                     key={course.enrolmentId}
-                    className="ln-progress-card"
+                    className="ln-progress-card ln-tone-muted"
                   >
                     <h3 className="ln-progress-card__title">{course.title}</h3>
                     <p className="ln-muted">
@@ -231,7 +249,7 @@ export function LearnerDashboardView({
 
       <div className="ln-row" data-row="4">
         <section
-          className="ln-panel"
+          className="ln-panel ln-accented ln-tone-green"
           aria-labelledby="ln-results-heading"
           data-panel="results"
         >

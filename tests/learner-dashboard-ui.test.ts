@@ -132,6 +132,7 @@ const FIXTURE_RESULT: ReleasedResult = {
   maxScore: 100,
   attemptsUsed: 2,
   passed: true,
+  reviewAttemptId: "a-1",
 };
 
 type Props = Parameters<typeof LearnerDashboardView>[0];
@@ -156,6 +157,11 @@ const text = (html: string) =>
     .replace(/&amp;/g, "&")
     .replace(/\s+/g, " ")
     .trim();
+const panelRow = (html: string, row: string) => {
+  const start = html.indexOf(`data-row="${row}"`);
+  const next = html.indexOf("data-row=", start + 10);
+  return html.slice(start, next < 0 ? undefined : next);
+};
 const panel = (html: string, name: string) => {
   const start = html.indexOf(`data-panel="${name}"`);
   expect(start).toBeGreaterThan(-1);
@@ -192,7 +198,13 @@ describe("dashboard layout", () => {
   });
 
   it("shows the Explore more courses banner only to a learner with a course", () => {
-    expect(render()).toContain('<a href="/courses" class="ln-explore">');
+    // The whole banner is one link to Browse Courses, with a solid indigo
+    // call to action inside it (decorative; the link carries the name).
+    const html = render();
+    expect(html).toContain(
+      '<a href="/courses" class="ln-explore ln-clickable">',
+    );
+    expect(text(panelRow(html, "2"))).toContain("Explore More Courses");
     const none = render({ courses: [], progressions: [], results: [] });
     expect(none).not.toContain('data-row="2"');
     expect(none).not.toContain("Explore more courses");
@@ -259,7 +271,13 @@ describe("next activity", () => {
     expect(plain).toMatch(/Wed,? 4 Nov 2026/);
     expect(plain).toContain("11:00 to 12:00");
     expect(plain).toContain("Open now");
-    expect(html).toContain('href="/student/courses/e-1"');
+    // The whole card opens the activity's own workspace panel.
+    expect(render()).toContain(
+      'class="ln-panel ln-next ln-accented ln-clickable ln-tone-teal"',
+    );
+    expect(html).toContain(
+      '<a href="/student/courses/e-1#lab" class="ln-cta ln-clickable__link">',
+    );
     expect(plain).toContain("Open Practical Lab");
   });
 

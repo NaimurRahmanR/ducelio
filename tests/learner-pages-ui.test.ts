@@ -77,7 +77,7 @@ describe("My Learning", () => {
     );
     const rows = [
       ...html.matchAll(
-        /<li><a href="([^"]+)" class="ln-course-row">(.*?)<\/a><\/li>/g,
+        /<li><a href="([^"]+)" class="ln-course-row[^"]*">(.*?)<\/a><\/li>/g,
       ),
     ];
     expect(rows.map((r) => r[1])).toEqual([

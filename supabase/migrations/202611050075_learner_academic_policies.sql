@@ -1006,7 +1006,12 @@ language sql stable security definer set search_path='' as $$
       'kind', coalesce(x->>'kind', 'ASSESSMENT'), 'releasedAt', x->'releasedAt',
       'bestScore', (x->>'bestScore')::integer, 'maxScore', (x->>'maxScore')::integer,
       'attemptsUsed', (x->>'attemptsUsed')::integer,
-      'passed', case when x->>'passMarkBp' is null then null else (x->>'scoreBp')::integer >= (x->>'passMarkBp')::integer end)
+      'passed', case when x->>'passMarkBp' is null then null else (x->>'scoreBp')::integer >= (x->>'passMarkBp')::integer end,
+      -- The learner's own submitted attempt whose released review opens from
+      -- this result (highest score, then the latest); null with no attempt.
+      'reviewAttemptId', (select t.id from public.academy_assessment_attempts t
+        where t.enrolment_id = e.id and t.assessment_ref = x->>'assessmentRef' and t.state = 'SUBMITTED'
+        order by t.score * 10000 / t.max_score desc, t.attempt_number desc limit 1))
     order by (x->>'releasedAt')::timestamptz, x->>'assessmentRef'), '[]'::jsonb)
   from public.academy_enrolments e join public.academy_courses c on c.id = e.course_id
   cross join lateral jsonb_array_elements(academy_private.results(e.id)->'components') x

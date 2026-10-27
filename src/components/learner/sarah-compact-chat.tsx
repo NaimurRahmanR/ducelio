@@ -256,7 +256,7 @@ export function SarahCompactChat({
             <button className="button" disabled={pending}>
               {pending ? "Sarah is replying…" : "Send to Sarah"}
             </button>
-            <Link className="ln-textlink" href="/student/sarah">
+            <Link className="button secondary" href="/student/sarah">
               Open Sarah&apos;s page
             </Link>
           </div>

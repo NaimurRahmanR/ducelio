@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { Progress } from "@/components/ui";
 import type {
   CourseProgression,
@@ -104,13 +105,21 @@ export function ProgressionCard({
 }) {
   const Heading = headingLevel;
   return (
-    <article className="ln-progress-card">
+    <article
+      className={
+        detailsHref
+          ? "ln-progress-card ln-clickable ln-tone-indigo"
+          : "ln-progress-card ln-tone-indigo"
+      }
+    >
       <Heading className="ln-progress-card__title">{course.title}</Heading>
       <p className="ln-muted ln-progress-card__provider">{course.provider}</p>
       <ProgressionMeasures progression={progression} timeZone={timeZone} />
       {detailsHref && (
-        <Link className="ln-textlink" href={detailsHref}>
+        <Link className="ln-go ln-clickable__link" href={detailsHref}>
           View course progression
+          <span className="ln-sr">: {course.title}</span>
+          <ArrowRight size={16} aria-hidden="true" />
         </Link>
       )}
     </article>
@@ -134,7 +143,7 @@ export function CourseProgressionView({
         <h1>{course?.title ?? "Course progression"}</h1>
         {course && <p className="ln-muted">{course.provider}</p>}
       </header>
-      <div className="ln-panel">
+      <div className="ln-panel ln-accented ln-tone-indigo">
         {!course || !progression ? (
           <p role="alert">
             This course&apos;s progression could not be loaded. Nothing has
@@ -151,12 +160,14 @@ export function CourseProgressionView({
               completion or mastery. Objectives are demonstrated only through
               released assessment and practical evidence.
             </p>
-            <Link
-              className="button secondary"
-              href={`/student/courses/${encodeURIComponent(course.enrolmentId)}`}
-            >
-              Back to course
-            </Link>
+            <div className="ln-actions">
+              <Link
+                className="button"
+                href={`/student/courses/${encodeURIComponent(course.enrolmentId)}`}
+              >
+                Back to course
+              </Link>
+            </div>
           </>
         )}
       </div>

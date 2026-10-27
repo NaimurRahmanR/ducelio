@@ -901,16 +901,36 @@ describe("release after the deadline", () => {
     });
     expect(results.outcome).toBe("IN_PROGRESS");
     expect(results.courseScoreBp).toBeNull();
-    const released = await rpc<{ assessmentRef: string; bestScore: number }[]>(
-      q,
-      learnerA,
-      "list_my_academy_released_results",
-      [enrol.aA],
-    );
+    const released = await rpc<
+      {
+        assessmentRef: string;
+        bestScore: number;
+        reviewAttemptId: string | null;
+      }[]
+    >(q, learnerA, "list_my_academy_released_results", [enrol.aA]);
     expect(released.map((r) => r.assessmentRef).sort()).toEqual([
       "quiz-1",
       "quiz-2",
     ]);
+    // Each released result links to the learner's own best submitted attempt
+    // (highest score ratio, then the latest), never another learner's.
+    for (const r of released) {
+      const own = (
+        await q(
+          `select id from public.academy_assessment_attempts where enrolment_id=$1 and assessment_ref=$2
+            and state='SUBMITTED' order by score*10000/max_score desc, attempt_number desc limit 1`,
+          [enrol.aA, r.assessmentRef],
+        )
+      ).rows[0]?.id;
+      expect(r.reviewAttemptId).toBe(own ?? null);
+    }
+    expect(
+      released.find((r) => r.assessmentRef === "quiz-1")?.reviewAttemptId,
+    ).toBe(
+      [...attempts].sort(
+        (x, y) => y.score / y.max_score - x.score / x.max_score,
+      )[0].id,
+    );
     // Evidence is written once, at release processing, per submitted attempt.
     const evidence = (
       await q(

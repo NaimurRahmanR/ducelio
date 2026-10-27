@@ -156,6 +156,9 @@ describe("workspace layout", () => {
       "results",
       "progression",
     ]);
+    // Each panel is addressable, so timetable and dashboard cards (and the
+    // Tutor's #tutor notices) land on it.
+    for (const id of panels) expect(html).toContain(`<section id="${id}"`);
     const plain = text(html);
     for (const title of [
       "Professor Classroom",
@@ -399,6 +402,7 @@ describe("results and progression", () => {
               maxScore: 10,
               attemptsUsed: 1,
               passed: null,
+              reviewAttemptId: "a-1",
             },
           ],
         }),

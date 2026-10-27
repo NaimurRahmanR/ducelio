@@ -5,6 +5,16 @@ import { monthLabel, scoreText } from "./learner-format";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
+const ordinal = (n: number) => {
+  const tens = n % 100;
+  const suffix =
+    tens >= 11 && tens <= 13
+      ? "th"
+      : (({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[n % 10] ??
+        "th");
+  return `${n}${suffix}`;
+};
+
 // Monthly leaderboards: per course, per assessment, for one UTC month.
 // Released best scores only, top 10, pseudonymous labels; the server marks
 // the learner's own row (docs/61 §3).
@@ -43,10 +53,12 @@ export function LeaderboardsView({
         <div className="ln-panel">
           <EmptyState title="No leaderboards yet">
             Leaderboards appear after an assessment on one of your courses has
-            released results.{" "}
-            <Link className="ln-textlink" href="/student/learning">
-              My Learning
-            </Link>
+            released results.
+            <span className="ln-actions">
+              <Link className="button secondary" href="/student/learning">
+                My Learning
+              </Link>
+            </span>
           </EmptyState>
         </div>
       ) : (
@@ -65,7 +77,7 @@ export function LeaderboardsView({
           {courses.map((courseTitle) => (
             <section
               key={courseTitle}
-              className="ln-panel"
+              className="ln-panel ln-accented ln-tone-amber"
               aria-label={courseTitle}
             >
               <h2>{courseTitle}</h2>
@@ -74,6 +86,17 @@ export function LeaderboardsView({
                 .map((b) => (
                   <div key={b.assessmentRef} className="ln-board">
                     <h3>{b.assessmentTitle}</h3>
+                    {(() => {
+                      const me = b.entries.find((e) => e.isMe);
+                      return me ? (
+                        <p className="ln-myrank">
+                          <span>Your position: {ordinal(me.rank)}</span>
+                          <span className="ln-muted">
+                            Best score {scoreText(me.bestScore, me.maxScore)}
+                          </span>
+                        </p>
+                      ) : null;
+                    })()}
                     {b.entries.length === 0 ? (
                       <p className="ln-empty-line">
                         No released scores for {monthLabel(b.month)} yet.
@@ -99,7 +122,17 @@ export function LeaderboardsView({
                                 className={e.isMe ? "is-me" : undefined}
                                 aria-current={e.isMe ? "true" : undefined}
                               >
-                                <td data-label="Rank">{e.rank}</td>
+                                <td data-label="Rank">
+                                  <span
+                                    className={
+                                      e.rank <= 3
+                                        ? `ln-rank ln-rank--${e.rank}`
+                                        : "ln-rank"
+                                    }
+                                  >
+                                    {e.rank}
+                                  </span>
+                                </td>
                                 <th scope="row" data-label="Learner">
                                   {e.isMe ? "You" : e.label}
                                 </th>

@@ -8,8 +8,11 @@ import type {
 } from "@/domain/learner-contract";
 import {
   KIND_LABEL,
+  KIND_TONE,
   STATE_LABEL,
   STATE_TONE,
+  activityHref,
+  activityStateClass,
   activityTitle,
   dayHeading,
   formatDate,
@@ -19,7 +22,6 @@ import {
   shiftDate,
   weekHref,
   weekRangeLabel,
-  workspaceHref,
 } from "./learner-format";
 
 // What a learner may read about a class they attended or that has closed.
@@ -122,8 +124,13 @@ function ActivityItem({
     evidence &&
     activity.kind === "LESSON" &&
     (activity.state === "ATTENDED" || activity.state === "CLOSED");
+  // The whole card opens the activity's own workspace panel; the class
+  // details disclosure inside sits above that link and never navigates.
   return (
-    <li className={`ln-activity ln-activity--${activity.kind.toLowerCase()}`}>
+    <li
+      className={`ln-activity ln-activity--${activity.kind.toLowerCase()} ln-clickable ${KIND_TONE[activity.kind]} ${activityStateClass(activity.state)}`}
+    >
+      <p className="ln-activity__kind">{KIND_LABEL[activity.kind]}</p>
       <p className="ln-activity__time">
         <time dateTime={activity.startsAt}>
           {formatTime(activity.startsAt, timeZone)}
@@ -134,13 +141,12 @@ function ActivityItem({
         </time>
       </p>
       <p className="ln-activity__title">
-        <Link href={workspaceHref(activity.enrolmentId)}>
+        <Link className="ln-clickable__link" href={activityHref(activity)}>
           {activityTitle(activity)}
         </Link>
       </p>
       <p className="ln-activity__meta">
-        {KIND_LABEL[activity.kind]} · {activity.courseTitle} ·{" "}
-        {activity.provider}
+        {activity.courseTitle} · {activity.provider}
       </p>
       <Badge tone={STATE_TONE[activity.state]}>
         {STATE_LABEL[activity.state]}
@@ -347,11 +353,16 @@ export function TimetableWeekView({
         <div className="ln-panel">
           <EmptyState title="No timetable yet">
             When you enrol on a course and choose your timetable, every activity
-            appears here. <Link href="/courses">Browse Courses</Link>
+            appears here.
+            <span className="ln-actions">
+              <Link className="button" href="/courses">
+                Browse Courses
+              </Link>
+            </span>
           </EmptyState>
         </div>
       ) : (
-        <div className="ln-panel">
+        <div className="ln-panel ln-accented ln-tone-blue">
           <WeekTimetable
             week={week}
             basePath="/student/timetable"

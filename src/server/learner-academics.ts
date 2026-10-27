@@ -112,6 +112,7 @@ const releasedResultSchema = z.strictObject({
   maxScore: z.number().int(),
   attemptsUsed: z.number().int(),
   passed: z.boolean().nullable(),
+  reviewAttemptId: z.uuid().nullable(),
 });
 
 const assessmentCentreSchema = z
