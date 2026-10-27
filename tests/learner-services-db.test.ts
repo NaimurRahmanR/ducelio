@@ -1235,6 +1235,21 @@ describe("push subscriptions and reminders", () => {
 
   it("moves an endpoint to the learner now signed in on that browser", async () => {
     const endpoint = "https://fcm.googleapis.com/fcm/send/TEST-ONLY-endpoint-a";
+    // Knowing the endpoint is not enough: different keys cannot take it.
+    expect(
+      await rpc(q, learnerC, "subscribe_my_push", [
+        endpoint,
+        keys[0],
+        "z".repeat(22),
+        null,
+      ]),
+    ).toEqual({ ok: false, code: "ENDPOINT_IN_USE" });
+    expect(
+      await one(
+        "select user_id from public.learner_push_subscriptions where endpoint=$1",
+        [endpoint],
+      ),
+    ).toEqual({ user_id: learnerA.id });
     await rpc(q, learnerB, "subscribe_my_push", [
       endpoint,
       keys[0],
@@ -1403,6 +1418,34 @@ describe("certificates", () => {
         [code],
       ),
     ).rejects.toThrow("IMMUTABLE_HISTORY");
+    // Revoking the course entitlement (refund or administrative revocation)
+    // revokes the certificate in the same transaction, audited. Rolled back
+    // here so later suites keep this enrolment active.
+    await q("begin");
+    try {
+      await q(
+        `update public.academy_entitlements set state='REVOKED', revoked_at=now(), revocation_reason='TEST ONLY refund'
+          where id = (select entitlement_id from public.academy_enrolments where id=$1)`,
+        [enrolA],
+      );
+      expect(await rpc(q, null, "verify_certificate", [code])).toMatchObject({
+        found: true,
+        valid: false,
+        revoked: true,
+      });
+      expect(
+        (
+          await one<{ n: number }>(
+            "select count(*)::int n from public.audit_events where action='LEARNER_CERTIFICATE_REVOKED'",
+          )
+        ).n,
+      ).toBe(1);
+    } finally {
+      await q("rollback");
+    }
+    expect(await rpc(q, null, "verify_certificate", [code])).toMatchObject({
+      valid: true,
+    });
     await q(
       "update public.learner_certificates set revoked_at=now(), revoked_reason='TEST ONLY revocation' where verification_code=$1",
       [code],

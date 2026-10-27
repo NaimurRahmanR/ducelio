@@ -227,7 +227,7 @@ export function CourseWorkspaceView({
                   </dd>
                 </div>
                 <div>
-                  <dt>Correct in-class answers</dt>
+                  <dt>Correct in-class answers (judged by the AI Professor)</dt>
                   <dd>{cls.evidence.correctInClassAnswers}</dd>
                 </div>
               </dl>

@@ -246,6 +246,39 @@ async function sit(
   );
   return { attemptId: s.attemptId, marks };
 }
+// The order and option presentation the database derives from an attempt's
+// stored seed (the SQL helpers themselves, so assertions are exact whatever
+// random seed the attempt was given).
+async function seededOrder(attemptId: string, ref: string) {
+  return (
+    await q(
+      `select array_agg((x->>'position')::int order by academy_private.question_rank(a.presentation_seed, (x->>'position')::int)) o
+         from public.academy_assessment_attempts a, jsonb_array_elements($2::jsonb) x where a.id = $1 group by a.id`,
+      [attemptId, JSON.stringify(template(ref).questions)],
+    )
+  ).rows[0].o as number[];
+}
+async function seededInteraction(
+  attemptId: string,
+  ref: string,
+  position: number,
+) {
+  const authored = template(ref).questions.find(
+    (x: { position: number }) => x.position === position,
+  );
+  return (
+    await q(
+      `select academy_private.present_interaction($2, $3::jsonb, a.presentation_seed, $4) i
+         from public.academy_assessment_attempts a where a.id = $1`,
+      [
+        attemptId,
+        authored.questionType,
+        JSON.stringify(authored.interaction),
+        position,
+      ],
+    )
+  ).rows[0].i;
+}
 const PROTECTED =
   /"score"|maxScore|"marks"|answerKey|correctAnswer|expectedAnswer|explanation|markingGuidance|correctOption|"review"|courseScoreBp":\d/;
 
@@ -552,33 +585,21 @@ describe("attempt policy", () => {
         .sort((a, b) => a - b),
     ).toEqual(authored.slice(0, 3));
     expect(JSON.stringify(active)).not.toMatch(PROTECTED);
-    // This attempt's own order: stable across reads, not the authored
-    // order, the same questions, the same choice ids, some options moved.
+    // This attempt's own order, deterministically: exactly the order and
+    // option presentation the database derives from this attempt's stored
+    // seed (whatever its random value), stable across reads, over the same
+    // questions and choice ids.
     const reread = attemptSchema.parse(
       await rpc(q, learnerA, "get_my_academy_attempt", [first.attemptId]),
     );
     if (reread.state !== "ACTIVE") throw new Error("expected ACTIVE");
     const shown = active.questions.map((x) => x.position);
     expect(reread.questions.map((x) => x.position)).toEqual(shown);
-    expect(shown).not.toEqual(authored);
-    expect([...shown].sort((a, b) => a - b)).toEqual(authored);
-    const optionIds = (interaction: Record<string, unknown>) =>
-      ((interaction.options as { id: string }[] | undefined) ?? []).map(
-        (o) => o.id,
+    expect(shown).toEqual(await seededOrder(first.attemptId, "quiz-1"));
+    for (const x of active.questions)
+      expect(x.interaction).toEqual(
+        await seededInteraction(first.attemptId, "quiz-1", x.position),
       );
-    let moved = 0;
-    for (const x of active.questions) {
-      const original = optionIds(
-        template("quiz-1").questions.find(
-          (t: { position: number }) => t.position === x.position,
-        ).interaction,
-      );
-      expect([...optionIds(x.interaction)].sort()).toEqual(
-        [...original].sort(),
-      );
-      if (optionIds(x.interaction).join() !== original.join()) moved++;
-    }
-    expect(moved).toBeGreaterThan(0);
     const submitted = await rpc(q, learnerA, "submit_my_academy_attempt", [
       first.attemptId,
     ]);
@@ -620,9 +641,11 @@ describe("attempt policy", () => {
       )
     ).rows.map((r) => r.presentation_seed as string);
     expect(seeds.every((x) => /^[0-9a-f]{32}$/.test(x))).toBe(true);
-    expect(seeds[0]).not.toBe(seeds[1]);
-    for (const [i, seed] of seeds.entries())
-      expect(JSON.stringify(views[i])).not.toContain(seed);
+    for (const [i, seed] of seeds.entries()) {
+      const payload = JSON.stringify(views[i]);
+      expect(payload).not.toContain(seed);
+      expect(payload).not.toMatch(/seed/i);
+    }
     expect(
       (
         await q(
@@ -923,9 +946,10 @@ describe("release after the deadline", () => {
       if (v.state !== "SUBMITTED" || !v.review) throw new Error("no review");
       return v.review.map((x) => x.position).join();
     };
-    expect(await reviewOrder(attempts[0].id)).not.toBe(
-      await reviewOrder(attempts[1].id),
-    );
+    for (const a of attempts)
+      expect(await reviewOrder(a.id)).toBe(
+        (await seededOrder(a.id, "quiz-1")).join(),
+      );
     // Release also requires final grading. Academy assessments are scored
     // deterministically at finalisation, and the table itself refuses a
     // SUBMITTED attempt without a score, so an unscored attempt can never
@@ -1543,5 +1567,77 @@ describe("provider attribution and learner projections", () => {
             )
           ).rows[0].p,
         ).toBe(false);
+  });
+});
+
+describe("question-bank integrity (fixed seeds, deterministic)", () => {
+  const SEED_A = "a".repeat(32);
+  const SEED_B = "0123456789abcdef".repeat(2);
+  const order = async (seed: string, ref: string) =>
+    (
+      await q(
+        `select array_agg((x->>'position')::int order by academy_private.question_rank($1, (x->>'position')::int)) o
+           from jsonb_array_elements($2::jsonb) x`,
+        [seed, JSON.stringify(template(ref).questions)],
+      )
+    ).rows[0].o as number[];
+  const present = async (
+    seed: string | null,
+    x: { questionType: string; interaction: unknown; position: number },
+  ) =>
+    (
+      await q(
+        "select academy_private.present_interaction($1, $2::jsonb, $3, $4) i",
+        [x.questionType, JSON.stringify(x.interaction), seed, x.position],
+      )
+    ).rows[0].i as Record<string, unknown>;
+
+  it("varies question and option order by seed, purely, without changing any question or choice", async () => {
+    const authored = template("quiz-1").questions.map(
+      (x: { position: number }) => x.position,
+    );
+    const a = await order(SEED_A, "quiz-1");
+    // Pure: the same seed always gives the same order.
+    expect(await order(SEED_A, "quiz-1")).toEqual(a);
+    expect(a).not.toEqual(authored);
+    expect(await order(SEED_B, "quiz-1")).not.toEqual(a);
+    expect([...a].sort((x, y) => x - y)).toEqual(authored);
+    // Without a seed (attempts that predate variation): authored order.
+    expect(
+      (
+        await q(
+          `select array_agg((x->>'position')::int order by academy_private.question_rank(null, (x->>'position')::int)) o
+             from jsonb_array_elements($1::jsonb) x`,
+          [JSON.stringify(template("quiz-1").questions)],
+        )
+      ).rows[0].o,
+    ).toEqual(authored);
+    const ids = (v: unknown) =>
+      ((v as { id: string }[] | undefined) ?? []).map((o) => o.id);
+    let moved = 0;
+    for (const x of template("quiz-1").questions as {
+      questionType: string;
+      interaction: Record<string, unknown>;
+      position: number;
+    }[]) {
+      const shown = await present(SEED_A, x);
+      expect(await present(SEED_A, x)).toEqual(shown);
+      expect(await present(null, x)).toEqual(x.interaction);
+      const keys = ["options", "items", "targets", "steps"];
+      for (const k of keys)
+        expect([...ids(shown[k])].sort()).toEqual(
+          [...ids(x.interaction[k])].sort(),
+        );
+      // Ordering steps keep the authored display order.
+      if (x.questionType === "PBQ_ORDERING")
+        expect(shown.steps).toEqual(x.interaction.steps);
+      if (ids(shown.options).join() !== ids(x.interaction.options).join())
+        moved++;
+      // Everything but the shuffled arrays is unchanged.
+      for (const [k, v] of Object.entries(x.interaction))
+        if (!["options", "items", "targets", "fields"].includes(k))
+          expect(shown[k]).toEqual(v);
+    }
+    expect(moved).toBeGreaterThan(0);
   });
 });

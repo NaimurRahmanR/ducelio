@@ -428,6 +428,31 @@ create trigger learner_receipt_on_fulfilment after update of state on public.aca
   for each row when (new.state = 'FULFILLED' and old.state is distinct from 'FULFILLED')
   execute function learner_private.issue_receipt_on_fulfilment();
 
+-- A certificate never outlives the access it was earned under: when an
+-- entitlement is revoked (verified refund or administrative revocation), the
+-- certificates of its enrolments are revoked in the same transaction, so
+-- public verification reports them as revoked. Revocation is the only change
+-- the certificate guard permits, and it is audited.
+create function learner_private.revoke_certificates_on_entitlement() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare c record;
+begin
+  for c in update public.learner_certificates lc
+      set revoked_at = clock_timestamp(),
+          revoked_reason = 'Course access was revoked (refund or administrative revocation).'
+    from public.academy_enrolments e
+    where e.entitlement_id = new.id and lc.enrolment_id = e.id and lc.revoked_at is null
+    returning lc.id, lc.learner_id loop
+    insert into public.audit_events(actor_id, action, target_type, target_id, source, reason, after_state)
+    values (public.current_app_user(), 'LEARNER_CERTIFICATE_REVOKED', 'learner_certificates', c.id, 'LEARNER_SERVICES_V1',
+      'Certificate revoked with its course entitlement', jsonb_build_object('entitlement_id', new.id));
+  end loop;
+  return null;
+end $$;
+create trigger learner_certificates_follow_entitlement after update of state on public.academy_entitlements
+  for each row when (new.state = 'REVOKED' and old.state is distinct from 'REVOKED')
+  execute function learner_private.revoke_certificates_on_entitlement();
+
 -- Reminder materialisation from the CURRENT schedules only. Reminders of a
 -- superseded schedule are cancelled; the revised schedule's items (new ids)
 -- receive fresh reminders, and an occurrence already reminded on the same
@@ -571,6 +596,9 @@ begin
     if p_content_type not in ('image/png','image/jpeg','image/webp','application/pdf','text/plain') then
       return jsonb_build_object('ok', false, 'code', 'UNSUPPORTED_TYPE');
     end if;
+    -- One learner's uploads take this lock before counting, so concurrent
+    -- uploads cannot together exceed the unattached-file quota.
+    perform pg_advisory_xact_lock(hashtextextended('LEARNER_FILE_QUOTA:' || actor::text, 0));
     if (select count(*) from public.learner_private_files f where f.owner_id = actor and f.purpose = 'LAB_EVIDENCE'
         and not exists (select 1 from public.learner_lab_evidence_files ef where ef.file_id = f.id)) >= 10 then
       return jsonb_build_object('ok', false, 'code', 'QUOTA_EXCEEDED');
@@ -831,7 +859,13 @@ begin
   perform pg_advisory_xact_lock(hashtextextended('LEARNER_PUSH:' || p_endpoint, 0));
   select * into s from public.learner_push_subscriptions where endpoint = p_endpoint for update;
   if found and s.user_id <> actor then
-    -- The browser profile now belongs to another signed-in learner.
+    -- The browser profile now belongs to another signed-in learner. Only
+    -- that browser holds the subscription's keys (the auth secret is never
+    -- returned to anyone), so a takeover must present the same keys; an
+    -- endpoint alone cannot silence another learner's reminders.
+    if s.p256dh is distinct from p_p256dh or s.auth_secret is distinct from p_auth then
+      return jsonb_build_object('ok', false, 'code', 'ENDPOINT_IN_USE');
+    end if;
     delete from public.learner_push_subscriptions where id = s.id;
     s.id := null;
   end if;

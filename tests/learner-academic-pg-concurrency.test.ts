@@ -351,5 +351,62 @@ describe.skipIf(!endpoint)(
         ).rows[0].n,
       ).toBe(1);
     }, 120000);
+
+    it("never exceeds the unattached lab-file quota under simultaneous uploads", async () => {
+      // A minimal PNG (signature + IHDR), TEST ONLY.
+      const png = Buffer.concat([
+        Buffer.from("89504e470d0a1a0a", "hex"),
+        Buffer.from(
+          "0000000d49484452000000010000000108060000001f15c489",
+          "hex",
+        ),
+      ]).toString("base64");
+      const sql =
+        "select public.upload_my_private_file('LAB_EVIDENCE',$1,'race.png','image/png',$2) r";
+      const unattached = async () =>
+        (
+          await q(
+            `select count(*)::int n from public.learner_private_files f where f.owner_id=$1 and f.purpose='LAB_EVIDENCE'
+               and not exists (select 1 from public.learner_lab_evidence_files ef where ef.file_id=f.id)`,
+            [learnerA.id],
+          )
+        ).rows[0].n as number;
+      while ((await unattached()) < 8)
+        expect((await call(learnerA.auth, sql, [enrol.aA, png])).ok).toBe(true);
+      // Hold the learner's quota lock so all three uploads contend on it,
+      // then release them together: two slots remain, so exactly two win.
+      const holder = await connect();
+      await holder.query("begin");
+      await holder.query(
+        "select pg_advisory_xact_lock(hashtextextended('LEARNER_FILE_QUOTA:' || $1::text, 0))",
+        [learnerA.id],
+      );
+      const pending = [1, 2, 3].map(() =>
+        call(learnerA.auth, sql, [enrol.aA, png]),
+      );
+      const observer = await connect("postgres");
+      let blocked = false;
+      try {
+        for (let n = 0; n < 200 && !blocked; n++) {
+          const count = await observer.query(
+            "select count(*)::int n from pg_stat_activity where datname=$1 and wait_event_type='Lock'",
+            [database],
+          );
+          blocked = count.rows[0].n >= 3;
+          if (!blocked) await new Promise((r) => setTimeout(r, 25));
+        }
+      } finally {
+        await observer.end();
+        await holder.query("rollback");
+        await holder.end();
+      }
+      const results = await Promise.all(pending);
+      expect(blocked, "every upload must contend on the quota lock").toBe(true);
+      expect(results.filter((r) => r.ok === true)).toHaveLength(2);
+      expect(results.filter((r) => r.code === "QUOTA_EXCEEDED")).toHaveLength(
+        1,
+      );
+      expect(await unattached()).toBe(10);
+    }, 120000);
   },
 );

@@ -178,7 +178,7 @@ describe("My Timetable", () => {
     expect(plain).toMatch(/Mon,? 2 Nov 2026, 09:00 to 10:00/);
     expect(plain).toContain("Fixture Networking Course · Fixture Provider");
     expect(plain).toContain("Attended (checked in 09:03)");
-    expect(plain).toContain("Correct in-class answers 4");
+    expect(plain).toContain("Correct in-class answers (judged by the AI Professor) 4");
     expect(plain).toContain("1 of 2 covered");
     expect(plain).toContain("Fixture objective one (covered)");
     expect(plain).toContain("Fixture objective two (not covered)");

@@ -62,7 +62,7 @@ function ClassEvidenceDetails({
           </dd>
         </div>
         <div>
-          <dt>Correct in-class answers</dt>
+          <dt>Correct in-class answers (judged by the AI Professor)</dt>
           <dd>{evidence.correctInClassAnswers}</dd>
         </div>
         <div>
