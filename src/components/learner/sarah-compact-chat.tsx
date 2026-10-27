@@ -235,12 +235,9 @@ export function SarahCompactChat({
             defaultValue="GUIDE"
             disabled={pending}
           >
-            <option value="GUIDE">
-              Getting started, finding my way, my schedule or support
-              information
-            </option>
+            <option value="GUIDE">Finding my way and my schedule</option>
             <option value="SUPPORT_PROFILE">
-              Suggesting an update to my support preferences
+              Updating my support preferences
             </option>
           </select>
           <label htmlFor="ln-sarah-message" className="ln-label">

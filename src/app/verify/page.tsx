@@ -87,7 +87,7 @@ export default async function VerifyCertificatePage({
             </Badge>
           </h2>
           <dl role="status">
-            <dt>Learner</dt>
+            <dt>Learner (name as provided)</dt>
             <dd>{result.learnerName}</dd>
             <dt>Course</dt>
             <dd>{result.courseTitle}</dd>
@@ -104,6 +104,11 @@ export default async function VerifyCertificatePage({
             <dt>Code</dt>
             <dd>{result.verificationCode}</dd>
           </dl>
+          <p>
+            The learner&apos;s name is shown as they entered it in their profile
+            when the certificate was issued; Ducelio does not check identity
+            documents.
+          </p>
           {result.preparationCourse && (
             <p>
               This certificate confirms completion of a Ducelio preparation

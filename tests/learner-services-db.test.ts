@@ -1276,6 +1276,45 @@ describe("certificates", () => {
     await expect(
       rpc(q, learnerB, "issue_my_certificate", [enrolA]),
     ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
+    // Demo content never yields a certificate, and is not offered as one.
+    expect(await rpc(q, learnerA, "issue_my_certificate", [enrolA])).toEqual({
+      ok: false,
+      code: "DEMO_COURSE",
+    });
+    expect(
+      (await rpc<{ eligible: unknown[] }>(q, learnerA, "get_my_certificates"))
+        .eligible,
+    ).toEqual([]);
+    // TEST ONLY: the database owner marks this synthetic package as a
+    // non-demo course to exercise issuance (history guard bypassed
+    // explicitly, which no RPC can do).
+    await q(
+      "alter table public.academy_course_packages disable trigger guard_history",
+    );
+    try {
+      await q(
+        `update public.academy_course_packages pk set raw_package = jsonb_set(raw_package, '{course,demoContent}', 'false')
+          from public.academy_courses c join public.academy_enrolments e on e.course_id = c.id
+         where e.id = $1 and pk.id = c.package_id`,
+        [enrolA],
+      );
+    } finally {
+      await q(
+        "alter table public.academy_course_packages enable trigger guard_history",
+      );
+    }
+    // The certificate carries the PUBLISHED snapshot, not a later edit.
+    await q(
+      `update public.programmes p set examination_body = 'Edited after publication'
+        from public.programme_versions pv join public.academy_courses c on c.programme_version_id = pv.id
+        join public.academy_enrolments e on e.course_id = c.id
+       where e.id = $1 and p.id = pv.programme_id`,
+      [enrolA],
+    );
+    expect(
+      (await rpc<{ eligible: unknown[] }>(q, learnerA, "get_my_certificates"))
+        .eligible,
+    ).toHaveLength(1);
     const issued = await rpc<{
       ok: boolean;
       replayed: boolean;

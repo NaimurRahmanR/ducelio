@@ -25,6 +25,7 @@ import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
+import { parse as parseConnectionString } from "pg-connection-string";
 import { createJiti } from "jiti";
 
 const ENDPOINT =
@@ -37,8 +38,16 @@ export const PUBLISHABLE_KEY = "sb_publishable_local_only";
 export const LOCAL_PASSWORD = "Local-Only-Test-2026!";
 const SECRET = randomBytes(32);
 
+// Checked on what `pg` will actually connect to: its parser lets query
+// parameters (host=, hostaddr=) override the URL host, so any query string
+// is refused and the resolved host must be loopback.
 const endpoint = new URL(ENDPOINT);
-if (!["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname))
+const resolvedHost = parseConnectionString(ENDPOINT).host;
+if (
+  endpoint.search ||
+  !["127.0.0.1", "localhost", "[::1]"].includes(endpoint.hostname) ||
+  !["127.0.0.1", "localhost", "::1"].includes(resolvedHost)
+)
   throw new Error("LOCAL ONLY: a non-localhost database was refused.");
 const dbUrl = new URL(ENDPOINT);
 dbUrl.pathname = "/" + DATABASE;

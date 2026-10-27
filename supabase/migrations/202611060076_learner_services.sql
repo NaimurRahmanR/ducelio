@@ -1051,7 +1051,18 @@ begin
   if exists (select 1 from public.academy_entitlements where id = e.entitlement_id and state <> 'ACTIVE') then
     return jsonb_build_object('ok', false, 'code', 'ACCESS_REVOKED');
   end if;
-  select c.title, nullif(btrim(p.examination_body), ''), nullif(btrim(p.qualification_name), '') into v_title, v_body, v_qual
+  -- No certificate for demo content (AGENTS.md: demo academic content is
+  -- labelled, never presented as a real completion).
+  if exists (select 1 from public.academy_courses c join public.programme_versions pv on pv.id = c.programme_version_id
+      left join public.academy_course_packages pk on pk.id = c.package_id
+      where c.id = e.course_id and (pv.is_demo or coalesce((pk.raw_package->'course'->>'demoContent')::boolean, false))) then
+    return jsonb_build_object('ok', false, 'code', 'DEMO_COURSE');
+  end if;
+  -- The examination body and qualification as PUBLISHED (the version
+  -- snapshot), never the live programme row, which may be edited later.
+  select c.title, nullif(btrim(coalesce(pv.examination_body_snapshot, p.examination_body)), ''),
+         nullif(btrim(coalesce(pv.qualification_name_snapshot, p.qualification_name)), '')
+    into v_title, v_body, v_qual
   from public.academy_courses c join public.programme_versions pv on pv.id = c.programme_version_id
   join public.programmes p on p.id = pv.programme_id where c.id = e.course_id;
   v_name := left(learner_private.learner_name(e.learner_id), 100);
@@ -1098,7 +1109,10 @@ begin
       from public.academy_completions d join public.academy_enrolments e on e.id = d.enrolment_id
       join public.academy_courses co on co.id = e.course_id
       join public.academy_entitlements ent on ent.id = e.entitlement_id and ent.state = 'ACTIVE'
-      where e.learner_id = actor and not exists (select 1 from public.learner_certificates c where c.enrolment_id = e.id)), '[]'));
+      join public.programme_versions pv on pv.id = co.programme_version_id
+      left join public.academy_course_packages pk on pk.id = co.package_id
+      where e.learner_id = actor and not exists (select 1 from public.learner_certificates c where c.enrolment_id = e.id)
+        and not (pv.is_demo or coalesce((pk.raw_package->'course'->>'demoContent')::boolean, false))), '[]'));
 end $$;
 
 create function public.get_my_certificate(p_certificate_id uuid) returns jsonb
