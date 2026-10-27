@@ -2,33 +2,58 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`. No upstream; nothing pushed; no PR; no hosted change. Contract and ownership: docs/61.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`, head `8999b4d`. No upstream; nothing pushed; no PR; no hosted change; migrations 075/076 applied to no hosted database. Contract: docs/61.
 
-LAST COMPLETED CHECKPOINT: lanes B (`32a961a`, migration 075), C (`713191c`, migration 076) and A (`c536f2c`) are merged with no conflicts. Integration is committed (`c5d7184`):
+LAST COMPLETED CHECKPOINT: lanes A/B/C are integrated, wired, reviewed and fixed. Commits:
 
-- page wiring: Give attendance, AI Tutor quick actions, lab evidence form, attempt release firewall and review, profile/certificates/receipts, timetable evidence and reminders;
-- lab file evidence now also writes the governed `academy_lab_submissions` row, under the same firewall, status and window checks as `submit_my_academy_lab`;
-- migration 076 additions: `list_my_unattached_lab_files` and literal anon grants;
-- registries: Sarah list, readiness contract, anon allow-list, CI PostgreSQL list with minimum 115.
-  The LOCAL ONLY stack is committed (`a62d9d5`): `scripts/local/learner-stack.mjs`, a Supabase-compatible gateway over a disposable local database, seeded through the real RPCs, plus `learner-browser.mjs`.
+- `c5d7184`: integration.
+- `a62d9d5`: LOCAL ONLY stack.
+- `9e72279`: profile validation fix.
+- `8999b4d`: review fixes M1-M3.
 
-COMPLETED ITEMS:
+COMPLETED ITEMS (evidence):
 
-- typecheck, lint and format:check pass.
-- Real PostgreSQL 18.4: 115/115 across 16 required suites, none skipped.
-- Full suite: 5,192 passed and 4 failed. One failure was real (the anon allow-list lacked the 076 signatures; fixed). Three were timeouts under concurrent load; they pass in isolation (130/130).
+- Real PostgreSQL 18.4 at `8999b4d`: 115/115 across 16 required suites, none skipped.
+- Full suite at `9e72279`: 5,195 passed, 61 skipped and 1 failed. The failure is a 30 s timeout in `commercial-v1-results-completion-db` under concurrent load; the file passes 56/56 in isolation.
+- Build at `9e72279` plus the Sarah label change: exit 0. Webpack failed earlier because worktree `node_modules` junctions inside the repo created a cycle; they were removed and the app worktree now lives outside the repo.
+- Real browser, local stack: 51/51 across desktop 1440, tablet 820 and mobile 390, with screenshots in `work/learner-browser/`.
+- Independent read-only review: findings M1-M3 fixed; H1 and L1-L7 recorded below.
 
-CURRENT PARTIAL CHECKPOINT: real-browser acceptance on the local stack (desktop/tablet/mobile), then the independent read-only review, a clean full-suite rerun and the build.
+CURRENT PARTIAL CHECKPOINT: none started. The final gate run at `8999b4d` (check, format and build) was stopped by the system for low memory after the PostgreSQL gate passed. It was not restarted, as instructed. Per-file prettier and eslint on the files changed since `9e72279` are clean; typecheck passed after the last source edit.
+
+KNOWN OPEN ITEMS:
+
+- H1 (owner policy decision): correct answers are released per learner when that learner's window closes, as specified. With personal schedules, a learner can pass the answer key to a learner whose window is still open. The options need an owner decision:
+  - a course-wide answer release;
+  - score-only release;
+  - rotated question pools.
+- Low findings L1-L7, unchanged:
+  - L1: dispatcher signatures can be replayed for about 60 s;
+  - L2: push-endpoint takeover;
+  - L3: legacy lessons have no attendance window;
+  - L4: in-class correctness is AI-asserted (display only);
+  - L5: the unattached-upload quota is checked without a lock;
+  - L6: former learners can read leaderboards;
+  - L7: there is no certificate revocation path.
+- Earlier risks:
+  - evidence and completion depend on refresh calls;
+  - the Professor evidence directive is not in the reviewed baseline;
+  - pre-existing zod advisory;
+  - date-dependent DST test;
+  - anon dispatchers reuse the commerce HMAC keys;
+  - the receipt trigger swallows its own errors;
+  - recovery un-releases an assessment;
+  - PDFs use standard fonts.
+- Unverified live: AI provider, Stripe, email provider, VAPID push, Supabase Storage, hosted Auth/PostgREST.
 
 CONFIGURATION (local only):
 
-- `node scripts/local/learner-stack.mjs --reset` (cluster `work/pgdata-unified-20261023` on 127.0.0.1:55484).
-- The app runs from the env-free worktree `work/local-app` with `next dev --webpack`; Turbopack refuses the node_modules junction. Process env: `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_local_only`, `APP_URL=http://127.0.0.1:3000`.
-- TEST ONLY sign-in: `learner-a@example.com` / `Local-Only-Test-2026!`.
+- `node scripts/local/learner-stack.mjs --reset` (cluster `work/pgdata-unified-20261023`, 127.0.0.1:55484; gateway 127.0.0.1:54399).
+- Then, in `../ducelio-learner-local` (worktree at `8999b4d`, no .env files): `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_local_only APP_URL=http://127.0.0.1:3000 npx next dev --webpack -H 127.0.0.1 -p 3000`.
+- Sign in as `learner-a@example.com` / `Local-Only-Test-2026!` (TEST ONLY).
+- Journey: `node scripts/local/learner-browser.mjs`.
 
-UNVERIFIED: no AI provider, Stripe, email provider, VAPID, Supabase Storage, hosted Auth/PostgREST. Migrations 075/076 are NOT applied to any hosted database.
-
-NEXT EXACT ACTION: finish the browser run, fix its findings, run the independent review, rerun the full gates, write the final report and stop for owner visual acceptance.
+NEXT EXACT ACTION: owner visual acceptance. When memory allows and the owner asks, rerun `npm run check`, `npm run format:check` and the build at `8999b4d`. Then the owner decides H1, PR creation and hosted migration application. Do not push, open a PR or deploy without approval.
 
 PREVIOUS RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
 
