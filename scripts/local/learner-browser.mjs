@@ -688,21 +688,28 @@ for (const [viewport, width, height] of VIEWPORTS) {
               `document.querySelector('.exam-choices input[type=radio][value=${js(radio.value)}]')`,
             );
             await page.click(byText("button", "Save answer"));
+            // The exam's own confirmation (its legend always says "saved",
+            // so that word alone is not proof), then the recorded answer.
             must(
               await page.waitFor(
-                "/saved/i.test(document.body.innerText)",
+                "document.body.innerText.includes('Answer saved.')",
                 20000,
               ),
               "no save confirmation",
             );
             await shot("exam-answer-saved");
-            const stored = await db.query(
-              "select body from public.academy_assessment_responses where attempt_id=$1 and question_position=$2 order by id desc limit 1",
-              [attemptId(), saved.position],
-            );
+            let stored = null;
+            for (let n = 0; n < 50 && !stored; n++) {
+              stored = (
+                await db.query(
+                  "select body from public.academy_assessment_responses where attempt_id=$1 and question_position=$2 order by id desc limit 1",
+                  [attemptId(), saved.position],
+                )
+              ).rows[0];
+              if (!stored) await new Promise((r) => setTimeout(r, 200));
+            }
             must(
-              stored.rows[0] &&
-                JSON.parse(stored.rows[0].body).optionId === saved.optionId,
+              stored && JSON.parse(stored.body).optionId === saved.optionId,
               "the saved answer is not the one recorded for that authored question",
             );
             return `saved authored question #${saved.position}`;

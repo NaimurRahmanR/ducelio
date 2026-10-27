@@ -2,7 +2,36 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27, final local verification; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience`; see `git log` for the head. Nothing pushed; no PR; no deployment; no hosted change; migrations 075/076 applied to no hosted database. Contract: docs/61, including the owner's release decision.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27, premium learner UI/UX pass; LOCAL ONLY): branch `feat/complete-learner-experience`; see `git log` for the head. Nothing pushed; no PR; no deployment; no hosted change.
+
+LAST COMPLETED CHECKPOINT: premium learner UI/UX pass, implemented and verified.
+
+- One token-driven learner design layer:
+  - semantic tones;
+  - elevation and motion, with reduced-motion support;
+  - button system;
+  - pill badges that state the status in words;
+  - form controls with a focus ring;
+  - message styles;
+  - tables that stack in narrow containers;
+  - empty states;
+  - a learner loading skeleton.
+- Every meaningful card navigates through one stretched link:
+  - Next Activity and timetable cards open the activity's own workspace panel;
+  - progression cards open detailed progression;
+  - released-result rows open the learner's own released review (`reviewAttemptId` added to the migration 075 projection only);
+  - Explore More Courses is a full-indigo call to action;
+  - My Learning rows open the course.
+- Workspace panels are accented and anchored, which also fixes the existing `#tutor` anchor. Leaderboards show rank chips and the learner's own position. Browse Courses cards are polished.
+- Verification:
+  - lint, typecheck, format and build: exit 0;
+  - full suite: 259 files, 5,203 passed, 0 failed, 62 skipped (one shard was rerun after two environment timeouts; both files pass in isolation);
+  - real PostgreSQL: 117/117;
+  - real browser: 63/63, including card destinations by mouse and keyboard.
+
+NEXT EXACT ACTION: owner final visual acceptance. No push, PR or deployment without approval.
+
+PREVIOUS RECORD (2026-10-27, final local verification): ; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience`; see `git log` for the head. Nothing pushed; no PR; no deployment; no hosted change; migrations 075/076 applied to no hosted database. Contract: docs/61, including the owner's release decision.
 
 LAST COMPLETED CHECKPOINT: final local verification. All gates ran sequentially under memory monitoring (5-8 GB free throughout); none was interrupted.
 
