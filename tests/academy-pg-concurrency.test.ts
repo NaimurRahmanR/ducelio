@@ -258,6 +258,12 @@ describe.skipIf(!ADMIN_URL)(
       );
       await Promise.all(clients.map((c) => c.end()));
       expect(new Set(submits.map((s) => JSON.stringify(s))).size).toBe(1);
+      // Migration 075: a submission never returns a score before release.
+      expect(submits[0]).toEqual({
+        ok: true,
+        state: "SUBMITTED",
+        submission: "STUDENT_SUBMIT",
+      });
       expect(
         (
           await q(

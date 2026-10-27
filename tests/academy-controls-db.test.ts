@@ -19,6 +19,7 @@ import {
   type Person,
   type Query,
 } from "./academy-fixture";
+import { closeSittingNow } from "./academy-release-fixture";
 
 // Migration 061 academic controls, adversarially, against a REAL
 // institutional Commercial V1 assessment and an Academy enrolment held by
@@ -302,6 +303,29 @@ describe("authorised lesson release", () => {
 
 describe("objective evidence and MASTERY_V1", () => {
   it("records one database-derived observation per assessed objective, immutably", async () => {
+    // Migration 075: assessment evidence is written at RELEASE processing,
+    // never at submission. While the sitting windows are open, nothing.
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_objective_evidence where enrolment_id = $1",
+          [enrolment],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    expect(
+      (
+        await q(
+          "select count(*)::int n from public.academy_objective_mastery where enrolment_id = $1",
+          [enrolment],
+        )
+      ).rows[0].n,
+    ).toBe(0);
+    for (const ref of ["quiz-1", "quiz-2"])
+      await closeSittingNow(q, enrolment, ref);
+    expect(
+      await rpc(q, learner, "refresh_my_academy_releases", [enrolment]),
+    ).toMatchObject({ ok: true, released: ["quiz-1", "quiz-2"] });
     const rows = (
       await q(
         "select result, evidence_kind, source_kind from public.academy_objective_evidence where enrolment_id = $1",
