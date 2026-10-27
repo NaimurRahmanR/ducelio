@@ -20,7 +20,9 @@ export const PREPARATION_DISCLAIMER =
 export const certificateSchema = z.object({
   certificateId: z.uuid(),
   enrolmentId: z.uuid(),
-  verificationCode: z.string().regex(/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/),
+  verificationCode: z
+    .string()
+    .regex(/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/),
   learnerName: z.string(),
   courseTitle: z.string(),
   issuerName: z.string(),
@@ -175,7 +177,10 @@ export function drawCentred(
 // Shrinks a single line to fit, down to a floor, before wrapping.
 function fitSize(font: PDFFont, text: string, size: number, maxWidth: number) {
   let s = size;
-  while (s > 14 && font.widthOfTextAtSize(pdfSafeText(font, text), s) > maxWidth)
+  while (
+    s > 14 &&
+    font.widthOfTextAtSize(pdfSafeText(font, text), s) > maxWidth
+  )
     s -= 1;
   return s;
 }
@@ -236,21 +241,45 @@ export async function renderCertificatePdf(
   drawCentred(page, serifBold, "Certificate of Completion", height - 150, 34);
   drawCentred(page, serif, "This is to certify that", height - 190, 14, MUTED);
   const nameSize = fitSize(serifBold, c.learnerName, 30, width - 160);
-  drawCentred(page, serifBold, c.learnerName, height - 232, nameSize, DUCELIO_INDIGO);
+  drawCentred(
+    page,
+    serifBold,
+    c.learnerName,
+    height - 232,
+    nameSize,
+    DUCELIO_INDIGO,
+  );
   page.drawLine({
     start: { x: width / 2 - 180, y: height - 244 },
     end: { x: width / 2 + 180, y: height - 244 },
     thickness: 0.8,
     color: DUCELIO_INDIGO,
   });
-  drawCentred(page, serif, "has successfully completed the course", height - 272, 14, MUTED);
+  drawCentred(
+    page,
+    serif,
+    "has successfully completed the course",
+    height - 272,
+    14,
+    MUTED,
+  );
   let y = height - 304;
-  for (const line of wrapText(serifBold, c.courseTitle, 20, width - 200).slice(0, 2)) {
+  for (const line of wrapText(serifBold, c.courseTitle, 20, width - 200).slice(
+    0,
+    2,
+  )) {
     drawCentred(page, serifBold, line, y, 20);
     y -= 24;
   }
   drawCentred(page, sans, `Provided by ${c.issuerName}`, y - 4, 12, INK);
-  drawCentred(page, sans, `Completed on ${formatDate(c.completedAt)}`, y - 24, 12, INK);
+  drawCentred(
+    page,
+    sans,
+    `Completed on ${formatDate(c.completedAt)}`,
+    y - 24,
+    12,
+    INK,
+  );
 
   // Footer: issue date and verification on the left and right.
   const verifyUrl = `${options.appUrl}/verify?code=${c.verificationCode}`;
@@ -261,13 +290,16 @@ export async function renderCertificatePdf(
     font: sans,
     color: MUTED,
   });
-  page.drawText(pdfSafeText(sansBold, `Verification code: ${c.verificationCode}`), {
-    x: 60,
-    y: 96,
-    size: 10,
-    font: sansBold,
-    color: INK,
-  });
+  page.drawText(
+    pdfSafeText(sansBold, `Verification code: ${c.verificationCode}`),
+    {
+      x: 60,
+      y: 96,
+      size: 10,
+      font: sansBold,
+      color: INK,
+    },
+  );
   page.drawText(pdfSafeText(sans, `Verify at ${verifyUrl}`), {
     x: 60,
     y: 81,

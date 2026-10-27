@@ -24,7 +24,9 @@ import {
 const PUSH_ENDPOINT =
   /^https:\/\/(fcm\.googleapis\.com|android\.googleapis\.com|updates\.push\.services\.mozilla\.com|push\.services\.mozilla\.com|web\.push\.apple\.com|[a-z0-9-]+\.push\.apple\.com|[a-z0-9-]+\.notify\.windows\.com)\/\S+$/;
 export const isAllowedPushEndpoint = (endpoint: string) =>
-  endpoint.length >= 20 && endpoint.length <= 1000 && PUSH_ENDPOINT.test(endpoint);
+  endpoint.length >= 20 &&
+  endpoint.length <= 1000 &&
+  PUSH_ENDPOINT.test(endpoint);
 
 // PushSubscription.toJSON() from the browser.
 export const pushSubscriptionSchema = z.object({
@@ -38,8 +40,7 @@ export const pushSubscriptionSchema = z.object({
 
 export async function subscribeMyPush(subscription: unknown) {
   const s = pushSubscriptionSchema.safeParse(subscription);
-  if (!s.success)
-    return { ok: false as const, code: "INVALID_SUBSCRIPTION" };
+  if (!s.success) return { ok: false as const, code: "INVALID_SUBSCRIPTION" };
   return z
     .union([
       z.object({
@@ -62,13 +63,11 @@ export async function subscribeMyPush(subscription: unknown) {
 }
 
 export async function unsubscribeMyPush(endpoint: unknown) {
-  return z
-    .object({ ok: z.literal(true), removed: z.boolean() })
-    .parse(
-      await callLearnerRpc("unsubscribe_my_push", {
-        p_endpoint: z.string().max(1000).parse(endpoint),
-      }),
-    );
+  return z.object({ ok: z.literal(true), removed: z.boolean() }).parse(
+    await callLearnerRpc("unsubscribe_my_push", {
+      p_endpoint: z.string().max(1000).parse(endpoint),
+    }),
+  );
 }
 
 export async function refreshMyActivityReminders() {
@@ -193,7 +192,10 @@ export async function dispatchActivityReminders(options: {
   const limit = Math.min(Math.max(options.limit ?? 100, 1), 200);
   const claim = z
     .union([
-      z.object({ ok: z.literal(true), reminders: z.array(claimedReminderSchema) }),
+      z.object({
+        ok: z.literal(true),
+        reminders: z.array(claimedReminderSchema),
+      }),
       z.object({ ok: z.literal(false), code: z.string() }),
     ])
     .parse(

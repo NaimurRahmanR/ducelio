@@ -201,8 +201,20 @@ export async function renderReceiptPdf(
   right(formatMoney(r.amountMinor, r.currency), y, 12, true);
   y -= 26;
   if (r.refund) {
-    text(page, `Refunded on ${formatDate(r.refund.refundedAt)}`, left, y, 10.5, true);
-    right(`-${formatMoney(r.refund.amountMinor, r.refund.currency)}`, y, 10.5, true);
+    text(
+      page,
+      `Refunded on ${formatDate(r.refund.refundedAt)}`,
+      left,
+      y,
+      10.5,
+      true,
+    );
+    right(
+      `-${formatMoney(r.refund.amountMinor, r.refund.currency)}`,
+      y,
+      10.5,
+      true,
+    );
     y -= 18;
     text(page, "Status: REFUNDED", left, y, 10.5, true, rgb(0.7, 0.1, 0.1));
     y -= 18;

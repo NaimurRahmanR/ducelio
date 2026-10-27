@@ -50,7 +50,8 @@ export type FileCheck =
   | { ok: true; contentType: PrivateFileType }
   | {
       ok: false;
-      code: "EMPTY_FILE" | "FILE_TOO_LARGE" | "UNSUPPORTED_TYPE" | "TYPE_MISMATCH";
+      code:
+        "EMPTY_FILE" | "FILE_TOO_LARGE" | "UNSUPPORTED_TYPE" | "TYPE_MISMATCH";
     };
 
 const GENERIC_TYPES = new Set(["", "application/octet-stream"]);
@@ -143,11 +144,7 @@ export async function readPrivateFile(
   if (!id.success) return null;
   try {
     const { contentBase64, ...file } = storedFileSchema.parse(
-      await callLearnerRpc(
-        "read_private_file",
-        { p_file_id: id.data },
-        "any",
-      ),
+      await callLearnerRpc("read_private_file", { p_file_id: id.data }, "any"),
     );
     return {
       ...file,
@@ -164,13 +161,11 @@ export async function readPrivateFile(
 }
 
 export async function deleteMyPrivateFile(fileId: unknown) {
-  return z
-    .object({ ok: z.boolean(), code: z.string().optional() })
-    .parse(
-      await callLearnerRpc("delete_my_private_file", {
-        p_file_id: z.uuid().parse(fileId),
-      }),
-    );
+  return z.object({ ok: z.boolean(), code: z.string().optional() }).parse(
+    await callLearnerRpc("delete_my_private_file", {
+      p_file_id: z.uuid().parse(fileId),
+    }),
+  );
 }
 
 const evidenceSchema = z.object({
