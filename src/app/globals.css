@@ -7797,3 +7797,83 @@ dl.ac-mini-stats {
     transition: none;
   }
 }
+/* The banner's icon tile and call to action keep their own size (an
+   earlier rule lets every direct span grow). */
+.ln-explore > .ln-explore__icon {
+  display: grid;
+  flex: 0 0 48px;
+}
+.ln-explore > .ln-cta {
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.9375rem;
+}
+@media (max-width: 640px) {
+  .ln-explore > .ln-cta {
+    flex: 1 1 100%;
+  }
+}
+/* Workspace header keeps its row layout; standalone panel buttons keep
+   their natural width. */
+.ln-page__head.ln-workspace__head {
+  display: flex;
+}
+.ln-wpanel > .button,
+.ln-wpanel > a.button {
+  align-self: flex-start;
+}
+/* Tables stack into labelled cards whenever their container is narrow
+   (a half-width workspace panel as well as a phone), never scrolling
+   sideways. */
+.ln-table-wrap {
+  container-type: inline-size;
+}
+@container (max-width: 680px) {
+  .ln-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .ln-table,
+  .ln-table tbody,
+  .ln-table tr,
+  .ln-table th,
+  .ln-table td,
+  .ln-table caption {
+    display: block;
+  }
+  .ln-table tr {
+    margin: 0 0.6rem 0.6rem;
+    padding: 0.35rem 0;
+    border: 1px solid var(--ln-line);
+    border-radius: 10px;
+    background: var(--ln-surface);
+  }
+  .ln-table th,
+  .ln-table td {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.35rem 0.75rem;
+    border-bottom: 0;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+  .ln-table th[data-label]::before,
+  .ln-table td[data-label]::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--ln-muted);
+    flex-shrink: 0;
+    text-align: left;
+  }
+  .ln-table td[data-label="Review"]::before {
+    content: none;
+  }
+}
+.catalogue .offer-card > .badge {
+  align-self: flex-start;
+  margin-bottom: 0.75rem;
+}
