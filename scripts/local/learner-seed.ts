@@ -21,7 +21,6 @@ import { validateAcademyCoursePackage } from "@/domain/academy-course-package";
 
 const reason = "TEST ONLY local learner acceptance seed";
 const { admin, learnerA, learnerB, learnerC } = people;
-const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
 const day = (offset: number) =>
   new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
 
@@ -94,16 +93,21 @@ export async function seedLocalLearner(q: Query) {
     if (!r.ok) throw new Error(JSON.stringify(r));
     return r.enrolmentId;
   }
-  async function confirm(person: Person, enrolment: string, time: string) {
+  async function confirm(
+    person: Person,
+    enrolment: string,
+    time: string,
+    days = [1, 2, 3, 4, 5],
+  ) {
     const r = await rpc<{ ok: boolean }>(
       q,
       person,
       "confirm_my_academy_schedule",
       [
         enrolment,
-        "ACCELERATED_2W",
+        "STANDARD_6W",
         day(1),
-        ALL_DAYS,
+        days,
         time,
         "Europe/London",
         randomUUID(),
@@ -184,7 +188,7 @@ export async function seedLocalLearner(q: Query) {
   const peerB = await join(learnerB, A);
   const peerC = await join(learnerC, A);
   await confirm(learnerA, enrolA, "09:00");
-  await confirm(learnerA, enrolB, "15:00");
+  await confirm(learnerA, enrolB, "18:00", [1, 2, 4, 6]);
   await confirm(learnerB, peerB, "09:00");
   await confirm(learnerC, peerC, "09:00");
 

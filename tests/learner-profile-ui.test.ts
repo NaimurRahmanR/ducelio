@@ -117,8 +117,15 @@ describe("profile page", () => {
     const html = render();
     expect(html).toContain('name="educationCount" value="1"');
     expect(html).toContain('name="experienceCount" value="1"');
-    for (const f of ["institution", "qualification", "fieldOfStudy"])
+    // Required and bounded exactly as the profile service validates them:
+    // field of study is optional there, so it is optional here.
+    for (const f of ["institution", "qualification"])
       expect(input(html, `education.0.${f}`)).toMatch(/required/);
+    expect(input(html, "education.0.fieldOfStudy")).not.toMatch(/required/);
+    for (const f of ["institution", "qualification", "fieldOfStudy"])
+      expect(input(html, `education.0.${f}`)).toContain('maxLength="150"');
+    for (const f of ["firstName", "lastName"])
+      expect(input(html, f)).toContain('maxLength="60"');
     expect(input(html, "education.0.institution")).toContain(
       'value="Fixture University"',
     );

@@ -2,19 +2,33 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-26; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`. No upstream; nothing pushed; no hosted change. Contract and ownership: docs/61.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`. No upstream; nothing pushed; no PR; no hosted change. Contract and ownership: docs/61.
 
-LAST COMPLETED CHECKPOINT: read-only audits A (frontend), B (academic backend) and C (learner services) completed. Contract, file ownership and migration allocation committed (`db98860`); shared projection types committed (`f1f9744`). Dependencies pdf-lib 1.17.1 and web-push 3.6.7 added. The npm audit high finding is pre-existing zod 4.5.4 (fix 4.6.7), not introduced here.
+LAST COMPLETED CHECKPOINT: lanes B (`32a961a`, migration 075), C (`713191c`, migration 076) and A (`c536f2c`) are merged with no conflicts. Integration is committed (`c5d7184`):
 
-CURRENT CHECKPOINT: parallel implementation in isolated worktrees.
+- page wiring: Give attendance, AI Tutor quick actions, lab evidence form, attempt release firewall and review, profile/certificates/receipts, timetable evidence and reminders;
+- lab file evidence now also writes the governed `academy_lab_submissions` row, under the same firewall, status and window checks as `submit_my_academy_lab`;
+- migration 076 additions: `list_my_unattached_lab_files` and literal anon grants;
+- registries: Sarah list, readiness contract, anon allow-list, CI PostgreSQL list with minimum 115.
+  The LOCAL ONLY stack is committed (`a62d9d5`): `scripts/local/learner-stack.mjs`, a Supabase-compatible gateway over a disposable local database, seeded through the real RPCs, plus `learner-browser.mjs`.
 
-- Lane A: frontend.
-- Lane B: academic policies, migration 075, learner-academics server.
-- Lane C: learner services, migration 076.
+COMPLETED ITEMS:
 
-UNVERIFIED DEPENDENCIES: no AI provider, Stripe, email provider, VAPID or local Supabase Storage. Live delivery for email/push/payments will remain unverified.
+- typecheck, lint and format:check pass.
+- Real PostgreSQL 18.4: 115/115 across 16 required suites, none skipped.
+- Full suite: 5,192 passed and 4 failed. One failure was real (the anon allow-list lacked the 076 signatures; fixed). Three were timeouts under concurrent load; they pass in isolation (130/130).
 
-NEXT EXACT ACTION: review each lane's handoff diff, integrate B then C then A into this branch, wire pages to server functions, update the migration list, readiness contract and CI PostgreSQL list, then run the full gates, the real-PostgreSQL suites, the browser checks and the independent review.
+CURRENT PARTIAL CHECKPOINT: real-browser acceptance on the local stack (desktop/tablet/mobile), then the independent read-only review, a clean full-suite rerun and the build.
+
+CONFIGURATION (local only):
+
+- `node scripts/local/learner-stack.mjs --reset` (cluster `work/pgdata-unified-20261023` on 127.0.0.1:55484).
+- The app runs from the env-free worktree `work/local-app` with `next dev --webpack`; Turbopack refuses the node_modules junction. Process env: `NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_local_only`, `APP_URL=http://127.0.0.1:3000`.
+- TEST ONLY sign-in: `learner-a@example.com` / `Local-Only-Test-2026!`.
+
+UNVERIFIED: no AI provider, Stripe, email provider, VAPID, Supabase Storage, hosted Auth/PostgREST. Migrations 075/076 are NOT applied to any hosted database.
+
+NEXT EXACT ACTION: finish the browser run, fix its findings, run the independent review, rerun the full gates, write the final report and stop for owner visual acceptance.
 
 PREVIOUS RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
 

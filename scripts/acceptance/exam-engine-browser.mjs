@@ -221,6 +221,37 @@ export async function launchBrowser({
       });
       writeFileSync(path, Buffer.from(r.result.data, "base64"));
     },
+    // Whole-page capture with the viewport temporarily as tall as the page,
+    // so fixed and sticky elements (skip link, sidebar) render where a
+    // reader sees them rather than where a beyond-viewport capture puts them.
+    async screenshotFullPage(path) {
+      const full = await evaluate(
+        "Math.ceil(document.documentElement.scrollHeight)",
+      );
+      await send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height: Math.max(height, full),
+        deviceScaleFactor: 1,
+        mobile: width < 600,
+      });
+      await sleep(250);
+      try {
+        const r = await send("Page.captureScreenshot", { format: "png" });
+        writeFileSync(path, Buffer.from(r.result.data, "base64"));
+      } finally {
+        await send("Emulation.setDeviceMetricsOverride", {
+          width,
+          height,
+          deviceScaleFactor: 1,
+          mobile: width < 600,
+        });
+      }
+    },
+    // What the reader sees on first load: the current viewport only.
+    async screenshotViewport(path) {
+      const r = await send("Page.captureScreenshot", { format: "png" });
+      writeFileSync(path, Buffer.from(r.result.data, "base64"));
+    },
     async uploadFile(selector, filePath) {
       const doc = await send("DOM.getDocument");
       const found = await send("DOM.querySelector", {

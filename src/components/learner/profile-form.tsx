@@ -322,18 +322,25 @@ function DateFields({
   );
 }
 
+// Bounds mirror the profile service (src/server/learner-profile.ts): names
+// up to 60 characters, other entries up to 150; only optional fields may be
+// left empty.
 function TextField({
   id,
   name,
   label,
   defaultValue,
   autoComplete,
+  required = true,
+  maxLength = 150,
 }: {
   id: string;
   name: string;
   label: string;
   defaultValue: string;
   autoComplete?: string;
+  required?: boolean;
+  maxLength?: number;
 }) {
   return (
     <div className="ln-field">
@@ -345,8 +352,8 @@ function TextField({
         name={name}
         defaultValue={defaultValue}
         autoComplete={autoComplete}
-        required
-        maxLength={160}
+        required={required}
+        maxLength={maxLength}
       />
     </div>
   );
@@ -384,6 +391,7 @@ function DetailsForm({
               label="First name"
               defaultValue={profile.firstName}
               autoComplete="given-name"
+              maxLength={60}
             />
             <TextField
               id="ln-last-name"
@@ -391,6 +399,7 @@ function DetailsForm({
               label="Last name"
               defaultValue={profile.lastName}
               autoComplete="family-name"
+              maxLength={60}
             />
           </div>
         </section>
@@ -426,8 +435,9 @@ function DetailsForm({
                   <TextField
                     id={`ln-${row.key}-field`}
                     name={`${p}.fieldOfStudy`}
-                    label="Field of study"
+                    label="Field of study (optional)"
                     defaultValue={row.fieldOfStudy}
+                    required={false}
                   />
                 </div>
                 <div className="ln-grid-3">
