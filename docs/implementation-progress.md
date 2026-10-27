@@ -2,7 +2,7 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`, head `8999b4d`. No upstream; nothing pushed; no PR; no hosted change; migrations 075/076 applied to no hosted database. Contract: docs/61.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience` from `main` `ee8fec7`, head `5e31c93`. No upstream; nothing pushed; no PR; no hosted change; migrations 075/076 applied to no hosted database. Contract: docs/61.
 
 LAST COMPLETED CHECKPOINT: lanes A/B/C are integrated, wired, reviewed and fixed. Commits:
 
@@ -23,10 +23,11 @@ CURRENT PARTIAL CHECKPOINT: none started. The final gate run at `8999b4d` (check
 
 KNOWN OPEN ITEMS:
 
-- H1 (owner policy decision): correct answers are released per learner when that learner's window closes, as specified. With personal schedules, a learner can pass the answer key to a learner whose window is still open. The options need an owner decision:
-  - a course-wide answer release;
-  - score-only release;
-  - rotated question pools.
+- H1 RESOLVED by owner decision (2026-10-27), commit `5e31c93`:
+  - Score, correct answers and explanations are published together after the learner's own full window closes and grading is final. They are never released earlier, never delayed for other learners, and never wait for the question set to be retired.
+  - Mitigation: an immutable per-attempt server seed randomises question order and shuffles options, matching items/targets and configuration options. Marks are unaffected.
+  - Verified: PGlite 18/18 (academic policies); real PostgreSQL 25/25 (`learner-academic-policies-db`, `learner-academic-pg-concurrency`, `academy-pg-concurrency`); registry and attempt suites 144/144; wiring 13/13.
+  - Browser re-run not done: the local stack was stopped by the system for low memory and was not restarted.
 - Low findings L1-L7, unchanged:
   - L1: dispatcher signatures can be replayed for about 60 s;
   - L2: push-endpoint takeover;
