@@ -316,7 +316,10 @@ describe("Result policy publication", () => {
       [h.activationId],
     );
     expect(bp).toBe(10000);
-  });
+    // Three complete fresh databases (one per boundary activation, since a
+    // published policy is immutable): budgeted like the other multi-build
+    // database tests rather than the 30 s single-build default.
+  }, 120000);
 
   it("no universal default pass mark exists -- the function requires the caller to supply one", async () => {
     const f = await fixture({ withLabs: false });

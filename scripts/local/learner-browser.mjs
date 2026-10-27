@@ -557,6 +557,76 @@ for (const [viewport, width, height] of VIEWPORTS) {
       },
     );
 
+    const attemptId = () => attemptPath.split("/").pop().split("?")[0];
+    let saved = { position: 0, optionId: "" };
+    await check(
+      viewport,
+      "shuffled exam: first question is this attempt's server-seeded order",
+      async () => {
+        // Oracle: the order the database derives from the attempt's own
+        // stored seed (never sent to the browser).
+        const { rows } = await db.query(
+          `select (x->>'position')::int p, x->>'prompt' prompt
+             from public.academy_assessment_attempts a
+             join public.academy_enrolments e on e.id = a.enrolment_id
+             cross join lateral jsonb_array_elements(academy_private.assessment_template(e.course_id, a.assessment_ref)->'questions') x
+            where a.id = $1
+            order by academy_private.question_rank(a.presentation_seed, (x->>'position')::int)`,
+          [attemptId()],
+        );
+        must(rows.length > 1, "no questions in the attempt template");
+        const text = await page.text();
+        must(
+          text.includes(rows[0].prompt.slice(0, 40)),
+          "the first question shown is not the seeded first question",
+        );
+        const authoredFirst = [...rows].sort((a, b) => a.p - b.p)[0];
+        return `first shown = authored #${rows[0].p} (authored first is #${authoredFirst.p})`;
+      },
+    );
+
+    await check(
+      viewport,
+      "shuffled exam: answer and save a question",
+      async () => {
+        for (let n = 0; n < 40; n++) {
+          const radio = await page.evaluate(
+            "(() => { const r = document.querySelector('.exam-choices input[type=radio]'); return r ? { name: r.name, value: r.value } : null; })()",
+          );
+          if (radio) {
+            saved = {
+              position: Number(radio.name.replace("answer-q-", "")),
+              optionId: radio.value,
+            };
+            await page.click(
+              `document.querySelector('.exam-choices input[type=radio][value=${js(radio.value)}]')`,
+            );
+            await page.click(byText("button", "Save answer"));
+            must(
+              await page.waitFor(
+                "/saved/i.test(document.body.innerText)",
+                20000,
+              ),
+              "no save confirmation",
+            );
+            await shot("exam-answer-saved");
+            const stored = await db.query(
+              "select body from public.academy_assessment_responses where attempt_id=$1 and question_position=$2 order by id desc limit 1",
+              [attemptId(), saved.position],
+            );
+            must(
+              stored.rows[0] &&
+                JSON.parse(stored.rows[0].body).optionId === saved.optionId,
+              "the saved answer is not the one recorded for that authored question",
+            );
+            return `saved authored question #${saved.position}`;
+          }
+          await page.click(byText("button", "Next question"));
+        }
+        throw new Error("no single-choice question found");
+      },
+    );
+
     await check(viewport, "same-attempt resume", async () => {
       await page.goto(base + `/student/courses/${courseA}`);
       await page.waitFor("!!document.querySelector('.ln-wrow')", 45000);
@@ -571,7 +641,25 @@ for (const [viewport, width, height] of VIEWPORTS) {
         ),
         `resumed to ${await page.url()} instead of ${attemptPath}`,
       );
-      return `via ${resume.trim()}`;
+      must(
+        await page.waitFor(
+          `!!document.querySelector('nav[aria-label="Questions"]')`,
+          30000,
+        ),
+        "exam did not load on resume",
+      );
+      for (let n = 0; n < 40; n++) {
+        const restored = await page.evaluate(
+          `!!document.querySelector('input[name="answer-q-${saved.position}"][value=${js(saved.optionId)}]:checked')`,
+        );
+        if (restored) return `via ${resume.trim()}; saved answer restored`;
+        const onIt = await page.evaluate(
+          `!!document.querySelector('input[name="answer-q-${saved.position}"]')`,
+        );
+        if (onIt) break;
+        await page.click(byText("button", "Next question"));
+      }
+      throw new Error("the saved answer was not restored on resume");
     });
 
     await check(
@@ -594,6 +682,137 @@ for (const [viewport, width, height] of VIEWPORTS) {
           "answer review shown during a controlled assessment",
         );
         return "Tutor closed; review withheld while an attempt is ACTIVE";
+      },
+    );
+
+    await check(
+      viewport,
+      "submit: result stays confidential before the learner's deadline",
+      async () => {
+        await page.goto(base + attemptPath);
+        await page.waitFor(
+          `!!document.querySelector('nav[aria-label="Questions"]')`,
+          45000,
+        );
+        await page.click(byText("button", "Review and submit"));
+        await page.click(byText("button", "Submit final answers"));
+        must(
+          await page.waitFor(
+            "document.body.innerText.includes('Your result is confidential')",
+            30000,
+          ),
+          "no confidential-result message after submission",
+        );
+        const text = await page.text();
+        must(
+          !/This attempt scored|Correct answer:|Explanation:/.test(text),
+          "result or answers shown before release",
+        );
+        await shot("attempt-submitted-confidential");
+        return "confidential until the window closes";
+      },
+    );
+
+    await check(
+      viewport,
+      "after the learner's own deadline: score, answers and explanations together; grading authoritative",
+      async () => {
+        // LOCAL ONLY owner time travel: close this learner's quiz window.
+        const ref = (
+          await db.query(
+            "select assessment_ref r from public.academy_assessment_attempts where id=$1",
+            [attemptId()],
+          )
+        ).rows[0].r;
+        await db.query(
+          "alter table public.academy_schedule_items disable trigger guard_history",
+        );
+        try {
+          await db.query(
+            `update public.academy_schedule_items
+                set starts_at = now() - interval '25 hours', ends_at = now() - interval '25 hours' + make_interval(mins => minutes),
+                    opens_at = now() - interval '25 hours', closes_at = now() - interval '1 second'
+              where enrolment_id = $1 and kind = 'ASSESSMENT' and ref = $2
+                and schedule_id = (select id from public.academy_schedules where enrolment_id = $1 and superseded_at is null)`,
+            [courseA, ref],
+          );
+        } finally {
+          await db.query(
+            "alter table public.academy_schedule_items enable trigger guard_history",
+          );
+        }
+        await page.goto(base + attemptPath);
+        await page.waitFor("!!document.querySelector('h1')", 45000);
+        must(
+          await page.waitFor(
+            "document.body.innerText.includes('This attempt scored')",
+            30000,
+          ),
+          "no released score after the deadline",
+        );
+        const text = await page.text();
+        must(text.includes("Correct answer:"), "no correct answers");
+        must(text.includes("Explanation:"), "no explanations");
+        // Authoritative grading: the shown score is the stored score, and
+        // the saved question's mark follows the answer key, not the order.
+        const a = (
+          await db.query(
+            "select score, max_score, presentation_seed from public.academy_assessment_attempts where id=$1",
+            [attemptId()],
+          )
+        ).rows[0];
+        must(
+          text.includes(`This attempt scored ${a.score} / ${a.max_score}`),
+          "shown score differs from the stored score",
+        );
+        const k = (
+          await db.query(
+            `select x->'answerKey'->>'correctOptionId' k, (x->>'maxMarks')::int m,
+                    (select marks from public.academy_question_marks where attempt_id=$1 and question_position=$2) got
+               from public.academy_assessment_attempts a
+               join public.academy_enrolments e on e.id=a.enrolment_id
+               cross join lateral jsonb_array_elements(academy_private.assessment_template(e.course_id, a.assessment_ref)->'questions') x
+              where a.id=$1 and (x->>'position')::int=$2`,
+            [attemptId(), saved.position],
+          )
+        ).rows[0];
+        const expected = k.k === saved.optionId ? k.m : 0;
+        must(
+          k.got === expected,
+          `saved question marked ${k.got}, expected ${expected}`,
+        );
+        must(
+          !(await page.html()).includes(a.presentation_seed),
+          "the presentation seed reached the page",
+        );
+        await shot("attempt-released-review");
+        return `scored ${a.score}/${a.max_score}; saved question marked ${k.got} by the answer key; seed absent`;
+      },
+    );
+
+    await check(
+      viewport,
+      "the presentation seed never reaches any page",
+      async () => {
+        const seeds = (
+          await db.query(
+            "select presentation_seed s from public.academy_assessment_attempts where learner_id='10000000-0000-4000-8000-000000000601' and presentation_seed is not null",
+          )
+        ).rows.map((r) => r.s);
+        for (const path of [
+          `/student/courses/${courseA}`,
+          "/student",
+          "/student/leaderboards",
+          `/student/academy/attempt/${releasedAttempt}`,
+          attemptPath,
+        ]) {
+          await page.goto(base + path);
+          await page.waitFor("document.readyState === 'complete'", 30000);
+          const html = await page.html();
+          for (const seed of seeds)
+            must(!html.includes(seed), `seed found on ${path}`);
+        }
+        return `${seeds.length} seeds checked across 5 pages`;
       },
     );
 

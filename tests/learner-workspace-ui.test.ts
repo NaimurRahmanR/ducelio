@@ -190,7 +190,9 @@ describe("Professor Classroom", () => {
     expect(plain).toContain("(23 h 59 min)");
     expect(html).toContain('name="scheduleItemId" value="item-c"');
     expect(plain).toContain("Give attendance");
-    expect(plain).toContain("Correct in-class answers (judged by the AI Professor) 3");
+    expect(plain).toContain(
+      "Correct in-class answers (judged by the AI Professor) 3",
+    );
     expect(plain).toContain("2 of 4 verified");
     expect(html).toContain('aria-valuenow="50"');
     // No classroom yet: the existing enter-class flow is offered.

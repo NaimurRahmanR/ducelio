@@ -110,7 +110,7 @@ jobs:
         if: always()
         run: >-
           node scripts/ci/assert-pg-concurrency-report.mjs
-          pg-concurrency-report.json 115
+          pg-concurrency-report.json 117
           tests/commercial-v1-checkout-session-replacement-pg-concurrency.test.ts
           tests/interactive-exam-pg-concurrency.test.ts
           tests/academy-pg-concurrency.test.ts
