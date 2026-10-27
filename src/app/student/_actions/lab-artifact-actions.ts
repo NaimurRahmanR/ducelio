@@ -34,6 +34,10 @@ const MESSAGES: Record<string, string> = {
   EMPTY_EVIDENCE: "Add at least one file or your code.",
   EVIDENCE_EXISTS: "Evidence for this practical has already been submitted.",
   LAB_NOT_OPEN: "This practical is not open yet.",
+  WINDOW_CLOSED: "The submission window for this practical has closed.",
+  ACTIVITY_BLOCKED:
+    "Evidence cannot be submitted while a controlled assessment is in progress.",
+  ENROLMENT_CLOSED: "This course enrolment is no longer active.",
   ACCESS_REVOKED: "Your access to this course has ended.",
   REQUEST_CONFLICT: "Reload the page and try again.",
   INVALID_INPUT: "Check your evidence and try again.",

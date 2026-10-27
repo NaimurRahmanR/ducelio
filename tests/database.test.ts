@@ -161,6 +161,18 @@ describe("final curriculum and migration audit", () => {
       // the cohort pair above, every claim requires the controller MAC.
       "public.fulfill_academy_order(uuid,uuid,text,text,text,integer,text,text,bigint,bigint,text)",
       "public.apply_academy_commerce_operation(uuid,text,bigint,bigint,text)",
+      // Migration 076: the email and push dispatchers a scheduled job
+      // reaches with no learner session. Every claim and completion requires
+      // the controller MAC over a bounded batch (learner-services-db's
+      // dispatcher suites); anon holds no other learner-services authority.
+      "public.claim_learner_email_batch(uuid,integer,bigint,bigint,text)",
+      "public.complete_learner_email(uuid,uuid,integer,text,text,text,bigint,bigint,text)",
+      "public.claim_learner_push_batch(uuid,integer,bigint,bigint,text)",
+      "public.complete_learner_push(uuid,uuid,integer,text,text,bigint,bigint,text)",
+      // Migration 076: public certificate verification by code, returning
+      // only the minimal verification projection (never learner contact
+      // details, files or academic records).
+      "public.verify_certificate(text)",
     ]);
     expect(new Set(rows.rows.map((r) => r.sig))).toEqual(allowed);
   });

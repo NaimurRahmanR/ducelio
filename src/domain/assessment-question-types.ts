@@ -638,3 +638,27 @@ export function scoringRuleOf(
     ? "ALL_OR_NOTHING"
     : (interaction as { scoringRule: ScoringRule }).scoringRule;
 }
+
+// Human-readable lines for an authored answer key, in the same learner-
+// visible labels as describeObjectiveResponse. Only for answers already
+// released to this learner (migration 075); an invalid key yields [].
+export function describeAnswerKey(
+  type: ObjectiveQuestionType,
+  interaction: unknown,
+  answerKey: unknown,
+): string[] {
+  const parsed = answerKeySchemas[type].safeParse(answerKey);
+  if (!parsed.success) return [];
+  const k = parsed.data as Record<string, unknown>;
+  const response =
+    type === "SINGLE_SELECT"
+      ? { optionId: k.correctOptionId }
+      : type === "MULTIPLE_SELECT"
+        ? { optionIds: k.correctOptionIds }
+        : type === "PBQ_MATCHING"
+          ? { matches: k.mapping }
+          : type === "PBQ_ORDERING"
+            ? { order: k.correctOrder }
+            : { values: k.values };
+  return describeObjectiveResponse(type, interaction, JSON.stringify(response));
+}

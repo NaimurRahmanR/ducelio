@@ -249,3 +249,23 @@ export async function getLabEvidenceForReview(
     ),
   ).evidence;
 }
+
+const unattachedSchema = z.array(
+  z.object({
+    fileId: z.uuid(),
+    fileName: z.string(),
+    contentType: z.string(),
+    sizeBytes: z.number().int(),
+  }),
+);
+export type UnattachedLabFile = z.infer<typeof unattachedSchema>[number];
+
+// The caller's uploads for this enrolment not yet attached to evidence
+// (metadata only), so the lab form can resume or remove them.
+export async function listMyUnattachedLabFiles(enrolmentId: unknown) {
+  return unattachedSchema.parse(
+    await callLearnerRpc("list_my_unattached_lab_files", {
+      p_enrolment_id: z.uuid().parse(enrolmentId),
+    }),
+  );
+}

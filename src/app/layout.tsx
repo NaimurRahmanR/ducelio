@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   },
   description:
     "Your digital academy for structured learning, objective-level mastery and continuous learner support.",
+  manifest: "/manifest.webmanifest",
 };
 export default function RootLayout({
   children,

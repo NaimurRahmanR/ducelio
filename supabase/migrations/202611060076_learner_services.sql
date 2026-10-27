@@ -634,6 +634,20 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
+-- The caller's uploaded lab files for one enrolment that are not attached to
+-- submitted evidence, so an abandoned form can be resumed or cleaned up
+-- (unattached uploads count against the upload quota). Metadata only.
+create function public.list_my_unattached_lab_files(p_enrolment_id uuid) returns jsonb
+language plpgsql stable security definer set search_path='' as $$
+declare e public.academy_enrolments%rowtype := academy_private.my_enrolment(p_enrolment_id, false);
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('fileId', f.id, 'fileName', f.file_name, 'contentType', f.content_type,
+      'sizeBytes', f.size_bytes) order by f.created_at, f.id)
+    from public.learner_private_files f
+    where f.owner_id = e.learner_id and f.enrolment_id = e.id and f.purpose = 'LAB_EVIDENCE'
+      and not exists (select 1 from public.learner_lab_evidence_files ef where ef.file_id = f.id)), '[]'::jsonb);
+end $$;
+
 create function learner_private.evidence_json(p_id uuid) returns jsonb
 language sql stable security definer set search_path='' as $$
   select jsonb_build_object('evidenceId', ev.id, 'enrolmentId', ev.enrolment_id, 'labRef', ev.lab_ref, 'codeText', ev.code_text,
@@ -657,15 +671,25 @@ begin
     if prior.lab_ref <> p_lab_ref then return jsonb_build_object('ok', false, 'code', 'REQUEST_CONFLICT'); end if;
     return jsonb_build_object('ok', true, 'replayed', true, 'evidence', learner_private.evidence_json(prior.id));
   end if;
-  if exists (select 1 from public.learner_lab_evidence where enrolment_id = e.id and lab_ref = p_lab_ref) then
+  -- One governed submission per practical, whichever form made it (the
+  -- text-only submit_my_academy_lab writes the same academy_lab_submissions row).
+  if exists (select 1 from public.learner_lab_evidence where enrolment_id = e.id and lab_ref = p_lab_ref)
+      or exists (select 1 from public.academy_lab_submissions where enrolment_id = e.id and lab_ref = p_lab_ref) then
     return jsonb_build_object('ok', false, 'code', 'EVIDENCE_EXISTS');
   end if;
+  if e.status <> 'ACTIVE' then return jsonb_build_object('ok', false, 'code', 'ENROLMENT_CLOSED'); end if;
   if exists (select 1 from public.academy_entitlements where id = e.entitlement_id and state <> 'ACTIVE') then
     return jsonb_build_object('ok', false, 'code', 'ACCESS_REVOKED');
   end if;
+  -- The controlled-assessment firewall and the practical's own window apply
+  -- exactly as they do to submit_my_academy_lab.
+  if academy_private.exam_active() then return jsonb_build_object('ok', false, 'code', 'ACTIVITY_BLOCKED'); end if;
   if not exists (select 1 from public.academy_schedule_items i join public.academy_schedules s on s.id = i.schedule_id
       where s.enrolment_id = e.id and s.superseded_at is null and i.kind = 'LAB' and i.ref = p_lab_ref and i.starts_at <= clock_timestamp()) then
     return jsonb_build_object('ok', false, 'code', 'LAB_NOT_OPEN');
+  end if;
+  if academy_private.unified_enrolment(e.id) and not academy_private.unified_activity_open(e.id, 'LAB', p_lab_ref) then
+    return jsonb_build_object('ok', false, 'code', 'WINDOW_CLOSED');
   end if;
   begin
     v_code := learner_private.prose(p_code_text, 0, 20000, false);
@@ -687,6 +711,14 @@ begin
   for i in 1..cardinality(v_files) loop
     insert into public.learner_lab_evidence_files(evidence_id, position, file_id) values (v_id, i, v_files[i]);
   end loop;
+  -- The governed practical submission that progression, review and marking
+  -- read. Its body is the code exactly as written, or, for files only, the
+  -- attached file names; the files themselves stay in learner_lab_evidence.
+  insert into public.academy_lab_submissions(enrolment_id, learner_id, lab_ref, body, request_key)
+  values (e.id, e.learner_id, p_lab_ref,
+    coalesce(v_code, 'Practical evidence files: ' || (select string_agg(f.file_name, ', ' order by ef.position)
+      from public.learner_lab_evidence_files ef join public.learner_private_files f on f.id = ef.file_id where ef.evidence_id = v_id)),
+    p_request_key);
   insert into public.audit_events(actor_id, action, target_type, target_id, source, reason, after_state)
   values (e.learner_id, 'LEARNER_LAB_EVIDENCE_SUBMITTED', 'learner_lab_evidence', v_id, 'LEARNER_SERVICES_V1', 'Learner attached practical evidence',
     jsonb_build_object('enrolment_id', e.id, 'lab_ref', p_lab_ref, 'files', cardinality(v_files), 'code_text', v_code is not null));
@@ -1142,7 +1174,7 @@ do $$ declare f record; begin
   end loop;
   for f in select oid::regprocedure sig, proname from pg_proc where pronamespace = 'public'::regnamespace and proname in (
     'get_my_learner_profile','save_my_learner_profile','upload_my_private_file','read_private_file','delete_my_private_file',
-    'submit_my_lab_evidence','get_my_lab_evidence','get_lab_evidence_for_review','subscribe_my_push','unsubscribe_my_push',
+    'submit_my_lab_evidence','get_my_lab_evidence','list_my_unattached_lab_files','get_lab_evidence_for_review','subscribe_my_push','unsubscribe_my_push',
     'refresh_my_activity_reminders','list_my_upcoming_reminders','submit_my_support_message','list_my_support_messages',
     'issue_my_certificate','get_my_certificates','get_my_certificate','verify_certificate','issue_my_payment_receipt',
     'list_my_payment_receipts','get_my_payment_receipt','claim_learner_email_batch','complete_learner_email',
@@ -1157,6 +1189,14 @@ do $$ declare f record; begin
     end if;
   end loop;
 end $$;
+
+-- The anon grants again as literal statements (idempotent), so static review
+-- and the readiness contract see exactly which functions anon may call.
+grant execute on function public.claim_learner_email_batch(uuid,integer,bigint,bigint,text) to anon;
+grant execute on function public.complete_learner_email(uuid,uuid,integer,text,text,text,bigint,bigint,text) to anon;
+grant execute on function public.claim_learner_push_batch(uuid,integer,bigint,bigint,text) to anon;
+grant execute on function public.complete_learner_push(uuid,uuid,integer,text,text,bigint,bigint,text) to anon;
+grant execute on function public.verify_certificate(text) to anon, authenticated;
 
 do $$ declare r text; t text; f text; begin
   foreach r in array array['anon','authenticated','service_role'] loop
@@ -1178,6 +1218,7 @@ do $$ declare r text; t text; f text; begin
     foreach f in array array['public.get_my_learner_profile()','public.save_my_learner_profile(text,text,jsonb,jsonb)',
       'public.upload_my_private_file(text,uuid,text,text,text)','public.read_private_file(uuid)','public.delete_my_private_file(uuid)',
       'public.submit_my_lab_evidence(uuid,text,uuid[],text,uuid)','public.get_my_lab_evidence(uuid,text)',
+      'public.list_my_unattached_lab_files(uuid)',
       'public.get_lab_evidence_for_review(uuid,text)','public.subscribe_my_push(text,text,text,timestamptz)','public.unsubscribe_my_push(text)',
       'public.refresh_my_activity_reminders()','public.list_my_upcoming_reminders(integer)',
       'public.submit_my_support_message(text,text,text,uuid,text,uuid)','public.list_my_support_messages()',

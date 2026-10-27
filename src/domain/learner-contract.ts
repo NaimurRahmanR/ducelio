@@ -90,7 +90,7 @@ export type PracticalLab = {
   ref: string;
   title: string;
   opensAt: string;
-  closesAt: string;
+  closesAt: string | null; // null when the practical has no closing time
   state: ActivityState;
   canAttend: boolean;
   submitted: boolean;

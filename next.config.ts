@@ -29,6 +29,22 @@ const config: NextConfig = {
           },
         ],
       },
+      {
+        // The reminder service worker is always revalidated, so a fix
+        // reaches every browser on its next visit, and may run only its
+        // own same-origin script.
+        source: "/sw.js",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'self'; script-src 'self'",
+          },
+        ],
+      },
     ];
   },
 };

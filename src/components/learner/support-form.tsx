@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useRef } from "react";
 import type { LearnerCourse } from "@/domain/learner-contract";
 
 // The delivery state the support service reports (docs/61 §4): a message
@@ -52,6 +52,16 @@ export function SupportFormView({
     sendSupportAction,
     {},
   );
+  // One idempotency key per message: a retried submit replays the same
+  // message instead of sending a second one. The key is kept until the
+  // service reports a saved message (a new reference), then replaced.
+  const key = useRef<{ value: string; after?: string } | null>(null);
+  const submit = (form: FormData) => {
+    if (!key.current || key.current.after !== state.reference)
+      key.current = { value: crypto.randomUUID(), after: state.reference };
+    form.set("requestKey", key.current.value);
+    action(form);
+  };
   return (
     <div className="ln-page">
       <header className="ln-page__head">
@@ -63,7 +73,7 @@ export function SupportFormView({
       </header>
       <section className="ln-panel" aria-labelledby="ln-support-heading">
         <h2 id="ln-support-heading">Send a message</h2>
-        <form action={action} className="ln-form">
+        <form action={submit} className="ln-form">
           <fieldset disabled={pending} className="ln-fieldset">
             <div className="ln-field">
               <label htmlFor="ln-support-category" className="ln-label">

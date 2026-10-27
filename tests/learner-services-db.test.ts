@@ -563,6 +563,13 @@ describe("lab evidence", () => {
       png.fileId,
       text.fileId,
     ]);
+    // The same submit writes the governed practical submission that
+    // progression, review and marking read, with the code exactly as written.
+    const governed = await q(
+      "select body, request_key from public.academy_lab_submissions where enrolment_id=$1 and lab_ref=$2",
+      [enrolA, labRef],
+    );
+    expect(governed.rows).toEqual([{ body: code, request_key: key }]);
     expect(
       await rpc(q, learnerA, "submit_my_lab_evidence", [
         enrolA,
@@ -628,8 +635,48 @@ describe("lab evidence", () => {
         randomUUID(),
       ]),
     ).toEqual({ ok: false, code: "EMPTY_EVIDENCE" });
-    for (const id of six)
+    for (const id of six.slice(1))
       await rpc(q, learnerA, "delete_my_private_file", [id]);
+    // A practical whose availability window has closed refuses evidence.
+    const shift = async (interval: string) => {
+      await q(
+        "alter table public.academy_schedule_items disable trigger guard_history",
+      );
+      await q(
+        `update public.academy_schedule_items set starts_at=now()-$3::interval, ends_at=now()-$3::interval+interval '1 hour'
+         where enrolment_id=$1 and kind='LAB' and ref=$2`,
+        [enrolA, otherLab, interval],
+      );
+      await q(
+        "alter table public.academy_schedule_items enable trigger guard_history",
+      );
+    };
+    await shift("2 days");
+    expect(
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        otherLab,
+        [six[0]],
+        null,
+        randomUUID(),
+      ]),
+    ).toEqual({ ok: false, code: "WINDOW_CLOSED" });
+    // Files-only evidence records the file names as the governed body.
+    await shift("3 hours");
+    expect(
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        otherLab,
+        [six[0]],
+        null,
+        randomUUID(),
+      ]),
+    ).toMatchObject({ ok: true, replayed: false });
+    const filesOnly = await q(
+      "select body from public.academy_lab_submissions where enrolment_id=$1 and lab_ref=$2",
+      [enrolA, otherLab],
+    );
+    expect(filesOnly.rows[0].body).toMatch(/^Practical evidence files: \S/);
   });
 
   it("is readable by the owner and the course organisation's reviewer only", async () => {
@@ -681,7 +728,24 @@ describe("lab evidence", () => {
     await expect(
       rpc(q, reviewerA, "read_private_file", [loose.fileId]),
     ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
+    // The owner can list unattached uploads (metadata only) to resume or
+    // clean up an abandoned form; attached files and other learners are out.
+    const unattached = await rpc<{ fileId: string; bytes?: unknown }[]>(
+      q,
+      learnerA,
+      "list_my_unattached_lab_files",
+      [enrolA],
+    );
+    expect(unattached.map((f) => f.fileId)).toEqual([loose.fileId]);
+    expect(unattached[0].bytes).toBeUndefined();
+    expect(unattached.map((f) => f.fileId)).not.toContain(fileId);
+    await expect(
+      rpc(q, learnerB, "list_my_unattached_lab_files", [enrolA]),
+    ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
     await rpc(q, learnerA, "delete_my_private_file", [loose.fileId]);
+    expect(
+      await rpc(q, learnerA, "list_my_unattached_lab_files", [enrolA]),
+    ).toEqual([]);
   });
 });
 

@@ -367,3 +367,13 @@ export async function requestMyEmailChange(
     };
   return { ok: true };
 }
+
+// The address of a verified email change still awaiting confirmation, read
+// from the authenticated Supabase Auth user (never from the client).
+export async function getMyPendingEmailChange(): Promise<string | null> {
+  await requireStudentPrincipal();
+  const client = await createSupabase();
+  const { data, error } = await client.auth.getUser();
+  if (error || !data.user) return null;
+  return data.user.new_email ?? null;
+}
