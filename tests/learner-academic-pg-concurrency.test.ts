@@ -8,6 +8,7 @@ import {
   responseBody,
   rpc,
   seedPeople,
+  type Person,
   type Query,
 } from "./academy-fixture";
 import { publishUnifiedTestCourse } from "./unified-course-fixture";
@@ -153,7 +154,7 @@ describe.skipIf(!endpoint)(
           reason,
         ]);
       }
-      const join = async (p: typeof learnerA, key: string) =>
+      const join = async (p: Person, key: string) =>
         (
           await rpc<{ enrolmentId: string }>(
             q,

@@ -1359,7 +1359,7 @@ describe("provider attribution and learner projections", () => {
             and i.starts_at < ($2::date + 7 + time '00:00') at time zone 'Europe/London'`,
         [learnerA.id, week.weekStart],
       )
-    ).rows[0].n;
+    ).rows[0].n as number;
     expect(week.activities).toHaveLength(expected);
     expect(expected).toBeGreaterThan(20);
     expect(new Set(week.activities.map((a) => a.enrolmentId))).toEqual(
