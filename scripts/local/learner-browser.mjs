@@ -200,6 +200,90 @@ for (const [viewport, width, height] of VIEWPORTS) {
       },
     );
 
+    // Every major card is one real link: clicking the card body (not only
+    // its link text) and pressing Enter on its link both arrive.
+    const cardCases = [
+      [
+        "Next Activity card",
+        "/student",
+        "document.querySelector('[data-panel=\"next-activity\"] .ln-next__title')",
+        "location.pathname.startsWith('/student/courses/') && location.hash.length > 1",
+      ],
+      [
+        "Explore More Courses banner",
+        "/student",
+        "document.querySelector('.ln-explore__text span')",
+        "location.pathname === '/courses'",
+      ],
+      [
+        "timetable activity card",
+        "/student/timetable",
+        "document.querySelector('.ln-activity .ln-activity__meta')",
+        "location.pathname.startsWith('/student/courses/')",
+      ],
+      [
+        "course progression card",
+        "/student",
+        "document.querySelector('.ln-progress-card.ln-clickable .ln-progress-card__provider')",
+        "location.pathname.endsWith('/progression')",
+      ],
+      [
+        "released result row",
+        "/student",
+        "document.querySelector('tr.ln-rowlink td[data-label=\"Type\"]')",
+        "location.pathname.startsWith('/student/academy/attempt/')",
+      ],
+      [
+        "My Learning course row",
+        "/student/learning",
+        "document.querySelector('.ln-course-row .ln-course-row__provider')",
+        "location.pathname.startsWith('/student/courses/')",
+      ],
+    ];
+    for (const [name, from, target, arrived] of cardCases)
+      await check(viewport, `card opens its destination: ${name}`, async () => {
+        await page.goto(base + from);
+        await page.waitFor(`!!(${target})`, 45000);
+        await page.click(target);
+        must(
+          await page.waitFor(arrived, 30000),
+          `stayed on ${await page.url()}`,
+        );
+        const landed = await page.url();
+        await page.goto(base + from);
+        await page.waitFor(`!!(${target})`, 45000);
+        // Keyboard: the card's link takes focus and Enter follows it.
+        const focused = await page.evaluate(
+          `(() => { const el = ${target}; const card = el.closest('.ln-clickable, .ln-course-row, tr.ln-rowlink, .ln-explore'); const link = card.matches('a') ? card : card.querySelector('.ln-clickable__link, .ln-rowlink__link'); link.focus(); return document.activeElement === link; })()`,
+        );
+        must(focused, "the card's link cannot take keyboard focus");
+        await page.press("Enter");
+        must(
+          await page.waitFor(arrived, 30000),
+          "Enter did not follow the card's link",
+        );
+        return `${landed} (mouse and keyboard)`;
+      });
+
+    await check(
+      viewport,
+      "a form inside a page never triggers card navigation",
+      async () => {
+        await page.goto(base + "/student");
+        await page.waitFor(
+          "!!document.querySelector('#ln-sarah-message')",
+          45000,
+        );
+        await page.click("document.querySelector('#ln-sarah-message')");
+        await page.insertText("TEST ONLY");
+        must(
+          (await page.url()) === "/student",
+          "typing in Sarah navigated away",
+        );
+        return "Sarah's form stays put";
+      },
+    );
+
     await check(
       viewport,
       "Sarah: double-click icon opens fullscreen, conversation kept",
