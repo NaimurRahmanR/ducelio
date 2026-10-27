@@ -358,13 +358,23 @@ async function handle(req, res) {
         "select id from auth.users where lower(email) = lower($1)",
         [String(body.email ?? "")],
       );
-      if (!rows[0] || body.password !== LOCAL_PASSWORD)
+      if (!rows[0] || body.password !== LOCAL_PASSWORD) {
+        // Why a local sign-in failed (synthetic accounts only; the password
+        // itself is never logged), so a mistyped or autofilled credential
+        // is distinguishable from a gateway fault.
+        const password = String(body.password ?? "");
+        console.log(
+          rows[0]
+            ? `[local] sign-in refused: wrong password for ${String(body.email)} (length ${password.length}${password !== password.trim() ? ", surrounding whitespace" : ""})`
+            : `[local] sign-in refused: no local account ${JSON.stringify(String(body.email ?? ""))}`,
+        );
         return authError(
           res,
           400,
           "invalid_credentials",
           "Invalid login credentials",
         );
+      }
       return send(res, 200, await session(rows[0].id));
     }
     if (grant === "refresh_token") {
