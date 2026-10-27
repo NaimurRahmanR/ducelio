@@ -98,7 +98,15 @@ export function safeAuthDestination(
   if (course && OFFER_SLUG_SEGMENT.test(course[1])) return pathname;
   return fallback;
 }
-export const confirmationTypeSchema = z.enum(["email", "recovery"]);
+// "email_change" completes Supabase Auth's verified email-change flow; the
+// confirm route sends it to a fixed profile destination, never to `next`.
+export const confirmationTypeSchema = z.enum([
+  "email",
+  "recovery",
+  "email_change",
+]);
+export const EMAIL_CHANGE_CONFIRMED_PATH =
+  "/student/profile?email-change=link-accepted";
 export type AuthState = { error?: string; message?: string };
 
 // Where a newly signed-in account lands when no explicit, allowlisted return
