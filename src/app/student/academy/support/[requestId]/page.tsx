@@ -18,10 +18,24 @@ export const dynamic = "force-dynamic";
 // untrusted URL input: the database re-derives ownership, release,
 // revocation and the exam firewall before anything renders, and every
 // question is re-admitted by the governed runtime.
+// Set by the course workspace's Tutor action when its first question was
+// not answered; the conversation itself is unchanged and the learner can ask
+// again. Unknown values render nothing.
+const OPENING_NOTICE_TEXT: Record<string, string> = {
+  ACTIVITY_BLOCKED:
+    "AI support is closed while a controlled assessment is active.",
+  UNAVAILABLE: "AI support is not available for this request right now.",
+  ESCALATED: "AI support is not available for this request.",
+  RETRY_LATER: "Your request could not be answered just now. Please try again.",
+  DUPLICATE: "That request was already sent.",
+};
+
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ requestId: string }>;
+  searchParams?: Promise<{ notice?: string }>;
 }) {
   await requireActor("student");
   const actor = await requireStudentPrincipal();
@@ -53,6 +67,8 @@ export default async function Page({
     );
   }
   const transcript = await getMyAcademySupportTranscript(request.requestId);
+  const { notice } = (await searchParams) ?? {};
+  const openingNotice = notice ? OPENING_NOTICE_TEXT[notice] : undefined;
   const lab = request.role === "LAB_INSTRUCTOR";
   const agentName = lab ? "Lab Instructor" : "Tutor";
 
@@ -90,6 +106,11 @@ export default async function Page({
             <h2>Objective</h2>
             <p>{request.objective}</p>
           </Card>
+        )}
+        {openingNotice && (
+          <p className="notice" role="alert">
+            {openingNotice}
+          </p>
         )}
         <AcademySupportPanel
           requestId={request.requestId}

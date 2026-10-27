@@ -2,7 +2,69 @@
 
 This file is the high-level implementation status. Detailed checkpoint evidence lives in the checkpoint documents below.
 
-CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
+CURRENT AUTHORITATIVE RECOVERY RECORD (2026-10-27, premium learner UI/UX pass; LOCAL ONLY): branch `feat/complete-learner-experience`; see `git log` for the head. Nothing pushed; no PR; no deployment; no hosted change.
+
+LAST COMPLETED CHECKPOINT: premium learner UI/UX pass, implemented and verified.
+
+- One token-driven learner design layer:
+  - semantic tones;
+  - elevation and motion, with reduced-motion support;
+  - button system;
+  - pill badges that state the status in words;
+  - form controls with a focus ring;
+  - message styles;
+  - tables that stack in narrow containers;
+  - empty states;
+  - a learner loading skeleton.
+- Every meaningful card navigates through one stretched link:
+  - Next Activity and timetable cards open the activity's own workspace panel;
+  - progression cards open detailed progression;
+  - released-result rows open the learner's own released review (`reviewAttemptId` added to the migration 075 projection only);
+  - Explore More Courses is a full-indigo call to action;
+  - My Learning rows open the course.
+- Workspace panels are accented and anchored, which also fixes the existing `#tutor` anchor. Leaderboards show rank chips and the learner's own position. Browse Courses cards are polished.
+- Verification:
+  - lint, typecheck, format and build: exit 0;
+  - full suite: 259 files, 5,203 passed, 0 failed, 62 skipped (one shard was rerun after two environment timeouts; both files pass in isolation);
+  - real PostgreSQL: 117/117;
+  - real browser: 63/63, including card destinations by mouse and keyboard.
+
+NEXT EXACT ACTION: owner final visual acceptance. No push, PR or deployment without approval.
+
+PREVIOUS RECORD (2026-10-27, final local verification): ; complete learner experience, LOCAL ONLY): branch `feat/complete-learner-experience`; see `git log` for the head. Nothing pushed; no PR; no deployment; no hosted change; migrations 075/076 applied to no hosted database. Contract: docs/61, including the owner's release decision.
+
+LAST COMPLETED CHECKPOINT: final local verification. All gates ran sequentially under memory monitoring (5-8 GB free throughout); none was interrupted.
+
+- Lint 0, typecheck 0, format:check 0, production build 0.
+- Full suite in three shards: all 258 files, each once; 5,198 passed, 0 failed, 62 skipped (environment-gated suites).
+- Real PostgreSQL 18.4: 117/117 across 16 required suites, none skipped; CI minimum raised to 117.
+- Real browser (LOCAL ONLY stack): 56/56 across desktop 1440, tablet 820 and mobile 390, including the shuffled examination end to end.
+
+FIXES IN THIS CHECKPOINT:
+
+- Deterministic variation tests (database-derived oracle plus fixed seeds).
+- Review findings:
+  - L2: push endpoint takeover needs the browser's keys.
+  - L4: in-class answers are labelled as judged by the AI Professor.
+  - L5: upload quota lock, with a real-PostgreSQL race test that fails without the lock.
+  - L7: certificates are revoked with their entitlement.
+- A three-database results test is budgeted at 120 s; it builds three complete databases.
+- A browser-check defect: an element evaluated without a boolean cast.
+
+OUTSTANDING (not release-blocking for local acceptance):
+
+- L1: dispatcher signature replay window of about 60 s; needs a nonce table.
+- L3: legacy (non-unified) lessons have no attendance window.
+- L6: former learners can read leaderboards.
+- Earlier risks recorded in the final report.
+
+RELEASE-BLOCKING FOR PRODUCTION (not for local acceptance): hosted Supabase Auth/PostgREST/Storage acceptance of 075/076; live AI, Stripe, email, push; owner approval of PR and hosted migrations.
+
+CONFIGURATION: unchanged (see docs/61 and `scripts/local/learner-stack.mjs`).
+
+NEXT EXACT ACTION: owner visual and functional acceptance. No push, PR or deployment without approval.
+
+PREVIOUS RECORD (2026-10-26; Claude recovery checkpoint): branch `fix/restore-operations-engineer-course-workflow` from `main` `583f558`. Evidence: docs/60.
 
 LAST COMPLETED CHECKPOINT: the Operations Engineer is restored on the unified Course Engine; course upload no longer burns revisions; publication checks its gate before any write; lifecycle stages are explicit; a dedicated Course academic review exists, separate from Learner result review; decision-only resolution is available. No migration.
 

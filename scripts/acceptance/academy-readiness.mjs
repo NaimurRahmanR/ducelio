@@ -59,7 +59,11 @@ export function evaluateAcademyReadiness(
       missing.push(name);
       continue;
     }
-    if (!r.authenticated) notAuthenticated.push(name);
+    // An allow-listed anon RPC (catalogue reads, certificate verification,
+    // the HMAC-claimed dispatchers) must be callable by anon; every other
+    // RPC by authenticated users.
+    if (anonAllowed.has(name) ? !r.anon : !r.authenticated)
+      notAuthenticated.push(name);
     if (r.anon && !anonAllowed.has(name)) anonExposed.push(name);
     if (r.serviceRole && !baseline.has(name)) serviceRole.push(name);
     if (r.securityDefiner && !r.pinnedSearchPath) unpinned.push(name);
@@ -71,7 +75,7 @@ export function evaluateAcademyReadiness(
     missing.length ? `missing ${list(missing)}` : "",
   );
   check(
-    "Academy RPCs executable by authenticated users",
+    "Academy RPCs executable by their intended role",
     !notAuthenticated.length,
     list(notAuthenticated),
   );

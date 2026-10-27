@@ -8,3 +8,5 @@
 *.json text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+*.js text eol=lf
+*.webmanifest text eol=lf

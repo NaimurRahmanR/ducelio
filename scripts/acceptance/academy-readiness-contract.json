@@ -14,7 +14,9 @@
     "202611010071",
     "202611020072",
     "202611030073",
-    "202611040074"
+    "202611040074",
+    "202611050075",
+    "202611060076"
   ],
   "anonRpcs": [
     "apply_academy_commerce_operation",
@@ -22,7 +24,12 @@
     "get_commercial_v1_offer",
     "list_academy_catalogue",
     "list_commercial_v1_offers",
-    "list_unified_course_catalogue"
+    "list_unified_course_catalogue",
+    "claim_learner_email_batch",
+    "claim_learner_push_batch",
+    "complete_learner_email",
+    "complete_learner_push",
+    "verify_certificate"
   ],
   "baselineRpcs": ["current_academic_activity_state"],
   "rpcs": [
@@ -126,7 +133,50 @@
     "submit_my_academy_attempt",
     "submit_my_academy_lab",
     "upload_academy_course_package",
-    "upload_organisation_course_package"
+    "upload_organisation_course_package",
+    "refresh_my_academy_releases",
+    "check_in_my_academy_class",
+    "record_my_academy_class_evidence",
+    "get_my_academy_class_recap",
+    "list_my_academy_courses",
+    "list_my_academy_week",
+    "list_my_academy_class_evidence",
+    "get_my_academy_next_activity",
+    "list_my_academy_released_results",
+    "get_my_academy_progression",
+    "get_my_academy_course_workspace",
+    "get_my_academy_assessment_leaderboard",
+    "list_my_academy_leaderboards",
+    "get_my_learner_profile",
+    "save_my_learner_profile",
+    "upload_my_private_file",
+    "read_private_file",
+    "delete_my_private_file",
+    "list_my_unattached_lab_files",
+    "submit_my_lab_evidence",
+    "get_my_lab_evidence",
+    "get_lab_evidence_for_review",
+    "claim_learner_email_batch",
+    "complete_learner_email",
+    "subscribe_my_push",
+    "unsubscribe_my_push",
+    "refresh_my_activity_reminders",
+    "list_my_upcoming_reminders",
+    "claim_learner_push_batch",
+    "complete_learner_push",
+    "submit_my_support_message",
+    "list_my_support_messages",
+    "issue_my_certificate",
+    "get_my_certificates",
+    "get_my_certificate",
+    "verify_certificate",
+    "issue_my_payment_receipt",
+    "list_my_payment_receipts",
+    "get_my_payment_receipt"
   ],
-  "privateSchemas": ["academy_private", "execution_reliability_private"]
+  "privateSchemas": [
+    "academy_private",
+    "execution_reliability_private",
+    "learner_private"
+  ]
 }

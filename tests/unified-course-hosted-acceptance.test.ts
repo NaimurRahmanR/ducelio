@@ -531,22 +531,35 @@ describe.skipIf(!enabled)("owner-authorised ducelio-acceptance journey", () => {
           await rpc(learner, "submit_my_academy_attempt", {
             p_attempt_id: a.attemptId,
           }),
-        ).toMatchObject({
+        ).toEqual({
+          // Migration 075: no score before the 23h59m window closes.
           ok: true,
           state: "SUBMITTED",
-          score: 10,
-          maxScore: 10,
+          submission: "STUDENT_SUBMIT",
         });
       }
-      expect(
-        await rpc(learner, "get_my_academy_results", {
-          p_enrolment_id: enrolment,
-        }),
-      ).toMatchObject({
-        outcome: "PASSED",
-        courseScoreBp: 10000,
-        status: "COMPLETED",
+      // Every window is still open in a 35-minute hosted run, so nothing is
+      // released: no outcome, course score, component score or completion.
+      const results = await rpc<
+        Record<string, unknown> & { components: { source: string }[] }
+      >(learner, "get_my_academy_results", {
+        p_enrolment_id: enrolment,
       });
+      expect(results).toMatchObject({
+        outcome: "IN_PROGRESS",
+        courseScoreBp: null,
+        status: "ACTIVE",
+        completion: null,
+      });
+      for (const c of results.components.filter(
+        (x) => x.source === "ASSESSMENT",
+      ))
+        expect(c).toMatchObject({
+          status: "PENDING",
+          scoreBp: null,
+          released: false,
+          bestScore: null,
+        });
     },
     35 * 60000,
   );
@@ -650,7 +663,10 @@ describe.skipIf(!enabled)("owner-authorised ducelio-acceptance journey", () => {
       p_attempt_id: timerAttempt,
     });
     expect(ended.state).toBe("SUBMITTED");
-    expect(ended.score).toBe(0);
+    // Migration 075: the 23h59m window is still open, so nothing is released.
+    expect(ended.released).toBe(false);
+    expect(ended).not.toHaveProperty("score");
+    expect(ended).not.toHaveProperty("review");
   }, 70000);
 
   // Requires migration 074. Only order-free outcomes are exercised (a

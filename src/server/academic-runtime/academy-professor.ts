@@ -31,6 +31,7 @@ import {
 import {
   TEACHING_CONTEXT_LIMITS,
   buildProfessorTeachingContext,
+  contextBytes,
   classroomStateSchema,
   classroomTurnsResultSchema,
   type ClassroomState,
@@ -326,6 +327,169 @@ async function recordAcademyTurn(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Missed-class recap and display-only class evidence (migration 075).
+// ---------------------------------------------------------------------------
+const recapResultSchema = z.union([
+  z.strictObject({
+    ok: z.literal(true),
+    classroomId: z.uuid(),
+    missedLessons: z
+      .array(
+        z.strictObject({
+          lessonRef: z.string().max(80),
+          lessonTitle: z.string().max(500),
+          objectives: z.array(z.string().max(2000)).max(50),
+        }),
+      )
+      .max(10),
+  }),
+  refusalSchema,
+]);
+export type MissedLessonRecap = {
+  lessonTitle: string;
+  objectives: string[];
+};
+
+// The missed lessons since the learner's last attended class: titles and
+// objective descriptions only (minimum data), under the same admission and
+// controlled-assessment firewall as every classroom read.
+export async function readAcademyClassRecap(
+  classroomId: string,
+): Promise<MissedLessonRecap[]> {
+  const parsed = recapResultSchema.safeParse(
+    await rpc("get_my_academy_class_recap", {
+      p_classroom_id: z.uuid().parse(classroomId),
+    }),
+  );
+  if (!parsed.success) throw new ProfessorTeachingDenied("SERVICE_UNAVAILABLE");
+  if (!parsed.data.ok) throw new ProfessorTeachingDenied(parsed.data.code);
+  return parsed.data.missedLessons.map((lesson) => ({
+    lessonTitle: lesson.lessonTitle,
+    objectives: lesson.objectives,
+  }));
+}
+
+export const CLASS_EVIDENCE_MARKER = "DUCELIO_CLASS_EVIDENCE";
+
+// Code-owned, server-derived class directives added to serverContext. The
+// recap is required only when the learner missed classes; the evidence line
+// is optional, is removed before the learner sees the reply, and is
+// display-only: it is never mastery, a grade, evidence or completion.
+export function academyClassDirectives(missed: MissedLessonRecap[]) {
+  return {
+    authority: "AUTHORITATIVE_SERVER_DERIVED",
+    missedClassRecap:
+      missed.length > 0
+        ? {
+            required: true,
+            note: "The learner missed the classes below since their last attended class. Begin with a concise recap of these objectives, then ask short mastery-check questions on them before continuing this lesson. A missed class is not completed by this recap.",
+            missedLessons: missed,
+          }
+        : { required: false },
+    classEvidenceLine: {
+      optional: true,
+      format: `${CLASS_EVIDENCE_MARKER} {"coveredObjectiveRefs":["<objectiveId>"],"check":{"objectiveRef":"<objectiveId>","correct":true}}`,
+      note: `You may end the reply with exactly one final line in this format. coveredObjectiveRefs lists objectiveId values from serverContext.objectives that this reply actually taught. Include check only when the learner's latest message answered an understanding-check question you asked about that objective, with correct true or false; otherwise use "check":null. Ducelio removes this line before the learner sees the reply and records it as display-only class notes, never as mastery, a grade or evidence.`,
+    },
+  };
+}
+
+const classEvidenceProposalSchema = z.strictObject({
+  coveredObjectiveRefs: z.array(z.uuid()).max(50),
+  check: z
+    .strictObject({ objectiveRef: z.uuid(), correct: z.boolean() })
+    .nullable()
+    .optional(),
+});
+export type ClassEvidenceProposal = {
+  coveredObjectiveIds: string[];
+  check: { objectiveId: string; correct: boolean } | null;
+};
+
+// Separates the optional final evidence line from the learner-visible
+// reply and validates it against the lesson's own objectives. Anything
+// malformed, outside the lesson or empty is dropped (never guessed).
+export function extractClassEvidence(
+  outputText: string,
+  lessonObjectiveIds: readonly string[],
+): { visibleText: string; proposal: ClassEvidenceProposal | null } {
+  const lines = outputText.replace(/\s+$/u, "").split("\n");
+  const last = lines[lines.length - 1]?.trim() ?? "";
+  if (!last.startsWith(`${CLASS_EVIDENCE_MARKER} `))
+    return { visibleText: outputText, proposal: null };
+  const visibleText = lines.slice(0, -1).join("\n").replace(/\s+$/u, "");
+  if (visibleText.length === 0)
+    return { visibleText: outputText, proposal: null };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(last.slice(CLASS_EVIDENCE_MARKER.length + 1));
+  } catch {
+    return { visibleText, proposal: null };
+  }
+  const parsed = classEvidenceProposalSchema.safeParse(raw);
+  if (!parsed.success) return { visibleText, proposal: null };
+  const allowed = new Set(lessonObjectiveIds.map((id) => id.toLowerCase()));
+  const covered = [
+    ...new Set(
+      parsed.data.coveredObjectiveRefs
+        .map((id) => id.toLowerCase())
+        .filter((id) => allowed.has(id)),
+    ),
+  ].sort();
+  const check =
+    parsed.data.check &&
+    allowed.has(parsed.data.check.objectiveRef.toLowerCase())
+      ? {
+          objectiveId: parsed.data.check.objectiveRef.toLowerCase(),
+          correct: parsed.data.check.correct,
+        }
+      : null;
+  if (covered.length === 0 && !check) return { visibleText, proposal: null };
+  return { visibleText, proposal: { coveredObjectiveIds: covered, check } };
+}
+
+async function recordAcademyClassEvidence(input: {
+  executionId: string;
+  classroomId: string;
+  proposal: ClassEvidenceProposal;
+}): Promise<void> {
+  const actor = await teachingStudentId();
+  const c = teachingController();
+  const executionId = z.uuid().parse(input.executionId).toLowerCase();
+  const classroomId = z.uuid().parse(input.classroomId).toLowerCase();
+  const covered = [...new Set(input.proposal.coveredObjectiveIds)].sort();
+  const check = input.proposal.check;
+  const canonical = [
+    "DUCELIO_ACADEMY_CLASS_EVIDENCE_HMAC_SHA256_V1",
+    "PROFESSOR",
+    c.keyId,
+    actor,
+    executionId,
+    classroomId,
+    covered.join(","),
+    check ? check.objectiveId : "NONE",
+    check ? String(check.correct) : "NONE",
+    String(c.issuedAt),
+    String(c.expiresAt),
+  ].join("\n");
+  const parsed = teachingRpcResultSchema.safeParse(
+    await rpc("record_my_academy_class_evidence", {
+      p_key_id: c.keyId,
+      p_execution_id: executionId,
+      p_classroom_id: classroomId,
+      p_covered_objective_ids: covered,
+      p_check_objective_id: check ? check.objectiveId : null,
+      p_check_correct: check ? check.correct : null,
+      p_issued_at: c.issuedAt,
+      p_expires_at: c.expiresAt,
+      p_mac: c.sign(canonical),
+    }),
+  );
+  if (!parsed.success) throw new ProfessorTeachingDenied("SERVICE_UNAVAILABLE");
+  if (!parsed.data.ok) throw new ProfessorTeachingDenied(parsed.data.code);
+}
+
+// ---------------------------------------------------------------------------
 // Nested reviewed releases over the Academy classroom.
 // ---------------------------------------------------------------------------
 type TeachingCapability =
@@ -560,6 +724,7 @@ async function executeAcademyProfessorCore(
   let authorized = false;
   let started = false;
   let capturedRelease: AcademicContentRelease | null = null;
+  let lessonObjectiveIds: string[] = [];
   const lastKnownUsage = () => (providerResult ? providerResult.usage : usage);
 
   const governedProviderCall = async (
@@ -678,21 +843,61 @@ async function executeAcademyProfessorCore(
         };
         return;
       }
-      const built = buildProfessorTeachingContext(
-        {
-          classroom,
-          objectives: reads.objectives,
-          mastery: reads.mastery,
-          resources: reads.resources,
-          turns: memory.turns,
-          totalTurns: memory.totalTurns,
-          unrecordedExchanges: memory.unrecordedExchanges,
-          courseContextNotes: behaviour.config.courseContextNotes,
-          behaviourVersion: behaviour.behaviourVersion,
-          interaction,
-        },
-        profile.budgetPolicy.maxInputContextBytes,
+      // Missed-class recap (migration 075), read while every release is
+      // ACTIVE under the same admission and firewall as the other reads.
+      let missed: MissedLessonRecap[];
+      try {
+        missed = await readAcademyClassRecap(classroomId);
+      } catch (error) {
+        providerResult = abstain(
+          error instanceof ProfessorTeachingDenied &&
+            error.code === "ACTIVITY_BLOCKED"
+            ? "ACTIVITY_BLOCKED"
+            : "POLICY_BLOCKED",
+        );
+        return;
+      }
+      lessonObjectiveIds = reads.objectives.objectives.map(
+        (objective) => objective.objectiveId,
       );
+      const buildWith = (directives: Record<string, unknown> | null) => {
+        const reserved = directives
+          ? contextBytes({ academyClass: directives })
+          : 0;
+        const built = buildProfessorTeachingContext(
+          {
+            classroom,
+            objectives: reads.objectives,
+            mastery: reads.mastery,
+            resources: reads.resources,
+            turns: memory.turns,
+            totalTurns: memory.totalTurns,
+            unrecordedExchanges: memory.unrecordedExchanges,
+            courseContextNotes: behaviour.config.courseContextNotes,
+            behaviourVersion: behaviour.behaviourVersion,
+            interaction,
+          },
+          profile.budgetPolicy.maxInputContextBytes - reserved,
+        );
+        if (!built.ok || !directives) return built;
+        const serverContext = built.context.serverContext as Record<
+          string,
+          unknown
+        >;
+        return {
+          ...built,
+          context: {
+            ...built.context,
+            serverContext: { ...serverContext, academyClass: directives },
+          },
+        };
+      };
+      // The recap and evidence directives never displace mandatory context:
+      // they are dropped (recap first) rather than blocking the class.
+      let built = buildWith(academyClassDirectives(missed));
+      if (!built.ok && missed.length > 0)
+        built = buildWith(academyClassDirectives([]));
+      if (!built.ok) built = buildWith(null);
       if (!built.ok) {
         providerResult =
           built.reason === "MANDATORY_CONTEXT_EXCEEDS_BUDGET"
@@ -766,22 +971,37 @@ async function executeAcademyProfessorCore(
   }
   const finished = providerResult as RuntimeResult;
   if (finished.outcome !== "SUCCEEDED") return finished;
+  // The optional evidence line is removed before the learner sees or the
+  // classroom records the reply; it is validated against this lesson's own
+  // objectives here and again by the database.
+  const { visibleText, proposal } = extractClassEvidence(
+    finished.response.outputText,
+    lessonObjectiveIds,
+  );
   let recorded = false;
-  if (Array.from(finished.response.outputText).length <= 12_000) {
+  if (Array.from(visibleText).length <= 12_000) {
     try {
       await recordAcademyTurn({
         executionId,
         classroomId,
         interaction,
-        professorMessage: finished.response.outputText,
+        professorMessage: visibleText,
       });
       recorded = true;
     } catch {
       recorded = false;
     }
   }
+  if (recorded && proposal) {
+    try {
+      await recordAcademyClassEvidence({ executionId, classroomId, proposal });
+    } catch {
+      // Display-only notes: a refusal never affects the recorded exchange.
+    }
+  }
   return {
     ...finished,
+    response: { ...finished.response, outputText: visibleText },
     classroomMemory: recorded ? "RECORDED" : "NOT_RECORDED",
   };
 }

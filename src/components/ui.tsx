@@ -45,7 +45,15 @@ export function Card({
 }) {
   return <section className={`card ${className}`}>{children}</section>;
 }
-export function Progress({ value, label }: { value: number; label: string }) {
+export function Progress({
+  value,
+  label,
+  valueText,
+}: {
+  value: number;
+  label: string;
+  valueText?: string;
+}) {
   return (
     <div
       className="progress"
@@ -54,6 +62,7 @@ export function Progress({ value, label }: { value: number; label: string }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={value}
+      aria-valuetext={valueText}
     >
       <span style={{ width: `${value}%` }} />
     </div>

@@ -254,6 +254,8 @@ export const myAcademyEnrolmentsSchema = z.array(
     formatId: formatId.nullable(),
     fixedFormatId: formatId.nullable(),
     accessRevoked: z.boolean().default(false),
+    // The course provider (organisation); "Ducelio" for historical courses.
+    organisationName: z.string().min(1).max(150).default("Ducelio"),
     offerSlug: z.string(),
     formats: z.array(offeredFormat),
     schedule: z
@@ -295,6 +297,22 @@ const alternative = z.strictObject({
   formatId,
   studyDays: z.array(z.number().int()),
 });
+// SCHEDULE_CONFLICT (migration 075): the first occupied interval of another
+// of the learner's current timetables that a proposed item overlaps.
+export const scheduleConflictSchema = z.object({
+  enrolmentId: z.uuid(),
+  courseTitle: z.string(),
+  kind,
+  ref: z.string(),
+  title: z.string().nullable(),
+  startsAt: stamp,
+  endsAt: stamp,
+  itemKind: kind.optional(),
+  itemRef: z.string().optional(),
+  itemStartsAt: stamp.optional(),
+  itemEndsAt: stamp.optional(),
+});
+export type ScheduleConflict = z.infer<typeof scheduleConflictSchema>;
 export const academyPlanSchema = z.union([
   z.object({
     feasible: z.literal(true),
@@ -316,6 +334,7 @@ export const academyPlanSchema = z.union([
     code: z.string(),
     message: z.string(),
     alternatives: z.array(alternative).optional(),
+    conflict: scheduleConflictSchema.optional(),
   }),
 ]);
 export type AcademyPlan = z.infer<typeof academyPlanSchema>;
@@ -332,6 +351,7 @@ export const scheduleWriteSchema = z.union([
     code: z.string(),
     message: z.string().optional(),
     alternatives: z.array(alternative).optional(),
+    conflict: scheduleConflictSchema.optional(),
   }),
 ]);
 
@@ -399,13 +419,22 @@ export const academyLessonSchema = z.strictObject({
   ),
 });
 
+// Migration 075: a late start is shortened to the window's close
+// (expiresAt), a resumed attempt keeps its original deadline, and an
+// overlap with another course's session is refused (SCHEDULE_CONFLICT).
 export const startAttemptSchema = z.union([
-  z.object({ ok: z.literal(true), attemptId: z.uuid(), resumed: z.boolean() }),
+  z.object({
+    ok: z.literal(true),
+    attemptId: z.uuid(),
+    resumed: z.boolean(),
+    expiresAt: stamp.optional(),
+  }),
   z.object({
     ok: z.literal(false),
     code: z.string(),
-    opensAt: stamp.optional(),
-    closesAt: stamp.optional(),
+    opensAt: stamp.nullable().optional(),
+    closesAt: stamp.nullable().optional(),
+    conflict: scheduleConflictSchema.optional(),
   }),
 ]);
 
@@ -424,6 +453,21 @@ const question = z.strictObject({
   response: z.string().nullable(),
   revisions: z.number().int(),
 });
+const releasedQuestionReview = z.strictObject({
+  position: z.number().int(),
+  prompt: z.string(),
+  questionType: question.shape.questionType,
+  interaction: z.record(z.string(), z.unknown()),
+  maxMarks: z.number().int(),
+  response: z.string().nullable(),
+  marks: z.number().int().nullable(),
+  // The authored answer key and expected answer, shown after release only.
+  correctAnswer: z.record(z.string(), z.unknown()),
+  expectedAnswer: z.string().nullable(),
+  // The question's authored marking guidance.
+  explanation: z.string().nullable(),
+});
+export type ReleasedQuestionReview = z.infer<typeof releasedQuestionReview>;
 export const attemptSchema = z.union([
   z.strictObject({
     attemptId: z.uuid(),
@@ -440,6 +484,9 @@ export const attemptSchema = z.union([
     attemptsAllowed: z.number().int(),
     questions: z.array(question),
   }),
+  // Migration 075: score, marks, correct answers and explanations appear
+  // only once the assessment is RELEASED (its window closed and no attempt
+  // ACTIVE); the answer review is withheld during any controlled sitting.
   z.strictObject({
     attemptId: z.uuid(),
     enrolmentId: z.uuid(),
@@ -448,10 +495,14 @@ export const attemptSchema = z.union([
     state: z.literal("SUBMITTED"),
     submission: z.enum(["STUDENT_SUBMIT", "AUTO_TIMEOUT"]),
     submittedAt: stamp,
-    score: z.number().int(),
-    maxScore: z.number().int(),
     attemptNumber: z.number().int(),
     attemptsAllowed: z.number().int(),
+    released: z.boolean(),
+    releasedAt: stamp.nullable(),
+    score: z.number().int().optional(),
+    maxScore: z.number().int().optional(),
+    reviewAvailable: z.boolean().optional(),
+    review: z.array(releasedQuestionReview).optional(),
   }),
 ]);
 export type AcademyAttempt = z.infer<typeof attemptSchema>;
@@ -460,12 +511,11 @@ export const responseWriteSchema = z.union([
   z.object({ ok: z.literal(true), replayed: z.boolean() }),
   z.object({ ok: z.literal(false), code: z.string() }),
 ]);
-export const submitAttemptSchema = z.object({
+// Migration 075: a submission never carries a score.
+export const submitAttemptSchema = z.strictObject({
   ok: z.literal(true),
   state: z.literal("SUBMITTED"),
   submission: z.enum(["STUDENT_SUBMIT", "AUTO_TIMEOUT"]),
-  score: z.number().int(),
-  maxScore: z.number().int(),
 });
 export const labWriteSchema = z.union([
   z.object({
@@ -493,6 +543,14 @@ export const resultsSchema = z.strictObject({
       passMarkBp: z.number().int().nullable(),
       assessmentRef: z.string().nullable(),
       title: z.string().nullable(),
+      // Migration 075: an ASSESSMENT component is scored only once
+      // RELEASED; before that every score field below is null.
+      kind: z.string().nullable(),
+      released: z.boolean(),
+      releasedAt: stamp.nullable(),
+      bestScore: z.number().int().nullable(),
+      maxScore: z.number().int().nullable(),
+      attemptsUsed: z.number().int().nullable(),
     }),
   ),
   allComponentsGraded: z.boolean(),
