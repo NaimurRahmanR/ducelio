@@ -70,3 +70,62 @@ export function readCommerceConfig(env: Record<string, string | undefined>) {
   };
 }
 export const commerceConfig = () => readCommerceConfig(process.env);
+
+// Learner services (docs/61 section 4). Like commerceConfig(), a SEPARATE
+// accessor that only non-rendering server code may call (dispatchers, route
+// handlers, server actions); nothing here is ever passed to a component except
+// derived booleans. NEXT_PUBLIC_VAPID_PUBLIC_KEY is public by design (the
+// browser needs it to subscribe); the private key and secrets are not.
+// Unconfigured services fail closed and truthfully: mail stays QUEUED, push is
+// reported unavailable, and a receipt says its seller details are missing.
+const emailAddress = /^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$/;
+const base64Url = /^[A-Za-z0-9_-]+$/;
+export function readLearnerServicesConfig(
+  env: Record<string, string | undefined>,
+) {
+  const emailProvider = env.EMAIL_PROVIDER?.trim().toLowerCase() || "";
+  const resendApiKey = env.RESEND_API_KEY?.trim() || "";
+  const emailFrom = env.EMAIL_FROM?.trim() || "";
+  const emailConfigured =
+    emailProvider === "resend" &&
+    resendApiKey.length >= 10 &&
+    emailAddress.test(emailFrom.replace(/^.*<([^>]+)>$/, "$1"));
+  const vapidPublicKey = env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim() || "";
+  const vapidPrivateKey = env.VAPID_PRIVATE_KEY?.trim() || "";
+  const vapidSubject = env.VAPID_SUBJECT?.trim() || "";
+  const pushConfigured =
+    base64Url.test(vapidPublicKey) &&
+    vapidPublicKey.length >= 80 &&
+    base64Url.test(vapidPrivateKey) &&
+    vapidPrivateKey.length >= 40 &&
+    (/^mailto:[^@\s]+@[^@\s]+$/.test(vapidSubject) ||
+      /^https:\/\/[^\s]+$/.test(vapidSubject));
+  const cronSecret = env.CRON_SECRET?.trim() || "";
+  const sellerLegalName = env.SELLER_LEGAL_NAME?.trim() || "";
+  const sellerAddress = env.SELLER_ADDRESS?.trim() || "";
+  const sellerTaxId = env.SELLER_TAX_ID?.trim() || "";
+  return {
+    email: {
+      provider: emailConfigured ? ("resend" as const) : null,
+      resendApiKey,
+      from: emailFrom,
+      configured: emailConfigured,
+    },
+    push: {
+      publicKey: vapidPublicKey,
+      privateKey: vapidPrivateKey,
+      subject: vapidSubject,
+      configured: pushConfigured,
+    },
+    // Scheduled dispatch is refused unless a long shared secret exists.
+    cronSecret: cronSecret.length >= 32 ? cronSecret : "",
+    seller: {
+      legalName: sellerLegalName,
+      address: sellerAddress,
+      taxId: sellerTaxId,
+      configured: Boolean(sellerLegalName && sellerAddress),
+    },
+  };
+}
+export const learnerServicesConfig = () =>
+  readLearnerServicesConfig(process.env);
