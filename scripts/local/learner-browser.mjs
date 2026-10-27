@@ -191,8 +191,10 @@ for (const [viewport, width, height] of VIEWPORTS) {
         );
         must(nav.length === 6, `sidebar has ${nav.length} links: ${nav}`);
         must(
-          await page.evaluate(byText("a", "Support")),
-          "no Support & Feedback link",
+          await page.evaluate(
+            "[...document.querySelectorAll('footer a, a')].some(a => a.textContent.includes('Support & Feedback') && a.getAttribute('href') === '/student/support')",
+          ),
+          "no Support & Feedback link to /student/support",
         );
         return rows.join(" || ");
       },
