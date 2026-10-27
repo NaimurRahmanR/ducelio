@@ -1030,10 +1030,18 @@ begin
         'evidence', academy_private.class_evidence(e.id, root, cls.ref),
         'classroomId', (select c.id from public.academy_professor_classrooms c where c.schedule_item_id = root));
     end if;
-    -- Assessment centre: an active attempt's sitting, else the open one, else the next.
+    -- Assessment centre: an active attempt's sitting, else an open sitting
+    -- with attempts remaining, else any open sitting, else the next one.
     select i.* into asmt from public.academy_schedule_items i
       where i.schedule_id = s.id and i.kind = 'ASSESSMENT' and exists (select 1 from public.academy_assessment_attempts t
         where t.enrolment_id = e.id and t.assessment_ref = i.ref and t.state = 'ACTIVE') order by i.sequence limit 1;
+    if asmt.id is null then
+      select i.* into asmt from public.academy_schedule_items i cross join lateral academy_private.item_window(i.id) x
+        where i.schedule_id = s.id and i.kind = 'ASSESSMENT' and x.opens_at <= now_ts and now_ts < x.closes_at
+          and (select count(*) from public.academy_assessment_attempts t where t.enrolment_id = e.id and t.assessment_ref = i.ref)
+            < academy_private.attempts_allowed(academy_private.assessment_template(e.course_id, i.ref))
+        order by i.starts_at, i.sequence limit 1;
+    end if;
     if asmt.id is null then
       select i.* into asmt from public.academy_schedule_items i cross join lateral academy_private.item_window(i.id) x
         where i.schedule_id = s.id and i.kind = 'ASSESSMENT' and x.opens_at <= now_ts and now_ts < x.closes_at
