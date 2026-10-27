@@ -31,7 +31,6 @@ let db: PGlite;
 let q: Query;
 let orgA: string;
 let enrolA: string;
-let courseA: string;
 const keyId = randomUUID();
 const key = randomBytes(32);
 const controller = { keyId, secret: key };
@@ -126,16 +125,14 @@ beforeAll(async () => {
     JSON.stringify(checked.review),
     reason,
   ]);
-  courseA = (
-    await rpc<{ courseId: string }>(q, reviewerA, "publish_unified_course", [
-      pkg,
-      "learner-services-course",
-      "GBP",
-      10000,
-      null,
-      reason,
-    ])
-  ).courseId;
+  await rpc<{ courseId: string }>(q, reviewerA, "publish_unified_course", [
+    pkg,
+    "learner-services-course",
+    "GBP",
+    10000,
+    null,
+    reason,
+  ]);
   await rpc(q, reviewerA, "create_organisation_course_coupon", [
     orgA,
     "SERVICES100",
@@ -212,9 +209,9 @@ describe("deny-by-default privileges", () => {
       await expect(
         as(q, learnerA, `select * from public.${table}`),
       ).rejects.toThrow(/permission denied/);
-      await expect(as(q, null, `select * from public.${table}`)).rejects.toThrow(
-        /permission denied/,
-      );
+      await expect(
+        as(q, null, `select * from public.${table}`),
+      ).rejects.toThrow(/permission denied/);
     }
   });
 
@@ -302,18 +299,29 @@ describe("learner profile", () => {
       displayName: "Ada Lovelace",
       education: [
         { institution: "Synthetic University", endMonth: "2022-06" },
-        { institution: "Synthetic College", endMonth: null, currentlyStudying: true },
+        {
+          institution: "Synthetic College",
+          endMonth: null,
+          currentlyStudying: true,
+        },
       ],
-      employment: [{ employer: "Synthetic Ltd", position: "Analyst", current: true }],
+      employment: [
+        { employer: "Synthetic Ltd", position: "Analyst", current: true },
+      ],
     });
     expect(
-      (await one("select display_name from public.app_users where id=$1", [learnerA.id]))
-        .display_name,
+      (
+        await one("select display_name from public.app_users where id=$1", [
+          learnerA.id,
+        ])
+      ).display_name,
     ).toBe("Ada Lovelace");
     // Another learner sees only their own (empty) profile.
-    expect(
-      await rpc(q, learnerB, "get_my_learner_profile"),
-    ).toMatchObject({ firstName: null, education: [], email: learnerB.email });
+    expect(await rpc(q, learnerB, "get_my_learner_profile")).toMatchObject({
+      firstName: null,
+      education: [],
+      email: learnerB.email,
+    });
   });
 
   it("refuses invalid or oversized details and non-learners", async () => {
@@ -327,7 +335,12 @@ describe("learner profile", () => {
       ["Ada", "Lovelace", [{ ...education[0], currentlyStudying: "yes" }], []],
       ["Ada", "Lovelace", Array(21).fill(education[1]), []],
       ["Ada", "Lovelace", [], [{ ...employment[0], current: false }]],
-      ["Ada", "Lovelace", [], [{ ...employment[0], employer: "y".repeat(151) }]],
+      [
+        "Ada",
+        "Lovelace",
+        [],
+        [{ ...employment[0], employer: "y".repeat(151) }],
+      ],
     ];
     for (const [first, last, edu, emp] of bad)
       await expect(
@@ -340,8 +353,13 @@ describe("learner profile", () => {
       ).rejects.toThrow("INVALID_INPUT");
     // The refused saves changed nothing.
     expect(
-      (await rpc<{ education: unknown[] }>(q, learnerA, "get_my_learner_profile"))
-        .education,
+      (
+        await rpc<{ education: unknown[] }>(
+          q,
+          learnerA,
+          "get_my_learner_profile",
+        )
+      ).education,
     ).toHaveLength(2);
     await expect(rpc(q, reviewerA, "get_my_learner_profile")).rejects.toThrow(
       "FORBIDDEN",
@@ -351,11 +369,15 @@ describe("learner profile", () => {
 
 describe("private files", () => {
   it("validates size, type and magic bytes in the RPC and in table constraints", async () => {
-    expect(await upload(learnerA, "PROFILE_PHOTO", null, "image/jpeg", PNG)).toEqual({
+    expect(
+      await upload(learnerA, "PROFILE_PHOTO", null, "image/jpeg", PNG),
+    ).toEqual({
       ok: false,
       code: "TYPE_MISMATCH",
     });
-    expect(await upload(learnerA, "PROFILE_PHOTO", null, "image/png", GIF)).toEqual({
+    expect(
+      await upload(learnerA, "PROFILE_PHOTO", null, "image/png", GIF),
+    ).toEqual({
       ok: false,
       code: "TYPE_MISMATCH",
     });
@@ -372,7 +394,13 @@ describe("private files", () => {
       ),
     ).toEqual({ ok: false, code: "FILE_TOO_LARGE" });
     expect(
-      await upload(learnerA, "PROFILE_PHOTO", null, "image/png", Buffer.alloc(0)),
+      await upload(
+        learnerA,
+        "PROFILE_PHOTO",
+        null,
+        "image/png",
+        Buffer.alloc(0),
+      ),
     ).toEqual({ ok: false, code: "EMPTY_FILE" });
     expect(
       await upload(
@@ -394,14 +422,20 @@ describe("private files", () => {
   });
 
   it("stores, replaces and deletes an owner-only profile photo", async () => {
-    const first = await upload(learnerA, "PROFILE_PHOTO", null, "image/png", PNG, "me<script>.png");
-    expect(first.ok).toBe(true);
-    const read = await rpc<{ contentType: string; contentBase64: string; fileName: string }>(
-      q,
+    const first = await upload(
       learnerA,
-      "read_private_file",
-      [first.fileId],
+      "PROFILE_PHOTO",
+      null,
+      "image/png",
+      PNG,
+      "me<script>.png",
     );
+    expect(first.ok).toBe(true);
+    const read = await rpc<{
+      contentType: string;
+      contentBase64: string;
+      fileName: string;
+    }>(q, learnerA, "read_private_file", [first.fileId]);
     expect(read.contentType).toBe("image/png");
     expect(read.fileName).toBe("me_script_.png");
     expect(Buffer.from(read.contentBase64, "base64").equals(PNG)).toBe(true);
@@ -409,24 +443,45 @@ describe("private files", () => {
       await expect(
         rpc(q, other, "read_private_file", [first.fileId]),
       ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
-    await expect(rpc(q, null, "read_private_file", [first.fileId])).rejects.toThrow();
-    const second = await upload(learnerA, "PROFILE_PHOTO", null, "image/jpeg", JPEG);
+    await expect(
+      rpc(q, null, "read_private_file", [first.fileId]),
+    ).rejects.toThrow();
+    const second = await upload(
+      learnerA,
+      "PROFILE_PHOTO",
+      null,
+      "image/jpeg",
+      JPEG,
+    );
     expect(second.ok).toBe(true);
     expect(
-      (await one("select count(*)::int n from public.learner_private_files where id=$1", [first.fileId])).n,
+      (
+        await one(
+          "select count(*)::int n from public.learner_private_files where id=$1",
+          [first.fileId],
+        )
+      ).n,
     ).toBe(0);
     expect(
-      (await rpc<{ photo: { fileId: string } }>(q, learnerA, "get_my_learner_profile")).photo
-        .fileId,
+      (
+        await rpc<{ photo: { fileId: string } }>(
+          q,
+          learnerA,
+          "get_my_learner_profile",
+        )
+      ).photo.fileId,
     ).toBe(second.fileId);
     await expect(
       rpc(q, learnerB, "delete_my_private_file", [second.fileId]),
     ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
-    expect(await rpc(q, learnerA, "delete_my_private_file", [second.fileId])).toEqual({
+    expect(
+      await rpc(q, learnerA, "delete_my_private_file", [second.fileId]),
+    ).toEqual({
       ok: true,
     });
     expect(
-      (await rpc<{ photo: unknown }>(q, learnerA, "get_my_learner_profile")).photo,
+      (await rpc<{ photo: unknown }>(q, learnerA, "get_my_learner_profile"))
+        .photo,
     ).toBeNull();
   });
 });
@@ -441,7 +496,13 @@ describe("lab evidence", () => {
       [enrolA],
     );
     [labRef, otherLab] = labs.rows.map((r) => r.ref as string);
-    const png = await upload(learnerA, "LAB_EVIDENCE", enrolA, "image/png", PNG);
+    const png = await upload(
+      learnerA,
+      "LAB_EVIDENCE",
+      enrolA,
+      "image/png",
+      PNG,
+    );
     const text = await upload(
       learnerA,
       "LAB_EVIDENCE",
@@ -461,57 +522,114 @@ describe("lab evidence", () => {
         key,
       ]),
     ).toEqual({ ok: false, code: "LAB_NOT_OPEN" });
-    await q("alter table public.academy_schedule_items disable trigger guard_history");
+    await q(
+      "alter table public.academy_schedule_items disable trigger guard_history",
+    );
     await q(
       `update public.academy_schedule_items set starts_at=now()-interval '3 hours', ends_at=now()-interval '2 hours'
        where enrolment_id=$1 and kind='LAB' and ref = any($2)`,
       [enrolA, [labRef, otherLab]],
     );
-    await q("alter table public.academy_schedule_items enable trigger guard_history");
+    await q(
+      "alter table public.academy_schedule_items enable trigger guard_history",
+    );
     // Another learner can neither use these files nor this enrolment.
     await expect(
-      rpc(q, learnerB, "submit_my_lab_evidence", [enrolA, labRef, [png.fileId], null, randomUUID()]),
+      rpc(q, learnerB, "submit_my_lab_evidence", [
+        enrolA,
+        labRef,
+        [png.fileId],
+        null,
+        randomUUID(),
+      ]),
     ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
     await expect(
       upload(learnerB, "LAB_EVIDENCE", enrolA, "image/png", PNG),
     ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
-    const submitted = await rpc<{ ok: boolean; replayed: boolean; evidence: { codeText: string; files: { fileId: string }[] } }>(
-      q,
-      learnerA,
-      "submit_my_lab_evidence",
-      [enrolA, labRef, [png.fileId, text.fileId], code, key],
-    );
+    const submitted = await rpc<{
+      ok: boolean;
+      replayed: boolean;
+      evidence: { codeText: string; files: { fileId: string }[] };
+    }>(q, learnerA, "submit_my_lab_evidence", [
+      enrolA,
+      labRef,
+      [png.fileId, text.fileId],
+      code,
+      key,
+    ]);
     expect(submitted).toMatchObject({ ok: true, replayed: false });
     expect(submitted.evidence.codeText).toBe(code);
-    expect(submitted.evidence.files.map((f) => f.fileId)).toEqual([png.fileId, text.fileId]);
+    expect(submitted.evidence.files.map((f) => f.fileId)).toEqual([
+      png.fileId,
+      text.fileId,
+    ]);
     expect(
-      await rpc(q, learnerA, "submit_my_lab_evidence", [enrolA, labRef, [png.fileId], code, key]),
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        labRef,
+        [png.fileId],
+        code,
+        key,
+      ]),
     ).toMatchObject({ ok: true, replayed: true });
     expect(
-      await rpc(q, learnerA, "submit_my_lab_evidence", [enrolA, labRef, [], code, randomUUID()]),
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        labRef,
+        [],
+        code,
+        randomUUID(),
+      ]),
     ).toEqual({ ok: false, code: "EVIDENCE_EXISTS" });
     // Attached evidence is immutable and its files cannot be deleted.
-    expect(await rpc(q, learnerA, "delete_my_private_file", [png.fileId])).toEqual({
+    expect(
+      await rpc(q, learnerA, "delete_my_private_file", [png.fileId]),
+    ).toEqual({
       ok: false,
       code: "FILE_ATTACHED",
     });
     await expect(
-      q("update public.learner_lab_evidence set code_text='changed' where enrolment_id=$1", [enrolA]),
+      q(
+        "update public.learner_lab_evidence set code_text='changed' where enrolment_id=$1",
+        [enrolA],
+      ),
     ).rejects.toThrow("IMMUTABLE_HISTORY");
     // Six files, reused files and empty evidence are refused.
     const six: string[] = [];
     for (let i = 0; i < 6; i++)
-      six.push((await upload(learnerA, "LAB_EVIDENCE", enrolA, "application/pdf", PDF)).fileId);
+      six.push(
+        (await upload(learnerA, "LAB_EVIDENCE", enrolA, "application/pdf", PDF))
+          .fileId,
+      );
     expect(
-      await rpc(q, learnerA, "submit_my_lab_evidence", [enrolA, otherLab, six, null, randomUUID()]),
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        otherLab,
+        six,
+        null,
+        randomUUID(),
+      ]),
     ).toEqual({ ok: false, code: "TOO_MANY_FILES" });
     expect(
-      await rpc(q, learnerA, "submit_my_lab_evidence", [enrolA, otherLab, [png.fileId], null, randomUUID()]),
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        otherLab,
+        [png.fileId],
+        null,
+        randomUUID(),
+      ]),
     ).toEqual({ ok: false, code: "INVALID_FILE" });
     expect(
-      await rpc(q, learnerA, "submit_my_lab_evidence", [enrolA, otherLab, [], "   \n", randomUUID()]),
+      await rpc(q, learnerA, "submit_my_lab_evidence", [
+        enrolA,
+        otherLab,
+        [],
+        "   \n",
+        randomUUID(),
+      ]),
     ).toEqual({ ok: false, code: "EMPTY_EVIDENCE" });
-    for (const id of six) await rpc(q, learnerA, "delete_my_private_file", [id]);
+    for (const id of six)
+      await rpc(q, learnerA, "delete_my_private_file", [id]);
   });
 
   it("is readable by the owner and the course organisation's reviewer only", async () => {
@@ -530,8 +648,11 @@ describe("lab evidence", () => {
     );
     expect(reviewed.evidence.evidenceId).toBeTruthy();
     expect(
-      (await rpc<{ contentType: string }>(q, reviewerA, "read_private_file", [fileId]))
-        .contentType,
+      (
+        await rpc<{ contentType: string }>(q, reviewerA, "read_private_file", [
+          fileId,
+        ])
+      ).contentType,
     ).toBe("image/png");
     // Another organisation's owner, another learner and the learner acting
     // as their own reviewer are all refused.
@@ -539,39 +660,65 @@ describe("lab evidence", () => {
       await expect(
         rpc(q, other, "get_lab_evidence_for_review", [enrolA, labRef]),
       ).rejects.toThrow("FORBIDDEN");
-    await expect(rpc(q, learnerA, "get_lab_evidence_for_review", [enrolA, labRef])).rejects.toThrow(
-      "FORBIDDEN",
-    );
+    await expect(
+      rpc(q, learnerA, "get_lab_evidence_for_review", [enrolA, labRef]),
+    ).rejects.toThrow("FORBIDDEN");
     for (const other of [ownerB, learnerB])
-      await expect(rpc(q, other, "read_private_file", [fileId])).rejects.toThrow(
-        "NOT_FOUND_OR_FORBIDDEN",
-      );
-    await expect(rpc(q, learnerB, "get_my_lab_evidence", [enrolA, labRef])).rejects.toThrow(
-      "NOT_FOUND_OR_FORBIDDEN",
-    );
+      await expect(
+        rpc(q, other, "read_private_file", [fileId]),
+      ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
+    await expect(
+      rpc(q, learnerB, "get_my_lab_evidence", [enrolA, labRef]),
+    ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
     // An unattached upload stays owner-only even for the reviewer.
-    const loose = await upload(learnerA, "LAB_EVIDENCE", enrolA, "application/pdf", PDF);
-    await expect(rpc(q, reviewerA, "read_private_file", [loose.fileId])).rejects.toThrow(
-      "NOT_FOUND_OR_FORBIDDEN",
+    const loose = await upload(
+      learnerA,
+      "LAB_EVIDENCE",
+      enrolA,
+      "application/pdf",
+      PDF,
     );
+    await expect(
+      rpc(q, reviewerA, "read_private_file", [loose.fileId]),
+    ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
     await rpc(q, learnerA, "delete_my_private_file", [loose.fileId]);
   });
 });
 
 describe("support messages and the email outbox", () => {
-  const submit = (person: Person, key: string, subject = "TEST ONLY question") =>
-    rpc<{ ok: boolean; code?: string; messageId: string; delivery: string; replayed: boolean }>(
-      q,
-      person,
-      "submit_my_support_message",
-      ["TECHNICAL", subject, "TEST ONLY synthetic support message body.", enrolA, "lesson-1", key],
-    );
+  const submit = (
+    person: Person,
+    key: string,
+    subject = "TEST ONLY question",
+  ) =>
+    rpc<{
+      ok: boolean;
+      code?: string;
+      messageId: string;
+      delivery: string;
+      replayed: boolean;
+    }>(q, person, "submit_my_support_message", [
+      "TECHNICAL",
+      subject,
+      "TEST ONLY synthetic support message body.",
+      enrolA,
+      "lesson-1",
+      key,
+    ]);
   it("queues one email per message with the verified reply-to and rate limits", async () => {
     const key = randomUUID();
     const first = await submit(learnerA, key);
-    expect(first).toMatchObject({ ok: true, delivery: "QUEUED", replayed: false });
+    expect(first).toMatchObject({
+      ok: true,
+      delivery: "QUEUED",
+      replayed: false,
+    });
     const replay = await submit(learnerA, key);
-    expect(replay).toMatchObject({ ok: true, replayed: true, messageId: first.messageId });
+    expect(replay).toMatchObject({
+      ok: true,
+      replayed: true,
+      messageId: first.messageId,
+    });
     const outbox = await q(
       "select recipient,reply_to,status,kind,subject from public.learner_email_outbox where idempotency_key=$1",
       [`SUPPORT:${first.messageId}`],
@@ -607,13 +754,20 @@ describe("support messages and the email outbox", () => {
       ]),
     ).toEqual({ ok: false, code: "INVALID_INPUT" });
     for (let i = 0; i < 4; i++)
-      expect((await submit(learnerA, randomUUID(), `TEST ONLY ${i}`)).ok).toBe(true);
+      expect((await submit(learnerA, randomUUID(), `TEST ONLY ${i}`)).ok).toBe(
+        true,
+      );
     expect(await submit(learnerA, randomUUID())).toMatchObject({
       ok: false,
       code: "RATE_LIMITED",
     });
     expect(
-      (await one("select count(*)::int n from public.learner_support_messages where sender_id=$1", [learnerA.id])).n,
+      (
+        await one(
+          "select count(*)::int n from public.learner_support_messages where sender_id=$1",
+          [learnerA.id],
+        )
+      ).n,
     ).toBe(5);
     expect(
       (await rpc<unknown[]>(q, learnerA, "list_my_support_messages")).length,
@@ -623,11 +777,20 @@ describe("support messages and the email outbox", () => {
 
   it("keeps mail QUEUED without a provider and records SENT only with an acknowledgement", async () => {
     const queued = async () =>
-      (await one<{ n: number }>("select count(*)::int n from public.learner_email_outbox where status='QUEUED'")).n;
+      (
+        await one<{ n: number }>(
+          "select count(*)::int n from public.learner_email_outbox where status='QUEUED'",
+        )
+      ).n;
     const before = await queued();
     expect(before).toBe(5);
     expect(
-      await dispatchLearnerEmail({ rpc: anonRpc, controller, adapter: null, appUrl: "https://example.test" }),
+      await dispatchLearnerEmail({
+        rpc: anonRpc,
+        controller,
+        adapter: null,
+        appUrl: "https://example.test",
+      }),
     ).toMatchObject({ configured: false, claimed: 0 });
     expect(await queued()).toBe(before);
 
@@ -641,27 +804,71 @@ describe("support messages and the email outbox", () => {
         return { providerMessageId: `fake-${sent.length}` };
       },
     };
-    const failedRun = await dispatchLearnerEmail({ rpc: anonRpc, controller, adapter: fake, appUrl: "https://example.test", limit: 2 });
-    expect(failedRun).toMatchObject({ configured: true, claimed: 2, sent: 0, retrying: 2 });
+    const failedRun = await dispatchLearnerEmail({
+      rpc: anonRpc,
+      controller,
+      adapter: fake,
+      appUrl: "https://example.test",
+      limit: 2,
+    });
+    expect(failedRun).toMatchObject({
+      configured: true,
+      claimed: 2,
+      sent: 0,
+      retrying: 2,
+    });
     const retried = await q(
       "select attempts,status,last_error,next_attempt_at>now() later from public.learner_email_outbox where attempts>0",
     );
     expect(retried.rows).toEqual([
-      { attempts: 1, status: "QUEUED", last_error: "DELIVERY_FAILED", later: true },
-      { attempts: 1, status: "QUEUED", last_error: "DELIVERY_FAILED", later: true },
+      {
+        attempts: 1,
+        status: "QUEUED",
+        last_error: "DELIVERY_FAILED",
+        later: true,
+      },
+      {
+        attempts: 1,
+        status: "QUEUED",
+        last_error: "DELIVERY_FAILED",
+        later: true,
+      },
     ]);
     failNext = false;
-    await q("update public.learner_email_outbox set next_attempt_at=now()-interval '1 second'");
-    const okRun = await dispatchLearnerEmail({ rpc: anonRpc, controller, adapter: fake, appUrl: "https://example.test", limit: 50 });
+    await q(
+      "update public.learner_email_outbox set next_attempt_at=now()-interval '1 second'",
+    );
+    const okRun = await dispatchLearnerEmail({
+      rpc: anonRpc,
+      controller,
+      adapter: fake,
+      appUrl: "https://example.test",
+      limit: 50,
+    });
     expect(okRun).toMatchObject({ claimed: 5, sent: 5 });
-    expect(sent.every((e) => e.to === "support@ducelio.com" && e.replyTo === learnerA.email)).toBe(true);
-    const states = await q("select status,provider_message_id is not null acked,sent_at is not null stamped from public.learner_email_outbox");
-    expect(states.rows.every((r) => r.status === "SENT" && r.acked && r.stamped)).toBe(true);
+    expect(
+      sent.every(
+        (e) => e.to === "support@ducelio.com" && e.replyTo === learnerA.email,
+      ),
+    ).toBe(true);
+    const states = await q(
+      "select status,provider_message_id is not null acked,sent_at is not null stamped from public.learner_email_outbox",
+    );
+    expect(
+      states.rows.every((r) => r.status === "SENT" && r.acked && r.stamped),
+    ).toBe(true);
     // Nothing left to claim; an unacknowledged SENT is refused.
     expect(
-      await dispatchLearnerEmail({ rpc: anonRpc, controller, adapter: fake, appUrl: "https://example.test" }),
+      await dispatchLearnerEmail({
+        rpc: anonRpc,
+        controller,
+        adapter: fake,
+        appUrl: "https://example.test",
+      }),
     ).toMatchObject({ claimed: 0 });
-    const msg = await one<{ id: string }>("select id from public.learner_email_outbox limit 1");
+    const msg = await one<{ id: string }>(
+      "select id from public.learner_email_outbox limit 1",
+    );
     expect(
       await anonRpc("complete_learner_email", {
         p_message_id: msg.id,
@@ -686,11 +893,20 @@ describe("support messages and the email outbox", () => {
       },
     };
     for (let i = 0; i < 5; i++) {
-      await q("update public.learner_email_outbox set next_attempt_at=now()-interval '1 second' where idempotency_key='TEST_ONLY:exhaust'");
-      await dispatchLearnerEmail({ rpc: anonRpc, controller, adapter: broken, appUrl: "https://example.test" });
+      await q(
+        "update public.learner_email_outbox set next_attempt_at=now()-interval '1 second' where idempotency_key='TEST_ONLY:exhaust'",
+      );
+      await dispatchLearnerEmail({
+        rpc: anonRpc,
+        controller,
+        adapter: broken,
+        appUrl: "https://example.test",
+      });
     }
     expect(
-      await one("select status,attempts from public.learner_email_outbox where idempotency_key='TEST_ONLY:exhaust'"),
+      await one(
+        "select status,attempts from public.learner_email_outbox where idempotency_key='TEST_ONLY:exhaust'",
+      ),
     ).toEqual({ status: "FAILED", attempts: 5 });
   });
 });
@@ -700,20 +916,33 @@ function sign(canonical: string) {
   const expires = issued + 60;
   const mac = createHmac("sha256", key)
     .update(
-      ["DUCELIO_LEARNER_SERVICES_HMAC_SHA256_V1", keyId, canonical, String(issued), String(expires)].join("\n"),
+      [
+        "DUCELIO_LEARNER_SERVICES_HMAC_SHA256_V1",
+        keyId,
+        canonical,
+        String(issued),
+        String(expires),
+      ].join("\n"),
       "utf8",
     )
     .digest("hex");
-  return { p_key_id: keyId, p_issued_at: issued, p_expires_at: expires, p_mac: mac };
+  return {
+    p_key_id: keyId,
+    p_issued_at: issued,
+    p_expires_at: expires,
+    p_mac: mac,
+  };
 }
 
 describe("push subscriptions and reminders", () => {
   const endpoint = "https://fcm.googleapis.com/fcm/send/TEST-ONLY-endpoint-a";
   const keys = ["B".repeat(87), "a".repeat(22)];
   const pending = async (where = "") =>
-    (await one<{ n: number }>(
-      `select count(*)::int n from public.learner_activity_reminders r where r.status='PENDING' ${where}`,
-    )).n;
+    (
+      await one<{ n: number }>(
+        `select count(*)::int n from public.learner_activity_reminders r where r.status='PENDING' ${where}`,
+      )
+    ).n;
   it("subscribes the owner idempotently and refuses unsafe endpoints", async () => {
     for (const bad of [
       "http://fcm.googleapis.com/fcm/send/x",
@@ -721,57 +950,71 @@ describe("push subscriptions and reminders", () => {
       "https://evil.example/fcm.googleapis.com/x",
     ])
       expect(
-        await rpc(q, learnerA, "subscribe_my_push", [bad, keys[0], keys[1], null]),
+        await rpc(q, learnerA, "subscribe_my_push", [
+          bad,
+          keys[0],
+          keys[1],
+          null,
+        ]),
       ).toEqual({ ok: false, code: "INVALID_SUBSCRIPTION" });
-    const first = await rpc<{ ok: boolean; subscriptionId: string; remindersScheduled: number }>(
-      q,
-      learnerA,
-      "subscribe_my_push",
-      [endpoint, keys[0], keys[1], null],
-    );
+    const first = await rpc<{
+      ok: boolean;
+      subscriptionId: string;
+      remindersScheduled: number;
+    }>(q, learnerA, "subscribe_my_push", [endpoint, keys[0], keys[1], null]);
     expect(first.ok).toBe(true);
     expect(first.remindersScheduled).toBeGreaterThan(0);
-    const again = await rpc<{ subscriptionId: string; remindersScheduled: number }>(
-      q,
-      learnerA,
-      "subscribe_my_push",
-      [endpoint, keys[0], keys[1], null],
-    );
-    expect(again).toMatchObject({ subscriptionId: first.subscriptionId, remindersScheduled: 0 });
-    expect(await rpc(q, learnerA, "refresh_my_activity_reminders")).toMatchObject({
+    const again = await rpc<{
+      subscriptionId: string;
+      remindersScheduled: number;
+    }>(q, learnerA, "subscribe_my_push", [endpoint, keys[0], keys[1], null]);
+    expect(again).toMatchObject({
+      subscriptionId: first.subscriptionId,
+      remindersScheduled: 0,
+    });
+    expect(
+      await rpc(q, learnerA, "refresh_my_activity_reminders"),
+    ).toMatchObject({
       ok: true,
       created: 0,
       pending: first.remindersScheduled,
     });
     // Every reminder is 15 minutes before its item's occupied interval.
     expect(
-      (await one<{ n: number }>(
-        `select count(*)::int n from public.learner_activity_reminders r join public.academy_schedule_items i on i.id=r.item_id
+      (
+        await one<{ n: number }>(
+          `select count(*)::int n from public.learner_activity_reminders r join public.academy_schedule_items i on i.id=r.item_id
          where r.due_at <> i.starts_at - interval '15 minutes'`,
-      )).n,
+        )
+      ).n,
     ).toBe(0);
     expect(await rpc(q, learnerB, "unsubscribe_my_push", [endpoint])).toEqual({
       ok: true,
       removed: false,
     });
-    const upcoming = await rpc<{ pushEnabled: boolean; items: { pushScheduled: boolean }[] }>(
-      q,
-      learnerA,
-      "list_my_upcoming_reminders",
-      [7],
-    );
+    const upcoming = await rpc<{
+      pushEnabled: boolean;
+      items: { pushScheduled: boolean }[];
+    }>(q, learnerA, "list_my_upcoming_reminders", [7]);
     expect(upcoming.pushEnabled).toBe(true);
     expect(upcoming.items.length).toBeGreaterThan(0);
     expect(
-      (await rpc<{ pushEnabled: boolean; items: unknown[] }>(q, learnerB, "list_my_upcoming_reminders", [7])),
+      await rpc<{ pushEnabled: boolean; items: unknown[] }>(
+        q,
+        learnerB,
+        "list_my_upcoming_reminders",
+        [7],
+      ),
     ).toMatchObject({ pushEnabled: false, items: [] });
   });
 
   it("recalculates reminders when the schedule is revised", async () => {
-    const current = (await one<{ id: string }>(
-      "select id from public.academy_schedules where enrolment_id=$1 and superseded_at is null",
-      [enrolA],
-    )).id;
+    const current = (
+      await one<{ id: string }>(
+        "select id from public.academy_schedules where enrolment_id=$1 and superseded_at is null",
+        [enrolA],
+      )
+    ).id;
     const revised = await rpc<{ ok: boolean; scheduleId: string }>(
       q,
       learnerA,
@@ -790,12 +1033,16 @@ describe("push subscriptions and reminders", () => {
     await rpc(q, learnerA, "refresh_my_activity_reminders");
     expect(await pending(`and r.schedule_id='${current}'`)).toBe(0);
     expect(
-      (await one<{ n: number }>(
-        `select count(*)::int n from public.learner_activity_reminders where schedule_id=$1 and status='CANCELLED' and cancelled_reason='SCHEDULE_REVISED'`,
-        [current],
-      )).n,
+      (
+        await one<{ n: number }>(
+          `select count(*)::int n from public.learner_activity_reminders where schedule_id=$1 and status='CANCELLED' and cancelled_reason='SCHEDULE_REVISED'`,
+          [current],
+        )
+      ).n,
     ).toBeGreaterThan(0);
-    expect(await pending(`and r.schedule_id='${revised.scheduleId}'`)).toBeGreaterThan(0);
+    expect(
+      await pending(`and r.schedule_id='${revised.scheduleId}'`),
+    ).toBeGreaterThan(0);
   });
 
   it("dispatches due reminders once, removes gone subscriptions and retries failures", async () => {
@@ -805,24 +1052,38 @@ describe("push subscriptions and reminders", () => {
        where s.enrolment_id=$1 and s.superseded_at is null and i.starts_at>now() order by i.starts_at limit 1`,
       [enrolA],
     );
-    await q("delete from public.learner_activity_reminders where item_id=$1", [next.id]);
-    await q("alter table public.academy_schedule_items disable trigger guard_history");
+    await q("delete from public.learner_activity_reminders where item_id=$1", [
+      next.id,
+    ]);
+    await q(
+      "alter table public.academy_schedule_items disable trigger guard_history",
+    );
     await q(
       "update public.academy_schedule_items set starts_at=now()+interval '10 minutes', ends_at=now()+interval '70 minutes' where id=$1",
       [next.id],
     );
-    await q("alter table public.academy_schedule_items enable trigger guard_history");
+    await q(
+      "alter table public.academy_schedule_items enable trigger guard_history",
+    );
     const payloads: string[] = [];
     const ok: PushSender = {
       async send(_target, payload) {
         payloads.push(payload);
       },
     };
-    expect(await dispatchActivityReminders({ rpc: anonRpc, controller, sender: null })).toMatchObject({
+    expect(
+      await dispatchActivityReminders({
+        rpc: anonRpc,
+        controller,
+        sender: null,
+      }),
+    ).toMatchObject({
       configured: false,
       claimed: 0,
     });
-    expect(await dispatchActivityReminders({ rpc: anonRpc, controller, sender: ok })).toMatchObject({
+    expect(
+      await dispatchActivityReminders({ rpc: anonRpc, controller, sender: ok }),
+    ).toMatchObject({
       claimed: 1,
       sent: 1,
     });
@@ -832,16 +1093,29 @@ describe("push subscriptions and reminders", () => {
       url: "/student/timetable",
       tag: "ducelio-activity-reminder",
     });
-    expect(await dispatchActivityReminders({ rpc: anonRpc, controller, sender: ok })).toMatchObject({
+    expect(
+      await dispatchActivityReminders({ rpc: anonRpc, controller, sender: ok }),
+    ).toMatchObject({
       claimed: 0,
     });
     expect(
-      (await one("select status from public.learner_activity_reminders where item_id=$1", [next.id])).status,
+      (
+        await one(
+          "select status from public.learner_activity_reminders where item_id=$1",
+          [next.id],
+        )
+      ).status,
     ).toBe("SENT");
 
     // A second learner device: a 500 is retried, a 410 removes it.
-    const endpointB = "https://updates.push.services.mozilla.com/wpush/v2/TEST-ONLY-b";
-    await rpc(q, learnerA, "subscribe_my_push", [endpointB, "C".repeat(87), "b".repeat(22), null]);
+    const endpointB =
+      "https://updates.push.services.mozilla.com/wpush/v2/TEST-ONLY-b";
+    await rpc(q, learnerA, "subscribe_my_push", [
+      endpointB,
+      "C".repeat(87),
+      "b".repeat(22),
+      null,
+    ]);
     await q(
       "update public.learner_activity_reminders set next_attempt_at=now() where item_id=$1 and status='PENDING'",
       [next.id],
@@ -852,32 +1126,68 @@ describe("push subscriptions and reminders", () => {
         throw Object.assign(new Error("push failed"), { statusCode: status });
       },
     };
-    expect(await dispatchActivityReminders({ rpc: anonRpc, controller, sender: flaky })).toMatchObject({
+    expect(
+      await dispatchActivityReminders({
+        rpc: anonRpc,
+        controller,
+        sender: flaky,
+      }),
+    ).toMatchObject({
       claimed: 1,
       retrying: 1,
     });
-    await q("update public.learner_activity_reminders set next_attempt_at=now() where status='PENDING' and item_id=$1", [next.id]);
+    await q(
+      "update public.learner_activity_reminders set next_attempt_at=now() where status='PENDING' and item_id=$1",
+      [next.id],
+    );
     status = 410;
-    expect(await dispatchActivityReminders({ rpc: anonRpc, controller, sender: flaky })).toMatchObject({
+    expect(
+      await dispatchActivityReminders({
+        rpc: anonRpc,
+        controller,
+        sender: flaky,
+      }),
+    ).toMatchObject({
       claimed: 1,
       gone: 1,
     });
     expect(
-      (await one<{ n: number }>("select count(*)::int n from public.learner_push_subscriptions where endpoint=$1", [endpointB])).n,
+      (
+        await one<{ n: number }>(
+          "select count(*)::int n from public.learner_push_subscriptions where endpoint=$1",
+          [endpointB],
+        )
+      ).n,
     ).toBe(0);
     expect(
-      (await one<{ n: number }>("select count(*)::int n from public.learner_push_subscriptions where endpoint=$1", [endpoint])).n,
+      (
+        await one<{ n: number }>(
+          "select count(*)::int n from public.learner_push_subscriptions where endpoint=$1",
+          [endpoint],
+        )
+      ).n,
     ).toBe(1);
   });
 
   it("moves an endpoint to the learner now signed in on that browser", async () => {
     const endpoint = "https://fcm.googleapis.com/fcm/send/TEST-ONLY-endpoint-a";
-    await rpc(q, learnerB, "subscribe_my_push", [endpoint, keys[0], keys[1], null]);
+    await rpc(q, learnerB, "subscribe_my_push", [
+      endpoint,
+      keys[0],
+      keys[1],
+      null,
+    ]);
     expect(
-      await one("select user_id from public.learner_push_subscriptions where endpoint=$1", [endpoint]),
+      await one(
+        "select user_id from public.learner_push_subscriptions where endpoint=$1",
+        [endpoint],
+      ),
     ).toEqual({ user_id: learnerB.id });
     expect(await pending(`and r.learner_id='${learnerA.id}'`)).toBe(0);
-    expect(await rpc(q, learnerB, "unsubscribe_my_push", [endpoint])).toEqual({ ok: true, removed: true });
+    expect(await rpc(q, learnerB, "unsubscribe_my_push", [endpoint])).toEqual({
+      ok: true,
+      removed: true,
+    });
   });
 });
 
@@ -899,15 +1209,14 @@ describe("certificates", () => {
       "insert into public.academy_completions(enrolment_id,course_score_bp,pass_mark_bp,component_scores) values($1,8000,7000,'{}')",
       [enrolA],
     );
-    await expect(rpc(q, learnerB, "issue_my_certificate", [enrolA])).rejects.toThrow(
-      "NOT_FOUND_OR_FORBIDDEN",
-    );
-    const issued = await rpc<{ ok: boolean; replayed: boolean; certificate: Record<string, unknown> }>(
-      q,
-      learnerA,
-      "issue_my_certificate",
-      [enrolA],
-    );
+    await expect(
+      rpc(q, learnerB, "issue_my_certificate", [enrolA]),
+    ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
+    const issued = await rpc<{
+      ok: boolean;
+      replayed: boolean;
+      certificate: Record<string, unknown>;
+    }>(q, learnerA, "issue_my_certificate", [enrolA]);
     expect(issued).toMatchObject({
       ok: true,
       replayed: false,
@@ -921,29 +1230,45 @@ describe("certificates", () => {
     });
     code = issued.certificate.verificationCode as string;
     expect(code).toMatch(/^[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/);
-    const again = await rpc<{ replayed: boolean; certificate: { certificateId: string } }>(
-      q,
-      learnerA,
-      "issue_my_certificate",
-      [enrolA],
-    );
+    const again = await rpc<{
+      replayed: boolean;
+      certificate: { certificateId: string };
+    }>(q, learnerA, "issue_my_certificate", [enrolA]);
     expect(again.replayed).toBe(true);
-    expect(again.certificate.certificateId).toBe(issued.certificate.certificateId);
+    expect(again.certificate.certificateId).toBe(
+      issued.certificate.certificateId,
+    );
     expect(
-      (await one<{ n: number }>("select count(*)::int n from public.learner_email_outbox where kind='CERTIFICATE_ISSUED'")).n,
+      (
+        await one<{ n: number }>(
+          "select count(*)::int n from public.learner_email_outbox where kind='CERTIFICATE_ISSUED'",
+        )
+      ).n,
     ).toBe(1);
     expect(
-      (await rpc<{ certificates: unknown[]; eligible: unknown[] }>(q, learnerA, "get_my_certificates")),
-    ).toMatchObject({ certificates: [{ verificationCode: code }], eligible: [] });
+      await rpc<{ certificates: unknown[]; eligible: unknown[] }>(
+        q,
+        learnerA,
+        "get_my_certificates",
+      ),
+    ).toMatchObject({
+      certificates: [{ verificationCode: code }],
+      eligible: [],
+    });
     await expect(
-      rpc(q, learnerB, "get_my_certificate", [issued.certificate.certificateId]),
+      rpc(q, learnerB, "get_my_certificate", [
+        issued.certificate.certificateId,
+      ]),
     ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
   });
 
   it("verifies publicly with minimal fields and reports revocation", async () => {
-    const verified = await rpc<Record<string, unknown>>(q, null, "verify_certificate", [
-      code.toLowerCase().replaceAll("-", " "),
-    ]);
+    const verified = await rpc<Record<string, unknown>>(
+      q,
+      null,
+      "verify_certificate",
+      [code.toLowerCase().replaceAll("-", " ")],
+    );
     expect(Object.keys(verified).sort()).toEqual([
       "completedOn",
       "courseTitle",
@@ -957,11 +1282,23 @@ describe("certificates", () => {
       "valid",
       "verificationCode",
     ]);
-    expect(verified).toMatchObject({ found: true, valid: true, learnerName: "Ada Lovelace", preparationCourse: true });
-    expect(await rpc(q, null, "verify_certificate", ["ZZZZ-ZZZZ-ZZZZ-ZZZZ"])).toEqual({ found: false });
-    expect(await rpc(q, null, "verify_certificate", ["short"])).toEqual({ found: false });
+    expect(verified).toMatchObject({
+      found: true,
+      valid: true,
+      learnerName: "Ada Lovelace",
+      preparationCourse: true,
+    });
+    expect(
+      await rpc(q, null, "verify_certificate", ["ZZZZ-ZZZZ-ZZZZ-ZZZZ"]),
+    ).toEqual({ found: false });
+    expect(await rpc(q, null, "verify_certificate", ["short"])).toEqual({
+      found: false,
+    });
     await expect(
-      q("update public.learner_certificates set learner_name='Someone Else' where verification_code=$1", [code]),
+      q(
+        "update public.learner_certificates set learner_name='Someone Else' where verification_code=$1",
+        [code],
+      ),
     ).rejects.toThrow("IMMUTABLE_HISTORY");
     await q(
       "update public.learner_certificates set revoked_at=now(), revoked_reason='TEST ONLY revocation' where verification_code=$1",
@@ -995,38 +1332,60 @@ describe("payment receipts", () => {
       String(iat),
       String(exp),
     ].join("\n");
-    const mac = createHmac("sha256", key).update(canonical, "utf8").digest("hex");
-    return rpc<{ ok: boolean; fulfilled?: boolean; replay?: boolean }>(q, null, "fulfill_academy_order", [
-      keyId,
-      orderId,
-      "STRIPE",
-      session,
-      eventId,
-      10000,
-      "GBP",
-      status,
-      iat,
-      exp,
-      mac,
-    ]);
+    const mac = createHmac("sha256", key)
+      .update(canonical, "utf8")
+      .digest("hex");
+    return rpc<{ ok: boolean; fulfilled?: boolean; replay?: boolean }>(
+      q,
+      null,
+      "fulfill_academy_order",
+      [
+        keyId,
+        orderId,
+        "STRIPE",
+        session,
+        eventId,
+        10000,
+        "GBP",
+        status,
+        iat,
+        exp,
+        mac,
+      ],
+    );
   }
   it("issues exactly one receipt for a verified paid fulfilled order", async () => {
-    const order = await rpc<{ ok: boolean; orderId: string; amountMinor: number }>(
-      q,
-      learnerB,
-      "create_unified_course_order",
-      ["learner-services-course", null],
-    );
+    const order = await rpc<{
+      ok: boolean;
+      orderId: string;
+      amountMinor: number;
+    }>(q, learnerB, "create_unified_course_order", [
+      "learner-services-course",
+      null,
+    ]);
     expect(order).toMatchObject({ ok: true, amountMinor: 10000 });
-    expect(await rpc(q, learnerB, "issue_my_payment_receipt", [order.orderId])).toEqual({
+    expect(
+      await rpc(q, learnerB, "issue_my_payment_receipt", [order.orderId]),
+    ).toEqual({
       ok: false,
       code: "NOT_ELIGIBLE",
     });
-    expect(await fulfil(order.orderId, "UNPAID", "evt_test_unpaid")).toMatchObject({ ok: true, fulfilled: false });
+    expect(
+      await fulfil(order.orderId, "UNPAID", "evt_test_unpaid"),
+    ).toMatchObject({ ok: true, fulfilled: false });
     expect(await rpc(q, learnerB, "list_my_payment_receipts")).toEqual([]);
-    expect(await fulfil(order.orderId, "PAID", "evt_test_paid")).toMatchObject({ ok: true, fulfilled: true });
-    expect(await fulfil(order.orderId, "PAID", "evt_test_paid")).toMatchObject({ ok: true, replay: true });
-    const receipts = await q("select id,receipt_number from public.learner_payment_receipts where order_id=$1", [order.orderId]);
+    expect(await fulfil(order.orderId, "PAID", "evt_test_paid")).toMatchObject({
+      ok: true,
+      fulfilled: true,
+    });
+    expect(await fulfil(order.orderId, "PAID", "evt_test_paid")).toMatchObject({
+      ok: true,
+      replay: true,
+    });
+    const receipts = await q(
+      "select id,receipt_number from public.learner_payment_receipts where order_id=$1",
+      [order.orderId],
+    );
     expect(receipts.rows).toHaveLength(1);
     expect(receipts.rows[0].receipt_number).toMatch(/^DUC-R-\d{4}-\d{6}$/);
     const issued = await rpc<{ ok: boolean; receipt: Record<string, unknown> }>(
@@ -1047,17 +1406,26 @@ describe("payment receipts", () => {
       },
     });
     expect(
-      (await one<{ n: number }>("select count(*)::int n from public.learner_email_outbox where kind='PAYMENT_RECEIPT' and recipient=$1", [learnerB.email])).n,
+      (
+        await one<{ n: number }>(
+          "select count(*)::int n from public.learner_email_outbox where kind='PAYMENT_RECEIPT' and recipient=$1",
+          [learnerB.email],
+        )
+      ).n,
     ).toBe(1);
-    expect(await rpc<unknown[]>(q, learnerB, "list_my_payment_receipts")).toHaveLength(1);
-    await expect(rpc(q, learnerA, "issue_my_payment_receipt", [order.orderId])).rejects.toThrow(
-      "NOT_FOUND_OR_FORBIDDEN",
-    );
-    await expect(rpc(q, learnerA, "get_my_payment_receipt", [receipts.rows[0].id])).rejects.toThrow(
-      "NOT_FOUND_OR_FORBIDDEN",
-    );
+    expect(
+      await rpc<unknown[]>(q, learnerB, "list_my_payment_receipts"),
+    ).toHaveLength(1);
     await expect(
-      q("delete from public.learner_payment_receipts where order_id=$1", [order.orderId]),
+      rpc(q, learnerA, "issue_my_payment_receipt", [order.orderId]),
+    ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
+    await expect(
+      rpc(q, learnerA, "get_my_payment_receipt", [receipts.rows[0].id]),
+    ).rejects.toThrow("NOT_FOUND_OR_FORBIDDEN");
+    await expect(
+      q("delete from public.learner_payment_receipts where order_id=$1", [
+        order.orderId,
+      ]),
     ).rejects.toThrow("IMMUTABLE_HISTORY");
     // A verified refund is shown on the same receipt, never a new one.
     await q(
@@ -1065,7 +1433,11 @@ describe("payment receipts", () => {
       [order.orderId],
     );
     expect(
-      (await rpc<{ refund: unknown }>(q, learnerB, "get_my_payment_receipt", [receipts.rows[0].id])).refund,
+      (
+        await rpc<{ refund: unknown }>(q, learnerB, "get_my_payment_receipt", [
+          receipts.rows[0].id,
+        ])
+      ).refund,
     ).toMatchObject({ amountMinor: 10000, currency: "GBP" });
   });
 
@@ -1078,15 +1450,22 @@ describe("payment receipts", () => {
         return { providerMessageId: `fake-pdf-${sent.length}` };
       },
     };
-    const run = await dispatchLearnerEmail({ rpc: anonRpc, controller, adapter: fake, appUrl: "https://example.test" });
+    const run = await dispatchLearnerEmail({
+      rpc: anonRpc,
+      controller,
+      adapter: fake,
+      appUrl: "https://example.test",
+    });
     expect(run).toMatchObject({ claimed: 2, sent: 2 });
     for (const email of sent) {
       expect(email.attachments).toHaveLength(1);
-      expect(Buffer.from(email.attachments[0].content).subarray(0, 5).toString()).toBe("%PDF-");
+      expect(
+        Buffer.from(email.attachments[0].content).subarray(0, 5).toString(),
+      ).toBe("%PDF-");
       expect(email.text).not.toContain("{{APP_URL}}");
     }
-    expect(sent.find((e) => e.subject.startsWith("Your Ducelio certificate"))?.text).toContain(
-      "https://example.test/verify?code=",
-    );
+    expect(
+      sent.find((e) => e.subject.startsWith("Your Ducelio certificate"))?.text,
+    ).toContain("https://example.test/verify?code=");
   });
 });

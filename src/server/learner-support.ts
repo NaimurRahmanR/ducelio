@@ -19,7 +19,11 @@ export type SupportCategory = (typeof SUPPORT_CATEGORIES)[number];
 export const SUPPORT_RATE_LIMIT_PER_HOUR = 5;
 
 export const supportMessageInputSchema = z.strictObject({
-  category: z.enum(SUPPORT_CATEGORIES),
+  // The form's "COURSE" is the stored COURSE_CONTENT category.
+  category: z.preprocess(
+    (v) => (v === "COURSE" ? "COURSE_CONTENT" : v),
+    z.enum(SUPPORT_CATEGORIES),
+  ),
   subject: z
     .string()
     .trim()
@@ -31,7 +35,10 @@ export const supportMessageInputSchema = z.strictObject({
     .trim()
     .min(10)
     .max(5000)
-    .refine((s) => !hasControlCharacters(s, true), "Remove control characters."),
+    .refine(
+      (s) => !hasControlCharacters(s, true),
+      "Remove control characters.",
+    ),
   enrolmentId: z.uuid().nullable().optional().default(null),
   activityRef: z
     .string()
@@ -105,7 +112,11 @@ export async function listMySupportMessages() {
     .array(
       z.object({
         messageId: z.uuid(),
-        category: z.enum(SUPPORT_CATEGORIES),
+        // The form's "COURSE" is the stored COURSE_CONTENT category.
+        category: z.preprocess(
+          (v) => (v === "COURSE" ? "COURSE_CONTENT" : v),
+          z.enum(SUPPORT_CATEGORIES),
+        ),
         subject: z.string(),
         enrolmentId: z.uuid().nullable(),
         activityRef: z.string().nullable(),
